@@ -38,6 +38,26 @@ AWS SSM Parameter Store Standard offers unlimited projects/environments via path
 - Binary size < 20 MB.
 - Migration of all secrets from Doppler + Infisical in < 1 day.
 - Zero runtime cost (AWS SSM Standard free tier + AWS-managed KMS key).
+- Full cross-platform support: Windows (amd64/arm64), Linux (amd64/arm64), macOS (amd64/arm64).
+
+### 1.5 Cross-platform requirements
+
+skret MUST work identically on all three major OSes. Platform-specific concerns:
+
+| Concern | Unix (Linux/macOS) | Windows |
+|---|---|---|
+| Process exec (`run`) | `syscall.Exec` (process replacement) | `os/exec.Command` (child process, wait + exit code forwarding) |
+| File locking (local provider) | `flock` via `syscall.Flock` | `LockFileEx` via `golang.org/x/sys/windows` |
+| Path handling | Forward slashes | `filepath.Join` / `filepath.Abs` normalize to backslashes |
+| File permissions | `0600` for secrets files | ACLs (best-effort, Go `os.Chmod` limited on Windows) |
+| Shell completions | bash, zsh, fish | PowerShell |
+| Atomic file write | temp + `os.Rename` (same filesystem) | temp + `os.Rename` (same drive letter) |
+| Signal handling | SIGTERM, SIGINT | Ctrl+C via `os.Interrupt` |
+| CI testing | `ubuntu-latest`, `macos-latest` runners | `windows-latest` runner |
+
+**Build tags:** Use `//go:build !windows` and `//go:build windows` for platform-specific code. All other code MUST be OS-agnostic.
+
+**goreleaser targets:** `linux/amd64`, `linux/arm64`, `darwin/amd64`, `darwin/arm64`, `windows/amd64`, `windows/arm64` (6 binaries per release).
 
 ---
 
