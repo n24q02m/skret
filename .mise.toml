@@ -1,0 +1,40 @@
+[tools]
+go = "1.26"
+golangci-lint = "latest"
+goreleaser = "latest"
+python = "3.13"
+uv = "latest"
+
+[settings]
+trusted_config_paths = ["."]
+
+[tasks.setup]
+description = "Setup development environment"
+run = [
+  "mise install",
+  "go mod download",
+  "go install mvdan.cc/gofumpt@latest",
+  "uv pip install pre-commit",
+  "pre-commit install",
+  "pre-commit install --hook-type commit-msg",
+  "echo 'Setup complete!'"
+]
+
+[tasks.lint]
+description = "Run all linters"
+run = [
+  "golangci-lint run ./...",
+  "test -z \"$(gofumpt -l cmd internal pkg)\" || { echo 'Files need gofumpt:'; gofumpt -l cmd internal pkg; exit 1; }",
+]
+
+[tasks.test]
+description = "Run tests with race detector"
+run = ["go test -race -cover ./..."]
+
+[tasks.build]
+description = "Build binary"
+run = ["go build -o skret ./cmd/skret"]
+
+[tasks.fix]
+description = "Auto-fix formatting"
+run = ["gofumpt -w cmd internal pkg"]

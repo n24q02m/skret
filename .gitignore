@@ -1,0 +1,35 @@
+# Binaries
+/skret
+*.exe
+*.dll
+*.so
+*.dylib
+dist/
+
+# Test
+coverage.out
+*.test
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets (local dev provider files)
+.secrets.*.yaml
+.secrets.*.yml
+.env
+.env.*
+
+# Build
+vendor/
+
+# Node (VitePress docs)
+node_modules/
+docs/.vitepress/dist/
+docs/.vitepress/cache/
