@@ -6,6 +6,7 @@ import (
 
 	"github.com/n24q02m/skret/internal/config"
 	"github.com/n24q02m/skret/internal/provider"
+	skaws "github.com/n24q02m/skret/internal/provider/aws"
 	"github.com/n24q02m/skret/internal/provider/local"
 )
 
@@ -15,7 +16,9 @@ func defaultRegistry() *provider.Registry {
 	reg.Register("local", func(cfg *config.ResolvedConfig) (provider.SecretProvider, error) {
 		return local.New(cfg)
 	})
-	// AWS provider will be registered in Task 11
+	reg.Register("aws", func(cfg *config.ResolvedConfig) (provider.SecretProvider, error) {
+		return skaws.New(cfg)
+	})
 	return reg
 }
 
