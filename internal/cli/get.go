@@ -5,13 +5,15 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/n24q02m/skret/pkg/skret"
 	"github.com/spf13/cobra"
 )
 
-func newGetCmd() *cobra.Command {
+func newGetCmd(opts *GlobalOpts) *cobra.Command {
 	var (
 		outputJSON   bool
 		withMetadata bool
+		plain        bool
 	)
 
 	cmd := &cobra.Command{
@@ -19,7 +21,7 @@ func newGetCmd() *cobra.Command {
 		Short: "Get a single secret value",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			_, p, err := loadProvider()
+			_, p, err := loadProvider(opts)
 			if err != nil {
 				return err
 			}
@@ -28,7 +30,7 @@ func newGetCmd() *cobra.Command {
 			ctx := context.Background()
 			secret, err := p.Get(ctx, args[0])
 			if err != nil {
-				return fmt.Errorf("get %q: %w", args[0], err)
+				return skret.NewError(skret.ExitNotFoundError, fmt.Sprintf("get %q", args[0]), err)
 			}
 
 			if outputJSON || withMetadata {
@@ -42,6 +44,8 @@ func newGetCmd() *cobra.Command {
 				}
 				data, _ := json.MarshalIndent(out, "", "  ")
 				cmd.Println(string(data))
+			} else if plain {
+				cmd.Print(secret.Value)
 			} else {
 				cmd.Println(secret.Value)
 			}
@@ -51,6 +55,7 @@ func newGetCmd() *cobra.Command {
 
 	cmd.Flags().BoolVar(&outputJSON, "json", false, "output as JSON")
 	cmd.Flags().BoolVar(&withMetadata, "with-metadata", false, "include metadata in output")
+	cmd.Flags().BoolVar(&plain, "plain", false, "print value without trailing newline")
 
 	return cmd
 }

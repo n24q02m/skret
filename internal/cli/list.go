@@ -4,31 +4,63 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"text/tabwriter"
 
+	"github.com/n24q02m/skret/internal/provider"
+	"github.com/n24q02m/skret/pkg/skret"
 	"github.com/spf13/cobra"
 )
 
-func newListCmd() *cobra.Command {
+func newListCmd(opts *GlobalOpts) *cobra.Command {
 	var (
-		format string
-		values bool
+		format    string
+		values    bool
+		path      string
+		recursive bool
 	)
 
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List secrets under the current environment path",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			resolved, p, err := loadProvider()
+			resolved, p, err := loadProvider(opts)
 			if err != nil {
 				return err
 			}
 			defer p.Close()
 
+			listPath := resolved.Path
+			if path != "" {
+				listPath = path
+			}
+
+			// Ensure prefix slash
+			if listPath != "" && !strings.HasPrefix(listPath, "/") {
+				listPath = "/" + listPath
+			}
+
 			ctx := context.Background()
-			secrets, err := p.List(ctx, resolved.Path)
+			secrets, err := p.List(ctx, listPath)
 			if err != nil {
-				return fmt.Errorf("list: %w", err)
+				return skret.NewError(skret.ExitProviderError, "list secrets failed", err)
+			}
+
+			// Filter for non-recursive if needed.
+			// Cloud providers might return all children. If non-recursive, we only want immediate children.
+			if !recursive && listPath != "" {
+				var filtered []*provider.Secret
+				level := strings.Count(listPath, "/")
+				if !strings.HasSuffix(listPath, "/") {
+					level++
+				}
+				for _, s := range secrets {
+					sLevel := strings.Count(s.Key, "/")
+					if sLevel == level {
+						filtered = append(filtered, s)
+					}
+				}
+				secrets = filtered
 			}
 
 			switch format {
@@ -57,6 +89,8 @@ func newListCmd() *cobra.Command {
 
 	cmd.Flags().StringVar(&format, "format", "table", "output format (table, json)")
 	cmd.Flags().BoolVar(&values, "values", false, "include secret values in output")
+	cmd.Flags().StringVar(&path, "path", "", "override path prefix to list")
+	cmd.Flags().BoolVar(&recursive, "recursive", true, "list secrets recursively")
 
 	return cmd
 }

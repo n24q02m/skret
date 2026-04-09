@@ -60,8 +60,41 @@ func TestRedactingHandler_Enabled(t *testing.T) {
 	assert.True(t, handler.Enabled(context.Background(), slog.LevelWarn))
 }
 
+func TestRedactingHandler_WithAttrs(t *testing.T) {
+	var buf bytes.Buffer
+	inner := slog.NewTextHandler(&buf, nil)
+	handler := logging.NewRedactingHandler(inner)
+
+	h2 := handler.WithAttrs([]slog.Attr{
+		slog.String("static_key", "sk-abc123def456ghi789jkl012mno"),
+		slog.String("static_normal", "value"),
+	})
+	logger := slog.New(h2)
+
+	logger.Info("test")
+
+	output := buf.String()
+	assert.Contains(t, output, "static_key=[REDACTED]")
+	assert.Contains(t, output, "static_normal=value")
+	assert.NotContains(t, output, "sk-abc123def456ghi789jkl012mno")
+}
+
+func TestRedactingHandler_WithGroup(t *testing.T) {
+	var buf bytes.Buffer
+	inner := slog.NewTextHandler(&buf, nil)
+	handler := logging.NewRedactingHandler(inner)
+
+	h2 := handler.WithGroup("mygroup")
+	logger := slog.New(h2)
+
+	logger.Info("test", "key", "sk-abc123def456ghi789jkl012mno")
+
+	output := buf.String()
+	assert.Contains(t, output, "mygroup.key=[REDACTED]")
+	assert.NotContains(t, output, "sk-abc123def456ghi789jkl012mno")
+}
+
 func TestSetup(t *testing.T) {
-	// Just verify it doesn't panic
 	logging.Setup("debug", "text")
 	logging.Setup("info", "json")
 	logging.Setup("error", "")

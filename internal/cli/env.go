@@ -3,22 +3,22 @@ package cli
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"sort"
 	"strings"
 
+	"github.com/n24q02m/skret/pkg/skret"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )
 
-func newEnvCmd() *cobra.Command {
+func newEnvCmd(opts *GlobalOpts) *cobra.Command {
 	var format string
 
 	cmd := &cobra.Command{
 		Use:   "env",
 		Short: "Dump all secrets in dotenv/JSON/YAML/export format",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			resolved, p, err := loadProvider()
+			resolved, p, err := loadProvider(opts)
 			if err != nil {
 				return err
 			}
@@ -27,7 +27,7 @@ func newEnvCmd() *cobra.Command {
 			ctx := context.Background()
 			secrets, err := p.List(ctx, resolved.Path)
 			if err != nil {
-				return fmt.Errorf("env: %w", err)
+				return skret.NewError(skret.ExitProviderError, "env: list secrets failed", err)
 			}
 
 			type kv struct {
@@ -40,7 +40,7 @@ func newEnvCmd() *cobra.Command {
 				excludeSet[e] = true
 			}
 			for _, s := range secrets {
-				name := secretKeyToEnvVar(s.Key, resolved.Path)
+				name := KeyToEnvName(s.Key, resolved.Path)
 				if excludeSet[name] {
 					continue
 				}

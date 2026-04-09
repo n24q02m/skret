@@ -2,12 +2,15 @@ package syncer
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
+
+	"golang.org/x/crypto/nacl/box"
 
 	"github.com/n24q02m/skret/internal/provider"
 )
@@ -31,7 +34,6 @@ func NewGitHub(owner, repo, token, baseURL string) Syncer {
 func (g *GitHubSyncer) Name() string { return "github" }
 
 func (g *GitHubSyncer) Sync(ctx context.Context, secrets []*provider.Secret) error {
-	// Get repo public key
 	pubKey, keyID, err := g.getPublicKey(ctx)
 	if err != nil {
 		return err
@@ -76,9 +78,11 @@ func (g *GitHubSyncer) getPublicKey(ctx context.Context) (string, string, error)
 	return result.Key, result.KeyID, nil
 }
 
-func (g *GitHubSyncer) putSecret(ctx context.Context, name, value, pubKey, keyID string) error {
-	// Base64-encode the value (simplified; production should use NaCl sealed box)
-	encValue := base64.StdEncoding.EncodeToString([]byte(value))
+func (g *GitHubSyncer) putSecret(ctx context.Context, name, value, pubKeyB64, keyID string) error {
+	encValue, err := sealSecret(value, pubKeyB64)
+	if err != nil {
+		return fmt.Errorf("github: encrypt %q: %w", name, err)
+	}
 
 	url := fmt.Sprintf("%s/repos/%s/%s/actions/secrets/%s", g.baseURL, g.owner, g.repo, name)
 
@@ -91,9 +95,6 @@ func (g *GitHubSyncer) putSecret(ctx context.Context, name, value, pubKey, keyID
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("Content-Type", "application/json")
 
-	// Use the public key to note we received it (for mock testing purposes)
-	_ = pubKey
-
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("github: request: %w", err)
@@ -105,4 +106,26 @@ func (g *GitHubSyncer) putSecret(ctx context.Context, name, value, pubKey, keyID
 		return fmt.Errorf("github: API returned %d: %s", resp.StatusCode, string(respBody))
 	}
 	return nil
+}
+
+// sealSecret encrypts a secret using NaCl sealed box (curve25519 + xsalsa20-poly1305).
+// This matches GitHub's required encryption format for Actions secrets.
+func sealSecret(secret, recipientPubKeyB64 string) (string, error) {
+	pubKeyBytes, err := base64.StdEncoding.DecodeString(recipientPubKeyB64)
+	if err != nil {
+		return "", fmt.Errorf("decode public key: %w", err)
+	}
+	if len(pubKeyBytes) != 32 {
+		return "", fmt.Errorf("invalid public key length: %d (expected 32)", len(pubKeyBytes))
+	}
+
+	var recipientKey [32]byte
+	copy(recipientKey[:], pubKeyBytes)
+
+	sealed, err := box.SealAnonymous(nil, []byte(secret), &recipientKey, rand.Reader)
+	if err != nil {
+		return "", fmt.Errorf("seal: %w", err)
+	}
+
+	return base64.StdEncoding.EncodeToString(sealed), nil
 }

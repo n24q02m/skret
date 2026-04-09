@@ -76,6 +76,19 @@ func TestLocal_List(t *testing.T) {
 	assert.Len(t, secrets, 3)
 }
 
+func TestLocal_List_Sorted(t *testing.T) {
+	path := setupFile(t, "version: \"1\"\nsecrets:\n  Z_KEY: z\n  A_KEY: a\n  M_KEY: m")
+	p := newProvider(t, path)
+	defer p.Close()
+
+	secrets, err := p.List(context.Background(), "")
+	require.NoError(t, err)
+	require.Len(t, secrets, 3)
+	assert.Equal(t, "A_KEY", secrets[0].Key)
+	assert.Equal(t, "M_KEY", secrets[1].Key)
+	assert.Equal(t, "Z_KEY", secrets[2].Key)
+}
+
 func TestLocal_Set(t *testing.T) {
 	path := setupFile(t, "version: \"1\"\nsecrets:\n  KEY1: val1")
 	p := newProvider(t, path)
@@ -95,6 +108,20 @@ func TestLocal_Set(t *testing.T) {
 	s2, err := p2.Get(ctx, "NEW_KEY")
 	require.NoError(t, err)
 	assert.Equal(t, "new_val", s2.Value)
+}
+
+func TestLocal_Set_InitializesMap(t *testing.T) {
+	// File with no secrets map to exercise the nil map path
+	path := setupFile(t, "version: \"1\"\n")
+	p := newProvider(t, path)
+	defer p.Close()
+
+	err := p.Set(context.Background(), "KEY", "val", provider.SecretMeta{})
+	require.NoError(t, err)
+
+	s, err := p.Get(context.Background(), "KEY")
+	require.NoError(t, err)
+	assert.Equal(t, "val", s.Value)
 }
 
 func TestLocal_Delete(t *testing.T) {
@@ -126,4 +153,33 @@ func TestLocal_DeleteNotFound(t *testing.T) {
 func TestLocal_NewFileMissing(t *testing.T) {
 	_, err := local.New(&config.ResolvedConfig{File: filepath.Join(t.TempDir(), "nonexistent.yaml")})
 	assert.Error(t, err)
+}
+
+func TestLocal_Concurrent(t *testing.T) {
+	path := setupFile(t, "version: \"1\"\nsecrets:\n  KEY: initial")
+	p := newProvider(t, path)
+	defer p.Close()
+
+	ctx := context.Background()
+	done := make(chan struct{})
+	errs := make(chan error, 10)
+
+	for i := 0; i < 5; i++ {
+		go func(n int) {
+			defer func() { done <- struct{}{} }()
+			key := "KEY"
+			if err := p.Set(ctx, key, "value", provider.SecretMeta{}); err != nil {
+				errs <- err
+			}
+		}(i)
+	}
+
+	for i := 0; i < 5; i++ {
+		<-done
+	}
+	close(errs)
+
+	for err := range errs {
+		require.NoError(t, err)
+	}
 }

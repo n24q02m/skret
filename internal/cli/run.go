@@ -7,20 +7,21 @@ import (
 	osexec "os/exec"
 
 	skexec "github.com/n24q02m/skret/internal/exec"
+	"github.com/n24q02m/skret/pkg/skret"
 	"github.com/spf13/cobra"
 )
 
-func newRunCmd() *cobra.Command {
+func newRunCmd(opts *GlobalOpts) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:                "run -- <command> [args...]",
 		Short:              "Run a command with secrets injected as environment variables",
 		DisableFlagParsing: false,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
-				return fmt.Errorf("run: command required after --")
+				return skret.NewError(skret.ExitValidationError, "run: command required after --", nil)
 			}
 
-			resolved, p, err := loadProvider()
+			resolved, p, err := loadProvider(opts)
 			if err != nil {
 				return err
 			}
@@ -29,19 +30,19 @@ func newRunCmd() *cobra.Command {
 			ctx := context.Background()
 			secrets, err := p.List(ctx, resolved.Path)
 			if err != nil {
-				return fmt.Errorf("run: list secrets: %w", err)
+				return skret.NewError(skret.ExitProviderError, "run: list secrets failed", err)
 			}
 
 			// Validate required secrets
 			if len(resolved.Required) > 0 {
 				secretKeys := make(map[string]bool)
 				for _, s := range secrets {
-					name := secretKeyToEnvVar(s.Key, resolved.Path)
+					name := KeyToEnvName(s.Key, resolved.Path)
 					secretKeys[name] = true
 				}
 				for _, r := range resolved.Required {
 					if !secretKeys[r] && os.Getenv(r) == "" {
-						return fmt.Errorf("run: required secret %q not found", r)
+						return skret.NewError(skret.ExitValidationError, fmt.Sprintf("run: required secret %q not found", r), nil)
 					}
 				}
 			}
@@ -59,14 +60,11 @@ func newRunCmd() *cobra.Command {
 func execCommand(args []string, env []string) error {
 	binary, err := osexec.LookPath(args[0])
 	if err != nil {
-		return fmt.Errorf("run: command not found: %s", args[0])
+		return skret.NewError(skret.ExitExecError, fmt.Sprintf("run: command not found: %s", args[0]), err)
 	}
-
-	// On Windows: use os/exec.Command
-	c := osexec.Command(binary, args[1:]...)
-	c.Env = env
-	c.Stdin = os.Stdin
-	c.Stdout = os.Stdout
-	c.Stderr = os.Stderr
-	return c.Run()
+	err = skexec.Run(binary, args, env)
+	if err != nil {
+		return skret.NewError(skret.ExitExecError, "runtime error", err)
+	}
+	return nil
 }

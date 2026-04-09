@@ -2,10 +2,8 @@ package aws
 
 import (
 	"context"
-	"fmt"
 
 	awslib "github.com/aws/aws-sdk-go-v2/aws"
-	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
 	ssmtypes "github.com/aws/aws-sdk-go-v2/service/ssm/types"
 
@@ -29,17 +27,10 @@ type Provider struct {
 
 // New creates an AWS SSM provider from resolved config.
 func New(cfg *config.ResolvedConfig) (provider.SecretProvider, error) {
-	var opts []func(*awsconfig.LoadOptions) error
-	if cfg.Region != "" {
-		opts = append(opts, awsconfig.WithRegion(cfg.Region))
-	}
-	if cfg.Profile != "" {
-		opts = append(opts, awsconfig.WithSharedConfigProfile(cfg.Profile))
-	}
-
-	awsCfg, err := awsconfig.LoadDefaultConfig(context.Background(), opts...)
+	// Use the auth.go helper to load standard credential chain
+	awsCfg, err := loadAWSConfig(context.Background(), cfg.Region, cfg.Profile)
 	if err != nil {
-		return nil, fmt.Errorf("aws: load config: %w", err)
+		return nil, err
 	}
 
 	client := ssm.NewFromConfig(awsCfg)

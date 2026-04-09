@@ -44,6 +44,23 @@ MULTI_LINE="line1\nline2"
 	assert.Equal(t, "with_export", m["PREFIXED"])
 }
 
+func TestDotenvImporter_FileMissing(t *testing.T) {
+	imp := importer.NewDotenv(filepath.Join(t.TempDir(), "nonexistent.env"))
+	_, err := imp.Import(context.Background())
+	assert.Error(t, err)
+}
+
+func TestDotenvImporter_Empty(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".env")
+	require.NoError(t, os.WriteFile(path, []byte("# Only comments\n"), 0o644))
+
+	imp := importer.NewDotenv(path)
+	secrets, err := imp.Import(context.Background())
+	require.NoError(t, err)
+	assert.Empty(t, secrets)
+}
+
 func TestDopplerImporter(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "Bearer dp.st.test_token", r.Header.Get("Authorization"))
@@ -62,6 +79,19 @@ func TestDopplerImporter(t *testing.T) {
 	secrets, err := imp.Import(context.Background())
 	require.NoError(t, err)
 	assert.Len(t, secrets, 2)
+}
+
+func TestDopplerImporter_APIError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte(`{"messages":["Invalid token"]}`))
+	}))
+	defer srv.Close()
+
+	imp := importer.NewDoppler("bad_token", "proj", "cfg", srv.URL)
+	_, err := imp.Import(context.Background())
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "401")
 }
 
 func TestInfisicalImporter(t *testing.T) {
@@ -91,4 +121,17 @@ func TestInfisicalImporter(t *testing.T) {
 	}
 	assert.Equal(t, "postgres://prod", m["DB_URL"])
 	assert.Equal(t, "key-456", m["API_KEY"])
+}
+
+func TestInfisicalImporter_APIError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		w.Write([]byte(`{"message":"Unauthorized"}`))
+	}))
+	defer srv.Close()
+
+	imp := importer.NewInfisical("bad_token", "proj", "prod", srv.URL)
+	_, err := imp.Import(context.Background())
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "403")
 }

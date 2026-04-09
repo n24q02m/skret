@@ -38,3 +38,28 @@ func TestBuildEnv_PathStripping(t *testing.T) {
 	assert.Contains(t, env, "DB_URL=pg://host")
 	assert.Contains(t, env, "SUB_NESTED=val")
 }
+
+func TestBuildEnv_EmptySecrets(t *testing.T) {
+	env := skexec.BuildEnv(nil, []string{"HOME=/root"}, "", nil)
+	assert.Equal(t, []string{"HOME=/root"}, env)
+}
+
+func TestKeyToEnvName_NoPrefix(t *testing.T) {
+	assert.Equal(t, "DB_URL", skexec.KeyToEnvName("DB_URL", ""))
+	assert.Equal(t, "API_KEY", skexec.KeyToEnvName("api_key", ""))
+}
+
+func TestKeyToEnvName_WithPrefix(t *testing.T) {
+	assert.Equal(t, "DB_URL", skexec.KeyToEnvName("/app/prod/DB_URL", "/app/prod"))
+	assert.Equal(t, "DB_URL", skexec.KeyToEnvName("/app/prod/DB_URL", "/app/prod/"))
+}
+
+func TestKeyToEnvName_SlashToUnderscore(t *testing.T) {
+	assert.Equal(t, "A_B_C", skexec.KeyToEnvName("/prefix/a/b/c", "/prefix"))
+}
+
+func TestKeyToEnvName_NoMatch(t *testing.T) {
+	// Key doesn't start with prefix — whole key used
+	result := skexec.KeyToEnvName("/other/path/KEY", "/my/prefix")
+	assert.Equal(t, "_OTHER_PATH_KEY", result)
+}

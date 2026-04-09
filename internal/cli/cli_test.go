@@ -324,3 +324,136 @@ func TestRunCmd_MissingCommand(t *testing.T) {
 	err := cmd.Execute()
 	require.Error(t, err)
 }
+
+func TestRunCmd_RequiredSecretMissing(t *testing.T) {
+	dir := setupTestRepo(t)
+	// Add required secret spec
+	os.WriteFile(filepath.Join(dir, ".skret.yaml"), []byte(`
+version: "1"
+default_env: dev
+required: ["MISSING_REQUIRED"]
+environments:
+  dev:
+    provider: local
+    file: ./.secrets.dev.yaml
+`), 0o644)
+
+	origDir, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	defer os.Chdir(origDir)
+
+	cmd := cli.NewRootCmd()
+	cmd.SetArgs([]string{"run", "--", "go", "version"})
+	err := cmd.Execute()
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "required secret")
+}
+
+// --- Import tests ---
+
+func TestImportCmd_Dotenv(t *testing.T) {
+	dir := setupTestRepo(t)
+	origDir, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	defer os.Chdir(origDir)
+
+	envContent := `IMPORT_KEY=imported_value`
+	os.WriteFile(filepath.Join(dir, ".env"), []byte(envContent), 0o644)
+
+	cmd := cli.NewRootCmd()
+	cmd.SetArgs([]string{"import", "--from=dotenv", "--file=.env"})
+	err := cmd.Execute()
+	require.NoError(t, err)
+
+	var buf bytes.Buffer
+	cmd2 := cli.NewRootCmd()
+	cmd2.SetOut(&buf)
+	cmd2.SetArgs([]string{"get", "IMPORT_KEY"})
+	err = cmd2.Execute()
+	require.NoError(t, err)
+	assert.Contains(t, buf.String(), "imported_value")
+}
+
+func TestImportCmd_ToPath(t *testing.T) {
+	dir := setupTestRepo(t)
+	origDir, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	defer os.Chdir(origDir)
+
+	envContent := `IMPORT_KEY=imported_value`
+	os.WriteFile(filepath.Join(dir, ".env"), []byte(envContent), 0o644)
+
+	cmd := cli.NewRootCmd()
+	cmd.SetArgs([]string{"import", "--from=dotenv", "--file=.env", "--to-path=/imported/"})
+	err := cmd.Execute()
+	require.NoError(t, err)
+
+	var buf bytes.Buffer
+	cmd2 := cli.NewRootCmd()
+	cmd2.SetOut(&buf)
+	cmd2.SetArgs([]string{"get", "/imported/IMPORT_KEY"})
+	err = cmd2.Execute()
+	require.NoError(t, err)
+	assert.Contains(t, buf.String(), "imported_value")
+}
+
+// --- Sync tests ---
+
+func TestSyncCmd_Dotenv(t *testing.T) {
+	dir := setupTestRepo(t)
+	origDir, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	defer os.Chdir(origDir)
+
+	cmd := cli.NewRootCmd()
+	cmd.SetArgs([]string{"sync", "--to=dotenv", "--file=.env.synced"})
+	err := cmd.Execute()
+	require.NoError(t, err)
+
+	data, err := os.ReadFile(filepath.Join(dir, ".env.synced"))
+	require.NoError(t, err)
+	assert.Contains(t, string(data), `API_KEY="secret123"`)
+}
+
+// --- Additional format tests ---
+
+func TestEnvCmd_JsonYamlFormats(t *testing.T) {
+	dir := setupTestRepo(t)
+	origDir, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	defer os.Chdir(origDir)
+
+	var buf bytes.Buffer
+	cmd := cli.NewRootCmd()
+	cmd.SetOut(&buf)
+	cmd.SetArgs([]string{"env", "--format=json"})
+	require.NoError(t, cmd.Execute())
+	assert.Contains(t, buf.String(), `"DATABASE_URL": "postgres://`)
+
+	buf.Reset()
+	cmd2 := cli.NewRootCmd()
+	cmd2.SetOut(&buf)
+	cmd2.SetArgs([]string{"env", "--format=yaml"})
+	require.NoError(t, cmd2.Execute())
+	assert.Contains(t, buf.String(), "DATABASE_URL: postgres://")
+}
+
+func TestSetCmd_FromFile(t *testing.T) {
+	dir := setupTestRepo(t)
+	origDir, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	defer os.Chdir(origDir)
+
+	os.WriteFile("val.txt", []byte("file_value"), 0o644)
+
+	cmd := cli.NewRootCmd()
+	cmd.SetArgs([]string{"set", "FILE_KEY", "--from-file=val.txt"})
+	require.NoError(t, cmd.Execute())
+
+	var buf bytes.Buffer
+	cmd2 := cli.NewRootCmd()
+	cmd2.SetOut(&buf)
+	cmd2.SetArgs([]string{"get", "FILE_KEY"})
+	require.NoError(t, cmd2.Execute())
+	assert.Contains(t, buf.String(), "file_value")
+}

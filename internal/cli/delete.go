@@ -7,10 +7,11 @@ import (
 	"os"
 	"strings"
 
+	"github.com/n24q02m/skret/pkg/skret"
 	"github.com/spf13/cobra"
 )
 
-func newDeleteCmd() *cobra.Command {
+func newDeleteCmd(opts *GlobalOpts) *cobra.Command {
 	var confirm bool
 
 	cmd := &cobra.Command{
@@ -18,7 +19,7 @@ func newDeleteCmd() *cobra.Command {
 		Short: "Delete a secret",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			_, p, err := loadProvider()
+			_, p, err := loadProvider(opts)
 			if err != nil {
 				return err
 			}
@@ -38,7 +39,7 @@ func newDeleteCmd() *cobra.Command {
 
 			ctx := context.Background()
 			if err := p.Delete(ctx, key); err != nil {
-				return fmt.Errorf("delete %q: %w", key, err)
+				return skret.NewError(skret.ExitProviderError, fmt.Sprintf("delete %q failed", key), err)
 			}
 
 			cmd.Printf("Deleted %s\n", key)

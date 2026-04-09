@@ -24,7 +24,7 @@ func BuildEnv(secrets []*provider.Secret, existing []string, pathPrefix string, 
 	}
 
 	for _, s := range secrets {
-		name := keyToEnvName(s.Key, pathPrefix)
+		name := KeyToEnvName(s.Key, pathPrefix)
 		if excludeSet[name] || existingKeys[name] {
 			continue
 		}
@@ -34,7 +34,10 @@ func BuildEnv(secrets []*provider.Secret, existing []string, pathPrefix string, 
 	return env
 }
 
-func keyToEnvName(key, pathPrefix string) string {
+// KeyToEnvName converts a secret key to an environment variable name.
+// It strips the path prefix, replaces "/" with "_", and uppercases.
+// This is the single source of truth for key-to-env-var conversion.
+func KeyToEnvName(key, pathPrefix string) string {
 	name := key
 	if pathPrefix != "" && strings.HasPrefix(key, pathPrefix) {
 		name = key[len(pathPrefix):]
