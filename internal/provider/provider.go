@@ -48,6 +48,8 @@ type SecretProvider interface {
 
 	Set(ctx context.Context, key string, value string, meta SecretMeta) error
 	Delete(ctx context.Context, key string) error
+	GetHistory(ctx context.Context, key string) ([]*Secret, error)
+	Rollback(ctx context.Context, key string, version int64) error
 
 	Close() error
 }

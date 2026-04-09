@@ -1,6 +1,7 @@
 package exec
 
 import (
+	"os"
 	"strings"
 
 	"github.com/n24q02m/skret/internal/provider"
@@ -23,19 +24,52 @@ func BuildEnv(secrets []*provider.Secret, existing []string, pathPrefix string, 
 		env = append(env, e)
 	}
 
+	secretVars := make(map[string]string)
 	for _, s := range secrets {
 		name := KeyToEnvName(s.Key, pathPrefix)
 		if excludeSet[name] || existingKeys[name] {
 			continue
 		}
-		env = append(env, name+"="+s.Value)
+		secretVars[name] = s.Value
+	}
+
+	// Expand secret references (up to 10 iterations to prevent infinite loops)
+	for i := 0; i < 10; i++ {
+		changed := false
+		for k, v := range secretVars {
+			newVal := os.Expand(v, func(ref string) string {
+				// 1. check existing environment variables (highest priority)
+				for _, e := range existing {
+					if strings.HasPrefix(e, ref+"=") {
+						return e[len(ref)+1:]
+					}
+				}
+				// 2. check other secrets
+				if sv, ok := secretVars[ref]; ok {
+					return sv
+				}
+				// 3. fallback to host env
+				return os.Getenv(ref)
+			})
+			if newVal != v {
+				secretVars[k] = newVal
+				changed = true
+			}
+		}
+		if !changed {
+			break
+		}
+	}
+
+	for k, v := range secretVars {
+		env = append(env, k+"="+v)
 	}
 
 	return env
 }
 
 // KeyToEnvName converts a secret key to an environment variable name.
-// It strips the path prefix, replaces "/" with "_", and uppercases.
+// It strips the path prefix, replaces "/"" with "_"", and uppercases.
 // This is the single source of truth for key-to-env-var conversion.
 func KeyToEnvName(key, pathPrefix string) string {
 	name := key

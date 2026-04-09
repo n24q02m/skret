@@ -10,8 +10,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
 	ssmtypes "github.com/aws/aws-sdk-go-v2/service/ssm/types"
 	"github.com/n24q02m/skret/internal/config"
-	skaws "github.com/n24q02m/skret/internal/provider/aws"
 	"github.com/n24q02m/skret/internal/provider"
+	skaws "github.com/n24q02m/skret/internal/provider/aws"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -79,6 +79,10 @@ func (m *mockSSMClient) DeleteParameter(_ context.Context, input *ssm.DeletePara
 	return &ssm.DeleteParameterOutput{}, nil
 }
 
+func (m *mockSSMClient) GetParameterHistory(ctx context.Context, input *ssm.GetParameterHistoryInput, _ ...func(*ssm.Options)) (*ssm.GetParameterHistoryOutput, error) {
+	return &ssm.GetParameterHistoryOutput{Parameters: []ssmtypes.ParameterHistory{}}, nil
+}
+
 func newTestProvider(params map[string]ssmtypes.Parameter) provider.SecretProvider {
 	if params == nil {
 		params = make(map[string]ssmtypes.Parameter)
@@ -93,7 +97,7 @@ func TestAWS_New_EnvVars(t *testing.T) {
 	_, err := skaws.New(cfg)
 	// it will succeed because standard AWS SDK credential chain allows passing dummy profile
 	// Wait, actually test might not find the profile in CI but it's okay for coverage if it hits it.
-	_ = err 
+	_ = err
 }
 
 func TestAWS_Name(t *testing.T) {

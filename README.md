@@ -4,49 +4,16 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/n24q02m/skret)](https://goreportcard.com/report/github.com/n24q02m/skret)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-Cloud-provider secret manager CLI wrapper with Doppler/Infisical-grade developer experience.
+Cloud-provider secret manager CLI wrapper with Doppler/Infisical-grade developer experience. Zero Lock-in. Zero Server.
 
-> **skret** wraps cloud-provider secret managers (AWS SSM, GCP, Azure, OCI, Cloudflare) with a unified, ergonomic CLI. Think of it as `doppler` or `infisical` but for any cloud provider, with zero lock-in.
+> **skret** wraps native cloud secret managers (AWS SSM Parameter Store, GCP Secret Manager, etc.) with a unified, ergonomic CLI. It gives your team the DX of Doppler or Infisical, but relies entirely on your own AWS infrastructure for security and storage (BYOC).
 
-## Quick Start
+## Key Capabilities (Why replace Doppler/Infisical?)
 
-```bash
-# Initialize project
-skret init --provider=aws --path=/myapp/prod --region=us-east-1
-
-# Read secrets
-skret get DATABASE_URL
-skret list
-skret env
-
-# Write secrets
-skret set API_KEY sk-new-secret-key
-skret delete OLD_KEY --confirm
-
-# Run with injected env vars
-skret run -- node server.js
-
-# Import from existing tools
-skret import --from=dotenv --file=.env
-skret import --from=doppler --doppler-project=myapp --doppler-config=prd
-
-# Sync to external targets
-skret sync --to=github --github-repo=owner/repo
-skret sync --to=dotenv --file=.env.local
-```
-
-## Features
-
-| Feature | Description |
-|---------|-------------|
-| **Multi-provider** | AWS SSM Parameter Store, local YAML (more coming) |
-| **Multi-environment** | Dev, staging, prod via `.skret.yaml` config |
-| **Import** | Migrate from Doppler, Infisical, dotenv files |
-| **Sync** | Push secrets to GitHub Actions, dotenv files |
-| **Run** | Inject secrets as env vars into any command |
-| **Precedence** | CLI flags > env vars > config file > defaults |
-| **Secret Redaction** | Automatic redaction of secrets in logs |
-| **Cross-platform** | Linux, macOS, Windows (amd64, arm64) |
+*   **Zero-Server (Decentralized):** No third-party database holds your secrets. Data never leaves your AWS account.
+*   **Automatic Cross-Reference Expansion:** Define secrets that inherit from each other (e.g., `DB_URL=postgres://${DB_USER}:${DB_PASS}@host`). Skret automatically recursively resolves these relationships when injecting into your app.
+*   **Built-in History & Rollback:** Native support for viewing secret versions and seamlessly rolling back directly via AWS SSM's versioning backend.
+*   **Cross-Environment:** `dev`, `staging`, `prod` configurations synced to paths in the cloud, defined cleanly in `.skret.yaml`.
 
 ## Installation
 
@@ -56,142 +23,69 @@ skret sync --to=dotenv --file=.env.local
 brew install n24q02m/tap/skret
 ```
 
-### Windows (Scoop)
-
-```powershell
-scoop bucket add n24q02m https://github.com/n24q02m/scoop-bucket
-scoop install skret
-```
-
-### Go Install
-
-```bash
-go install github.com/n24q02m/skret/cmd/skret@latest
-```
-
-### Docker
-
-```bash
-docker pull ghcr.io/n24q02m/skret:latest
-docker run --rm -v $(pwd):/app -w /app ghcr.io/n24q02m/skret list
-```
-
 ### Binary Download
 
-Download from [GitHub Releases](https://github.com/n24q02m/skret/releases).
+Download directly from [GitHub Releases](https://github.com/n24q02m/skret/releases).
 
-## Configuration
+---
 
-Create `.skret.yaml` in your project root:
+## 🚀 The "Zero-Setup" Developer Workflow
 
-```yaml
-version: "1"
-default_env: prod
-project: myapp
+If your AWS account is already configured (or if you are an Admin), `skret` requires **zero manual IAM setup**.
 
-environments:
-  prod:
-    provider: aws
-    path: /myapp/prod
-    region: us-east-1
-    profile: production
-
-  dev:
-    provider: local
-    file: ./.secrets.dev.yaml
-
-required:
-  - DATABASE_URL
-  - API_KEY
-
-exclude:
-  - DEBUG_TOKEN
-```
-
-### Precedence Order
-
-1. **CLI flags** (`--env`, `--provider`, `--path`, `--region`, `--profile`, `--file`)
-2. **Environment variables** (`SKRET_ENV`, `SKRET_PROVIDER`, `SKRET_PATH`, `SKRET_REGION`)
-3. **Config file** (`.skret.yaml`)
-4. **Defaults**
-
-## Commands
-
-| Command | Description |
-|---------|-------------|
-| `skret init` | Initialize `.skret.yaml` in current directory |
-| `skret get <KEY>` | Get a single secret value |
-| `skret list` | List secrets (table/JSON output) |
-| `skret env` | Dump secrets as dotenv/JSON/YAML/export |
-| `skret set <KEY> <VALUE>` | Create or update a secret |
-| `skret delete <KEY>` | Delete a secret |
-| `skret run -- <cmd>` | Run command with injected env vars |
-| `skret import` | Import from dotenv/Doppler/Infisical |
-| `skret sync` | Sync to GitHub Actions/dotenv |
-
-## Providers
-
-### AWS SSM Parameter Store
-
-Requires AWS credentials configured via standard methods (env vars, `~/.aws/credentials`, IAM roles).
-
-```yaml
-environments:
-  prod:
-    provider: aws
-    path: /myapp/prod
-    region: us-east-1
-    profile: production  # optional
-    kms_key_id: arn:aws:kms:...  # optional, for custom KMS
-```
-
-### Local YAML
-
-For development and testing. Secrets stored in a local YAML file:
-
-```yaml
-# .secrets.dev.yaml
-version: "1"
-secrets:
-  DATABASE_URL: "postgres://dev:dev@localhost/mydb"
-  API_KEY: "dev-key-123"
-```
-
-## Development
-
+**1. Login to AWS (Only once):**
 ```bash
-# Build
-go build -o skret ./cmd/skret
-
-# Test
-go test ./internal/...
-
-# Test with coverage
-go test -cover ./internal/...
-
-# E2E tests
-go test -v ./tests/e2e/...
-
-# Build with version injection
-go build -ldflags="-X github.com/n24q02m/skret/internal/version.Version=0.1.0" -o skret ./cmd/skret
+aws sso login
 ```
 
-## Architecture
-
+**2. Initialize `skret` safely in your project:**
+```bash
+skret init --provider=aws --path=/myapp/prod --region=us-east-1
 ```
-cmd/skret/          → Entry point
-internal/
-  cli/              → Cobra commands (init, get, list, env, set, delete, run, import, sync)
-  config/           → Config schema, loader, resolver (.skret.yaml)
-  exec/             → Env builder for subprocess injection
-  importer/         → Import from dotenv, Doppler, Infisical
-  logging/          → Structured logging with secret redaction
-  provider/         → SecretProvider interface + registry
-    aws/            → AWS SSM Parameter Store provider
-    local/          → Local YAML file provider
-  syncer/           → Sync to dotenv, GitHub Actions
-  version/          → Version info (ldflags injection)
-tests/e2e/          → End-to-end CLI tests
+
+**3. Set Cross-Reference Secrets:**
+```bash
+skret set DB_USER admin
+skret set DB_PASS super_secret
+skret set DB_URL 'postgres://${DB_USER}:${DB_PASS}@localhost:5432/mydb'
+```
+
+**4. Run Your App (Automatic Injection!):**
+```bash
+skret run -- node index.js
+```
+*(Your Node.js app will read `DB_URL` fully resolved to `postgres://admin:super_secret@localhost:5432/mydb`)*
+
+**5. Rollback Mistakes Instantly:**
+```bash
+skret history DB_URL
+skret rollback DB_URL --version 1
+```
+
+---
+
+## 🔒 DevOps & Administrator Setup
+
+Unlike Doppler, you do not need to manually invite developers or issue static personal access tokens. Skret uses your native AWS IAM.
+
+To give a developer access, simply assign them an IAM Policy limiting explicitly what path they can read/write:
+
+```json
+{
+    "Version": "2012-10-17",
+    "Statement": [{
+        "Effect": "Allow",
+        "Action": [
+            "ssm:PutParameter",
+            "ssm:DeleteParameter",
+            "ssm:GetParameterHistory",
+            "ssm:GetParametersByPath",
+            "ssm:GetParameters",
+            "ssm:GetParameter"
+        ],
+        "Resource": "arn:aws:ssm:us-east-1:123456789012:parameter/myapp/dev/*"
+    }]
+}
 ```
 
 ## Contributing

@@ -120,6 +120,24 @@ func (c *Client) Delete(ctx context.Context, key string) error {
 	return nil
 }
 
+// GetHistory retrieves the version history of a secret.
+func (c *Client) GetHistory(ctx context.Context, key string) ([]*provider.Secret, error) {
+	history, err := c.provider.GetHistory(ctx, key)
+	if err != nil {
+		return nil, NewError(ExitProviderError, fmt.Sprintf("failed to get history for secret %q", key), err)
+	}
+	return history, nil
+}
+
+// Rollback restores a secret to a specific previous version.
+func (c *Client) Rollback(ctx context.Context, key string, version int64) error {
+	err := c.provider.Rollback(ctx, key, version)
+	if err != nil {
+		return NewError(ExitProviderError, fmt.Sprintf("failed to rollback secret %q to version %d", key, version), err)
+	}
+	return nil
+}
+
 // Config returns the resolved configuration for the client.
 func (c *Client) Config() *config.ResolvedConfig {
 	return c.config

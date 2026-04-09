@@ -4,16 +4,16 @@ import "errors"
 
 // Standard exit codes matching spec §7.1.
 const (
-	ExitSuccess       = 0
-	ExitGenericError  = 1
-	ExitConfigError   = 2
-	ExitProviderError = 3
-	ExitAuthError     = 4
-	ExitNotFoundError = 5
-	ExitConflictError = 6
-	ExitNetworkError  = 7
+	ExitSuccess         = 0
+	ExitGenericError    = 1
+	ExitConfigError     = 2
+	ExitProviderError   = 3
+	ExitAuthError       = 4
+	ExitNotFoundError   = 5
+	ExitConflictError   = 6
+	ExitNetworkError    = 7
 	ExitValidationError = 8
-	ExitExecError     = 125 // Matches docker/podman exec error
+	ExitExecError       = 125 // Matches docker/podman exec error
 )
 
 // Error represents a structured error with an associated exit code.

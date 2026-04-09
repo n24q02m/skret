@@ -17,6 +17,7 @@ type SSMClient interface {
 	GetParametersByPath(ctx context.Context, params *ssm.GetParametersByPathInput, optFns ...func(*ssm.Options)) (*ssm.GetParametersByPathOutput, error)
 	PutParameter(ctx context.Context, params *ssm.PutParameterInput, optFns ...func(*ssm.Options)) (*ssm.PutParameterOutput, error)
 	DeleteParameter(ctx context.Context, params *ssm.DeleteParameterInput, optFns ...func(*ssm.Options)) (*ssm.DeleteParameterOutput, error)
+	GetParameterHistory(ctx context.Context, params *ssm.GetParameterHistoryInput, optFns ...func(*ssm.Options)) (*ssm.GetParameterHistoryOutput, error)
 }
 
 // Provider wraps AWS SSM Parameter Store.
@@ -148,6 +149,59 @@ func (p *Provider) Delete(ctx context.Context, key string) error {
 		return mapError("delete", key, err)
 	}
 	return nil
+}
+
+func (p *Provider) GetHistory(ctx context.Context, key string) ([]*provider.Secret, error) {
+	var secrets []*provider.Secret
+	var nextToken *string
+
+	for {
+		output, err := p.client.GetParameterHistory(ctx, &ssm.GetParameterHistoryInput{
+			Name:           awslib.String(key),
+			WithDecryption: awslib.Bool(true),
+			NextToken:      nextToken,
+		})
+		if err != nil {
+			return nil, mapError("history", key, err)
+		}
+
+		for i := range output.Parameters {
+			param := output.Parameters[i]
+			s := &provider.Secret{
+				Key:     awslib.ToString(param.Name),
+				Value:   awslib.ToString(param.Value),
+				Version: param.Version,
+			}
+			if param.LastModifiedDate != nil {
+				s.Meta.UpdatedAt = *param.LastModifiedDate
+			}
+			secrets = append(secrets, s)
+		}
+
+		if output.NextToken == nil {
+			break
+		}
+		nextToken = output.NextToken
+	}
+	return secrets, nil
+}
+
+func (p *Provider) Rollback(ctx context.Context, key string, version int64) error {
+	history, err := p.GetHistory(ctx, key)
+	if err != nil {
+		return err
+	}
+	var found *provider.Secret
+	for _, s := range history {
+		if s.Version == version {
+			found = s
+			break
+		}
+	}
+	if found == nil {
+		return provider.ErrNotFound
+	}
+	return p.Set(ctx, key, found.Value, found.Meta)
 }
 
 func (p *Provider) Close() error { return nil }

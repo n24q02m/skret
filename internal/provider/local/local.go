@@ -86,6 +86,14 @@ func (p *Provider) Delete(_ context.Context, key string) error {
 	return p.save()
 }
 
+func (p *Provider) GetHistory(_ context.Context, key string) ([]*provider.Secret, error) {
+	return nil, provider.ErrCapabilityNotSupported
+}
+
+func (p *Provider) Rollback(_ context.Context, key string, version int64) error {
+	return provider.ErrCapabilityNotSupported
+}
+
 func (p *Provider) Close() error { return nil }
 
 func (p *Provider) load() error {

@@ -24,7 +24,11 @@ func (m *mockProvider) Set(_ context.Context, _ string, _ string, _ provider.Sec
 	return nil
 }
 func (m *mockProvider) Delete(_ context.Context, _ string) error { return nil }
-func (m *mockProvider) Close() error                             { return nil }
+func (m *mockProvider) GetHistory(_ context.Context, _ string) ([]*provider.Secret, error) {
+	return nil, nil
+}
+func (m *mockProvider) Rollback(_ context.Context, _ string, _ int64) error { return nil }
+func (m *mockProvider) Close() error                                        { return nil }
 
 func TestRegistry_RegisterAndNew(t *testing.T) {
 	reg := provider.NewRegistry()
