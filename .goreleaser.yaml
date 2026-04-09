@@ -55,6 +55,22 @@ dockers:
       - "--pull"
       - "--label=org.opencontainers.image.source=https://github.com/n24q02m/skret"
 
+sboms:
+  - artifacts: archive
+
+signs:
+  - cmd: cosign
+    env:
+      - COSIGN_EXPERIMENTAL=1
+    certificate: "${artifact}.pem"
+    args:
+      - sign-blob
+      - "--output-certificate=${certificate}"
+      - "--output-signature=${signature}"
+      - "${artifact}"
+      - "--yes"
+    artifacts: checksum
+
 changelog:
   sort: asc
   filters:

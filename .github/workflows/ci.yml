@@ -45,6 +45,11 @@ jobs:
           fi
       - name: Run E2E tests
         run: go test -count=1 ./tests/e2e/...
+      - uses: codecov/codecov-action@v4
+        if: matrix.os == 'ubuntu-latest'
+        with:
+          file: ./coverage.out
+          fail_ci_if_error: false
       - uses: actions/upload-artifact@v4
         if: matrix.os == 'ubuntu-latest'
         with:
