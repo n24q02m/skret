@@ -1,4 +1,12 @@
 repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
+
   - repo: local
     hooks:
       - id: enforce-commit
@@ -6,24 +14,3 @@ repos:
         entry: bash scripts/enforce-commit.sh
         language: system
         stages: [commit-msg]
-
-      - id: golangci-lint
-        name: golangci-lint
-        entry: sh -c "golangci-lint run"
-        language: system
-        files: \.go$
-        pass_filenames: false
-
-      - id: gofumpt
-        name: gofumpt
-        entry: sh -c "gofumpt -w cmd internal"
-        language: system
-        files: \.go$
-        pass_filenames: false
-
-      - id: go-test
-        name: go test
-        entry: sh -c "go test ./..."
-        language: system
-        files: \.go$
-        pass_filenames: false

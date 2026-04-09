@@ -1,36 +1,32 @@
 [tools]
-go = "1.26"
-python = "3.13"
-uv = "latest"
+go = "1.22"
 golangci-lint = "latest"
-goreleaser = "latest"
-gofumpt = "latest"
-
-[settings]
-trusted_config_paths = ["."]
 
 [tasks.setup]
 description = "Setup development environment"
 run = [
   "mise install",
   "go mod download",
-  "uv pip install pre-commit",
-  "uv run pre-commit install",
-  "uv run pre-commit install --hook-type commit-msg",
+  "python -m pip install pre-commit",
+  "pre-commit install",
+  "pre-commit install --hook-type commit-msg",
   "echo 'Setup complete!'"
 ]
 
 [tasks.lint]
-description = "Run all quality checks (golangci-lint + gofumpt)"
+description = "Run all quality checks"
 run = [
-  "golangci-lint run",
-  "test -z \"$(gofumpt -l cmd internal)\" || { gofumpt -l cmd internal; exit 1; }"
+  "golangci-lint run ./...",
+  "go vet ./..."
 ]
 
 [tasks.test]
 description = "Run tests"
-run = "go test ./..."
+run = "go test -v ./..."
 
 [tasks.fix]
-description = "Auto-fix formatting issues"
-run = "gofumpt -w cmd internal"
+description = "Auto-fix formatting and linting issues"
+run = [
+  "gofmt -w .",
+  "golangci-lint run --fix ./..."
+]

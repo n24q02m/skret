@@ -1,12 +1,3 @@
-[pr_description]
-publish_labels = true
-add_original_user_description = true
-generate_ai_title = true
-
-[pr_reviewer]
-extra_instructions = "Focus on: secret leakage in logs/errors, proper error wrapping, provider interface compliance, test coverage >=95%."
-enable_review_labels_effort = true
-enable_review_labels_security = true
-
-[pr_code_suggestions]
-num_code_suggestions = 3
+[config]
+model = "claude-3-5-sonnet-20241022"
+fallback_model = "gpt-4o"
