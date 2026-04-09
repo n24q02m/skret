@@ -24,7 +24,7 @@ run = [
 description = "Run all quality checks (golangci-lint + gofumpt)"
 run = [
   "golangci-lint run",
-  "test -z "internal\cli\import.go internal\logging\redact.go internal\provider\aws\aws_test.go internal\provider\registry_test.go" || { gofumpt -l cmd internal; exit 1; }"
+  "test -z \"$(gofumpt -l cmd internal)\" || { gofumpt -l cmd internal; exit 1; }"
 ]
 
 [tasks.test]
