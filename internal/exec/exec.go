@@ -80,7 +80,7 @@ func KeyToEnvName(key, pathPrefix string) string {
 	name := key
 	if pathPrefix != "" && strings.HasPrefix(key, pathPrefix) {
 		name = key[len(pathPrefix):]
-		if len(name) > 0 && name[0] == '/' {
+		if name != "" && name[0] == '/' {
 			name = name[1:]
 		}
 	}
