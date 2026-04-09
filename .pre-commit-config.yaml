@@ -1,36 +1,29 @@
 repos:
-  - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v5.0.0
-    hooks:
-      - id: trailing-whitespace
-      - id: end-of-file-fixer
-      - id: check-yaml
-      - id: check-added-large-files
-        args: ["--maxkb=500"]
-      - id: check-merge-conflict
-
-  - repo: https://github.com/golangci/golangci-lint
-    rev: v2.1.0
-    hooks:
-      - id: golangci-lint
-        args: ["--fix"]
-
   - repo: local
     hooks:
-      - id: gofumpt
-        name: gofumpt
-        entry: gofumpt -w
+      - id: enforce-commit
+        name: Enforce feat and fix commit prefixes
+        entry: bash scripts/enforce-commit.sh
         language: system
-        types: [go]
-      - id: go-mod-tidy
-        name: go mod tidy
-        entry: go mod tidy
+        stages: [commit-msg]
+
+      - id: golangci-lint
+        name: golangci-lint
+        entry: sh -c "golangci-lint run"
         language: system
+        files: \.go$
         pass_filenames: false
 
-  - repo: https://github.com/compilerla/conventional-pre-commit
-    rev: v4.1.0
-    hooks:
-      - id: conventional-pre-commit
-        stages: [commit-msg]
-        args: [feat, fix]
+      - id: gofumpt
+        name: gofumpt
+        entry: sh -c "gofumpt -w cmd internal"
+        language: system
+        files: \.go$
+        pass_filenames: false
+
+      - id: go-test
+        name: go test
+        entry: sh -c "go test ./..."
+        language: system
+        files: \.go$
+        pass_filenames: false

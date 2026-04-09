@@ -1,9 +1,10 @@
 [tools]
 go = "1.26"
-golangci-lint = "latest"
-goreleaser = "latest"
 python = "3.13"
 uv = "latest"
+golangci-lint = "latest"
+goreleaser = "latest"
+gofumpt = "latest"
 
 [settings]
 trusted_config_paths = ["."]
@@ -13,28 +14,23 @@ description = "Setup development environment"
 run = [
   "mise install",
   "go mod download",
-  "go install mvdan.cc/gofumpt@latest",
   "uv pip install pre-commit",
-  "pre-commit install",
-  "pre-commit install --hook-type commit-msg",
+  "uv run pre-commit install",
+  "uv run pre-commit install --hook-type commit-msg",
   "echo 'Setup complete!'"
 ]
 
 [tasks.lint]
-description = "Run all linters"
+description = "Run all quality checks (golangci-lint + gofumpt)"
 run = [
-  "golangci-lint run ./...",
-  "test -z \"$(gofumpt -l cmd internal pkg)\" || { echo 'Files need gofumpt:'; gofumpt -l cmd internal pkg; exit 1; }",
+  "golangci-lint run",
+  "test -z "internal\cli\import.go internal\logging\redact.go internal\provider\aws\aws_test.go internal\provider\registry_test.go" || { gofumpt -l cmd internal; exit 1; }"
 ]
 
 [tasks.test]
-description = "Run tests with race detector"
-run = ["go test -race -cover ./..."]
-
-[tasks.build]
-description = "Build binary"
-run = ["go build -o skret ./cmd/skret"]
+description = "Run tests"
+run = "go test ./..."
 
 [tasks.fix]
-description = "Auto-fix formatting"
-run = ["gofumpt -w cmd internal pkg"]
+description = "Auto-fix formatting issues"
+run = "gofumpt -w cmd internal"

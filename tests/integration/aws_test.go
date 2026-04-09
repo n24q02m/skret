@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/n24q02m/skret/internal/config"
-	skaws "github.com/n24q02m/skret/internal/provider/aws"
 	"github.com/n24q02m/skret/internal/provider"
+	skaws "github.com/n24q02m/skret/internal/provider/aws"
 	"github.com/stretchr/testify/require"
 )
 
