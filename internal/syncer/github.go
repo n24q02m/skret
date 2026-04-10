@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"golang.org/x/crypto/nacl/box"
 
@@ -57,7 +58,7 @@ func (g *GitHubSyncer) getPublicKey(ctx context.Context) (string, string, error)
 	req.Header.Set("Authorization", "Bearer "+g.token)
 	req.Header.Set("Accept", "application/vnd.github+json")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(req)
 	if err != nil {
 		return "", "", fmt.Errorf("github: request: %w", err)
 	}
@@ -95,7 +96,7 @@ func (g *GitHubSyncer) putSecret(ctx context.Context, name, value, pubKeyB64, ke
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(req)
 	if err != nil {
 		return fmt.Errorf("github: request: %w", err)
 	}
