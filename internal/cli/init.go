@@ -13,8 +13,6 @@ import (
 )
 
 // initOptions holds the flag values for the init command.
-// Using a struct for flags and a separate run method improves maintainability
-// by keeping the command constructor concise.
 type initOptions struct {
 	provider string
 	path     string
@@ -24,7 +22,6 @@ type initOptions struct {
 }
 
 // newInitCmd creates a new init command.
-// Refactored to use initOptions to resolve the "function too long" issue.
 func newInitCmd() *cobra.Command {
 	opts := &initOptions{}
 
@@ -46,7 +43,6 @@ func newInitCmd() *cobra.Command {
 }
 
 // run executes the init command logic.
-// Separating logic into a method allows for easier testing and cleaner code.
 func (o *initOptions) run(cmd *cobra.Command) error {
 	cwd, err := os.Getwd()
 	if err != nil {
