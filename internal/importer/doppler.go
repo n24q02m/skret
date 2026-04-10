@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/http"
 	"sort"
-	"time"
 )
 
 // DopplerImporter reads secrets from the Doppler API.
@@ -38,11 +37,11 @@ func (d *DopplerImporter) Import(ctx context.Context) ([]ImportedSecret, error) 
 	req.Header.Set("Authorization", "Bearer "+d.token)
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(req)
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("doppler: request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
