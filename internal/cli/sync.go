@@ -43,9 +43,6 @@ func newSyncCmd(opts *GlobalOpts) *cobra.Command {
 				syncers = append(syncers, syncer.NewDotenv(file))
 			case "github":
 				token := os.Getenv("GITHUB_TOKEN")
-				if token == "" {
-					return skret.NewError(skret.ExitConfigError, "sync: GITHUB_TOKEN env var required", nil)
-				}
 				repos := strings.Split(githubRepo, ",")
 				for _, r := range repos {
 					r = strings.TrimSpace(r)
@@ -60,6 +57,9 @@ func newSyncCmd(opts *GlobalOpts) *cobra.Command {
 				}
 				if len(syncers) == 0 {
 					return skret.NewError(skret.ExitConfigError, "sync: --github-repo requires at least one repository", nil)
+				}
+				if token == "" {
+					return skret.NewError(skret.ExitConfigError, "sync: GITHUB_TOKEN env var required", nil)
 				}
 			default:
 				return skret.NewError(skret.ExitConfigError, fmt.Sprintf("sync: unknown target %q", to), nil)
