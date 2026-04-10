@@ -21,6 +21,7 @@ jobs:
         with:
           version: latest
           install-mode: goinstall
+          install-mode: goinstall
 
   test:
     needs: lint

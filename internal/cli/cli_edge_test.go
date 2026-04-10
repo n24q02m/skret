@@ -2,8 +2,6 @@ package cli_test
 
 import (
 	"bytes"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
@@ -29,7 +27,7 @@ func TestCLI_EdgeCases(t *testing.T) {
 	dir := setupTestRepo(t)
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	// 1. Get: JSON output
 	out, err := executeCmd("get", "DATABASE_URL", "--json")
@@ -44,14 +42,12 @@ func TestCLI_EdgeCases(t *testing.T) {
 	// 3. Set: With tags and description
 	_, err = executeCmd("set", "TAG_KEY", "val", "-d", "desc", "-t", "env=prod")
 	require.NoError(t, err)
-	// Local provider does not store metadata so we only ensure command parses
 
 	// 4. Set: error on missing value
 	_, err = executeCmd("set", "TAG_KEY")
 	assert.Error(t, err)
 
 	// 5. Delete: No confirmation fallback test via error or cancel
-	// Can't easily test prompt without stdin mock, so we test confirm flag
 	_, err = executeCmd("delete", "DATABASE_URL", "--confirm")
 	require.NoError(t, err)
 	_, err = executeCmd("get", "DATABASE_URL")
@@ -59,7 +55,6 @@ func TestCLI_EdgeCases(t *testing.T) {
 
 	// 6. List: Path override and non-recursive
 	_, err = executeCmd("list", "--path=/prefix", "--recursive=false")
-	// Since local provider ignores path physically, it just returns them
 	require.NoError(t, err)
 
 	// 7. Import: unknown source
@@ -77,43 +72,26 @@ func TestCLI_EdgeCases(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "requires at least one repository")
 
-	// 9b. Sync: github error missing token (results in 404 from GitHub)
-	// We use a mock server to ensure we get exactly 404
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusNotFound)
-		w.Write([]byte("Not Found"))
-	}))
-	defer srv.Close()
-
-	// We can't easily inject the mock server URL into the sync command without flags,
-	// so we mock the environment to trigger the expected error if possible,
-	// OR we change the test to match what actually happens.
-	// Actually, the original test expected "API returned 404" which came from syncer.
-	// Since I can't inject URL, I'll update the expectation to match 401 (Bad Credentials)
-	// which is what GitHub returns for an empty/bad token at api.github.com.
-	// Wait, the test was PASSING before my changes? No, I am FIXING it.
-
+	// 9b. Sync: github error missing token
 	_, err = executeCmd("sync", "--to=github", "--github-repo=owner/repo")
 	assert.Error(t, err)
-	// It's fine if it's 401 or 404 as long as it's a GitHub API error.
-	// To be safe and compatible with both local and CI environments:
 	assert.True(t, strings.Contains(err.Error(), "API returned 404") || strings.Contains(err.Error(), "API returned 401"))
 
 	// 10. Sync: github error invalid format
-	os.Setenv("GITHUB_TOKEN", "dummy")
-	defer os.Unsetenv("GITHUB_TOKEN")
+	_ = os.Setenv("GITHUB_TOKEN", "dummy")
+	defer func() { _ = os.Unsetenv("GITHUB_TOKEN") }()
 	_, err = executeCmd("sync", "--to=github", "--github-repo=invalidrepo")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid repo format")
 
 	// 11. Helpers failure: broken config
-	os.WriteFile(".skret.yaml", []byte("version: \"invalid\""), 0o644)
+	_ = os.WriteFile(".skret.yaml", []byte("version: \"invalid\""), 0o644)
 	_, err = executeCmd("list")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "load config failed")
 
 	// 12. Helpers missing config
-	os.Remove(".skret.yaml")
+	_ = os.Remove(".skret.yaml")
 	_, err = executeCmd("list")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "find config failed")
@@ -123,15 +101,15 @@ func TestDeleteCmd_Cancel(t *testing.T) {
 	dir := setupTestRepo(t)
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	oldStdin := os.Stdin
 	defer func() { os.Stdin = oldStdin }()
 
 	r, w, _ := os.Pipe()
 	os.Stdin = r
-	w.Write([]byte("n\n"))
-	w.Close()
+	_, _ = w.Write([]byte("n\n"))
+	_ = w.Close()
 
 	out, err := executeCmd("delete", "API_KEY")
 	require.NoError(t, err)
@@ -142,15 +120,15 @@ func TestSetCmd_FromStdin(t *testing.T) {
 	dir := setupTestRepo(t)
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	oldStdin := os.Stdin
 	defer func() { os.Stdin = oldStdin }()
 
 	r, w, _ := os.Pipe()
 	os.Stdin = r
-	w.Write([]byte("stdin_value\n"))
-	w.Close()
+	_, _ = w.Write([]byte("stdin_value\n"))
+	_ = w.Close()
 
 	_, err := executeCmd("set", "STDIN_KEY", "--from-stdin")
 	require.NoError(t, err)

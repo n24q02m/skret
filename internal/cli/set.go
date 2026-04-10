@@ -45,7 +45,7 @@ func (o *setOptions) run(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	defer p.Close()
+	defer func() { _ = p.Close() }()
 
 	key := args[0]
 	value, err := o.getValue(args)
@@ -71,7 +71,11 @@ func (o *setOptions) getValue(args []string) (string, error) {
 	case o.fromStdin:
 		scanner := bufio.NewScanner(os.Stdin)
 		if scanner.Scan() {
-			return scanner.Text(), nil
+			value := scanner.Text()
+			if err := scanner.Err(); err != nil {
+				return "", skret.NewError(skret.ExitGenericError, "set: read stdin failed", err)
+			}
+			return value, nil
 		}
 		if err := scanner.Err(); err != nil {
 			return "", skret.NewError(skret.ExitGenericError, "set: read stdin failed", err)
