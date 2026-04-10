@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 
 	"golang.org/x/crypto/nacl/box"
 
@@ -39,11 +40,38 @@ func (g *GitHubSyncer) Sync(ctx context.Context, secrets []*provider.Secret) err
 		return err
 	}
 
+	// ⚡ Bolt Optimization: Parallelize N+1 external API calls
+	// External APIs like GitHub Secrets often lack batch endpoints.
+	// We use a worker pool with a semaphore channel (max 10 concurrent requests)
+	// to limit concurrency while dramatically speeding up bulk syncs.
+	sem := make(chan struct{}, 10)
+	var wg sync.WaitGroup
+	errCh := make(chan error, len(secrets))
+
 	for _, s := range secrets {
-		if err := g.putSecret(ctx, s.Key, s.Value, pubKey, keyID); err != nil {
-			return fmt.Errorf("github: set %q: %w", s.Key, err)
+		wg.Add(1)
+		sem <- struct{}{} // acquire
+
+		go func(s *provider.Secret) {
+			defer wg.Done()
+			defer func() { <-sem }() // release
+
+			if err := g.putSecret(ctx, s.Key, s.Value, pubKey, keyID); err != nil {
+				errCh <- fmt.Errorf("github: set %q: %w", s.Key, err)
+			}
+		}(s)
+	}
+
+	wg.Wait()
+	close(errCh)
+
+	// Return the first error if any occurred
+	for err := range errCh {
+		if err != nil {
+			return err
 		}
 	}
+
 	return nil
 }
 
