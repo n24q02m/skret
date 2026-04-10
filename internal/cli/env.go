@@ -73,7 +73,10 @@ func printEnvPairs(cmd *cobra.Command, pairs []envPair, format string) error {
 		for _, p := range pairs {
 			m[p.Name] = p.Value
 		}
-		data, _ := json.MarshalIndent(m, "", "  ")
+		data, err := json.MarshalIndent(m, "", "  ")
+		if err != nil {
+			return skret.NewError(skret.ExitGenericError, "env: json marshal failed", err)
+		}
 		cmd.Println(string(data))
 
 	case "yaml":
@@ -81,7 +84,10 @@ func printEnvPairs(cmd *cobra.Command, pairs []envPair, format string) error {
 		for _, p := range pairs {
 			m[p.Name] = p.Value
 		}
-		data, _ := yaml.Marshal(m)
+		data, err := yaml.Marshal(m)
+		if err != nil {
+			return skret.NewError(skret.ExitGenericError, "env: yaml marshal failed", err)
+		}
 		cmd.Print(string(data))
 
 	case "export":
