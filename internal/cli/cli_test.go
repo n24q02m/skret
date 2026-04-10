@@ -457,3 +457,57 @@ func TestSetCmd_FromFile(t *testing.T) {
 	require.NoError(t, cmd2.Execute())
 	assert.Contains(t, buf.String(), "file_value")
 }
+
+func TestImportCmd_ConflictSkip(t *testing.T) {
+	dir := setupTestRepo(t)
+	origDir, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	defer os.Chdir(origDir)
+
+	// Existing secret in local provider (API_KEY=secret123 is set by setupTestRepo)
+	envContent := "API_KEY=new_secret\nNEW_KEY=new_value"
+	os.WriteFile(filepath.Join(dir, ".env"), []byte(envContent), 0o644)
+
+	var buf bytes.Buffer
+	cmd := cli.NewRootCmd()
+	cmd.SetOut(&buf)
+	// Default on-conflict is skip
+	cmd.SetArgs([]string{"import", "--from=dotenv", "--file=.env", "--on-conflict=skip"})
+	err := cmd.Execute()
+	require.NoError(t, err)
+
+	assert.Contains(t, buf.String(), "Imported: 1, Skipped: 1")
+
+	// Verify API_KEY was NOT updated
+	buf.Reset()
+	cmd2 := cli.NewRootCmd()
+	cmd2.SetOut(&buf)
+	cmd2.SetArgs([]string{"get", "API_KEY"})
+	require.NoError(t, cmd2.Execute())
+	assert.Equal(t, "secret123\n", buf.String())
+
+	// Verify NEW_KEY was imported
+	buf.Reset()
+	cmd3 := cli.NewRootCmd()
+	cmd3.SetOut(&buf)
+	cmd3.SetArgs([]string{"get", "NEW_KEY"})
+	require.NoError(t, cmd3.Execute())
+	assert.Equal(t, "new_value\n", buf.String())
+}
+
+func TestImportCmd_ConflictFail(t *testing.T) {
+	dir := setupTestRepo(t)
+	origDir, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	defer os.Chdir(origDir)
+
+	// Existing secret in local provider (API_KEY=secret123 is set by setupTestRepo)
+	envContent := "API_KEY=new_secret"
+	os.WriteFile(filepath.Join(dir, ".env"), []byte(envContent), 0o644)
+
+	cmd := cli.NewRootCmd()
+	cmd.SetArgs([]string{"import", "--from=dotenv", "--file=.env", "--on-conflict=fail"})
+	err := cmd.Execute()
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "conflict on \"API_KEY\"")
+}
