@@ -63,3 +63,15 @@ func TestKeyToEnvName_NoMatch(t *testing.T) {
 	result := skexec.KeyToEnvName("/other/path/KEY", "/my/prefix")
 	assert.Equal(t, "_OTHER_PATH_KEY", result)
 }
+
+func TestBuildEnv_ExistingEnvExpansion(t *testing.T) {
+	secrets := []*provider.Secret{
+		{Key: "APP_URL", Value: "https://${DOMAIN}/api"},
+	}
+	existing := []string{"DOMAIN=example.com"}
+
+	env := skexec.BuildEnv(secrets, existing, "", nil)
+
+	assert.Contains(t, env, "DOMAIN=example.com")
+	assert.Contains(t, env, "APP_URL=https://example.com/api")
+}
