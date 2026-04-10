@@ -46,43 +46,8 @@ func newListCmd(opts *GlobalOpts) *cobra.Command {
 				return skret.NewError(skret.ExitProviderError, "list secrets failed", err)
 			}
 
-			// Filter for non-recursive if needed.
-			// Cloud providers might return all children. If non-recursive, we only want immediate children.
-			if !recursive && listPath != "" {
-				var filtered []*provider.Secret
-				level := strings.Count(listPath, "/")
-				if !strings.HasSuffix(listPath, "/") {
-					level++
-				}
-				for _, s := range secrets {
-					sLevel := strings.Count(s.Key, "/")
-					if sLevel == level {
-						filtered = append(filtered, s)
-					}
-				}
-				secrets = filtered
-			}
-
-			switch format {
-			case "json":
-				items := make([]map[string]any, 0, len(secrets))
-				for _, s := range secrets {
-					item := map[string]any{"key": s.Key}
-					if values {
-						item["value"] = s.Value
-					}
-					items = append(items, item)
-				}
-				data, _ := json.MarshalIndent(items, "", "  ")
-				cmd.Println(string(data))
-			default:
-				w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
-				fmt.Fprintln(w, "KEY\tVERSION")
-				for _, s := range secrets {
-					fmt.Fprintf(w, "%s\t%d\n", s.Key, s.Version)
-				}
-				w.Flush()
-			}
+			secrets = filterSecrets(secrets, listPath, recursive)
+			printSecrets(cmd, secrets, format, values)
 			return nil
 		},
 	}
@@ -93,4 +58,48 @@ func newListCmd(opts *GlobalOpts) *cobra.Command {
 	cmd.Flags().BoolVar(&recursive, "recursive", true, "list secrets recursively")
 
 	return cmd
+}
+
+func filterSecrets(secrets []*provider.Secret, listPath string, recursive bool) []*provider.Secret {
+	// Filter for non-recursive if needed.
+	// Cloud providers might return all children. If non-recursive, we only want immediate children.
+	if recursive || listPath == "" {
+		return secrets
+	}
+
+	var filtered []*provider.Secret
+	level := strings.Count(listPath, "/")
+	if !strings.HasSuffix(listPath, "/") {
+		level++
+	}
+	for _, s := range secrets {
+		sLevel := strings.Count(s.Key, "/")
+		if sLevel == level {
+			filtered = append(filtered, s)
+		}
+	}
+	return filtered
+}
+
+func printSecrets(cmd *cobra.Command, secrets []*provider.Secret, format string, values bool) {
+	switch format {
+	case "json":
+		items := make([]map[string]any, 0, len(secrets))
+		for _, s := range secrets {
+			item := map[string]any{"key": s.Key}
+			if values {
+				item["value"] = s.Value
+			}
+			items = append(items, item)
+		}
+		data, _ := json.MarshalIndent(items, "", "  ")
+		cmd.Println(string(data))
+	default:
+		w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
+		fmt.Fprintln(w, "KEY\tVERSION")
+		for _, s := range secrets {
+			fmt.Fprintf(w, "%s\t%d\n", s.Key, s.Version)
+		}
+		w.Flush()
+	}
 }
