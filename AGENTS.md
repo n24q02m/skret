@@ -2,7 +2,7 @@
 
 ## Quick Reference
 
-- Language: Go 1.26
+- Language: Go 1.24
 - Test: `go test -race -cover ./...`
 - Lint: `golangci-lint run ./...`
 - Build: `go build -o skret ./cmd/skret`
