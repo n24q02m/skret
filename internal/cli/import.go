@@ -13,110 +13,131 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// importOptions encapsulates the state and logic for the import command.
+// This refactoring improves maintainability by separating command definition from execution logic.
+type importOptions struct {
+	global          *GlobalOpts
+	from            string
+	file            string
+	dopplerProject  string
+	dopplerConfig   string
+	infisicalProjID string
+	infisicalEnv    string
+	infisicalURL    string
+	dryRun          bool
+	onConflict      string
+	toPath          string
+}
+
+// newImportCmd creates a new import command.
 func newImportCmd(opts *GlobalOpts) *cobra.Command {
-	var (
-		from            string
-		file            string
-		dopplerProject  string
-		dopplerConfig   string
-		infisicalProjID string
-		infisicalEnv    string
-		infisicalURL    string
-		dryRun          bool
-		onConflict      string
-		toPath          string
-	)
+	o := &importOptions{global: opts}
 
 	cmd := &cobra.Command{
 		Use:   "import",
 		Short: "Import secrets from external sources (dotenv, doppler, infisical)",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			_, p, err := loadProvider(opts)
-			if err != nil {
-				return err
-			}
-			defer p.Close()
-
-			var imp importer.Importer
-			switch from {
-			case "dotenv":
-				if file == "" {
-					file = ".env"
-				}
-				imp = importer.NewDotenv(file)
-			case "doppler":
-				token := os.Getenv("DOPPLER_TOKEN")
-				if token == "" {
-					return skret.NewError(skret.ExitConfigError, "import: DOPPLER_TOKEN env var required", nil)
-				}
-				imp = importer.NewDoppler(token, dopplerProject, dopplerConfig, "")
-			case "infisical":
-				token := os.Getenv("INFISICAL_TOKEN")
-				if token == "" {
-					return skret.NewError(skret.ExitConfigError, "import: INFISICAL_TOKEN env var required", nil)
-				}
-				imp = importer.NewInfisical(token, infisicalProjID, infisicalEnv, infisicalURL)
-			default:
-				return skret.NewError(skret.ExitConfigError, fmt.Sprintf("import: unknown source %q", from), nil)
-			}
-
-			ctx := context.Background()
-			secrets, err := imp.Import(ctx)
-			if err != nil {
-				return skret.NewError(skret.ExitNetworkError, "import failed", err)
-			}
-
-			// Ensure toPath ends with a slash if provided and secrets don't start with one
-			prefix := toPath
-			if prefix != "" && !strings.HasSuffix(prefix, "/") {
-				prefix += "/"
-			}
-
-			var imported, skipped int
-			for _, s := range secrets {
-				key := s.Key
-				if prefix != "" {
-					key = prefix + strings.TrimPrefix(key, "/")
-				}
-
-				if dryRun {
-					cmd.Printf("[dry-run] would import %s\n", key)
-					imported++
-					continue
-				}
-
-				if onConflict == "skip" {
-					if _, err := p.Get(ctx, key); err == nil {
-						skipped++
-						continue
-					}
-				} else if onConflict == "fail" {
-					if _, err := p.Get(ctx, key); err == nil {
-						return skret.NewError(skret.ExitConflictError, fmt.Sprintf("import: conflict on %q", key), nil)
-					}
-				}
-
-				if err := p.Set(ctx, key, s.Value, provider.SecretMeta{}); err != nil {
-					return skret.NewError(skret.ExitProviderError, fmt.Sprintf("import: set %q", key), err)
-				}
-				imported++
-			}
-
-			cmd.Printf("Imported: %d, Skipped: %d (from %s)\n", imported, skipped, imp.Name())
-			return nil
+			return o.run(cmd)
 		},
 	}
 
-	cmd.Flags().StringVar(&from, "from", "dotenv", "import source (dotenv, doppler, infisical)")
-	cmd.Flags().StringVar(&file, "file", "", "source file path (for dotenv)")
-	cmd.Flags().StringVar(&dopplerProject, "doppler-project", "", "Doppler project name")
-	cmd.Flags().StringVar(&dopplerConfig, "doppler-config", "", "Doppler config name")
-	cmd.Flags().StringVar(&infisicalProjID, "infisical-project-id", "", "Infisical project ID")
-	cmd.Flags().StringVar(&infisicalEnv, "infisical-env", "", "Infisical environment")
-	cmd.Flags().StringVar(&infisicalURL, "infisical-url", "", "Infisical API base URL")
-	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "preview without writing")
-	cmd.Flags().StringVar(&onConflict, "on-conflict", "skip", "conflict strategy (overwrite, skip, fail)")
-	cmd.Flags().StringVar(&toPath, "to-path", "", "destination path prefix for imported secrets")
+	cmd.Flags().StringVar(&o.from, "from", "dotenv", "import source (dotenv, doppler, infisical)")
+	cmd.Flags().StringVar(&o.file, "file", "", "source file path (for dotenv)")
+	cmd.Flags().StringVar(&o.dopplerProject, "doppler-project", "", "Doppler project name")
+	cmd.Flags().StringVar(&o.dopplerConfig, "doppler-config", "", "Doppler config name")
+	cmd.Flags().StringVar(&o.infisicalProjID, "infisical-project-id", "", "Infisical project ID")
+	cmd.Flags().StringVar(&o.infisicalEnv, "infisical-env", "", "Infisical environment")
+	cmd.Flags().StringVar(&o.infisicalURL, "infisical-url", "", "Infisical API base URL")
+	cmd.Flags().BoolVar(&o.dryRun, "dry-run", false, "preview without writing")
+	cmd.Flags().StringVar(&o.onConflict, "on-conflict", "skip", "conflict strategy (overwrite, skip, fail)")
+	cmd.Flags().StringVar(&o.toPath, "to-path", "", "destination path prefix for imported secrets")
 
 	return cmd
+}
+
+// createImporter instantiates the appropriate importer based on the 'from' flag.
+// Security Note: Tokens are retrieved from environment variables to avoid exposure in CLI arguments or logs.
+func (o *importOptions) createImporter() (importer.Importer, error) {
+	switch o.from {
+	case "dotenv":
+		file := o.file
+		if file == "" {
+			file = ".env"
+		}
+		return importer.NewDotenv(file), nil
+	case "doppler":
+		token := os.Getenv("DOPPLER_TOKEN")
+		if token == "" {
+			return nil, skret.NewError(skret.ExitConfigError, "import: DOPPLER_TOKEN env var required", nil)
+		}
+		return importer.NewDoppler(token, o.dopplerProject, o.dopplerConfig, ""), nil
+	case "infisical":
+		token := os.Getenv("INFISICAL_TOKEN")
+		if token == "" {
+			return nil, skret.NewError(skret.ExitConfigError, "import: INFISICAL_TOKEN env var required", nil)
+		}
+		return importer.NewInfisical(token, o.infisicalProjID, o.infisicalEnv, o.infisicalURL), nil
+	default:
+		return nil, skret.NewError(skret.ExitConfigError, fmt.Sprintf("import: unknown source %q", o.from), nil)
+	}
+}
+
+// run executes the import logic.
+// Logic is extracted here to reduce the cognitive load of the main command definition.
+func (o *importOptions) run(cmd *cobra.Command) error {
+	_, p, err := loadProvider(o.global)
+	if err != nil {
+		return err
+	}
+	defer p.Close()
+
+	imp, err := o.createImporter()
+	if err != nil {
+		return err
+	}
+
+	ctx := context.Background()
+	secrets, err := imp.Import(ctx)
+	if err != nil {
+		return skret.NewError(skret.ExitNetworkError, "import failed", err)
+	}
+
+	// Ensure toPath ends with a slash if provided and secrets don't start with one
+	prefix := o.toPath
+	if prefix != "" && !strings.HasSuffix(prefix, "/") {
+		prefix += "/"
+	}
+
+	var imported, skipped int
+	for _, s := range secrets {
+		key := s.Key
+		if prefix != "" {
+			key = prefix + strings.TrimPrefix(key, "/")
+		}
+
+		if o.dryRun {
+			cmd.Printf("[dry-run] would import %s\n", key)
+			imported++
+			continue
+		}
+
+		if o.onConflict == "skip" {
+			if _, err := p.Get(ctx, key); err == nil {
+				skipped++
+				continue
+			}
+		} else if o.onConflict == "fail" {
+			if _, err := p.Get(ctx, key); err == nil {
+				return skret.NewError(skret.ExitConflictError, fmt.Sprintf("import: conflict on %q", key), nil)
+			}
+		}
+
+		if err := p.Set(ctx, key, s.Value, provider.SecretMeta{}); err != nil {
+			return skret.NewError(skret.ExitProviderError, fmt.Sprintf("import: set %q", key), err)
+		}
+		imported++
+	}
+
+	cmd.Printf("Imported: %d, Skipped: %d (from %s)\n", imported, skipped, imp.Name())
+	return nil
 }
