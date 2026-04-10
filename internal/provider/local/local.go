@@ -13,27 +13,31 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-type localFile struct {
-	Version string            `yaml:"version"`
-	Secrets map[string]string `yaml:"secrets"`
-}
-
-// Provider reads/writes secrets from a local YAML file.
+// Provider implements a simple file-based secret provider.
 type Provider struct {
 	mu       sync.Mutex
 	filePath string
-	data     localFile
+	data     struct {
+		Secrets map[string]string `yaml:"secrets"`
+	}
 }
 
-// New creates a local provider from a resolved config.
+// New creates a local file-based secret provider.
 func New(cfg *config.ResolvedConfig) (provider.SecretProvider, error) {
+	if cfg.File == "" {
+		return nil, fmt.Errorf("local: file path is required")
+	}
+
 	absPath, err := filepath.Abs(cfg.File)
 	if err != nil {
-		return nil, fmt.Errorf("local: resolve path %q: %w", cfg.File, err)
+		return nil, fmt.Errorf("local: invalid path %q: %w", cfg.File, err)
 	}
 
 	p := &Provider{filePath: absPath}
 	if err := p.load(); err != nil {
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("local: load %q: %w", absPath, err)
+		}
 		return nil, fmt.Errorf("local: load %q: %w", absPath, err)
 	}
 	return p, nil

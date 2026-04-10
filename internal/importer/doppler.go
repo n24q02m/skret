@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"sort"
+	"time"
 )
 
 // DopplerImporter reads secrets from the Doppler API.
@@ -15,6 +16,7 @@ type DopplerImporter struct {
 	project string
 	config  string
 	baseURL string
+	client  *http.Client
 }
 
 // NewDoppler creates a Doppler API importer.
@@ -22,7 +24,15 @@ func NewDoppler(token, project, config, baseURL string) Importer {
 	if baseURL == "" {
 		baseURL = "https://api.doppler.com"
 	}
-	return &DopplerImporter{token: token, project: project, config: config, baseURL: baseURL}
+	return &DopplerImporter{
+		token:   token,
+		project: project,
+		config:  config,
+		baseURL: baseURL,
+		client: &http.Client{
+			Timeout: 30 * time.Second,
+		},
+	}
 }
 
 func (d *DopplerImporter) Name() string { return "doppler" }
@@ -37,7 +47,7 @@ func (d *DopplerImporter) Import(ctx context.Context) ([]ImportedSecret, error) 
 	req.Header.Set("Authorization", "Bearer "+d.token)
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := d.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("doppler: request: %w", err)
 	}
