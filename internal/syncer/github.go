@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"golang.org/x/crypto/nacl/box"
 
@@ -21,6 +22,8 @@ type GitHubSyncer struct {
 	repo    string
 	token   string
 	baseURL string
+	// client is a custom HTTP client with a timeout to prevent resource exhaustion.
+	client  *http.Client
 }
 
 // NewGitHub creates a GitHub Actions secrets syncer.
@@ -28,7 +31,15 @@ func NewGitHub(owner, repo, token, baseURL string) Syncer {
 	if baseURL == "" {
 		baseURL = "https://api.github.com"
 	}
-	return &GitHubSyncer{owner: owner, repo: repo, token: token, baseURL: baseURL}
+	return &GitHubSyncer{
+		owner:   owner,
+		repo:    repo,
+		token:   token,
+		baseURL: baseURL,
+		// Using a custom client with a 30s timeout instead of http.DefaultClient
+		// to avoid indefinite hangs and potential goroutine leaks.
+		client:  &http.Client{Timeout: 30 * time.Second},
+	}
 }
 
 func (g *GitHubSyncer) Name() string { return "github" }
@@ -57,7 +68,7 @@ func (g *GitHubSyncer) getPublicKey(ctx context.Context) (string, string, error)
 	req.Header.Set("Authorization", "Bearer "+g.token)
 	req.Header.Set("Accept", "application/vnd.github+json")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := g.client.Do(req)
 	if err != nil {
 		return "", "", fmt.Errorf("github: request: %w", err)
 	}
@@ -95,7 +106,7 @@ func (g *GitHubSyncer) putSecret(ctx context.Context, name, value, pubKeyB64, ke
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := g.client.Do(req)
 	if err != nil {
 		return fmt.Errorf("github: request: %w", err)
 	}
