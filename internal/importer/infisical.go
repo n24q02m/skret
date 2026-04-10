@@ -7,14 +7,16 @@ import (
 	"io"
 	"net/http"
 	"sort"
+	"time"
 )
 
 // InfisicalImporter reads secrets from the Infisical API.
 type InfisicalImporter struct {
-	token     string
-	projectID string
-	env       string
-	baseURL   string
+	token      string
+	projectID  string
+	env        string
+	baseURL    string
+	httpClient *http.Client
 }
 
 // NewInfisical creates an Infisical API importer.
@@ -22,7 +24,15 @@ func NewInfisical(token, projectID, env, baseURL string) Importer {
 	if baseURL == "" {
 		baseURL = "https://app.infisical.com"
 	}
-	return &InfisicalImporter{token: token, projectID: projectID, env: env, baseURL: baseURL}
+	return &InfisicalImporter{
+		token:     token,
+		projectID: projectID,
+		env:       env,
+		baseURL:   baseURL,
+		httpClient: &http.Client{
+			Timeout: 30 * time.Second,
+		},
+	}
 }
 
 func (i *InfisicalImporter) Name() string { return "infisical" }
@@ -37,7 +47,7 @@ func (i *InfisicalImporter) Import(ctx context.Context) ([]ImportedSecret, error
 	req.Header.Set("Authorization", "Bearer "+i.token)
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := i.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("infisical: request: %w", err)
 	}
