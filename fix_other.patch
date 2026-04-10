@@ -1,0 +1,31 @@
+--- internal/importer/infisical.go
++++ internal/importer/infisical.go
+@@ -43,3 +43,3 @@
+	}
+-	defer resp.Body.Close()
++	defer func() { _ = resp.Body.Close() }()
+
+--- internal/importer/dotenv.go
++++ internal/importer/dotenv.go
+@@ -27,3 +27,3 @@
+	}
+-	defer f.Close()
++	defer func() { _ = f.Close() }()
+
+--- internal/importer/doppler.go
++++ internal/importer/doppler.go
+@@ -43,3 +43,3 @@
+	}
+-	defer resp.Body.Close()
++	defer func() { _ = resp.Body.Close() }()
+--- tests/e2e/cli_test.go
++++ tests/e2e/cli_test.go
+@@ -23,3 +23,3 @@
+	defer func() {
+-		os.RemoveAll(tmp)
++		_ = os.RemoveAll(tmp)
+	}()
+@@ -32,3 +32,3 @@
+	// Provide a .secrets.dev.yaml correctly simulating what init produces
+-	os.WriteFile(filepath.Join(dir, ".secrets.dev.yaml"), []byte("version: \"1\"\nsecrets:\n  ORIGINAL: \"original_val\""), 0o600)
++	_ = os.WriteFile(filepath.Join(dir, ".secrets.dev.yaml"), []byte("version: \"1\"\nsecrets:\n  ORIGINAL: \"original_val\""), 0o600)

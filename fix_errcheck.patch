@@ -1,0 +1,59 @@
+--- internal/syncer/dotenv.go
++++ internal/syncer/dotenv.go
+@@ -35,19 +35,19 @@
+		tmp, err := os.CreateTemp(filepath.Dir(d.filePath), ".*.env")
+		if err != nil {
+			return fmt.Errorf("dotenv sync: create tmp file: %w", err)
+		}
+		tmpPath := tmp.Name()
+		defer func() {
+-			tmp.Close()
+-			os.Remove(tmpPath)
++			_ = tmp.Close()
++			_ = os.Remove(tmpPath)
+		}()
+
+		// Write completely new contents
+		for _, s := range secrets {
+			if _, err := tmp.WriteString(fmt.Sprintf("%s=%q\n", s.Key, s.Value)); err != nil {
+-				os.Remove(tmpPath)
++				_ = os.Remove(tmpPath)
+				return fmt.Errorf("dotenv sync: write secret: %w", err)
+			}
+		}
+
+		if err := tmp.Sync(); err != nil {
+-			os.Remove(tmpPath)
++			_ = os.Remove(tmpPath)
+			return fmt.Errorf("dotenv sync: flush tmp file: %w", err)
+		}
+		if err := tmp.Close(); err != nil {
+-			os.Remove(tmpPath)
++			_ = os.Remove(tmpPath)
+			return fmt.Errorf("dotenv sync: close tmp file: %w", err)
+		}
+
+--- internal/provider/local/local.go
++++ internal/provider/local/local.go
+@@ -68,3 +68,3 @@
+ // Set creates or updates a secret in the local file.
+-func (p *Provider) Set(_ context.Context, key string, value string, _ provider.SecretMeta) error {
++func (p *Provider) Set(_ context.Context, key string, value string, _ *provider.SecretMeta) error {
+	p.mu.Lock()
+@@ -120,4 +120,4 @@
+	defer func() {
+-		tmp.Close()
+-		os.Remove(tmpPath)
++		_ = tmp.Close()
++		_ = os.Remove(tmpPath)
+	}()
+@@ -125,3 +125,3 @@
+	if err != nil {
+-		os.Remove(tmpPath)
++		_ = os.Remove(tmpPath)
+		return fmt.Errorf("local: save: encode: %w", err)
+@@ -129,3 +129,3 @@
+	if err := tmp.Close(); err != nil {
+-		os.Remove(tmpPath)
++		_ = os.Remove(tmpPath)
+		return fmt.Errorf("local: save: close: %w", err)
