@@ -71,7 +71,7 @@ func TestDopplerImporter(t *testing.T) {
 			"DB_URL":  {"raw": "postgres://prod"},
 			"API_KEY": {"raw": "sk-123"},
 		}
-		_ = json.NewEncoder(w).Encode(resp)
+		json.NewEncoder(w).Encode(resp)
 	}))
 	defer srv.Close()
 
@@ -84,7 +84,7 @@ func TestDopplerImporter(t *testing.T) {
 func TestDopplerImporter_APIError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
-		_, _ = w.Write([]byte(`{"messages":["Invalid token"]}`))
+		w.Write([]byte(`{"messages":["Invalid token"]}`))
 	}))
 	defer srv.Close()
 
@@ -106,7 +106,7 @@ func TestInfisicalImporter(t *testing.T) {
 				{"secretKey": "API_KEY", "secretValue": "key-456"},
 			},
 		}
-		_ = json.NewEncoder(w).Encode(resp)
+		json.NewEncoder(w).Encode(resp)
 	}))
 	defer srv.Close()
 
@@ -126,7 +126,7 @@ func TestInfisicalImporter(t *testing.T) {
 func TestInfisicalImporter_APIError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusForbidden)
-		_, _ = w.Write([]byte(`{"message":"Unauthorized"}`))
+		w.Write([]byte(`{"message":"Unauthorized"}`))
 	}))
 	defer srv.Close()
 

@@ -59,7 +59,7 @@ func TestGitHubSyncer(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == "GET" && r.URL.Path == "/repos/owner/repo/actions/secrets/public-key":
-			_ = json.NewEncoder(w).Encode(map[string]string{
+			json.NewEncoder(w).Encode(map[string]string{
 				"key_id": "key-123",
 				"key":    pubKeyB64,
 			})
@@ -88,7 +88,7 @@ func TestGitHubSyncer(t *testing.T) {
 func TestGitHubSyncer_APIError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
-		_, _ = w.Write([]byte(`{"message":"Bad credentials"}`))
+		w.Write([]byte(`{"message":"Bad credentials"}`))
 	}))
 	defer srv.Close()
 
@@ -100,7 +100,7 @@ func TestGitHubSyncer_APIError(t *testing.T) {
 
 func TestGitHubSyncer_BadJSON(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(`invalid json`))
+		w.Write([]byte(`invalid json`))
 	}))
 	defer srv.Close()
 
@@ -112,7 +112,7 @@ func TestGitHubSyncer_BadJSON(t *testing.T) {
 
 func TestGitHubSyncer_BadKeyFormat(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_ = json.NewEncoder(w).Encode(map[string]string{
+		json.NewEncoder(w).Encode(map[string]string{
 			"key_id": "key-123",
 			"key":    "not-a-valid-base64!!!!!!!",
 		})
@@ -131,7 +131,7 @@ func TestGitHubSyncer_PutError(t *testing.T) {
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "GET" {
-			_ = json.NewEncoder(w).Encode(map[string]string{
+			json.NewEncoder(w).Encode(map[string]string{
 				"key_id": "key-123",
 				"key":    pubKeyB64,
 			})

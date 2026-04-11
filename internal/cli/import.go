@@ -34,7 +34,7 @@ func newImportCmd(opts *GlobalOpts) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			defer func() { _ = p.Close() }()
+			defer p.Close()
 
 			var imp importer.Importer
 			switch from {

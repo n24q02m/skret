@@ -17,8 +17,8 @@ func TestBuildEnv_CrossReference(t *testing.T) {
 		{Key: "DB_CONNECTION", Value: "connected to ${DB_URL}"},
 	}
 
-	_ = os.Setenv("TEST_REGION", "us-east-1")
-	defer func() { _ = os.Unsetenv("TEST_REGION") }()
+	os.Setenv("TEST_REGION", "us-east-1")
+	defer os.Unsetenv("TEST_REGION")
 
 	secretsWithOsEnv := append(secrets, &provider.Secret{Key: "TEST_INFO", Value: "region=${TEST_REGION}"})
 

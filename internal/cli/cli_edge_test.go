@@ -27,7 +27,7 @@ func TestCLI_EdgeCases(t *testing.T) {
 	dir := setupTestRepo(t)
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	// 1. Get: JSON output
 	out, err := executeCmd("get", "DATABASE_URL", "--json")
@@ -81,20 +81,20 @@ func TestCLI_EdgeCases(t *testing.T) {
 	assert.Contains(t, err.Error(), "API returned 404")
 
 	// 10. Sync: github error invalid format
-	os.Setenv("GITHUB_TOKEN", "dummy")
-	defer os.Unsetenv("GITHUB_TOKEN")
+	_ = os.Setenv("GITHUB_TOKEN", "dummy")
+	defer func() { _ = os.Unsetenv("GITHUB_TOKEN") }()
 	_, err = executeCmd("sync", "--to=github", "--github-repo=invalidrepo")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid repo format")
 
 	// 11. Helpers failure: broken config
-	os.WriteFile(".skret.yaml", []byte(`version: "invalid"`), 0o644)
+	_ = os.WriteFile(".skret.yaml", []byte(`version: "invalid"`), 0o644)
 	_, err = executeCmd("list")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "load config failed")
 
 	// 12. Helpers missing config
-	os.Remove(".skret.yaml")
+	_ = os.Remove(".skret.yaml")
 	_, err = executeCmd("list")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "find config failed")
@@ -104,15 +104,15 @@ func TestDeleteCmd_Cancel(t *testing.T) {
 	dir := setupTestRepo(t)
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	oldStdin := os.Stdin
 	defer func() { os.Stdin = oldStdin }()
 
 	r, w, _ := os.Pipe()
 	os.Stdin = r
-	w.Write([]byte("n\n"))
-	w.Close()
+	_, _ = w.Write([]byte("n\n"))
+	_ = w.Close()
 
 	out, err := executeCmd("delete", "API_KEY")
 	require.NoError(t, err)
@@ -123,15 +123,15 @@ func TestSetCmd_FromStdin(t *testing.T) {
 	dir := setupTestRepo(t)
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	oldStdin := os.Stdin
 	defer func() { os.Stdin = oldStdin }()
 
 	r, w, _ := os.Pipe()
 	os.Stdin = r
-	w.Write([]byte("stdin_value\n"))
-	w.Close()
+	_, _ = w.Write([]byte("stdin_value\n"))
+	_ = w.Close()
 
 	_, err := executeCmd("set", "STDIN_KEY", "--from-stdin")
 	require.NoError(t, err)

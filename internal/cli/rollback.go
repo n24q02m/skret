@@ -19,7 +19,7 @@ func newRollbackCmd(opts *GlobalOpts) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			defer func() { _ = p.Close() }()
+			defer p.Close()
 
 			ctx := context.Background()
 			key := args[0]

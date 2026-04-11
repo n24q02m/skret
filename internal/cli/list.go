@@ -28,7 +28,7 @@ func newListCmd(opts *GlobalOpts) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			defer func() { _ = p.Close() }()
+			defer p.Close()
 
 			listPath := resolved.Path
 			if path != "" {
@@ -77,11 +77,11 @@ func newListCmd(opts *GlobalOpts) *cobra.Command {
 				cmd.Println(string(data))
 			default:
 				w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
-				_, _ = fmt.Fprintln(w, "KEY\tVERSION")
+				fmt.Fprintln(w, "KEY\tVERSION")
 				for _, s := range secrets {
-					_, _ = fmt.Fprintf(w, "%s\t%d\n", s.Key, s.Version)
+					fmt.Fprintf(w, "%s\t%d\n", s.Key, s.Version)
 				}
-				_ = w.Flush()
+				w.Flush()
 			}
 			return nil
 		},

@@ -32,14 +32,14 @@ func newProvider(t *testing.T, filePath string) provider.SecretProvider {
 func TestLocal_Name(t *testing.T) {
 	path := setupFile(t, "version: \"1\"\nsecrets:\n  KEY1: val1")
 	p := newProvider(t, path)
-	defer func() { _ = p.Close() }()
+	defer p.Close()
 	assert.Equal(t, "local", p.Name())
 }
 
 func TestLocal_Capabilities(t *testing.T) {
 	path := setupFile(t, "version: \"1\"\nsecrets:\n  KEY1: val1")
 	p := newProvider(t, path)
-	defer func() { _ = p.Close() }()
+	defer p.Close()
 	caps := p.Capabilities()
 	assert.True(t, caps.Write)
 	assert.False(t, caps.Versioning)
@@ -48,7 +48,7 @@ func TestLocal_Capabilities(t *testing.T) {
 func TestLocal_Get(t *testing.T) {
 	path := setupFile(t, "version: \"1\"\nsecrets:\n  DATABASE_URL: \"postgres://dev:dev@localhost/db\"\n  API_KEY: secret123")
 	p := newProvider(t, path)
-	defer func() { _ = p.Close() }()
+	defer p.Close()
 
 	ctx := context.Background()
 	s, err := p.Get(ctx, "DATABASE_URL")
@@ -60,7 +60,7 @@ func TestLocal_Get(t *testing.T) {
 func TestLocal_GetNotFound(t *testing.T) {
 	path := setupFile(t, "version: \"1\"\nsecrets:\n  KEY1: val1")
 	p := newProvider(t, path)
-	defer func() { _ = p.Close() }()
+	defer p.Close()
 
 	_, err := p.Get(context.Background(), "NONEXISTENT")
 	assert.ErrorIs(t, err, provider.ErrNotFound)
@@ -69,7 +69,7 @@ func TestLocal_GetNotFound(t *testing.T) {
 func TestLocal_List(t *testing.T) {
 	path := setupFile(t, "version: \"1\"\nsecrets:\n  DB_URL: db\n  API_KEY: key\n  REDIS_URL: redis")
 	p := newProvider(t, path)
-	defer func() { _ = p.Close() }()
+	defer p.Close()
 
 	secrets, err := p.List(context.Background(), "")
 	require.NoError(t, err)
@@ -79,7 +79,7 @@ func TestLocal_List(t *testing.T) {
 func TestLocal_List_Sorted(t *testing.T) {
 	path := setupFile(t, "version: \"1\"\nsecrets:\n  Z_KEY: z\n  A_KEY: a\n  M_KEY: m")
 	p := newProvider(t, path)
-	defer func() { _ = p.Close() }()
+	defer p.Close()
 
 	secrets, err := p.List(context.Background(), "")
 	require.NoError(t, err)
@@ -92,7 +92,7 @@ func TestLocal_List_Sorted(t *testing.T) {
 func TestLocal_Set(t *testing.T) {
 	path := setupFile(t, "version: \"1\"\nsecrets:\n  KEY1: val1")
 	p := newProvider(t, path)
-	defer func() { _ = p.Close() }()
+	defer p.Close()
 
 	ctx := context.Background()
 	err := p.Set(ctx, "NEW_KEY", "new_val", provider.SecretMeta{})
@@ -104,7 +104,7 @@ func TestLocal_Set(t *testing.T) {
 
 	// Verify persisted to file
 	p2 := newProvider(t, path)
-	defer func() { _ = p2.Close() }()
+	defer p2.Close()
 	s2, err := p2.Get(ctx, "NEW_KEY")
 	require.NoError(t, err)
 	assert.Equal(t, "new_val", s2.Value)
@@ -114,7 +114,7 @@ func TestLocal_Set_InitializesMap(t *testing.T) {
 	// File with no secrets map to exercise the nil map path
 	path := setupFile(t, "version: \"1\"\n")
 	p := newProvider(t, path)
-	defer func() { _ = p.Close() }()
+	defer p.Close()
 
 	err := p.Set(context.Background(), "KEY", "val", provider.SecretMeta{})
 	require.NoError(t, err)
@@ -127,7 +127,7 @@ func TestLocal_Set_InitializesMap(t *testing.T) {
 func TestLocal_Delete(t *testing.T) {
 	path := setupFile(t, "version: \"1\"\nsecrets:\n  KEY1: val1\n  KEY2: val2")
 	p := newProvider(t, path)
-	defer func() { _ = p.Close() }()
+	defer p.Close()
 
 	ctx := context.Background()
 	err := p.Delete(ctx, "KEY1")
@@ -144,7 +144,7 @@ func TestLocal_Delete(t *testing.T) {
 func TestLocal_DeleteNotFound(t *testing.T) {
 	path := setupFile(t, "version: \"1\"\nsecrets:\n  KEY1: val1")
 	p := newProvider(t, path)
-	defer func() { _ = p.Close() }()
+	defer p.Close()
 
 	err := p.Delete(context.Background(), "NONEXISTENT")
 	assert.ErrorIs(t, err, provider.ErrNotFound)
@@ -158,7 +158,7 @@ func TestLocal_NewFileMissing(t *testing.T) {
 func TestLocal_Concurrent(t *testing.T) {
 	path := setupFile(t, "version: \"1\"\nsecrets:\n  KEY: initial")
 	p := newProvider(t, path)
-	defer func() { _ = p.Close() }()
+	defer p.Close()
 
 	ctx := context.Background()
 	done := make(chan struct{})
