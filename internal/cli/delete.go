@@ -47,7 +47,7 @@ func newDeleteCmd(opts *GlobalOpts) *cobra.Command {
 		},
 	}
 
-	cmd.Flags().BoolVar(&confirm, "confirm", false, "skip confirmation prompt")
+	cmd.Flags().BoolVarP(&confirm, "confirm", "f", false, "skip confirmation prompt")
 
 	return cmd
 }

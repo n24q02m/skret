@@ -92,7 +92,7 @@ func newInitCmd() *cobra.Command {
         cmd.Flags().StringVar(&path, "path", "", "secret path prefix (aws provider)")
         cmd.Flags().StringVar(&region, "region", "", "cloud region (aws provider)")
         cmd.Flags().StringVar(&file, "file", "", "local file path (local provider)")
-        cmd.Flags().BoolVar(&force, "force", false, "overwrite existing .skret.yaml")
+        cmd.Flags().BoolVarP(&force, "force", "f", false, "overwrite existing .skret.yaml")
 
         return cmd
 }
