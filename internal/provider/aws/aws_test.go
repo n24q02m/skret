@@ -121,7 +121,7 @@ func TestAWS_Get(t *testing.T) {
 			Version: 3,
 		},
 	})
-	defer p.Close()
+	defer func() { _ = p.Close() }()
 
 	s, err := p.Get(context.Background(), "/test/prod/DB_URL")
 	require.NoError(t, err)
@@ -132,7 +132,7 @@ func TestAWS_Get(t *testing.T) {
 
 func TestAWS_GetNotFound(t *testing.T) {
 	p := newTestProvider(nil)
-	defer p.Close()
+	defer func() { _ = p.Close() }()
 
 	_, err := p.Get(context.Background(), "/test/prod/MISSING")
 	assert.ErrorIs(t, err, provider.ErrNotFound)
@@ -150,7 +150,7 @@ func TestAWS_List(t *testing.T) {
 		"/test/prod/A": {Name: awslib.String("/test/prod/A"), Value: awslib.String("a")},
 		"/test/prod/B": {Name: awslib.String("/test/prod/B"), Value: awslib.String("b")},
 	})
-	defer p.Close()
+	defer func() { _ = p.Close() }()
 
 	secrets, err := p.List(context.Background(), "") // Empty path falls back to provider root path
 	require.NoError(t, err)
@@ -167,7 +167,7 @@ func TestAWS_ListError(t *testing.T) {
 func TestAWS_Set(t *testing.T) {
 	mock := &mockSSMClient{params: make(map[string]ssmtypes.Parameter)}
 	p := skaws.NewWithClient(mock, "/test/prod")
-	defer p.Close()
+	defer func() { _ = p.Close() }()
 
 	err := p.Set(context.Background(), "/test/prod/NEW", "value", provider.SecretMeta{})
 	require.NoError(t, err)
@@ -180,7 +180,7 @@ func TestAWS_Set(t *testing.T) {
 func TestAWS_SetWithMeta(t *testing.T) {
 	mock := &mockSSMClient{params: make(map[string]ssmtypes.Parameter)}
 	p := skaws.NewWithClient(mock, "/test/prod")
-	defer p.Close()
+	defer func() { _ = p.Close() }()
 
 	meta := provider.SecretMeta{
 		Description: "test desc",
@@ -201,7 +201,7 @@ func TestAWS_Delete(t *testing.T) {
 	p := newTestProvider(map[string]ssmtypes.Parameter{
 		"/test/prod/KEY": {Name: awslib.String("/test/prod/KEY"), Value: awslib.String("val")},
 	})
-	defer p.Close()
+	defer func() { _ = p.Close() }()
 
 	err := p.Delete(context.Background(), "/test/prod/KEY")
 	require.NoError(t, err)
@@ -212,7 +212,7 @@ func TestAWS_Delete(t *testing.T) {
 
 func TestAWS_DeleteNotFound(t *testing.T) {
 	p := newTestProvider(nil)
-	defer p.Close()
+	defer func() { _ = p.Close() }()
 
 	err := p.Delete(context.Background(), "/test/prod/MISSING")
 	assert.ErrorIs(t, err, provider.ErrNotFound)

@@ -22,7 +22,7 @@ func newHistoryCmd(opts *GlobalOpts) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			defer p.Close()
+			defer func() { _ = p.Close() }()
 
 			ctx := context.Background()
 			key := args[0]
@@ -38,7 +38,7 @@ func newHistoryCmd(opts *GlobalOpts) *cobra.Command {
 			}
 
 			w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
-			fmt.Fprintln(w, "VERSION\tVALUE\tUPDATED AT\tAUTHOR")
+			_, _ = fmt.Fprintln(w, "VERSION\tVALUE\tUPDATED AT\tAUTHOR")
 
 			for _, s := range history {
 				val := s.Value
@@ -60,9 +60,9 @@ func newHistoryCmd(opts *GlobalOpts) *cobra.Command {
 					author = "-"
 				}
 
-				fmt.Fprintf(w, "%d\t%s\t%s\t%s\n", s.Version, val, updatedAt, author)
+				_, _ = fmt.Fprintf(w, "%d\t%s\t%s\t%s\n", s.Version, val, updatedAt, author)
 			}
-			w.Flush()
+			_ = w.Flush()
 
 			return nil
 		},

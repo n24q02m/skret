@@ -22,7 +22,7 @@ func newEnvCmd(opts *GlobalOpts) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			defer p.Close()
+			defer func() { _ = p.Close() }()
 
 			ctx := context.Background()
 			secrets, err := p.List(ctx, resolved.Path)

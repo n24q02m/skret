@@ -29,7 +29,7 @@ func newSetCmd(opts *GlobalOpts) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			defer p.Close()
+			defer func() { _ = p.Close() }()
 
 			key := args[0]
 			var value string

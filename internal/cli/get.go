@@ -25,7 +25,7 @@ func newGetCmd(opts *GlobalOpts) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			defer p.Close()
+			defer func() { _ = p.Close() }()
 
 			ctx := context.Background()
 			secret, err := p.Get(ctx, args[0])

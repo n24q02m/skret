@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-
 	"strings"
 
 	"github.com/n24q02m/skret/internal/importer"
@@ -35,7 +34,7 @@ func newImportCmd(opts *GlobalOpts) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			defer p.Close()
+			defer func() { _ = p.Close() }()
 
 			var imp importer.Importer
 			switch from {
