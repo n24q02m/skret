@@ -1,3 +1,0 @@
-## 2024-04-11 - Replace O(N) array search with O(1) map lookup in Env Expansion
-**Learning:** In `internal/exec/exec.go`, resolving secret references within `BuildEnv` involved looping over the `existing` environment variable string array (`[]string`) to find overriding values. For large sets of environment variables and multiple secrets with references, this `O(N)` linear search inside the `os.Expand` loop created an unnecessary bottleneck.
-**Action:** Always pre-calculate a `map[string]string` from slices for data sets that require repeated, inner-loop key lookups, especially within parsing or expansion logic. O(1) hash map lookups are consistently faster than repeated string prefix matches (`strings.HasPrefix`) over arrays.
