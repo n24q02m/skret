@@ -16,18 +16,20 @@ func BuildEnv(secrets []*provider.Secret, existing []string, pathPrefix string, 
 		excludeSet[strings.ToUpper(e)] = true
 	}
 
-	existingKeys := make(map[string]bool)
+	// ⚡ Bolt: Use map[string]string for O(1) lookups during variable expansion
+	// instead of O(N) linear search over the `existing` slice.
+	existingVars := make(map[string]string, len(existing))
 	env := make([]string, 0, len(existing)+len(secrets))
 	for _, e := range existing {
-		key, _, _ := strings.Cut(e, "=")
-		existingKeys[key] = true
+		key, val, _ := strings.Cut(e, "=")
+		existingVars[key] = val
 		env = append(env, e)
 	}
 
 	secretVars := make(map[string]string)
 	for _, s := range secrets {
 		name := KeyToEnvName(s.Key, pathPrefix)
-		if excludeSet[name] || existingKeys[name] {
+		if _, exists := existingVars[name]; excludeSet[name] || exists {
 			continue
 		}
 		secretVars[name] = s.Value
@@ -39,10 +41,9 @@ func BuildEnv(secrets []*provider.Secret, existing []string, pathPrefix string, 
 		for k, v := range secretVars {
 			newVal := os.Expand(v, func(ref string) string {
 				// 1. check existing environment variables (highest priority)
-				for _, e := range existing {
-					if strings.HasPrefix(e, ref+"=") {
-						return e[len(ref)+1:]
-					}
+				// ⚡ Bolt: O(1) map lookup replaces O(N) linear search
+				if ev, ok := existingVars[ref]; ok {
+					return ev
 				}
 				// 2. check other secrets
 				if sv, ok := secretVars[ref]; ok {
