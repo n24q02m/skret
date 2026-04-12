@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"sort"
+	"time"
 )
 
 // InfisicalImporter reads secrets from the Infisical API.
@@ -30,14 +31,16 @@ func (i *InfisicalImporter) Name() string { return "infisical" }
 func (i *InfisicalImporter) Import(ctx context.Context) ([]ImportedSecret, error) {
 	url := fmt.Sprintf("%s/api/v3/secrets/raw?workspaceId=%s&environment=%s", i.baseURL, i.projectID, i.env)
 
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, http.NoBody)
 	if err != nil {
 		return nil, fmt.Errorf("infisical: create request: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+i.token)
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := http.DefaultClient.Do(req)
+	// SECURITY: Use a custom HTTP client with an explicit timeout to prevent resource exhaustion and indefinite hangs.
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("infisical: request: %w", err)
 	}

@@ -26,7 +26,7 @@ func newSyncCmd(opts *GlobalOpts) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			defer p.Close()
+			defer func() { _ = p.Close() }()
 
 			ctx := context.Background()
 			secrets, err := p.List(ctx, resolved.Path)
@@ -34,35 +34,9 @@ func newSyncCmd(opts *GlobalOpts) *cobra.Command {
 				return skret.NewError(skret.ExitProviderError, "sync: list secrets failed", err)
 			}
 
-			var syncers []syncer.Syncer
-			switch to {
-			case "dotenv":
-				if file == "" {
-					file = ".env"
-				}
-				syncers = append(syncers, syncer.NewDotenv(file))
-			case "github":
-				token := os.Getenv("GITHUB_TOKEN")
-				if token == "" {
-					return skret.NewError(skret.ExitConfigError, "sync: GITHUB_TOKEN env var required", nil)
-				}
-				repos := strings.Split(githubRepo, ",")
-				for _, r := range repos {
-					r = strings.TrimSpace(r)
-					if r == "" {
-						continue
-					}
-					parts := strings.SplitN(r, "/", 2)
-					if len(parts) != 2 {
-						return skret.NewError(skret.ExitConfigError, fmt.Sprintf("sync: invalid repo format %q, must be owner/repo", r), nil)
-					}
-					syncers = append(syncers, syncer.NewGitHub(parts[0], parts[1], token, ""))
-				}
-				if len(syncers) == 0 {
-					return skret.NewError(skret.ExitConfigError, "sync: --github-repo requires at least one repository", nil)
-				}
-			default:
-				return skret.NewError(skret.ExitConfigError, fmt.Sprintf("sync: unknown target %q", to), nil)
+			syncers, err := buildSyncers(to, file, githubRepo)
+			if err != nil {
+				return err
 			}
 
 			for _, s := range syncers {
@@ -81,4 +55,39 @@ func newSyncCmd(opts *GlobalOpts) *cobra.Command {
 	cmd.Flags().StringVar(&githubRepo, "github-repo", "", "GitHub repository (owner/repo, comma separated)")
 
 	return cmd
+}
+
+// buildSyncers initializes the requested sync targets.
+func buildSyncers(to, file, githubRepo string) ([]syncer.Syncer, error) {
+	var syncers []syncer.Syncer
+	switch to {
+	case "dotenv":
+		if file == "" {
+			file = ".env"
+		}
+		syncers = append(syncers, syncer.NewDotenv(file))
+	case "github":
+		token := os.Getenv("GITHUB_TOKEN")
+		if token == "" {
+			return nil, skret.NewError(skret.ExitConfigError, "sync: GITHUB_TOKEN env var required", nil)
+		}
+		repos := strings.Split(githubRepo, ",")
+		for _, r := range repos {
+			r = strings.TrimSpace(r)
+			if r == "" {
+				continue
+			}
+			parts := strings.SplitN(r, "/", 2)
+			if len(parts) != 2 {
+				return nil, skret.NewError(skret.ExitConfigError, fmt.Sprintf("sync: invalid repo format %q, must be owner/repo", r), nil)
+			}
+			syncers = append(syncers, syncer.NewGitHub(parts[0], parts[1], token, ""))
+		}
+		if len(syncers) == 0 {
+			return nil, skret.NewError(skret.ExitConfigError, "sync: --github-repo requires at least one repository", nil)
+		}
+	default:
+		return nil, skret.NewError(skret.ExitConfigError, fmt.Sprintf("sync: unknown target %q", to), nil)
+	}
+	return syncers, nil
 }

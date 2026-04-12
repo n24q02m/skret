@@ -25,7 +25,7 @@ func newRunCmd(opts *GlobalOpts) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			defer p.Close()
+			defer func() { _ = p.Close() }()
 
 			ctx := context.Background()
 			secrets, err := p.List(ctx, resolved.Path)
@@ -57,7 +57,7 @@ func newRunCmd(opts *GlobalOpts) *cobra.Command {
 	return cmd
 }
 
-func execCommand(args []string, env []string) error {
+func execCommand(args, env []string) error {
 	binary, err := osexec.LookPath(args[0])
 	if err != nil {
 		return skret.NewError(skret.ExitExecError, fmt.Sprintf("run: command not found: %s", args[0]), err)

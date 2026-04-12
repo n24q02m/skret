@@ -17,10 +17,12 @@ func (m *mockProvider) Capabilities() provider.Capabilities { return provider.Ca
 func (m *mockProvider) Get(_ context.Context, _ string) (*provider.Secret, error) {
 	return nil, nil
 }
+
 func (m *mockProvider) List(_ context.Context, _ string) ([]*provider.Secret, error) {
 	return nil, nil
 }
-func (m *mockProvider) Set(_ context.Context, _ string, _ string, _ provider.SecretMeta) error {
+
+func (m *mockProvider) Set(_ context.Context, _ string, _ string, _ *provider.SecretMeta) error {
 	return nil
 }
 func (m *mockProvider) Delete(_ context.Context, _ string) error { return nil }

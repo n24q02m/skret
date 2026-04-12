@@ -12,7 +12,10 @@ import (
 )
 
 func newDeleteCmd(opts *GlobalOpts) *cobra.Command {
-	var confirm bool
+	var (
+		confirm bool
+		force   bool
+	)
 
 	cmd := &cobra.Command{
 		Use:   "delete <KEY>",
@@ -23,11 +26,11 @@ func newDeleteCmd(opts *GlobalOpts) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			defer p.Close()
+			defer func() { _ = p.Close() }()
 
 			key := args[0]
 
-			if !confirm {
+			if !confirm && !force {
 				cmd.Printf("Delete secret %q? [y/N] ", key)
 				reader := bufio.NewReader(os.Stdin)
 				answer, _ := reader.ReadString('\n')
@@ -48,6 +51,7 @@ func newDeleteCmd(opts *GlobalOpts) *cobra.Command {
 	}
 
 	cmd.Flags().BoolVar(&confirm, "confirm", false, "skip confirmation prompt")
+	cmd.Flags().BoolVarP(&force, "force", "f", false, "skip confirmation prompt (alias for --confirm)")
 
 	return cmd
 }

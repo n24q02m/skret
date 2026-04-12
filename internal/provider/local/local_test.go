@@ -95,7 +95,7 @@ func TestLocal_Set(t *testing.T) {
 	defer p.Close()
 
 	ctx := context.Background()
-	err := p.Set(ctx, "NEW_KEY", "new_val", provider.SecretMeta{})
+	err := p.Set(ctx, "NEW_KEY", "new_val", &provider.SecretMeta{})
 	require.NoError(t, err)
 
 	s, err := p.Get(ctx, "NEW_KEY")
@@ -116,7 +116,7 @@ func TestLocal_Set_InitializesMap(t *testing.T) {
 	p := newProvider(t, path)
 	defer p.Close()
 
-	err := p.Set(context.Background(), "KEY", "val", provider.SecretMeta{})
+	err := p.Set(context.Background(), "KEY", "val", &provider.SecretMeta{})
 	require.NoError(t, err)
 
 	s, err := p.Get(context.Background(), "KEY")
@@ -165,10 +165,10 @@ func TestLocal_Concurrent(t *testing.T) {
 	errs := make(chan error, 10)
 
 	for i := 0; i < 5; i++ {
-		go func(n int) {
+		go func(_ int) {
 			defer func() { done <- struct{}{} }()
 			key := "KEY"
-			if err := p.Set(ctx, key, "value", provider.SecretMeta{}); err != nil {
+			if err := p.Set(ctx, key, "value", &provider.SecretMeta{}); err != nil {
 				errs <- err
 			}
 		}(i)

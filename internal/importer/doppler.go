@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"sort"
+	"time"
 )
 
 // DopplerImporter reads secrets from the Doppler API.
@@ -30,14 +31,16 @@ func (d *DopplerImporter) Name() string { return "doppler" }
 func (d *DopplerImporter) Import(ctx context.Context) ([]ImportedSecret, error) {
 	url := fmt.Sprintf("%s/v3/configs/config/secrets?project=%s&config=%s", d.baseURL, d.project, d.config)
 
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, http.NoBody)
 	if err != nil {
 		return nil, fmt.Errorf("doppler: create request: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+d.token)
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := http.DefaultClient.Do(req)
+	// SECURITY: Use a custom HTTP client with an explicit timeout to prevent resource exhaustion and indefinite hangs.
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("doppler: request: %w", err)
 	}

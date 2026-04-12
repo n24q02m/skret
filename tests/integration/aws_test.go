@@ -31,7 +31,7 @@ func TestAWSIntegration(t *testing.T) {
 
 	// Test write
 	meta := provider.SecretMeta{Description: "Integration test secret"}
-	err = p.Set(ctx, "/skret/test/DB_URL", "postgres://localhost:5432/test", meta)
+	err = p.Set(ctx, "/skret/test/DB_URL", "postgres://localhost:5432/test", &meta)
 	require.NoError(t, err, "failed to set secret")
 
 	time.Sleep(1 * time.Second) // allow eventual consistency on SSM

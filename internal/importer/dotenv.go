@@ -25,7 +25,7 @@ func (d *DotenvImporter) Import(_ context.Context) ([]ImportedSecret, error) {
 	if err != nil {
 		return nil, fmt.Errorf("dotenv: open %q: %w", d.filePath, err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	var secrets []ImportedSecret
 	scanner := bufio.NewScanner(f)

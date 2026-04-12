@@ -66,7 +66,7 @@ func (p *Provider) List(_ context.Context, _ string) ([]*provider.Secret, error)
 	return secrets, nil
 }
 
-func (p *Provider) Set(_ context.Context, key string, value string, _ provider.SecretMeta) error {
+func (p *Provider) Set(_ context.Context, key string, value string, _ *provider.SecretMeta) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.data.Secrets == nil {

@@ -51,7 +51,7 @@ func New(opts ...Options) (*Client, error) {
 		return nil, NewError(ExitConfigError, "failed to load configuration", err)
 	}
 
-	resolved, err := config.Resolve(cfg, config.ResolveOpts{
+	resolved, err := config.Resolve(cfg, &config.ResolveOpts{
 		Env:      opt.Env,
 		Provider: opt.Provider,
 		Path:     opt.Path,
@@ -103,7 +103,7 @@ func (c *Client) List(ctx context.Context) ([]*provider.Secret, error) {
 }
 
 // Set creates or updates a secret.
-func (c *Client) Set(ctx context.Context, key, value string, meta provider.SecretMeta) error {
+func (c *Client) Set(ctx context.Context, key, value string, meta *provider.SecretMeta) error {
 	err := c.provider.Set(ctx, key, value, meta)
 	if err != nil {
 		return NewError(ExitProviderError, fmt.Sprintf("failed to set secret %q", key), err)

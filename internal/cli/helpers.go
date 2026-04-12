@@ -49,7 +49,7 @@ func loadProvider(opts *GlobalOpts) (*config.ResolvedConfig, provider.SecretProv
 		Profile:  opts.Profile,
 		File:     opts.File,
 	}
-	resolved, err := config.Resolve(cfg, resolveOpts)
+	resolved, err := config.Resolve(cfg, &resolveOpts)
 	if err != nil {
 		return nil, nil, skret.NewError(skret.ExitConfigError, "resolve config failed", err)
 	}

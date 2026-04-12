@@ -31,6 +31,7 @@ func (h *RedactingHandler) Enabled(ctx context.Context, level slog.Level) bool {
 	return h.inner.Enabled(ctx, level)
 }
 
+//nolint:gocritic // slog.Handler interface requires slog.Record by value
 func (h *RedactingHandler) Handle(ctx context.Context, r slog.Record) error {
 	var attrs []slog.Attr
 	r.Attrs(func(a slog.Attr) bool {

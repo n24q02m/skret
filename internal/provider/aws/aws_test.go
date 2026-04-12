@@ -169,7 +169,7 @@ func TestAWS_Set(t *testing.T) {
 	p := skaws.NewWithClient(mock, "/test/prod")
 	defer p.Close()
 
-	err := p.Set(context.Background(), "/test/prod/NEW", "value", provider.SecretMeta{})
+	err := p.Set(context.Background(), "/test/prod/NEW", "value", &provider.SecretMeta{})
 	require.NoError(t, err)
 
 	s, err := p.Get(context.Background(), "/test/prod/NEW")
@@ -186,14 +186,14 @@ func TestAWS_SetWithMeta(t *testing.T) {
 		Description: "test desc",
 		Tags:        map[string]string{"env": "prod"},
 	}
-	err := p.Set(context.Background(), "/test/prod/META", "val", meta)
+	err := p.Set(context.Background(), "/test/prod/META", "val", &meta)
 	require.NoError(t, err)
 }
 
 func TestAWS_SetError(t *testing.T) {
 	mock := &mockSSMClient{params: make(map[string]ssmtypes.Parameter), errPut: errors.New("network err")}
 	p := skaws.NewWithClient(mock, "/test/prod")
-	err := p.Set(context.Background(), "/test/prod/META", "val", provider.SecretMeta{})
+	err := p.Set(context.Background(), "/test/prod/META", "val", &provider.SecretMeta{})
 	assert.Error(t, err)
 }
 

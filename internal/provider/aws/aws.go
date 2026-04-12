@@ -115,7 +115,7 @@ func (p *Provider) List(ctx context.Context, pathPrefix string) ([]*provider.Sec
 	return secrets, nil
 }
 
-func (p *Provider) Set(ctx context.Context, key string, value string, meta provider.SecretMeta) error {
+func (p *Provider) Set(ctx context.Context, key string, value string, meta *provider.SecretMeta) error {
 	input := &ssm.PutParameterInput{
 		Name:      awslib.String(key),
 		Value:     awslib.String(value),
@@ -201,7 +201,7 @@ func (p *Provider) Rollback(ctx context.Context, key string, version int64) erro
 	if found == nil {
 		return provider.ErrNotFound
 	}
-	return p.Set(ctx, key, found.Value, found.Meta)
+	return p.Set(ctx, key, found.Value, &found.Meta)
 }
 
 func (p *Provider) Close() error { return nil }

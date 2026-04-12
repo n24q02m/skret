@@ -7,6 +7,6 @@ import (
 )
 
 // Run executes a command with process replacement (syscall.Exec) on Unix.
-func Run(binary string, args []string, env []string) error {
+func Run(binary string, args, env []string) error {
 	return syscall.Exec(binary, args, env)
 }
