@@ -1,6 +1,6 @@
 # skret
 
-Cloud-provider secret manager CLI wrapper. Go 1.26.
+Cloud-provider secret manager CLI wrapper. Go 1.25.0.
 
 ## Build & Test
 

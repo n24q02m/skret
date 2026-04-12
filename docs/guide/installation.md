@@ -17,7 +17,7 @@ scoop install skret
 
 ## Go Install
 
-Requires Go 1.26+:
+Requires Go 1.25.0+:
 
 ```bash
 go install github.com/n24q02m/skret/cmd/skret@latest
