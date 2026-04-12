@@ -73,6 +73,18 @@ func newImportCmd(opts *GlobalOpts) *cobra.Command {
 			}
 
 			var imported, skipped int
+			existing := make(map[string]struct{})
+			listLoaded := false
+			if !dryRun && (onConflict == "skip" || onConflict == "fail") {
+				exList, err := p.List(ctx, prefix)
+				if err == nil {
+					for _, s := range exList {
+						existing[s.Key] = struct{}{}
+					}
+					listLoaded = true
+				}
+			}
+
 			for _, s := range secrets {
 				key := s.Key
 				if prefix != "" {
@@ -85,17 +97,24 @@ func newImportCmd(opts *GlobalOpts) *cobra.Command {
 					continue
 				}
 
-				if onConflict == "skip" {
-					if _, err := p.Get(ctx, key); err == nil {
-						skipped++
-						continue
+				if onConflict == "skip" || onConflict == "fail" {
+					hasConflict := false
+					if listLoaded {
+						_, hasConflict = existing[key]
+					} else {
+						if _, err := p.Get(ctx, key); err == nil {
+							hasConflict = true
+						}
 					}
-				} else if onConflict == "fail" {
-					if _, err := p.Get(ctx, key); err == nil {
+
+					if hasConflict {
+						if onConflict == "skip" {
+							skipped++
+							continue
+						}
 						return skret.NewError(skret.ExitConflictError, fmt.Sprintf("import: conflict on %q", key), nil)
 					}
 				}
-
 				if err := p.Set(ctx, key, s.Value, provider.SecretMeta{}); err != nil {
 					return skret.NewError(skret.ExitProviderError, fmt.Sprintf("import: set %q", key), err)
 				}
