@@ -33,14 +33,25 @@ jobs:
         with:
           go-version-file: go.mod
       - name: Run tests with coverage
-        run: go test -race -coverprofile=coverage.out -covermode=atomic ./internal/...
-      - name: Check coverage threshold
+        run: |
+          go test -race -coverprofile=coverage.out -covermode=atomic ./internal/...
+          go test -race -coverprofile=coverage-pkg.out -covermode=atomic ./pkg/skret/...
+      - name: Check internal coverage threshold
         if: matrix.os == 'ubuntu-latest'
         run: |
           COVERAGE=$(go tool cover -func=coverage.out | tail -1 | awk '{print $3}' | sed 's/%//')
-          echo "Total coverage: ${COVERAGE}%"
-          if (( $(echo "$COVERAGE < 80" | bc -l) )); then
-            echo "Coverage ${COVERAGE}% is below 80% threshold"
+          echo "Internal coverage: ${COVERAGE}%"
+          if (( $(echo "$COVERAGE < 90" | bc -l) )); then
+            echo "Internal coverage ${COVERAGE}% is below 90% threshold"
+            exit 1
+          fi
+      - name: Check pkg/skret coverage threshold
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          COVERAGE=$(go tool cover -func=coverage-pkg.out | tail -1 | awk '{print $3}' | sed 's/%//')
+          echo "pkg/skret coverage: ${COVERAGE}%"
+          if (( $(echo "$COVERAGE < 90" | bc -l) )); then
+            echo "pkg/skret coverage ${COVERAGE}% is below 90% threshold"
             exit 1
           fi
       - name: Run E2E tests
