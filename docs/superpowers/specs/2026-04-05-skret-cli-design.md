@@ -152,7 +152,7 @@ skret/
 ├── .pre-commit-config.yaml
 ├── .editorconfig
 ├── .gitignore
-├── .infisical.json         # skret's own secrets (bootstrap via Infisical until self-hosting)
+## .infisical.json intentionally omitted — skret bootstraps from environment variables only (see S14 Q4)
 ├── .pr_agent.toml
 ├── renovate.json
 ├── AGENTS.md
@@ -864,7 +864,7 @@ Repo MUST match patterns of the 17 production repos (reference: `n24q02m/QuikShi
 - `.gitignore`
 - `.golangci.yaml` — linter config
 - `.goreleaser.yaml` — release automation
-- `.infisical.json` — skret's own secrets (bootstrap)
+- ~~`.infisical.json`~~ — `.infisical.json` intentionally omitted — skret bootstraps from environment variables only (see S14 Q4).
 - `.mise.toml` — tool versions
 - `.pr_agent.toml` — Qodo Merge AI review
 - `.pre-commit-config.yaml`
