@@ -1,132 +1,141 @@
 package cli
 
 import (
-        "fmt"
-        "os"
-        "path/filepath"
-        "strings"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 
-        "github.com/spf13/cobra"
-        "gopkg.in/yaml.v3"
+	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
 
-        "github.com/n24q02m/skret/internal/config"
+	"github.com/n24q02m/skret/internal/config"
 )
 
+// initOptions holds the flag values for the init command.
+type initOptions struct {
+	provider string
+	path     string
+	region   string
+	file     string
+	force    bool
+}
+
+// newInitCmd creates a new init command.
 func newInitCmd() *cobra.Command {
-        var (
-                provider string
-                path     string
-                region   string
-                file     string
-                force    bool
-        )
+	opts := &initOptions{}
 
-        cmd := &cobra.Command{
-                Use:   "init",
-                Short: "Initialize .skret.yaml in the current directory",
-                RunE: func(cmd *cobra.Command, _ []string) error {
-                        cwd, err := os.Getwd()
-                        if err != nil {
-                                return fmt.Errorf("init: get working directory: %w", err)
-                        }
+	cmd := &cobra.Command{
+		Use:   "init",
+		Short: "Initialize .skret.yaml in the current directory",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return opts.run(cmd)
+		},
+	}
 
-                        cfgPath := filepath.Join(cwd, config.ConfigFileName)
+	cmd.Flags().StringVar(&opts.provider, "provider", "aws", "secret provider (aws, local)")
+	cmd.Flags().StringVar(&opts.path, "path", "", "secret path prefix (aws provider)")
+	cmd.Flags().StringVar(&opts.region, "region", "", "cloud region (aws provider)")
+	cmd.Flags().StringVar(&opts.file, "file", "", "local file path (local provider)")
+	cmd.Flags().BoolVar(&opts.force, "force", false, "overwrite existing .skret.yaml")
 
-                        if !force {
-                                if _, err := os.Stat(cfgPath); err == nil {
-                                        return fmt.Errorf("init: %s already exists (use --force to overwrite)", config.ConfigFileName)
-                                }
-                        }
+	return cmd
+}
 
-                        cfg := config.Config{
-                                Version:    "1",
-                                DefaultEnv: "dev",
-                                Environments: map[string]config.Environment{
-                                        "dev": {
-                                                Provider: "local",
-                                                File:     ".secrets.dev.yaml",
-                                        },
-                                        "prod": {
-                                                Provider: "aws",
-                                                Path:     "/myapp/prod",
-                                                Region:   "us-east-1",
-                                        },
-                                },
-                        }
+// run executes the init command logic.
+func (o *initOptions) run(cmd *cobra.Command) error {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("init: get working directory: %w", err)
+	}
 
-                        // Override with flags if provided
-                        if provider != "" {
-                                cfg.Environments["prod"] = config.Environment{
-                                        Provider: provider,
-                                        Path:     path,
-                                        Region:   region,
-                                }
-                                if file != "" {
-                                        env := cfg.Environments["prod"]
-                                        env.File = file
-                                        cfg.Environments["prod"] = env
-                                }
-                        }
+	cfgPath := filepath.Join(cwd, config.ConfigFileName)
 
-                        data, err := yaml.Marshal(&cfg)
-                        if err != nil {
-                                return fmt.Errorf("init: marshal config: %w", err)
-                        }
+	if !o.force {
+		if _, err := os.Stat(cfgPath); err == nil {
+			return fmt.Errorf("init: %s already exists (use --force to overwrite)", config.ConfigFileName)
+		}
+	}
 
-                        if err := os.WriteFile(cfgPath, data, 0o644); err != nil {
-                                return fmt.Errorf("init: write config: %w", err)
-                        }
+	cfg := config.Config{
+		Version:    "1",
+		DefaultEnv: "dev",
+		Environments: map[string]config.Environment{
+			"dev": {
+				Provider: "local",
+				File:     ".secrets.dev.yaml",
+			},
+			"prod": {
+				Provider: "aws",
+				Path:     "/myapp/prod",
+				Region:   "us-east-1",
+			},
+		},
+	}
 
-                        // Update .gitignore
-                        gitignorePath := filepath.Join(cwd, ".gitignore")
-                        if err := appendGitignore(gitignorePath); err != nil {
-                                cmd.PrintErrf("Warning: could not update .gitignore: %v\n", err)
-                        }
+	// Override with flags if provided
+	if o.provider != "" {
+		cfg.Environments["prod"] = config.Environment{
+			Provider: o.provider,
+			Path:     o.path,
+			Region:   o.region,
+		}
+		if o.file != "" {
+			env := cfg.Environments["prod"]
+			env.File = o.file
+			cfg.Environments["prod"] = env
+		}
+	}
 
-                        cmd.Printf("Created %s\n", config.ConfigFileName)
-                        return nil
-                },
-        }
+	data, err := yaml.Marshal(&cfg)
+	if err != nil {
+		return fmt.Errorf("init: marshal config: %w", err)
+	}
 
-        cmd.Flags().StringVar(&provider, "provider", "aws", "secret provider (aws, local)")
-        cmd.Flags().StringVar(&path, "path", "", "secret path prefix (aws provider)")
-        cmd.Flags().StringVar(&region, "region", "", "cloud region (aws provider)")
-        cmd.Flags().StringVar(&file, "file", "", "local file path (local provider)")
-        cmd.Flags().BoolVar(&force, "force", false, "overwrite existing .skret.yaml")
+	if err := os.WriteFile(cfgPath, data, 0o644); err != nil {
+		return fmt.Errorf("init: write config: %w", err)
+	}
 
-        return cmd
+	// Update .gitignore
+	gitignorePath := filepath.Join(cwd, ".gitignore")
+	if err := appendGitignore(gitignorePath); err != nil {
+		cmd.PrintErrf("Warning: could not update .gitignore: %v\n", err)
+	}
+
+	cmd.Printf("Created %s\n", config.ConfigFileName)
+	return nil
 }
 
 func appendGitignore(path string) error {
-        entries := []string{".secrets.*.yaml", ".secrets.*.yml"}
+	entries := []string{".secrets.*.yaml", ".secrets.*.yml"}
 
-        existing, _ := os.ReadFile(path)
-        content := string(existing)
+	existing, _ := os.ReadFile(path)
+	content := string(existing)
 
-        var toAdd []string
-        for _, entry := range entries {
-                if !strings.Contains(content, entry) {
-                        toAdd = append(toAdd, entry)
-                }
-        }
+	var toAdd []string
+	for _, entry := range entries {
+		if !strings.Contains(content, entry) {
+			toAdd = append(toAdd, entry)
+		}
+	}
 
-        if len(toAdd) == 0 {
-                return nil
-        }
+	if len(toAdd) == 0 {
+		return nil
+	}
 
-        f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
-        if err != nil {
-                return err
-        }
-        defer f.Close()
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
 
-        if len(content) > 0 && !strings.HasSuffix(content, "\n") {
-                f.WriteString("\n")
-        }
+	if len(content) > 0 && !strings.HasSuffix(content, "\n") {
+		f.WriteString("\n")
+	}
 
-        f.WriteString("\n# skret local provider files\n")
-        for _, entry := range toAdd {
-                f.WriteString(entry + "\n")
-        }
-        return nil
+	f.WriteString("\n# skret local provider files\n")
+	for _, entry := range toAdd {
+		f.WriteString(entry + "\n")
+	}
+	return nil
 }
