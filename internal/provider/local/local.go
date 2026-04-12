@@ -126,6 +126,13 @@ func (p *Provider) save() error {
 		os.Remove(tmpPath)
 		return fmt.Errorf("local: close temp: %w", err)
 	}
+
+	// SECURITY: Explicitly set permissions to 0600 before rename to prevent exposing secrets.
+	if err := os.Chmod(tmpPath, 0o600); err != nil {
+		os.Remove(tmpPath)
+		return fmt.Errorf("local: chmod: %w", err)
+	}
+
 	if err := os.Rename(tmpPath, p.filePath); err != nil {
 		os.Remove(tmpPath)
 		return fmt.Errorf("local: rename: %w", err)
