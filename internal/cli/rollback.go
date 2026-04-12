@@ -44,7 +44,11 @@ func newRollbackCmd(opts *GlobalOpts) *cobra.Command {
 			if !confirm && !force {
 				cmd.Printf("Rollback secret %q to version %d? [y/N] ", key, version)
 				reader := bufio.NewReader(os.Stdin)
-				answer, _ := reader.ReadString('\n')
+				answer, err := reader.ReadString('\n')
+				if err != nil {
+					cmd.Println("Cancelled.")
+					return nil
+				}
 				if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(answer)), "y") {
 					cmd.Println("Cancelled.")
 					return nil
