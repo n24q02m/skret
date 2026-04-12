@@ -40,6 +40,11 @@ func BuildEnv(secrets []*provider.Secret, existing []string, pathPrefix string, 
 	for i := 0; i < 10; i++ {
 		changed := false
 		for k, v := range secretVars {
+			// PERF: os.Expand allocates memory and iterates byte-by-byte.
+			// Checking for '$' first is significantly faster and avoids overhead for non-templated strings.
+			if !strings.Contains(v, "$") {
+				continue
+			}
 			newVal := os.Expand(v, func(ref string) string {
 				// 1. check existing environment variables (highest priority)
 				if val, ok := existingMap[ref]; ok {
