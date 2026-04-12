@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"os"
 	"strconv"
 
 	"github.com/n24q02m/skret/pkg/skret"
@@ -15,6 +16,10 @@ func newRollbackCmd(opts *GlobalOpts) *cobra.Command {
 		Short: "Restore a secret to a specific previous version",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if os.Getenv("SKRET_EXPERIMENTAL") != "1" {
+				return skret.NewError(skret.ExitValidationError, "rollback is experimental; set SKRET_EXPERIMENTAL=1 to enable", nil)
+			}
+
 			_, p, err := loadProvider(opts)
 			if err != nil {
 				return err

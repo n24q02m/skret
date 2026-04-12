@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"os"
 	"text/tabwriter"
 	"time"
 
@@ -18,6 +19,10 @@ func newHistoryCmd(opts *GlobalOpts) *cobra.Command {
 		Short: "View the version history of a secret",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if os.Getenv("SKRET_EXPERIMENTAL") != "1" {
+				return skret.NewError(skret.ExitValidationError, "history is experimental; set SKRET_EXPERIMENTAL=1 to enable", nil)
+			}
+
 			_, p, err := loadProvider(opts)
 			if err != nil {
 				return err
