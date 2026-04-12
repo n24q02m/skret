@@ -30,21 +30,22 @@ archives:
 checksum:
   name_template: "checksums.txt"
 
-brews:
-  - repository:
-      owner: n24q02m
-      name: homebrew-tap
-    homepage: "https://github.com/n24q02m/skret"
-    description: "Cloud-provider secret manager CLI wrapper"
-    license: "MIT"
-
-scoops:
-  - repository:
-      owner: n24q02m
-      name: scoop-bucket
-    homepage: "https://github.com/n24q02m/skret"
-    description: "Cloud-provider secret manager CLI wrapper"
-    license: MIT
+# brews/scoops disabled until tap/bucket repos are created
+# brews:
+#   - repository:
+#       owner: n24q02m
+#       name: homebrew-tap
+#     homepage: "https://github.com/n24q02m/skret"
+#     description: "Cloud-provider secret manager CLI wrapper"
+#     license: "MIT"
+#
+# scoops:
+#   - repository:
+#       owner: n24q02m
+#       name: scoop-bucket
+#     homepage: "https://github.com/n24q02m/skret"
+#     description: "Cloud-provider secret manager CLI wrapper"
+#     license: MIT
 
 dockers:
   - image_templates:
