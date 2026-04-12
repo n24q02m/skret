@@ -32,7 +32,7 @@ func TestCLI_EdgeCases(t *testing.T) {
 	// 1. Get: JSON output
 	out, err := executeCmd("get", "DATABASE_URL", "--json")
 	require.NoError(t, err)
-	assert.Contains(t, out, `"key": "DATABASE_URL"`)
+	assert.Contains(t, out, "key\": \"DATABASE_URL")
 
 	// 2. Get: Plain output
 	out, err = executeCmd("get", "DATABASE_URL", "--plain")
@@ -70,30 +70,31 @@ func TestCLI_EdgeCases(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "DOPPLER_TOKEN")
 
-	// 9. Sync: github error missing repo
+	// 9. Sync: github error missing token
+	os.Unsetenv("GITHUB_TOKEN")
+	_, err = executeCmd("sync", "--to=github")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "GITHUB_TOKEN env var required")
+
+	// 10. Sync: github error missing repo
+	os.Setenv("GITHUB_TOKEN", "dummy")
+	defer os.Unsetenv("GITHUB_TOKEN")
 	_, err = executeCmd("sync", "--to=github")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "requires at least one repository")
 
-	// 9b. Sync: github error missing token (results in 404 from GitHub)
-	_, err = executeCmd("sync", "--to=github", "--github-repo=owner/repo")
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "API returned 404")
-
-	// 10. Sync: github error invalid format
-	os.Setenv("GITHUB_TOKEN", "dummy")
-	defer os.Unsetenv("GITHUB_TOKEN")
+	// 11. Sync: github error invalid format
 	_, err = executeCmd("sync", "--to=github", "--github-repo=invalidrepo")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid repo format")
 
-	// 11. Helpers failure: broken config
-	os.WriteFile(".skret.yaml", []byte(`version: "invalid"`), 0o644)
+	// 12. Helpers failure: broken config
+	os.WriteFile(".skret.yaml", []byte("version: \"invalid\""), 0o644)
 	_, err = executeCmd("list")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "load config failed")
 
-	// 12. Helpers missing config
+	// 13. Helpers missing config
 	os.Remove(".skret.yaml")
 	_, err = executeCmd("list")
 	assert.Error(t, err)
