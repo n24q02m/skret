@@ -73,7 +73,7 @@ func newInitCmd() *cobra.Command {
                                 return fmt.Errorf("init: marshal config: %w", err)
                         }
 
-                        if err := os.WriteFile(cfgPath, data, 0o644); err != nil {
+                        if err := os.WriteFile(cfgPath, data, 0o600); err != nil {
                                 return fmt.Errorf("init: write config: %w", err)
                         }
 
@@ -114,7 +114,7 @@ func appendGitignore(path string) error {
                 return nil
         }
 
-        f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+        f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
         if err != nil {
                 return err
         }
