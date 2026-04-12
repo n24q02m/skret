@@ -94,6 +94,10 @@ func (p *Provider) Rollback(_ context.Context, key string, version int64) error 
 	return provider.ErrCapabilityNotSupported
 }
 
+
+
+
+
 func (p *Provider) Close() error { return nil }
 
 func (p *Provider) load() error {
