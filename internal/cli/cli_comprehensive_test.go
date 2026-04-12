@@ -276,7 +276,7 @@ func TestRollbackCmd_ExperimentalEnabled_ParseError(t *testing.T) {
 	defer os.Chdir(origDir)
 
 	t.Setenv("SKRET_EXPERIMENTAL", "1")
-	_, err := executeCmd("rollback", "DATABASE_URL", "abc")
+	_, err := executeCmd("rollback", "DATABASE_URL", "abc", "--confirm")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid version number")
 }
