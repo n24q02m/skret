@@ -1,6 +1,6 @@
 module github.com/n24q02m/skret
 
-go 1.24
+go 1.26
 
 require (
 	github.com/aws/aws-sdk-go-v2 v1.41.5
@@ -31,7 +31,3 @@ require (
 	github.com/spf13/pflag v1.0.9 // indirect
 	golang.org/x/sys v0.43.0 // indirect
 )
-
-replace golang.org/x/crypto => golang.org/x/crypto v0.31.0
-
-replace golang.org/x/sys => golang.org/x/sys v0.28.0
