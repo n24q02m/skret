@@ -39,3 +39,4 @@ docs/.vitepress/cache/
 .jules/
 .code-review-graph/
 .claude-plugin/
+.wrangler/
