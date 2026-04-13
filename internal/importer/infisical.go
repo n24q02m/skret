@@ -44,7 +44,7 @@ func (i *InfisicalImporter) Import(ctx context.Context) ([]ImportedSecret, error
 	if err != nil {
 		return nil, fmt.Errorf("infisical: request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
