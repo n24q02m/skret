@@ -1,0 +1,50 @@
+# Git
+.git
+.github
+
+# IDE
+.vscode
+.idea
+
+# Build artifacts (goreleaser provides the binary)
+dist/
+*.exe
+*.dll
+*.so
+coverage.out
+
+# Go build cache
+vendor/
+
+# Docs (not needed in runtime image)
+docs/
+
+# Dev configs
+.editorconfig
+.gitattributes
+.gitignore
+.mise.toml
+.pre-commit-config.yaml
+.pr_agent.toml
+.golangci.yaml
+.goreleaser.yaml
+.coderabbit.yaml
+renovate.json
+semantic-release.toml
+docker-compose.yml
+Dockerfile
+patch.py
+patch_aws_interface.ps1
+
+# Markdown (exclude all except README)
+*.md
+!README.md
+
+# Agent / review tool artifacts
+.jules/
+.code-review-graph/
+.claude-plugin/
+
+# Local dev
+scripts/
+tests/
