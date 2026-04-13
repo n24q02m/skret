@@ -25,6 +25,7 @@ export default defineConfig({
       {
         text: 'Providers',
         items: [
+          { text: 'Comparison & Ranking', link: '/providers/comparison' },
           { text: 'AWS SSM', link: '/providers/aws' },
           { text: 'Local YAML', link: '/providers/local' }
         ]

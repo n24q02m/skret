@@ -916,38 +916,49 @@ cosign = "latest"
 
 ## 13. Future roadmap
 
+> **Amended 2026-04-12** based on `2026-04-12-secrets-provider-comparison.md` research. Provider priority re-ordered by cost-at-scale + feature fit. Cloudflare Workers Secrets removed as a provider candidate (structural incompatibility with external CLI reads — both Workers Secrets and Secrets Store only expose plaintext inside the Worker runtime, never via API).
+
 ### v0.2 (month 2)
 
-- **GCP Secret Manager provider** (second cloud validates abstraction).
+- **`skret auth <provider>` command** (see `2026-04-12-skret-auth-design.md`): native auth for AWS SSO, Doppler OAuth, Infisical browser login; zero external CLI dependencies.
+- **OCI Vault provider** (promoted from v0.5): $0/month at scale, best rotation story, 25 KB payload, user already has OCI tenancy.
 - **`skret gen` command**: generate secret values with patterns (UUIDs, random strings, passwords with complexity rules).
 - **`skret diff` command**: compare two paths/envs side-by-side.
 - **Shell completions**: bash, zsh, fish, PowerShell.
 
 ### v0.3 (month 3)
 
-- **Cloudflare Workers Secrets provider**.
-- **`skret rotate` command**: trigger rotation workflow (emit webhook, update value, verify downstream).
-- **`skret audit` command**: query AWS CloudTrail for recent access logs.
+- **Azure Key Vault provider** (promoted from v0.4): ~$0.09/month at scale, unlimited secrets, 25 KB payload, excellent Go SDK, Azure AD / Managed Identity integration for multi-cloud workloads.
+- **`skret rotate` command**: trigger rotation workflow (emit webhook, update value, verify downstream). Leverages OCI Vault's 4-step rotation as the reference implementation.
+- **`skret audit` command**: query AWS CloudTrail / OCI Audit / Azure Monitor for recent access logs across configured backends.
 - **`skret init --template` expansion**: more templates (Kubernetes, Terraform, Serverless).
 
 ### v0.4 (month 4)
 
-- **Azure Key Vault provider**.
+- **GCP Secret Manager provider** (demoted from v0.2): $20/month at scale — ship for GCP-native workloads parity, not primary recommendation.
 - **Secret references & templates**: `DATABASE_URL: "postgres://${DB_USER}:${DB_PASS}@${DB_HOST}"` resolved at read time.
 - **Branch configs**: environments inherit from parent configs (like Doppler's branching).
+- **Per-secret backend routing**: `overrides:` block in `.skret.yaml` routes specific large secrets (TLS certs, service-account JSON) to a backend that handles them (e.g. OCI Vault) while the rest stay on the default (e.g. SSM Standard).
 
 ### v0.5 (month 5)
 
-- **OCI Vault provider**.
+- **Managed rotation integration**: AWS Secrets Manager opt-in for RDS/Redshift managed rotation; wire OCI Vault 4-step rotation into the skret rotation framework.
 - **Dynamic secrets**: time-limited credentials (Vault-style), starting with database credentials.
-- **History/rollback**: `skret history <KEY>`, `skret rollback <KEY> --to-version=3`.
+- **History/rollback** (if not promoted earlier from v0.1 experimental gate): `skret history <KEY>`, `skret rollback <KEY> --to-version=3`.
+- **`skret cost estimate` command**: project monthly cost from current backend config + secret inventory. Warn on Secrets Manager misuse, over-replicated GCP SM, unnecessary SSM Advanced.
 
 ### v1.0 (month 6)
 
 - Stable API (`pkg/skret` backward-compatible from here).
-- Full 5-provider parity (AWS, GCP, CF, Azure, OCI).
+- Full 4-provider parity (AWS SSM + Secrets Manager, OCI Vault, Azure Key Vault, GCP Secret Manager).
 - Team features: personal vs shared secrets (namespaces), access grants.
 - Webhook support on secret changes.
+- **HashiCorp Vault provider** (optional): self-hosted alternative for users who require zero cloud lock-in.
+
+### Explicitly rejected
+
+- **Cloudflare Workers Secrets**: scoped to single Worker, no external API for plaintext reads. Skret's use case (CLI + CI/CD consumption) is architecturally impossible.
+- **Cloudflare Secrets Store**: 100-secret/account cap, 1024-byte value cap, API returns metadata only. Explicitly documented: *"Once a secret is added to the Secrets Store, it can no longer be decrypted or accessed via API or on the dashboard."* Re-evaluate only if CF adds an account-owner plaintext read API.
 
 ---
 
