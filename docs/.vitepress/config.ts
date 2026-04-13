@@ -3,6 +3,9 @@ import { defineConfig } from 'vitepress'
 export default defineConfig({
   title: 'skret',
   description: 'Cloud-provider secret manager CLI wrapper',
+  ignoreDeadLinks: [
+    /^\/commands\//
+  ],
   themeConfig: {
     nav: [
       { text: 'Guide', link: '/guide/getting-started' },

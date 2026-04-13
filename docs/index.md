@@ -21,5 +21,5 @@ features:
   - title: Import & Sync
     details: Migrate from Doppler, Infisical, or dotenv. Sync to GitHub Actions.
   - title: env Injection
-    details: "skret run -- your-command" injects secrets as environment variables.
+    details: '`skret run -- your-command` injects secrets as environment variables.'
 ---
