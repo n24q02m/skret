@@ -117,6 +117,14 @@ func (p *Provider) save() error {
 	}
 	tmpPath := tmp.Name()
 
+	// SECURITY: Ensure restrictive permissions across all OSes as defense-in-depth.
+	// Using tmp.Chmod instead of os.Chmod prevents TOCTOU vulnerabilities.
+	if err := tmp.Chmod(0o600); err != nil {
+		tmp.Close()
+		os.Remove(tmpPath)
+		return fmt.Errorf("local: chmod temp: %w", err)
+	}
+
 	if _, err := tmp.Write(raw); err != nil {
 		tmp.Close()
 		os.Remove(tmpPath)
