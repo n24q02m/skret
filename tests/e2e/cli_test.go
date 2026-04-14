@@ -21,7 +21,7 @@ func TestMain(m *testing.M) {
 		panic("build failed: " + string(out))
 	}
 	code := m.Run()
-	os.RemoveAll(tmp)
+	_ = os.RemoveAll(tmp)
 	os.Exit(code)
 }
 
