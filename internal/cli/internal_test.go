@@ -691,4 +691,13 @@ func TestPrintSecrets_Table(t *testing.T) {
 	assert.Contains(t, out, "VERSION")
 	assert.Contains(t, out, "A")
 	assert.Contains(t, out, "3")
+
+	buf.Reset()
+	printSecrets(cmd, secrets, "table", true)
+	out2 := buf.String()
+	assert.Contains(t, out2, "KEY")
+	assert.Contains(t, out2, "VERSION")
+	assert.Contains(t, out2, "VALUE")
+	assert.Contains(t, out2, "A")
+	assert.Contains(t, out2, "val_a")
 }
