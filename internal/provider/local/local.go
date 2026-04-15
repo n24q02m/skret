@@ -123,7 +123,7 @@ func (p *Provider) save() error {
 		return fmt.Errorf("local: write temp: %w", err)
 	}
 	if err := tmp.Chmod(0o600); err != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		os.Remove(tmpPath)
 		return fmt.Errorf("local: chmod temp: %w", err)
 	}

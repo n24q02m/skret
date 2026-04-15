@@ -42,7 +42,7 @@ func (d *DotenvSyncer) Sync(_ context.Context, secrets []*provider.Secret) error
 	}
 
 	if err := tmp.Chmod(0o600); err != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		os.Remove(tmpPath)
 		return fmt.Errorf("dotenv-sync: chmod: %w", err)
 	}
