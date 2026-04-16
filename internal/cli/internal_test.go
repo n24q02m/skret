@@ -528,7 +528,7 @@ func TestPrintSecrets_JSONWithValues(t *testing.T) {
 		{Key: "B", Value: "val_b", Version: 2},
 	}
 
-	printSecrets(cmd, secrets, "json", true)
+	require.NoError(t, printSecrets(cmd, secrets, "json", true))
 	out := buf.String()
 	assert.Contains(t, out, `"value": "val_a"`)
 	assert.Contains(t, out, `"value": "val_b"`)
@@ -543,7 +543,7 @@ func TestPrintSecrets_JSONWithoutValues(t *testing.T) {
 		{Key: "A", Value: "val_a", Version: 1},
 	}
 
-	printSecrets(cmd, secrets, "json", false)
+	require.NoError(t, printSecrets(cmd, secrets, "json", false))
 	out := buf.String()
 	assert.Contains(t, out, `"key": "A"`)
 	assert.NotContains(t, out, `"value"`)
@@ -685,7 +685,7 @@ func TestPrintSecrets_Table(t *testing.T) {
 		{Key: "A", Value: "val_a", Version: 3},
 	}
 
-	printSecrets(cmd, secrets, "table", false)
+	require.NoError(t, printSecrets(cmd, secrets, "table", false))
 	out := buf.String()
 	assert.Contains(t, out, "KEY")
 	assert.Contains(t, out, "VERSION")

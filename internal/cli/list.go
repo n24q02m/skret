@@ -47,8 +47,7 @@ func newListCmd(opts *GlobalOpts) *cobra.Command {
 			}
 
 			secrets = filterSecrets(secrets, listPath, recursive)
-			printSecrets(cmd, secrets, format, values)
-			return nil
+			return printSecrets(cmd, secrets, format, values)
 		},
 	}
 
@@ -79,7 +78,7 @@ func filterSecrets(secrets []*provider.Secret, listPath string, recursive bool) 
 	return filtered
 }
 
-func printSecrets(cmd *cobra.Command, secrets []*provider.Secret, format string, values bool) {
+func printSecrets(cmd *cobra.Command, secrets []*provider.Secret, format string, values bool) error {
 	switch format {
 	case "json":
 		items := make([]map[string]any, 0, len(secrets))
@@ -90,8 +89,12 @@ func printSecrets(cmd *cobra.Command, secrets []*provider.Secret, format string,
 			}
 			items = append(items, item)
 		}
-		data, _ := json.MarshalIndent(items, "", "  ")
+		data, err := json.MarshalIndent(items, "", "  ")
+		if err != nil {
+			return skret.NewError(skret.ExitGenericError, "list: json marshal failed", err)
+		}
 		cmd.Println(string(data))
+		return nil
 	default:
 		w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
 		fmt.Fprintln(w, "KEY\tVERSION")
@@ -99,5 +102,6 @@ func printSecrets(cmd *cobra.Command, secrets []*provider.Secret, format string,
 			fmt.Fprintf(w, "%s\t%d\n", s.Key, s.Version)
 		}
 		w.Flush()
+		return nil
 	}
 }
