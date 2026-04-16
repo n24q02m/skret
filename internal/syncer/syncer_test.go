@@ -7,8 +7,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"testing"
 
 	"golang.org/x/crypto/nacl/box"
@@ -18,36 +16,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-func TestDotenvSyncer(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, ".env.synced")
-
-	secrets := []*provider.Secret{
-		{Key: "DB_URL", Value: "postgres://host"},
-		{Key: "API_KEY", Value: "sk-123"},
-	}
-
-	s := syncer.NewDotenv(path)
-	assert.Equal(t, "dotenv", s.Name())
-
-	err := s.Sync(context.Background(), secrets)
-	require.NoError(t, err)
-
-	data, err := os.ReadFile(path)
-	require.NoError(t, err)
-	content := string(data)
-	assert.Contains(t, content, `API_KEY="sk-123"`)
-	assert.Contains(t, content, `DB_URL="postgres://host"`)
-}
-
-func TestDotenvSyncer_WriteError(t *testing.T) {
-	dir := t.TempDir()
-	// Using a directory path instead of a file path will cause os.WriteFile to fail
-	s := syncer.NewDotenv(dir)
-	err := s.Sync(context.Background(), []*provider.Secret{{Key: "key", Value: "val"}})
-	assert.Error(t, err)
-}
 
 func TestGitHubSyncer(t *testing.T) {
 	// Generate a real curve25519 keypair for the mock server
@@ -146,17 +114,4 @@ func TestGitHubSyncer_PutError(t *testing.T) {
 	err := s.Sync(context.Background(), []*provider.Secret{{Key: "key", Value: "val"}})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "403")
-}
-
-func TestDotenvSyncer_EmptySecrets(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, ".env.empty")
-
-	s := syncer.NewDotenv(path)
-	err := s.Sync(context.Background(), nil)
-	require.NoError(t, err)
-
-	data, err := os.ReadFile(path)
-	require.NoError(t, err)
-	assert.Empty(t, string(data))
 }

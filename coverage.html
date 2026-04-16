@@ -1,0 +1,336 @@
+
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+		<title>syncer: Go Coverage Report</title>
+		<style>
+			body {
+				background: black;
+				color: rgb(80, 80, 80);
+			}
+			body, pre, #legend span {
+				font-family: Menlo, monospace;
+				font-weight: bold;
+			}
+			#topbar {
+				background: black;
+				position: fixed;
+				top: 0; left: 0; right: 0;
+				height: 42px;
+				border-bottom: 1px solid rgb(80, 80, 80);
+			}
+			#content {
+				margin-top: 50px;
+			}
+			#nav, #legend {
+				float: left;
+				margin-left: 10px;
+			}
+			#legend {
+				margin-top: 12px;
+			}
+			#nav {
+				margin-top: 10px;
+			}
+			#legend span {
+				margin: 0 5px;
+			}
+			.cov0 { color: rgb(192, 0, 0) }
+.cov1 { color: rgb(128, 128, 128) }
+.cov2 { color: rgb(116, 140, 131) }
+.cov3 { color: rgb(104, 152, 134) }
+.cov4 { color: rgb(92, 164, 137) }
+.cov5 { color: rgb(80, 176, 140) }
+.cov6 { color: rgb(68, 188, 143) }
+.cov7 { color: rgb(56, 200, 146) }
+.cov8 { color: rgb(44, 212, 149) }
+.cov9 { color: rgb(32, 224, 152) }
+.cov10 { color: rgb(20, 236, 155) }
+
+		</style>
+	</head>
+	<body>
+		<div id="topbar">
+			<div id="nav">
+				<select id="files">
+
+				<option value="file0">github.com/n24q02m/skret/internal/syncer/dotenv.go (66.7%)</option>
+
+				<option value="file1">github.com/n24q02m/skret/internal/syncer/github.go (90.5%)</option>
+
+				</select>
+			</div>
+			<div id="legend">
+				<span>not tracked</span>
+
+				<span class="cov0">not covered</span>
+				<span class="cov8">covered</span>
+
+			</div>
+		</div>
+		<div id="content">
+
+		<pre class="file" id="file0" style="display: none">package syncer
+
+import (
+        "context"
+        "fmt"
+        "os"
+        "path/filepath"
+        "sort"
+
+        "github.com/n24q02m/skret/internal/provider"
+)
+
+// DotenvSyncer writes secrets to a dotenv file.
+type DotenvSyncer struct {
+        filePath string
+}
+
+// NewDotenv creates a dotenv file syncer.
+func NewDotenv(filePath string) Syncer <span class="cov8" title="1">{
+        return &amp;DotenvSyncer{filePath: filePath}
+}</span>
+
+func (d *DotenvSyncer) Name() string <span class="cov8" title="1">{ return "dotenv" }</span>
+
+func (d *DotenvSyncer) Sync(_ context.Context, secrets []*provider.Secret) error <span class="cov8" title="1">{
+        sort.Slice(secrets, func(i, j int) bool </span><span class="cov8" title="1">{ return secrets[i].Key &lt; secrets[j].Key }</span>)
+
+        // Atomic write
+        <span class="cov8" title="1">dir := filepath.Dir(d.filePath)
+        tmp, err := os.CreateTemp(dir, ".skret-sync-*.env")
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("dotenv-sync: create temp: %w", err)
+        }</span>
+        <span class="cov8" title="1">tmpPath := tmp.Name()
+
+        for _, s := range secrets </span><span class="cov8" title="1">{
+                if _, err := fmt.Fprintf(tmp, "%s=%q\n", s.Key, s.Value); err != nil </span><span class="cov0" title="0">{
+                        tmp.Close()
+                        os.Remove(tmpPath)
+                        return fmt.Errorf("dotenv-sync: write: %w", err)
+                }</span>
+        }
+
+        <span class="cov8" title="1">if err := tmp.Close(); err != nil </span><span class="cov0" title="0">{
+                os.Remove(tmpPath)
+                return fmt.Errorf("dotenv-sync: close: %w", err)
+        }</span>
+
+        <span class="cov8" title="1">if err := os.Chmod(tmpPath, 0o600); err != nil </span><span class="cov0" title="0">{
+                os.Remove(tmpPath)
+                return fmt.Errorf("dotenv-sync: chmod: %w", err)
+        }</span>
+
+        <span class="cov8" title="1">if err := os.Rename(tmpPath, d.filePath); err != nil </span><span class="cov8" title="1">{
+                os.Remove(tmpPath)
+                return fmt.Errorf("dotenv-sync: rename: %w", err)
+        }</span>
+
+        <span class="cov8" title="1">return nil</span>
+}
+</pre>
+
+		<pre class="file" id="file1" style="display: none">package syncer
+
+import (
+        "context"
+        "crypto/rand"
+        "encoding/base64"
+        "encoding/json"
+        "fmt"
+        "io"
+        "net/http"
+        "strings"
+        "sync"
+        "time"
+
+        "golang.org/x/crypto/nacl/box"
+
+        "github.com/n24q02m/skret/internal/provider"
+)
+
+// GitHubSyncer pushes secrets to GitHub Actions repository secrets.
+type GitHubSyncer struct {
+        owner      string
+        repo       string
+        token      string
+        baseURL    string
+        httpClient *http.Client
+}
+
+// NewGitHub creates a GitHub Actions secrets syncer.
+func NewGitHub(owner, repo, token, baseURL string) Syncer <span class="cov8" title="1">{
+        if baseURL == "" </span><span class="cov8" title="1">{
+                baseURL = "https://api.github.com"
+        }</span>
+        <span class="cov8" title="1">return &amp;GitHubSyncer{
+                owner:   owner,
+                repo:    repo,
+                token:   token,
+                baseURL: baseURL,
+                httpClient: &amp;http.Client{
+                        Timeout: 30 * time.Second,
+                },
+        }</span>
+}
+
+func (g *GitHubSyncer) Name() string <span class="cov8" title="1">{ return "github" }</span>
+
+func (g *GitHubSyncer) Sync(ctx context.Context, secrets []*provider.Secret) error <span class="cov8" title="1">{
+        pubKey, keyID, err := g.getPublicKey(ctx)
+        if err != nil </span><span class="cov8" title="1">{
+                return err
+        }</span>
+
+        <span class="cov8" title="1">const maxConcurrency = 10
+        sem := make(chan struct{}, maxConcurrency)
+        var wg sync.WaitGroup
+        errCh := make(chan error, len(secrets))
+
+        for _, s := range secrets </span><span class="cov8" title="1">{
+                wg.Add(1)
+                go func(s *provider.Secret) </span><span class="cov8" title="1">{
+                        defer wg.Done()
+
+                        select </span>{
+                        case sem &lt;- struct{}{}:<span class="cov8" title="1">
+                                defer func() </span><span class="cov8" title="1">{ &lt;-sem }</span>()
+                        case &lt;-ctx.Done():<span class="cov0" title="0">
+                                errCh &lt;- ctx.Err()
+                                return</span>
+                        }
+
+                        <span class="cov8" title="1">if err := g.putSecret(ctx, s.Key, s.Value, pubKey, keyID); err != nil </span><span class="cov8" title="1">{
+                                errCh &lt;- fmt.Errorf("github: set %q: %w", s.Key, err)
+                        }</span>
+                }(s)
+        }
+
+        <span class="cov8" title="1">wg.Wait()
+        close(errCh)
+
+        select </span>{
+        case err := &lt;-errCh:<span class="cov8" title="1">
+                return err</span>
+        default:<span class="cov0" title="0">
+                return nil</span>
+        }
+}
+
+func (g *GitHubSyncer) getPublicKey(ctx context.Context) (string, string, error) <span class="cov8" title="1">{
+        url := fmt.Sprintf("%s/repos/%s/%s/actions/secrets/public-key", g.baseURL, g.owner, g.repo)
+
+        req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+        if err != nil </span><span class="cov0" title="0">{
+                return "", "", fmt.Errorf("github: create request: %w", err)
+        }</span>
+        <span class="cov8" title="1">req.Header.Set("Authorization", "Bearer "+g.token)
+        req.Header.Set("Accept", "application/vnd.github+json")
+
+        resp, err := g.httpClient.Do(req)
+        if err != nil </span><span class="cov8" title="1">{
+                return "", "", fmt.Errorf("github: request: %w", err)
+        }</span>
+        <span class="cov8" title="1">defer resp.Body.Close()
+
+        if resp.StatusCode != http.StatusOK </span><span class="cov8" title="1">{
+                body, _ := io.ReadAll(resp.Body)
+                return "", "", fmt.Errorf("github: API returned %d: %s", resp.StatusCode, string(body))
+        }</span>
+
+        <span class="cov8" title="1">var result struct {
+                KeyID string `json:"key_id"`
+                Key   string `json:"key"`
+        }
+        if err := json.NewDecoder(resp.Body).Decode(&amp;result); err != nil </span><span class="cov8" title="1">{
+                return "", "", fmt.Errorf("github: decode key: %w", err)
+        }</span>
+        <span class="cov8" title="1">return result.Key, result.KeyID, nil</span>
+}
+
+func (g *GitHubSyncer) putSecret(ctx context.Context, name, value, pubKeyB64, keyID string) error <span class="cov8" title="1">{
+        encValue, err := sealSecret(value, pubKeyB64)
+        if err != nil </span><span class="cov8" title="1">{
+                return fmt.Errorf("github: encrypt %q: %w", name, err)
+        }</span>
+
+        <span class="cov8" title="1">url := fmt.Sprintf("%s/repos/%s/%s/actions/secrets/%s", g.baseURL, g.owner, g.repo, name)
+
+        body := fmt.Sprintf(`{"encrypted_value":"%s","key_id":"%s"}`, encValue, keyID)
+        req, err := http.NewRequestWithContext(ctx, "PUT", url, strings.NewReader(body))
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("github: create request: %w", err)
+        }</span>
+        <span class="cov8" title="1">req.Header.Set("Authorization", "Bearer "+g.token)
+        req.Header.Set("Accept", "application/vnd.github+json")
+        req.Header.Set("Content-Type", "application/json")
+
+        resp, err := g.httpClient.Do(req)
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("github: request: %w", err)
+        }</span>
+        <span class="cov8" title="1">defer resp.Body.Close()
+
+        if resp.StatusCode != http.StatusCreated &amp;&amp; resp.StatusCode != http.StatusNoContent </span><span class="cov8" title="1">{
+                respBody, _ := io.ReadAll(resp.Body)
+                return fmt.Errorf("github: API returned %d: %s", resp.StatusCode, string(respBody))
+        }</span>
+        <span class="cov8" title="1">return nil</span>
+}
+
+// sealSecret encrypts a secret using NaCl sealed box (curve25519 + xsalsa20-poly1305).
+// This matches GitHub's required encryption format for Actions secrets.
+func sealSecret(secret, recipientPubKeyB64 string) (string, error) <span class="cov8" title="1">{
+        pubKeyBytes, err := base64.StdEncoding.DecodeString(recipientPubKeyB64)
+        if err != nil </span><span class="cov8" title="1">{
+                return "", fmt.Errorf("decode public key: %w", err)
+        }</span>
+        <span class="cov8" title="1">if len(pubKeyBytes) != 32 </span><span class="cov8" title="1">{
+                return "", fmt.Errorf("invalid public key length: %d (expected 32)", len(pubKeyBytes))
+        }</span>
+
+        <span class="cov8" title="1">var recipientKey [32]byte
+        copy(recipientKey[:], pubKeyBytes)
+
+        sealed, err := box.SealAnonymous(nil, []byte(secret), &amp;recipientKey, rand.Reader)
+        if err != nil </span><span class="cov0" title="0">{
+                return "", fmt.Errorf("seal: %w", err)
+        }</span>
+
+        <span class="cov8" title="1">return base64.StdEncoding.EncodeToString(sealed), nil</span>
+}
+</pre>
+
+		</div>
+	</body>
+	<script>
+	(function() {
+		var files = document.getElementById('files');
+		var visible;
+		files.addEventListener('change', onChange, false);
+		function select(part) {
+			if (visible)
+				visible.style.display = 'none';
+			visible = document.getElementById(part);
+			if (!visible)
+				return;
+			files.value = part;
+			visible.style.display = 'block';
+			location.hash = part;
+		}
+		function onChange() {
+			select(files.value);
+			window.scrollTo(0, 0);
+		}
+		if (location.hash != "") {
+			select(location.hash.substr(1));
+		}
+		if (!visible) {
+			select("file0");
+		}
+	})();
+	</script>
+</html>
