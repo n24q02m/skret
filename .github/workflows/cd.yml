@@ -1,19 +1,5 @@
 name: CD
 
-# CD handles:
-#  - Release on workflow_dispatch (semantic-release -> tag -> goreleaser -> publish)
-#  - Tag push -> goreleaser publish (still works for manual `git tag v*` flow)
-#  - Docs deploy on push to main when docs/** changes (Cloudflare Pages)
-#
-# Secrets required:
-#   GITHUB_TOKEN             - built-in
-#   CLOUDFLARE_API_TOKEN     - CF Pages deploy (scope: Pages:Edit)
-#   CLOUDFLARE_ACCOUNT_ID    - CF account ID
-#
-# TODO(v0.1.0-GA): migrate CLOUDFLARE_* from GitHub Secrets to AWS SSM
-# under /skret/ci/* and use `skret sync --to=github` to round-trip back.
-# Until then, set via `gh secret set` as a bootstrap step (one-time).
-
 on:
   push:
     branches: [main]
@@ -42,6 +28,9 @@ permissions:
 concurrency:
   group: cd-${{ github.ref }}
   cancel-in-progress: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   # ==================== Release (workflow_dispatch) ====================
@@ -74,9 +63,6 @@ jobs:
           tag: ${{ steps.release.outputs.tag }}
 
   # ==================== Goreleaser ====================
-  # Triggered by:
-  #  - tag push (git tag v* && git push --tags)
-  #  - semantic-release output (workflow_dispatch flow above)
   goreleaser:
     name: Build and Publish Binaries
     if: |
