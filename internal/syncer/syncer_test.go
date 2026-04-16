@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -159,4 +160,63 @@ func TestDotenvSyncer_EmptySecrets(t *testing.T) {
 	data, err := os.ReadFile(path)
 	require.NoError(t, err)
 	assert.Empty(t, string(data))
+}
+
+func TestGitHubSyncer_ReadBodyError_GetPublicKey(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hj, ok := w.(http.Hijacker)
+		if !ok {
+			t.Log("webserver doesn't support hijacking")
+			return
+		}
+		conn, _, err := hj.Hijack()
+		if err != nil {
+			t.Log(err)
+			return
+		}
+		// Write the response line and headers, but no body (or incomplete body)
+		fmt.Fprintf(conn, "HTTP/1.1 400 Bad Request\r\nContent-Length: 10\r\n\r\n")
+		conn.Close()
+	}))
+	defer srv.Close()
+
+	s := syncer.NewGitHub("owner", "repo", "token", srv.URL)
+	err := s.Sync(context.Background(), []*provider.Secret{{Key: "key", Value: "val"}})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to read body")
+}
+
+func TestGitHubSyncer_ReadBodyError_PutSecret(t *testing.T) {
+	pubKey, _, err := box.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	pubKeyB64 := base64.StdEncoding.EncodeToString(pubKey[:])
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "GET" {
+			json.NewEncoder(w).Encode(map[string]string{
+				"key_id": "key-123",
+				"key":    pubKeyB64,
+			})
+			return
+		}
+
+		hj, ok := w.(http.Hijacker)
+		if !ok {
+			t.Log("webserver doesn't support hijacking")
+			return
+		}
+		conn, _, err := hj.Hijack()
+		if err != nil {
+			t.Log(err)
+			return
+		}
+		fmt.Fprintf(conn, "HTTP/1.1 400 Bad Request\r\nContent-Length: 10\r\n\r\n")
+		conn.Close()
+	}))
+	defer srv.Close()
+
+	s := syncer.NewGitHub("owner", "repo", "token", srv.URL)
+	err = s.Sync(context.Background(), []*provider.Secret{{Key: "key", Value: "val"}})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to read body")
 }
