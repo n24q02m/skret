@@ -86,7 +86,7 @@ func TestRenderHistory_WithEntries(t *testing.T) {
 	out := buf.String()
 	assert.Contains(t, out, "VERSION")
 	assert.Contains(t, out, "post...t/db") // masked
-	assert.Contains(t, out, "***")          // "short" is <=8 chars -> ***
+	assert.Contains(t, out, "***")         // "short" is <=8 chars -> ***
 	assert.Contains(t, out, "admin")
 	assert.Contains(t, out, "2026-04-01")
 }
@@ -191,7 +191,7 @@ func TestPrintEnvPairs_DotenvDefault(t *testing.T) {
 
 func TestFilterSecrets_NonRecursive(t *testing.T) {
 	secrets := []*provider.Secret{
-		{Key: "/app/DB"},          // 2 slashes
+		{Key: "/app/DB"},         // 2 slashes
 		{Key: "/app/nested/KEY"}, // 3 slashes
 	}
 
@@ -211,9 +211,9 @@ func TestFilterSecrets_NonRecursive(t *testing.T) {
 
 	// Verify deeper filtering
 	deepSecrets := []*provider.Secret{
-		{Key: "/a/b/c"},     // 3 slashes
-		{Key: "/a/b/c/d"},   // 4 slashes
-		{Key: "/a/b"},       // 2 slashes
+		{Key: "/a/b/c"},   // 3 slashes
+		{Key: "/a/b/c/d"}, // 4 slashes
+		{Key: "/a/b"},     // 2 slashes
 	}
 	// listPath="/a/b/" -> strings.Count = 3, ends with "/" -> level stays 3
 	filtered3 := filterSecrets(deepSecrets, "/a/b/", false)
