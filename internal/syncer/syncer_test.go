@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"golang.org/x/crypto/nacl/box"
@@ -55,6 +56,7 @@ func TestGitHubSyncer(t *testing.T) {
 	require.NoError(t, err)
 	pubKeyB64 := base64.StdEncoding.EncodeToString(pubKey[:])
 
+	var mu sync.Mutex
 	var putCalls int
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
@@ -64,7 +66,9 @@ func TestGitHubSyncer(t *testing.T) {
 				"key":    pubKeyB64,
 			})
 		case r.Method == "PUT":
+			mu.Lock()
 			putCalls++
+			mu.Unlock()
 			w.WriteHeader(http.StatusCreated)
 		default:
 			w.WriteHeader(http.StatusNotFound)
@@ -82,6 +86,42 @@ func TestGitHubSyncer(t *testing.T) {
 
 	err = s.Sync(context.Background(), secrets)
 	require.NoError(t, err)
+	assert.Equal(t, 2, putCalls)
+}
+
+func TestGitHubSyncer_Deduplication(t *testing.T) {
+	pubKey, _, err := box.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	pubKeyB64 := base64.StdEncoding.EncodeToString(pubKey[:])
+
+	var mu sync.Mutex
+	var putCalls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == "GET":
+			json.NewEncoder(w).Encode(map[string]string{
+				"key_id": "key-123",
+				"key":    pubKeyB64,
+			})
+		case r.Method == "PUT":
+			mu.Lock()
+			putCalls++
+			mu.Unlock()
+			w.WriteHeader(http.StatusCreated)
+		}
+	}))
+	defer srv.Close()
+
+	secrets := []*provider.Secret{
+		{Key: "DUP", Value: "v1"},
+		{Key: "DUP", Value: "v2"},
+		{Key: "UNIQUE", Value: "v3"},
+	}
+
+	s := syncer.NewGitHub("owner", "repo", "token", srv.URL)
+	err = s.Sync(context.Background(), secrets)
+	require.NoError(t, err)
+	// Should only be 2 PUT calls due to deduplication
 	assert.Equal(t, 2, putCalls)
 }
 

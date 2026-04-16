@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"golang.org/x/crypto/nacl/box"
@@ -122,17 +123,22 @@ func TestGitHubSyncer_MultipleSecrets_SingleKeyFetch(t *testing.T) {
 	require.NoError(t, err)
 	pubKeyB64 := base64.StdEncoding.EncodeToString(pubKey[:])
 
+	var mu sync.Mutex
 	var getKeyCalls, putCalls int
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == "GET" && strings.Contains(r.URL.Path, "public-key"):
+			mu.Lock()
 			getKeyCalls++
+			mu.Unlock()
 			json.NewEncoder(w).Encode(map[string]string{
 				"key_id": "key-123",
 				"key":    pubKeyB64,
 			})
 		case r.Method == "PUT":
+			mu.Lock()
 			putCalls++
+			mu.Unlock()
 			w.WriteHeader(http.StatusCreated)
 		default:
 			w.WriteHeader(http.StatusNotFound)
@@ -163,6 +169,7 @@ func TestGitHubSyncer_EmptySecrets(t *testing.T) {
 	require.NoError(t, err)
 	pubKeyB64 := base64.StdEncoding.EncodeToString(pubKey[:])
 
+	var mu sync.Mutex
 	var putCalls int
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "GET" {
@@ -172,7 +179,9 @@ func TestGitHubSyncer_EmptySecrets(t *testing.T) {
 			})
 			return
 		}
+		mu.Lock()
 		putCalls++
+		mu.Unlock()
 		w.WriteHeader(http.StatusCreated)
 	}))
 	defer srv.Close()
