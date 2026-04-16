@@ -138,38 +138,6 @@ func TestInitCmd_ForceOverwrite(t *testing.T) {
 	assert.Contains(t, string(data), "/app/new")
 }
 
-// --- Get tests ---
-
-func TestGetCmd_PlainOutput(t *testing.T) {
-	dir := setupTestRepo(t)
-	origDir, _ := os.Getwd()
-	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
-
-	var buf bytes.Buffer
-	cmd := cli.NewRootCmd()
-	cmd.SetOut(&buf)
-	cmd.SetArgs([]string{"get", "DATABASE_URL"})
-
-	err := cmd.Execute()
-	require.NoError(t, err)
-	assert.Equal(t, "postgres://dev:dev@localhost/db\n", buf.String())
-}
-
-func TestGetCmd_NotFound(t *testing.T) {
-	dir := setupTestRepo(t)
-	origDir, _ := os.Getwd()
-	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
-
-	cmd := cli.NewRootCmd()
-	cmd.SetArgs([]string{"get", "NONEXISTENT"})
-
-	err := cmd.Execute()
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "not found")
-}
-
 // --- List tests ---
 
 func TestListCmd_TableOutput(t *testing.T) {

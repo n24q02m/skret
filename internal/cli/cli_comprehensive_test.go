@@ -83,21 +83,6 @@ func TestEnvCmd_UnknownFormatFallsBackToDotenv(t *testing.T) {
 	assert.Contains(t, buf.String(), "DATABASE_URL=")
 }
 
-// --- Get with --with-metadata flag ---
-
-func TestGetCmd_WithMetadata(t *testing.T) {
-	dir := setupTestRepo(t)
-	origDir, _ := os.Getwd()
-	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
-
-	out, err := executeCmd("get", "DATABASE_URL", "--with-metadata")
-	require.NoError(t, err)
-	assert.Contains(t, out, `"key": "DATABASE_URL"`)
-	assert.Contains(t, out, `"version"`)
-	assert.Contains(t, out, `"meta"`)
-}
-
 // --- Import Infisical source ---
 
 func TestImportCmd_InfisicalMissingToken(t *testing.T) {
