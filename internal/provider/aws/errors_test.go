@@ -39,6 +39,21 @@ func TestMapError(t *testing.T) {
 			err:      errors.New("something went wrong"),
 			contains: "something went wrong",
 		},
+		{
+			name:     "SpecialCharactersInKey",
+			op:       "set",
+			key:      "my key with \"quotes\"",
+			err:      &ssmtypes.ParameterNotFound{},
+			wantErr:  provider.ErrNotFound,
+			contains: `"my key with \"quotes\""`,
+		},
+		{
+			name:     "WrappedError",
+			op:       "list",
+			key:      "/path/",
+			err:      errors.New("connection timeout"),
+			contains: "aws: list \"/path/\": connection timeout",
+		},
 	}
 
 	for _, tt := range tests {
@@ -51,7 +66,10 @@ func TestMapError(t *testing.T) {
 				assert.Contains(t, got.Error(), tt.contains)
 			}
 			assert.Contains(t, got.Error(), tt.op)
-			assert.Contains(t, got.Error(), tt.key)
+			// Check if key is contained (either raw or quoted by %q)
+			if tt.name != "SpecialCharactersInKey" {
+				assert.Contains(t, got.Error(), tt.key)
+			}
 		})
 	}
 }
