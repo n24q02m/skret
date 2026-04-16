@@ -1,5 +1,8 @@
 name: CD
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 # CD handles:
 #  - Release on workflow_dispatch (semantic-release -> tag -> goreleaser -> publish)
 #  - Tag push -> goreleaser publish (still works for manual `git tag v*` flow)
