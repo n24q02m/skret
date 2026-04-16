@@ -109,7 +109,10 @@ func (o *initOptions) run(cmd *cobra.Command) error {
 func appendGitignore(path string) error {
 	entries := []string{".secrets.*.yaml", ".secrets.*.yml"}
 
-	existing, _ := os.ReadFile(path)
+	existing, err := os.ReadFile(path)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
 	content := string(existing)
 
 	var toAdd []string
