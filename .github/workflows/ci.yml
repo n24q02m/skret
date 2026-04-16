@@ -11,6 +11,9 @@ permissions:
   contents: read
   pull-requests: read
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   pr-title:
     name: PR Title Lint
@@ -66,7 +69,7 @@ jobs:
           echo "Internal coverage: ${COVERAGE}%"
           if (( $(echo "$COVERAGE < 90" | bc -l) )); then
             echo "Internal coverage ${COVERAGE}% is below 90% threshold"
-            exit 1
+            return 1
           fi
       - name: Check pkg/skret coverage threshold
         if: matrix.os == 'ubuntu-latest'
@@ -75,7 +78,7 @@ jobs:
           echo "pkg/skret coverage: ${COVERAGE}%"
           if (( $(echo "$COVERAGE < 90" | bc -l) )); then
             echo "pkg/skret coverage ${COVERAGE}% is below 90% threshold"
-            exit 1
+            return 1
           fi
       - name: Run E2E tests
         run: go test -count=1 ./tests/e2e/...

@@ -43,6 +43,9 @@ concurrency:
   group: cd-${{ github.ref }}
   cancel-in-progress: false
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   # ==================== Release (workflow_dispatch) ====================
   release:
@@ -75,7 +78,7 @@ jobs:
 
   # ==================== Goreleaser ====================
   # Triggered by:
-  #  - tag push (git tag v* && git push --tags)
+  #  - tag push (git tag v* && git-push --tags)
   #  - semantic-release output (workflow_dispatch flow above)
   goreleaser:
     name: Build and Publish Binaries
