@@ -29,7 +29,7 @@ type ResolvedConfig struct {
 }
 
 // Resolve applies the precedence chain: CLI flags > env vars > config file > defaults.
-func Resolve(cfg *Config, opts ResolveOpts) (*ResolvedConfig, error) {
+func Resolve(cfg *Config, opts *ResolveOpts) (*ResolvedConfig, error) {
 	envName := firstNonEmpty(opts.Env, os.Getenv("SKRET_ENV"), cfg.DefaultEnv)
 	if envName == "" && len(cfg.Environments) == 1 {
 		for name := range cfg.Environments {

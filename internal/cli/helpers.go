@@ -15,12 +15,8 @@ import (
 // defaultRegistry returns the global provider registry with all built-in providers.
 func defaultRegistry() *provider.Registry {
 	reg := provider.NewRegistry()
-	reg.Register("local", func(cfg *config.ResolvedConfig) (provider.SecretProvider, error) {
-		return local.New(cfg)
-	})
-	reg.Register("aws", func(cfg *config.ResolvedConfig) (provider.SecretProvider, error) {
-		return skaws.New(cfg)
-	})
+	reg.Register("local", local.New)
+	reg.Register("aws", skaws.New)
 	return reg
 }
 
@@ -49,7 +45,7 @@ func loadProvider(opts *GlobalOpts) (*config.ResolvedConfig, provider.SecretProv
 		Profile:  opts.Profile,
 		File:     opts.File,
 	}
-	resolved, err := config.Resolve(cfg, resolveOpts)
+	resolved, err := config.Resolve(cfg, &resolveOpts)
 	if err != nil {
 		return nil, nil, skret.NewError(skret.ExitConfigError, "resolve config failed", err)
 	}

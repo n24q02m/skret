@@ -45,24 +45,24 @@ func helper() {
 	case "true":
 		binary, err := exec.LookPath("true")
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "lookpath failed: %v", err)
+			_, _ = fmt.Fprintf(os.Stderr, "lookpath failed: %v", err)
 			os.Exit(1)
 		}
-		Run(binary, []string{"true"}, os.Environ())
+		_ = Run(binary, []string{"true"}, os.Environ())
 	case "false":
 		binary, err := exec.LookPath("false")
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "lookpath failed: %v", err)
+			_, _ = fmt.Fprintf(os.Stderr, "lookpath failed: %v", err)
 			os.Exit(1)
 		}
-		Run(binary, []string{"false"}, os.Environ())
+		_ = Run(binary, []string{"false"}, os.Environ())
 	case "check_env":
 		if os.Getenv("TEST_VAR") == "true" {
 			binary, _ := exec.LookPath("true")
-			Run(binary, []string{"true"}, os.Environ())
+			_ = Run(binary, []string{"true"}, os.Environ())
 		} else {
 			binary, _ := exec.LookPath("false")
-			Run(binary, []string{"false"}, os.Environ())
+			_ = Run(binary, []string{"false"}, os.Environ())
 		}
 	}
 	os.Exit(2) // Should not be reached if Run succeeds

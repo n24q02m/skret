@@ -24,15 +24,17 @@ type mockProvider struct {
 	closeFunc      func() error
 }
 
-func (m *mockProvider) Name() string                        { return m.name }
-func (m *mockProvider) Capabilities() provider.Capabilities { return m.capabilities }
+func (m *mockProvider) Name() string { return m.name }
+func (m *mockProvider) Capabilities() provider.Capabilities {
+	return m.capabilities
+}
 func (m *mockProvider) Get(ctx context.Context, key string) (*provider.Secret, error) {
 	return m.getFunc(ctx, key)
 }
 func (m *mockProvider) List(ctx context.Context, pathPrefix string) ([]*provider.Secret, error) {
 	return m.listFunc(ctx, pathPrefix)
 }
-func (m *mockProvider) Set(ctx context.Context, key string, value string, meta provider.SecretMeta) error {
+func (m *mockProvider) Set(ctx context.Context, key, value string, meta provider.SecretMeta) error {
 	return m.setFunc(ctx, key, value, meta)
 }
 func (m *mockProvider) Delete(ctx context.Context, key string) error {
@@ -96,7 +98,7 @@ func TestClientMethods(t *testing.T) {
 	}
 
 	t.Run("Get", func(t *testing.T) {
-		mock.getFunc = func(ctx context.Context, key string) (*provider.Secret, error) {
+		mock.getFunc = func(_ context.Context, key string) (*provider.Secret, error) {
 			assert.Equal(t, "foo", key)
 			return &provider.Secret{Key: "foo", Value: "bar"}, nil
 		}
@@ -104,7 +106,7 @@ func TestClientMethods(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "bar", s.Value)
 
-		mock.getFunc = func(ctx context.Context, key string) (*provider.Secret, error) {
+		mock.getFunc = func(_ context.Context, _ string) (*provider.Secret, error) {
 			return nil, provider.ErrNotFound
 		}
 		_, err = client.Get(ctx, "missing")
@@ -113,7 +115,7 @@ func TestClientMethods(t *testing.T) {
 	})
 
 	t.Run("List", func(t *testing.T) {
-		mock.listFunc = func(ctx context.Context, pathPrefix string) ([]*provider.Secret, error) {
+		mock.listFunc = func(_ context.Context, pathPrefix string) ([]*provider.Secret, error) {
 			assert.Equal(t, "/test/", pathPrefix)
 			return []*provider.Secret{{Key: "k1", Value: "v1"}}, nil
 		}
@@ -123,7 +125,7 @@ func TestClientMethods(t *testing.T) {
 	})
 
 	t.Run("Set", func(t *testing.T) {
-		mock.setFunc = func(ctx context.Context, key, value string, meta provider.SecretMeta) error {
+		mock.setFunc = func(_ context.Context, key, value string, _ provider.SecretMeta) error {
 			assert.Equal(t, "k1", key)
 			assert.Equal(t, "v1", value)
 			return nil
@@ -133,7 +135,7 @@ func TestClientMethods(t *testing.T) {
 	})
 
 	t.Run("Delete", func(t *testing.T) {
-		mock.deleteFunc = func(ctx context.Context, key string) error {
+		mock.deleteFunc = func(_ context.Context, key string) error {
 			assert.Equal(t, "k1", key)
 			return nil
 		}
@@ -142,7 +144,7 @@ func TestClientMethods(t *testing.T) {
 	})
 
 	t.Run("GetHistory", func(t *testing.T) {
-		mock.getHistoryFunc = func(ctx context.Context, key string) ([]*provider.Secret, error) {
+		mock.getHistoryFunc = func(_ context.Context, _ string) ([]*provider.Secret, error) {
 			return []*provider.Secret{{Key: "k1", Version: 1}}, nil
 		}
 		h, err := client.GetHistory(ctx, "k1")
@@ -151,7 +153,7 @@ func TestClientMethods(t *testing.T) {
 	})
 
 	t.Run("Rollback", func(t *testing.T) {
-		mock.rollbackFunc = func(ctx context.Context, key string, version int64) error {
+		mock.rollbackFunc = func(_ context.Context, _ string, version int64) error {
 			assert.Equal(t, int64(1), version)
 			return nil
 		}

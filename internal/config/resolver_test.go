@@ -17,7 +17,7 @@ func TestResolve_DefaultEnv(t *testing.T) {
 		},
 	}
 	opts := config.ResolveOpts{}
-	resolved, err := config.Resolve(cfg, opts)
+	resolved, err := config.Resolve(cfg, &opts)
 	require.NoError(t, err)
 
 	assert.Equal(t, "aws", resolved.Provider)
@@ -36,7 +36,7 @@ func TestResolve_ExplicitEnv(t *testing.T) {
 		},
 	}
 	opts := config.ResolveOpts{Env: "staging"}
-	resolved, err := config.Resolve(cfg, opts)
+	resolved, err := config.Resolve(cfg, &opts)
 	require.NoError(t, err)
 
 	assert.Equal(t, "/app/staging", resolved.Path)
@@ -57,7 +57,7 @@ func TestResolve_CLIFlagsOverride(t *testing.T) {
 		Region:   "eu-west-1",
 		File:     "./local.yaml",
 	}
-	resolved, err := config.Resolve(cfg, opts)
+	resolved, err := config.Resolve(cfg, &opts)
 	require.NoError(t, err)
 
 	assert.Equal(t, "local", resolved.Provider)
@@ -79,7 +79,7 @@ func TestResolve_EnvVarsOverride(t *testing.T) {
 	t.Setenv("SKRET_PATH", "/env-override")
 	t.Setenv("SKRET_REGION", "ap-northeast-1")
 
-	resolved, err := config.Resolve(cfg, opts)
+	resolved, err := config.Resolve(cfg, &opts)
 	require.NoError(t, err)
 
 	assert.Equal(t, "/env-override", resolved.Path)
@@ -95,7 +95,7 @@ func TestResolve_EnvNotFound(t *testing.T) {
 		},
 	}
 	opts := config.ResolveOpts{Env: "nonexistent"}
-	_, err := config.Resolve(cfg, opts)
+	_, err := config.Resolve(cfg, &opts)
 	assert.ErrorContains(t, err, "nonexistent")
 }
 
@@ -107,7 +107,7 @@ func TestResolve_SingleEnvAutoSelect(t *testing.T) {
 		},
 	}
 	opts := config.ResolveOpts{}
-	resolved, err := config.Resolve(cfg, opts)
+	resolved, err := config.Resolve(cfg, &opts)
 	require.NoError(t, err)
 
 	assert.Equal(t, "dev", resolved.EnvName)
@@ -123,7 +123,7 @@ func TestResolve_NoEnvNoDefault(t *testing.T) {
 		},
 	}
 	opts := config.ResolveOpts{}
-	_, err := config.Resolve(cfg, opts)
+	_, err := config.Resolve(cfg, &opts)
 	assert.ErrorContains(t, err, "no environment specified")
 }
 
@@ -141,7 +141,7 @@ func TestResolve_CLIFlagsPrecedenceOverEnvVars(t *testing.T) {
 		Path:   "/flag-path",
 		Region: "flag-region",
 	}
-	resolved, err := config.Resolve(cfg, opts)
+	resolved, err := config.Resolve(cfg, &opts)
 	require.NoError(t, err)
 
 	assert.Equal(t, "/flag-path", resolved.Path)
@@ -159,7 +159,7 @@ func TestResolve_RequiredAndExclude(t *testing.T) {
 		Exclude:  []string{"DEBUG_TOKEN"},
 	}
 	opts := config.ResolveOpts{}
-	resolved, err := config.Resolve(cfg, opts)
+	resolved, err := config.Resolve(cfg, &opts)
 	require.NoError(t, err)
 
 	assert.Equal(t, []string{"DB_URL", "API_KEY"}, resolved.Required)
@@ -175,7 +175,7 @@ func TestResolve_KMSKeyIDPassthrough(t *testing.T) {
 		},
 	}
 	opts := config.ResolveOpts{}
-	resolved, err := config.Resolve(cfg, opts)
+	resolved, err := config.Resolve(cfg, &opts)
 	require.NoError(t, err)
 
 	assert.Equal(t, "arn:aws:kms:us-east-1:123:key/abc", resolved.KMSKeyID)
@@ -192,7 +192,7 @@ func TestResolve_SKRETEnvOverride(t *testing.T) {
 	}
 	t.Setenv("SKRET_ENV", "staging")
 	opts := config.ResolveOpts{}
-	resolved, err := config.Resolve(cfg, opts)
+	resolved, err := config.Resolve(cfg, &opts)
 	require.NoError(t, err)
 
 	assert.Equal(t, "staging", resolved.EnvName)

@@ -36,12 +36,16 @@ func newEnvCmd(opts *GlobalOpts) *cobra.Command {
 	return cmd
 }
 
-func getEnvPairs(opts *GlobalOpts) ([]envPair, error) {
+func getEnvPairs(opts *GlobalOpts) (pairs []envPair, err error) {
 	resolved, p, err := loadProvider(opts)
 	if err != nil {
 		return nil, err
 	}
-	defer p.Close()
+	defer func() {
+		if closeErr := p.Close(); closeErr != nil && err == nil {
+			err = closeErr
+		}
+	}()
 
 	ctx := context.Background()
 	secrets, err := p.List(ctx, resolved.Path)
@@ -49,7 +53,7 @@ func getEnvPairs(opts *GlobalOpts) ([]envPair, error) {
 		return nil, skret.NewError(skret.ExitProviderError, "env: list secrets failed", err)
 	}
 
-	var pairs []envPair
+	pairs = make([]envPair, 0, len(secrets))
 	excludeSet := make(map[string]bool, len(resolved.Exclude))
 	for _, e := range resolved.Exclude {
 		excludeSet[e] = true

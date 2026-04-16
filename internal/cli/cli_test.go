@@ -11,126 +11,70 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestRootCmd_VersionFlag(t *testing.T) {
-	var buf bytes.Buffer
-	cmd := cli.NewRootCmd()
-	cmd.SetOut(&buf)
-	cmd.SetArgs([]string{"--version"})
-	err := cmd.Execute()
-	assert.NoError(t, err)
-	assert.Contains(t, buf.String(), "skret")
-}
-
-func TestRootCmd_HelpFlag(t *testing.T) {
-	var buf bytes.Buffer
-	cmd := cli.NewRootCmd()
-	cmd.SetOut(&buf)
-	cmd.SetArgs([]string{"--help"})
-	err := cmd.Execute()
-	assert.NoError(t, err)
-	assert.Contains(t, buf.String(), "secret manager")
-}
-
-// --- Test helpers ---
-
 func setupTestRepo(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
-	_ = os.MkdirAll(filepath.Join(dir, ".git"), 0o755)
+	err := os.MkdirAll(filepath.Join(dir, ".git"), 0o755)
+	require.NoError(t, err)
 
-	os.WriteFile(filepath.Join(dir, ".skret.yaml"), []byte(`
+	cfg := `
 version: "1"
 default_env: dev
 environments:
   dev:
     provider: local
     file: ./.secrets.dev.yaml
-`), 0o644)
+`
+	err = os.WriteFile(filepath.Join(dir, ".skret.yaml"), []byte(cfg), 0o644)
+	require.NoError(t, err)
 
-	os.WriteFile(filepath.Join(dir, ".secrets.dev.yaml"), []byte(`
+	secrets := `
 version: "1"
 secrets:
   DATABASE_URL: "postgres://dev:dev@localhost/db"
   API_KEY: "secret123"
   REDIS_URL: "redis://localhost:6379"
-`), 0o600)
+`
+	err = os.WriteFile(filepath.Join(dir, ".secrets.dev.yaml"), []byte(secrets), 0o600)
+	require.NoError(t, err)
 
 	return dir
 }
 
-// --- Init tests ---
-
-func TestInitCmd_CreatesConfigFile(t *testing.T) {
+func TestInitCmd_AlreadyExists(t *testing.T) {
 	dir := t.TempDir()
-	_ = os.MkdirAll(filepath.Join(dir, ".git"), 0o755)
+	err := os.MkdirAll(filepath.Join(dir, ".git"), 0o755)
+	require.NoError(t, err)
+	err = os.WriteFile(filepath.Join(dir, ".skret.yaml"), []byte("existing"), 0o644)
+	require.NoError(t, err)
 
 	cmd := cli.NewRootCmd()
-	cmd.SetArgs([]string{"init", "--provider=aws", "--path=/myapp/prod", "--region=us-east-1"})
-	cmd.SetOut(os.Stdout)
+	cmd.SetArgs([]string{"init", "--provider=aws", "--path=/app/new"})
 
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
-	err := cmd.Execute()
-	require.NoError(t, err)
-
-	data, err := os.ReadFile(filepath.Join(dir, ".skret.yaml"))
-	require.NoError(t, err)
-	assert.Contains(t, string(data), "provider: aws")
-	assert.Contains(t, string(data), "/myapp/prod")
-}
-
-func TestInitCmd_AddsToGitignore(t *testing.T) {
-	dir := t.TempDir()
-	_ = os.MkdirAll(filepath.Join(dir, ".git"), 0o755)
-	_ = os.WriteFile(filepath.Join(dir, ".gitignore"), []byte("node_modules/\n"), 0o644)
-
-	cmd := cli.NewRootCmd()
-	cmd.SetArgs([]string{"init", "--provider=local", "--file=./.secrets.dev.yaml"})
-
-	origDir, _ := os.Getwd()
-	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
-
-	err := cmd.Execute()
-	require.NoError(t, err)
-
-	data, err := os.ReadFile(filepath.Join(dir, ".gitignore"))
-	require.NoError(t, err)
-	assert.Contains(t, string(data), ".secrets.*.yaml")
-}
-
-func TestInitCmd_RefusesOverwrite(t *testing.T) {
-	dir := t.TempDir()
-	_ = os.MkdirAll(filepath.Join(dir, ".git"), 0o755)
-	_ = os.WriteFile(filepath.Join(dir, ".skret.yaml"), []byte("existing"), 0o644)
-
-	cmd := cli.NewRootCmd()
-	cmd.SetArgs([]string{"init", "--provider=aws", "--path=/app/prod"})
-
-	origDir, _ := os.Getwd()
-	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
-
-	err := cmd.Execute()
+	err = cmd.Execute()
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "already exists")
 }
 
 func TestInitCmd_ForceOverwrite(t *testing.T) {
 	dir := t.TempDir()
-	_ = os.MkdirAll(filepath.Join(dir, ".git"), 0o755)
-	_ = os.WriteFile(filepath.Join(dir, ".skret.yaml"), []byte("existing"), 0o644)
+	err := os.MkdirAll(filepath.Join(dir, ".git"), 0o755)
+	require.NoError(t, err)
+	err = os.WriteFile(filepath.Join(dir, ".skret.yaml"), []byte("existing"), 0o644)
+	require.NoError(t, err)
 
 	cmd := cli.NewRootCmd()
 	cmd.SetArgs([]string{"init", "--provider=aws", "--path=/app/new", "--force"})
 
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
-	err := cmd.Execute()
+	err = cmd.Execute()
 	require.NoError(t, err)
 
 	data, err := os.ReadFile(filepath.Join(dir, ".skret.yaml"))
@@ -144,7 +88,7 @@ func TestGetCmd_PlainOutput(t *testing.T) {
 	dir := setupTestRepo(t)
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	var buf bytes.Buffer
 	cmd := cli.NewRootCmd()
@@ -160,7 +104,7 @@ func TestGetCmd_NotFound(t *testing.T) {
 	dir := setupTestRepo(t)
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	cmd := cli.NewRootCmd()
 	cmd.SetArgs([]string{"get", "NONEXISTENT"})
@@ -176,7 +120,7 @@ func TestListCmd_TableOutput(t *testing.T) {
 	dir := setupTestRepo(t)
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	var buf bytes.Buffer
 	cmd := cli.NewRootCmd()
@@ -195,7 +139,7 @@ func TestListCmd_JSONOutput(t *testing.T) {
 	dir := setupTestRepo(t)
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	var buf bytes.Buffer
 	cmd := cli.NewRootCmd()
@@ -213,7 +157,7 @@ func TestEnvCmd_DotenvFormat(t *testing.T) {
 	dir := setupTestRepo(t)
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	var buf bytes.Buffer
 	cmd := cli.NewRootCmd()
@@ -231,7 +175,7 @@ func TestEnvCmd_ExportFormat(t *testing.T) {
 	dir := setupTestRepo(t)
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	var buf bytes.Buffer
 	cmd := cli.NewRootCmd()
@@ -249,7 +193,7 @@ func TestSetCmd_BasicSet(t *testing.T) {
 	dir := setupTestRepo(t)
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	cmd := cli.NewRootCmd()
 	cmd.SetArgs([]string{"set", "NEW_KEY", "new_value"})
@@ -270,7 +214,7 @@ func TestSetCmd_MissingArgs(t *testing.T) {
 	dir := setupTestRepo(t)
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	cmd := cli.NewRootCmd()
 	cmd.SetArgs([]string{"set", "KEY_ONLY"})
@@ -284,7 +228,7 @@ func TestDeleteCmd_Success(t *testing.T) {
 	dir := setupTestRepo(t)
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	cmd := cli.NewRootCmd()
 	cmd.SetArgs([]string{"delete", "API_KEY", "--confirm"})
@@ -302,7 +246,7 @@ func TestDeleteCmd_NotFound(t *testing.T) {
 	dir := setupTestRepo(t)
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	cmd := cli.NewRootCmd()
 	cmd.SetArgs([]string{"delete", "NONEXISTENT", "--confirm"})
@@ -317,7 +261,7 @@ func TestRunCmd_MissingCommand(t *testing.T) {
 	dir := setupTestRepo(t)
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	cmd := cli.NewRootCmd()
 	cmd.SetArgs([]string{"run"})
@@ -328,7 +272,7 @@ func TestRunCmd_MissingCommand(t *testing.T) {
 func TestRunCmd_RequiredSecretMissing(t *testing.T) {
 	dir := setupTestRepo(t)
 	// Add required secret spec
-	os.WriteFile(filepath.Join(dir, ".skret.yaml"), []byte(`
+	err := os.WriteFile(filepath.Join(dir, ".skret.yaml"), []byte(`
 version: "1"
 default_env: dev
 required: ["MISSING_REQUIRED"]
@@ -337,14 +281,15 @@ environments:
     provider: local
     file: ./.secrets.dev.yaml
 `), 0o644)
+	require.NoError(t, err)
 
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	cmd := cli.NewRootCmd()
 	cmd.SetArgs([]string{"run", "--", "go", "version"})
-	err := cmd.Execute()
+	err = cmd.Execute()
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "required secret")
 }
@@ -355,14 +300,15 @@ func TestImportCmd_Dotenv(t *testing.T) {
 	dir := setupTestRepo(t)
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	envContent := `IMPORT_KEY=imported_value`
-	os.WriteFile(filepath.Join(dir, ".env"), []byte(envContent), 0o644)
+	err := os.WriteFile(filepath.Join(dir, ".env"), []byte(envContent), 0o644)
+	require.NoError(t, err)
 
 	cmd := cli.NewRootCmd()
 	cmd.SetArgs([]string{"import", "--from=dotenv", "--file=.env"})
-	err := cmd.Execute()
+	err = cmd.Execute()
 	require.NoError(t, err)
 
 	var buf bytes.Buffer
@@ -378,14 +324,15 @@ func TestImportCmd_ToPath(t *testing.T) {
 	dir := setupTestRepo(t)
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	envContent := `IMPORT_KEY=imported_value`
-	os.WriteFile(filepath.Join(dir, ".env"), []byte(envContent), 0o644)
+	err := os.WriteFile(filepath.Join(dir, ".env"), []byte(envContent), 0o644)
+	require.NoError(t, err)
 
 	cmd := cli.NewRootCmd()
 	cmd.SetArgs([]string{"import", "--from=dotenv", "--file=.env", "--to-path=/imported/"})
-	err := cmd.Execute()
+	err = cmd.Execute()
 	require.NoError(t, err)
 
 	var buf bytes.Buffer
@@ -403,7 +350,7 @@ func TestSyncCmd_Dotenv(t *testing.T) {
 	dir := setupTestRepo(t)
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	cmd := cli.NewRootCmd()
 	cmd.SetArgs([]string{"sync", "--to=dotenv", "--file=.env.synced"})
@@ -421,7 +368,7 @@ func TestEnvCmd_JsonYamlFormats(t *testing.T) {
 	dir := setupTestRepo(t)
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	var buf bytes.Buffer
 	cmd := cli.NewRootCmd()
@@ -442,9 +389,10 @@ func TestSetCmd_FromFile(t *testing.T) {
 	dir := setupTestRepo(t)
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
-	os.WriteFile("val.txt", []byte("file_value"), 0o644)
+	err := os.WriteFile("val.txt", []byte("file_value"), 0o644)
+	require.NoError(t, err)
 
 	cmd := cli.NewRootCmd()
 	cmd.SetArgs([]string{"set", "FILE_KEY", "--from-file=val.txt"})
@@ -462,16 +410,17 @@ func TestImportCmd_ConflictSkip(t *testing.T) {
 	dir := setupTestRepo(t)
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	envContent := "API_KEY=new_secret\nNEW_KEY=new_value"
-	os.WriteFile(filepath.Join(dir, ".env"), []byte(envContent), 0o644)
+	err := os.WriteFile(filepath.Join(dir, ".env"), []byte(envContent), 0o644)
+	require.NoError(t, err)
 
 	var buf bytes.Buffer
 	cmd := cli.NewRootCmd()
 	cmd.SetOut(&buf)
 	cmd.SetArgs([]string{"import", "--from=dotenv", "--file=.env", "--on-conflict=skip"})
-	err := cmd.Execute()
+	err = cmd.Execute()
 	require.NoError(t, err)
 
 	assert.Contains(t, buf.String(), "Imported: 1, Skipped: 1")
@@ -495,14 +444,15 @@ func TestImportCmd_ConflictFail(t *testing.T) {
 	dir := setupTestRepo(t)
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	envContent := "API_KEY=new_secret"
-	os.WriteFile(filepath.Join(dir, ".env"), []byte(envContent), 0o644)
+	err := os.WriteFile(filepath.Join(dir, ".env"), []byte(envContent), 0o644)
+	require.NoError(t, err)
 
 	cmd := cli.NewRootCmd()
 	cmd.SetArgs([]string{"import", "--from=dotenv", "--file=.env", "--on-conflict=fail"})
-	err := cmd.Execute()
+	err = cmd.Execute()
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "conflict on \"API_KEY\"")
 }

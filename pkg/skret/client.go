@@ -51,22 +51,19 @@ func New(opts ...Options) (*Client, error) {
 		return nil, NewError(ExitConfigError, "failed to load configuration", err)
 	}
 
-	resolved, err := config.Resolve(cfg, config.ResolveOpts{
+	resolveOpts := config.ResolveOpts{
 		Env:      opt.Env,
 		Provider: opt.Provider,
 		Path:     opt.Path,
-	})
+	}
+	resolved, err := config.Resolve(cfg, &resolveOpts)
 	if err != nil {
 		return nil, NewError(ExitConfigError, "failed to resolve configuration", err)
 	}
 
 	reg := provider.NewRegistry()
-	reg.Register("local", func(c *config.ResolvedConfig) (provider.SecretProvider, error) {
-		return local.New(c)
-	})
-	reg.Register("aws", func(c *config.ResolvedConfig) (provider.SecretProvider, error) {
-		return aws.New(c)
-	})
+	reg.Register("local", local.New)
+	reg.Register("aws", aws.New)
 
 	p, err := reg.New(resolved.Provider, resolved)
 	if err != nil {

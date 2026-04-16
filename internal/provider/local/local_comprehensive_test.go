@@ -32,7 +32,7 @@ func TestLocal_MalformedYAML(t *testing.T) {
 func TestLocal_EmptyFile(t *testing.T) {
 	path := setupFile(t, "version: \"1\"\n")
 	p := newProvider(t, path)
-	defer p.Close()
+	defer func() { _ = p.Close() }()
 
 	secrets, err := p.List(context.Background(), "")
 	require.NoError(t, err)
@@ -44,7 +44,7 @@ func TestLocal_EmptyFile(t *testing.T) {
 func TestLocal_FullLifecycle(t *testing.T) {
 	path := setupFile(t, "version: \"1\"\nsecrets:\n  INITIAL: val")
 	p := newProvider(t, path)
-	defer p.Close()
+	defer func() { _ = p.Close() }()
 
 	ctx := context.Background()
 
@@ -88,7 +88,7 @@ func TestLocal_FullLifecycle(t *testing.T) {
 func TestLocal_ConcurrentMixed(t *testing.T) {
 	path := setupFile(t, "version: \"1\"\nsecrets:\n  KEY: initial")
 	p := newProvider(t, path)
-	defer p.Close()
+	defer func() { _ = p.Close() }()
 
 	ctx := context.Background()
 	var wg sync.WaitGroup
@@ -97,7 +97,7 @@ func TestLocal_ConcurrentMixed(t *testing.T) {
 	// 5 concurrent writers
 	for i := 0; i < 5; i++ {
 		wg.Add(1)
-		go func(n int) {
+		go func(_ int) {
 			defer wg.Done()
 			if err := p.Set(ctx, "KEY", "value", provider.SecretMeta{}); err != nil {
 				errs <- err
@@ -138,7 +138,7 @@ func TestLocal_ConcurrentMixed(t *testing.T) {
 func TestLocal_AtomicWriteVerification(t *testing.T) {
 	path := setupFile(t, "version: \"1\"\nsecrets:\n  KEY1: val1")
 	p := newProvider(t, path)
-	defer p.Close()
+	defer func() { _ = p.Close() }()
 
 	ctx := context.Background()
 
@@ -151,7 +151,7 @@ func TestLocal_AtomicWriteVerification(t *testing.T) {
 
 	// Verify all were written by creating a fresh provider from the same file
 	p2 := newProvider(t, path)
-	defer p2.Close()
+	defer func() { _ = p2.Close() }()
 
 	secrets, err := p2.List(ctx, "")
 	require.NoError(t, err)
@@ -164,7 +164,7 @@ func TestLocal_AtomicWriteVerification(t *testing.T) {
 func TestLocal_GetHistory_NotSupported(t *testing.T) {
 	path := setupFile(t, "version: \"1\"\nsecrets:\n  KEY: val")
 	p := newProvider(t, path)
-	defer p.Close()
+	defer func() { _ = p.Close() }()
 
 	_, err := p.GetHistory(context.Background(), "KEY")
 	assert.ErrorIs(t, err, provider.ErrCapabilityNotSupported)
@@ -175,7 +175,7 @@ func TestLocal_GetHistory_NotSupported(t *testing.T) {
 func TestLocal_Rollback_NotSupported(t *testing.T) {
 	path := setupFile(t, "version: \"1\"\nsecrets:\n  KEY: val")
 	p := newProvider(t, path)
-	defer p.Close()
+	defer func() { _ = p.Close() }()
 
 	err := p.Rollback(context.Background(), "KEY", 1)
 	assert.ErrorIs(t, err, provider.ErrCapabilityNotSupported)
@@ -198,7 +198,7 @@ func TestLocal_Close_Idempotent(t *testing.T) {
 func TestLocal_Capabilities_Complete(t *testing.T) {
 	path := setupFile(t, "version: \"1\"\nsecrets:\n  KEY: val")
 	p := newProvider(t, path)
-	defer p.Close()
+	defer func() { _ = p.Close() }()
 
 	caps := p.Capabilities()
 	assert.True(t, caps.Write)
@@ -214,7 +214,7 @@ func TestLocal_Capabilities_Complete(t *testing.T) {
 func TestLocal_SpecialCharValues(t *testing.T) {
 	path := setupFile(t, "version: \"1\"\nsecrets:\n  KEY: val")
 	p := newProvider(t, path)
-	defer p.Close()
+	defer func() { _ = p.Close() }()
 
 	ctx := context.Background()
 
@@ -242,7 +242,7 @@ func TestLocal_SpecialCharValues(t *testing.T) {
 
 	// Verify persistence by creating a new provider
 	p2 := newProvider(t, path)
-	defer p2.Close()
+	defer func() { _ = p2.Close() }()
 
 	for _, tt := range tests {
 		s, err := p2.Get(ctx, tt.key)

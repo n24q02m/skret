@@ -115,7 +115,7 @@ func (p *Provider) List(ctx context.Context, pathPrefix string) ([]*provider.Sec
 	return secrets, nil
 }
 
-func (p *Provider) Set(ctx context.Context, key string, value string, meta provider.SecretMeta) error {
+func (p *Provider) Set(ctx context.Context, key, value string, meta provider.SecretMeta) error {
 	input := &ssm.PutParameterInput{
 		Name:      awslib.String(key),
 		Value:     awslib.String(value),

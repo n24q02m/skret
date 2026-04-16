@@ -85,10 +85,10 @@ func (g *GitHubSyncer) Sync(ctx context.Context, secrets []*provider.Secret) err
 	}
 }
 
-func (g *GitHubSyncer) getPublicKey(ctx context.Context) (string, string, error) {
+func (g *GitHubSyncer) getPublicKey(ctx context.Context) (publicKey, keyID string, err error) {
 	url := fmt.Sprintf("%s/repos/%s/%s/actions/secrets/public-key", g.baseURL, g.owner, g.repo)
 
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, http.NoBody)
 	if err != nil {
 		return "", "", fmt.Errorf("github: create request: %w", err)
 	}
@@ -99,10 +99,13 @@ func (g *GitHubSyncer) getPublicKey(ctx context.Context) (string, string, error)
 	if err != nil {
 		return "", "", fmt.Errorf("github: request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return "", "", fmt.Errorf("github: API returned %d: failed to read body: %w", resp.StatusCode, err)
+		}
 		return "", "", fmt.Errorf("github: API returned %d: %s", resp.StatusCode, string(body))
 	}
 
@@ -124,7 +127,7 @@ func (g *GitHubSyncer) putSecret(ctx context.Context, name, value, pubKeyB64, ke
 
 	url := fmt.Sprintf("%s/repos/%s/%s/actions/secrets/%s", g.baseURL, g.owner, g.repo, name)
 
-	body := fmt.Sprintf(`{"encrypted_value":"%s","key_id":"%s"}`, encValue, keyID)
+	body := fmt.Sprintf(`{"encrypted_value":%q,"key_id":%q}`, encValue, keyID)
 	req, err := http.NewRequestWithContext(ctx, "PUT", url, strings.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("github: create request: %w", err)
@@ -137,10 +140,13 @@ func (g *GitHubSyncer) putSecret(ctx context.Context, name, value, pubKeyB64, ke
 	if err != nil {
 		return fmt.Errorf("github: request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusNoContent {
-		respBody, _ := io.ReadAll(resp.Body)
+		respBody, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return fmt.Errorf("github: API returned %d: failed to read body: %w", resp.StatusCode, err)
+		}
 		return fmt.Errorf("github: API returned %d: %s", resp.StatusCode, string(respBody))
 	}
 	return nil

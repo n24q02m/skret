@@ -14,23 +14,28 @@ import (
 var skretBinary string
 
 func TestMain(m *testing.M) {
-	tmp, _ := os.MkdirTemp("", "skret-e2e")
+	tmp, err := os.MkdirTemp("", "skret-e2e")
+	if err != nil {
+		panic("create temp dir failed: " + err.Error())
+	}
 	skretBinary = filepath.Join(tmp, "skret.exe")
 	cmd := exec.Command("go", "build", "-o", skretBinary, "../../cmd/skret")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		panic("build failed: " + string(out))
 	}
 	code := m.Run()
-	os.RemoveAll(tmp)
+	_ = os.RemoveAll(tmp)
 	os.Exit(code)
 }
 
 func TestE2E_InitGetSetDeleteListEnv(t *testing.T) {
 	dir := t.TempDir()
-	_ = os.MkdirAll(filepath.Join(dir, ".git"), 0o755)
+	err := os.MkdirAll(filepath.Join(dir, ".git"), 0o755)
+	require.NoError(t, err)
 
 	// Write local secrets file first
-	os.WriteFile(filepath.Join(dir, ".secrets.dev.yaml"), []byte("version: \"1\"\nsecrets:\n  ORIGINAL: \"original_val\""), 0o600)
+	err = os.WriteFile(filepath.Join(dir, ".secrets.dev.yaml"), []byte("version: \"1\"\nsecrets:\n  ORIGINAL: \"original_val\""), 0o600)
+	require.NoError(t, err)
 
 	// Init
 	run(t, dir, "init", "--provider=local", "--file=./.secrets.dev.yaml")

@@ -28,7 +28,7 @@ func newHistoryCmd(opts *GlobalOpts) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			defer p.Close()
+			defer func() { _ = p.Close() }()
 
 			ctx := context.Background()
 			key := args[0]
@@ -38,7 +38,8 @@ func newHistoryCmd(opts *GlobalOpts) *cobra.Command {
 				return skret.NewError(skret.ExitProviderError, fmt.Sprintf("failed to get history for %q", key), err)
 			}
 
-			return renderHistory(cmd, history, key, verbose)
+			renderHistory(cmd, history, key, verbose)
+			return nil
 		},
 	}
 
@@ -48,14 +49,14 @@ func newHistoryCmd(opts *GlobalOpts) *cobra.Command {
 }
 
 // renderHistory formats and prints the history table.
-func renderHistory(cmd *cobra.Command, history []*provider.Secret, key string, verbose bool) error {
+func renderHistory(cmd *cobra.Command, history []*provider.Secret, key string, verbose bool) {
 	if len(history) == 0 {
 		cmd.Printf("No history found for %q\n", key)
-		return nil
+		return
 	}
 
 	w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "VERSION\tVALUE\tUPDATED AT\tAUTHOR")
+	_, _ = fmt.Fprintln(w, "VERSION\tVALUE\tUPDATED AT\tAUTHOR")
 
 	for _, s := range history {
 		val := s.Value
@@ -77,9 +78,7 @@ func renderHistory(cmd *cobra.Command, history []*provider.Secret, key string, v
 			author = "-"
 		}
 
-		fmt.Fprintf(w, "%d\t%s\t%s\t%s\n", s.Version, val, updatedAt, author)
+		_, _ = fmt.Fprintf(w, "%d\t%s\t%s\t%s\n", s.Version, val, updatedAt, author)
 	}
-	w.Flush()
-
-	return nil
+	_ = w.Flush()
 }

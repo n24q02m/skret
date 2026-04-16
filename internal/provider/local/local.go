@@ -66,7 +66,7 @@ func (p *Provider) List(_ context.Context, _ string) ([]*provider.Secret, error)
 	return secrets, nil
 }
 
-func (p *Provider) Set(_ context.Context, key string, value string, _ provider.SecretMeta) error {
+func (p *Provider) Set(_ context.Context, key, value string, _ provider.SecretMeta) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.data.Secrets == nil {
@@ -86,11 +86,11 @@ func (p *Provider) Delete(_ context.Context, key string) error {
 	return p.save()
 }
 
-func (p *Provider) GetHistory(_ context.Context, key string) ([]*provider.Secret, error) {
+func (p *Provider) GetHistory(_ context.Context, _ string) ([]*provider.Secret, error) {
 	return nil, provider.ErrCapabilityNotSupported
 }
 
-func (p *Provider) Rollback(_ context.Context, key string, version int64) error {
+func (p *Provider) Rollback(_ context.Context, _ string, _ int64) error {
 	return provider.ErrCapabilityNotSupported
 }
 
@@ -118,16 +118,16 @@ func (p *Provider) save() error {
 	tmpPath := tmp.Name()
 
 	if _, err := tmp.Write(raw); err != nil {
-		tmp.Close()
-		os.Remove(tmpPath)
+		_ = tmp.Close()
+		_ = os.Remove(tmpPath)
 		return fmt.Errorf("local: write temp: %w", err)
 	}
 	if err := tmp.Close(); err != nil {
-		os.Remove(tmpPath)
+		_ = os.Remove(tmpPath)
 		return fmt.Errorf("local: close temp: %w", err)
 	}
 	if err := os.Rename(tmpPath, p.filePath); err != nil {
-		os.Remove(tmpPath)
+		_ = os.Remove(tmpPath)
 		return fmt.Errorf("local: rename: %w", err)
 	}
 	return nil
