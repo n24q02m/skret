@@ -1,0 +1,14 @@
+--- get.go
++++ get.go
+@@ -42,8 +42,11 @@
+						out["version"] = secret.Version
+						out["meta"] = secret.Meta
+					}
+-					data, _ := json.MarshalIndent(out, "", "  ")
++					data, err := json.MarshalIndent(out, "", "  ")
++					if err != nil {
++						return skret.NewError(skret.ExitGenericError, "get: json marshal failed", err)
++					}
+					cmd.Println(string(data))
+				} else if plain {
+					cmd.Print(secret.Value)
