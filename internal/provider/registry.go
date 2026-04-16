@@ -15,6 +15,7 @@ type Constructor func(cfg *config.ResolvedConfig) (SecretProvider, error)
 type Registry struct {
 	mu           sync.RWMutex
 	constructors map[string]Constructor
+	names        []string
 }
 
 // NewRegistry creates an empty provider registry.
@@ -27,6 +28,13 @@ func (r *Registry) Register(name string, ctor Constructor) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.constructors[name] = ctor
+
+	// Rebuild names cache
+	r.names = make([]string, 0, len(r.constructors))
+	for n := range r.constructors {
+		r.names = append(r.names, n)
+	}
+	sort.Strings(r.names)
 }
 
 // New creates a provider instance by name.
@@ -45,10 +53,9 @@ func (r *Registry) New(name string, cfg *config.ResolvedConfig) (SecretProvider,
 func (r *Registry) Providers() []string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	names := make([]string, 0, len(r.constructors))
-	for name := range r.constructors {
-		names = append(names, name)
-	}
-	sort.Strings(names)
+
+	// Return a copy to avoid external modifications to the cache
+	names := make([]string, len(r.names))
+	copy(names, r.names)
 	return names
 }

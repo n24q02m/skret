@@ -57,7 +57,18 @@ func TestRegistry_ListProviders(t *testing.T) {
 	})
 
 	names := reg.Providers()
-	assert.Contains(t, names, "aws")
-	assert.Contains(t, names, "local")
-	assert.Len(t, names, 2)
+	assert.Equal(t, []string{"aws", "local"}, names)
+}
+
+func TestRegistry_Providers_Copy(t *testing.T) {
+	reg := provider.NewRegistry()
+	reg.Register("aws", func(_ *config.ResolvedConfig) (provider.SecretProvider, error) {
+		return &mockProvider{name: "aws"}, nil
+	})
+
+	names1 := reg.Providers()
+	names1[0] = "corrupted"
+
+	names2 := reg.Providers()
+	assert.Equal(t, []string{"aws"}, names2)
 }
