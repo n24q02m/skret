@@ -11,9 +11,6 @@ permissions:
   contents: read
   pull-requests: read
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 jobs:
   pr-title:
     name: PR Title Lint
@@ -27,9 +24,6 @@ jobs:
           types: |
             fix
             feat
-            refactor
-            perf
-            chore
           requireScope: false
           subjectPattern: ^(?![A-Z]).+$
           subjectPatternError: |
