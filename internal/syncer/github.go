@@ -45,10 +45,20 @@ func NewGitHub(owner, repo, token, baseURL string) Syncer {
 func (g *GitHubSyncer) Name() string { return "github" }
 
 func (g *GitHubSyncer) Sync(ctx context.Context, secrets []*provider.Secret) error {
-	pubKey, keyID, err := g.getPublicKey(ctx)
+	pubKeyB64, keyID, err := g.getPublicKey(ctx)
 	if err != nil {
 		return err
 	}
+
+	pubKeyBytes, err := base64.StdEncoding.DecodeString(pubKeyB64)
+	if err != nil {
+		return fmt.Errorf("github: decode public key: %w", err)
+	}
+	if len(pubKeyBytes) != 32 {
+		return fmt.Errorf("github: invalid public key length: %d (expected 32)", len(pubKeyBytes))
+	}
+	var pubKey [32]byte
+	copy(pubKey[:], pubKeyBytes)
 
 	const maxConcurrency = 10
 	sem := make(chan struct{}, maxConcurrency)
@@ -68,7 +78,7 @@ func (g *GitHubSyncer) Sync(ctx context.Context, secrets []*provider.Secret) err
 				return
 			}
 
-			if err := g.putSecret(ctx, s.Key, s.Value, pubKey, keyID); err != nil {
+			if err := g.putSecret(ctx, s.Key, s.Value, &pubKey, keyID); err != nil {
 				errCh <- fmt.Errorf("github: set %q: %w", s.Key, err)
 			}
 		}(s)
@@ -102,7 +112,10 @@ func (g *GitHubSyncer) getPublicKey(ctx context.Context) (string, string, error)
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return "", "", fmt.Errorf("github: API returned %d: failed to read body: %w", resp.StatusCode, err)
+		}
 		return "", "", fmt.Errorf("github: API returned %d: %s", resp.StatusCode, string(body))
 	}
 
@@ -116,8 +129,8 @@ func (g *GitHubSyncer) getPublicKey(ctx context.Context) (string, string, error)
 	return result.Key, result.KeyID, nil
 }
 
-func (g *GitHubSyncer) putSecret(ctx context.Context, name, value, pubKeyB64, keyID string) error {
-	encValue, err := sealSecret(value, pubKeyB64)
+func (g *GitHubSyncer) putSecret(ctx context.Context, name, value string, pubKey *[32]byte, keyID string) error {
+	encValue, err := sealSecret(value, pubKey)
 	if err != nil {
 		return fmt.Errorf("github: encrypt %q: %w", name, err)
 	}
@@ -140,7 +153,10 @@ func (g *GitHubSyncer) putSecret(ctx context.Context, name, value, pubKeyB64, ke
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusNoContent {
-		respBody, _ := io.ReadAll(resp.Body)
+		respBody, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return fmt.Errorf("github: API returned %d: failed to read body: %w", resp.StatusCode, err)
+		}
 		return fmt.Errorf("github: API returned %d: %s", resp.StatusCode, string(respBody))
 	}
 	return nil
@@ -148,19 +164,8 @@ func (g *GitHubSyncer) putSecret(ctx context.Context, name, value, pubKeyB64, ke
 
 // sealSecret encrypts a secret using NaCl sealed box (curve25519 + xsalsa20-poly1305).
 // This matches GitHub's required encryption format for Actions secrets.
-func sealSecret(secret, recipientPubKeyB64 string) (string, error) {
-	pubKeyBytes, err := base64.StdEncoding.DecodeString(recipientPubKeyB64)
-	if err != nil {
-		return "", fmt.Errorf("decode public key: %w", err)
-	}
-	if len(pubKeyBytes) != 32 {
-		return "", fmt.Errorf("invalid public key length: %d (expected 32)", len(pubKeyBytes))
-	}
-
-	var recipientKey [32]byte
-	copy(recipientKey[:], pubKeyBytes)
-
-	sealed, err := box.SealAnonymous(nil, []byte(secret), &recipientKey, rand.Reader)
+func sealSecret(secret string, recipientPubKey *[32]byte) (string, error) {
+	sealed, err := box.SealAnonymous(nil, []byte(secret), recipientPubKey, rand.Reader)
 	if err != nil {
 		return "", fmt.Errorf("seal: %w", err)
 	}
