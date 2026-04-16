@@ -36,14 +36,11 @@ docs/.vitepress/dist/
 docs/.vitepress/cache/
 
 # Agent artifacts (not committed)
-.jules/
 .code-review-graph/
 .claude-plugin/
 .wrangler/
 
 # AI Assistant / Rules
-.jules/
-.jules
 .superpower/
 superpower/
 superpowers/

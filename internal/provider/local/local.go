@@ -116,18 +116,22 @@ func (p *Provider) save() error {
 		return fmt.Errorf("local: create temp: %w", err)
 	}
 	tmpPath := tmp.Name()
+	defer func() {
+		_ = tmp.Close()
+		_ = os.Remove(tmpPath)
+	}()
+
+	if err := tmp.Chmod(0o600); err != nil {
+		return fmt.Errorf("local: chmod temp: %w", err)
+	}
 
 	if _, err := tmp.Write(raw); err != nil {
-		tmp.Close()
-		os.Remove(tmpPath)
 		return fmt.Errorf("local: write temp: %w", err)
 	}
 	if err := tmp.Close(); err != nil {
-		os.Remove(tmpPath)
 		return fmt.Errorf("local: close temp: %w", err)
 	}
 	if err := os.Rename(tmpPath, p.filePath); err != nil {
-		os.Remove(tmpPath)
 		return fmt.Errorf("local: rename: %w", err)
 	}
 	return nil

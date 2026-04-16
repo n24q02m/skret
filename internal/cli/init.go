@@ -92,10 +92,30 @@ func (o *initOptions) run(cmd *cobra.Command) error {
 		return fmt.Errorf("init: marshal config: %w", err)
 	}
 
-	if err := os.WriteFile(cfgPath, data, 0o600); err != nil {
-		return fmt.Errorf("init: write config: %w", err)
+	// Atomic write
+	dir := filepath.Dir(cfgPath)
+	tmp, err := os.CreateTemp(dir, ".skret-config-*.yaml")
+	if err != nil {
+		return fmt.Errorf("init: create temp config: %w", err)
 	}
+	tmpPath := tmp.Name()
+	defer func() {
+		_ = tmp.Close()
+		_ = os.Remove(tmpPath)
+	}()
 
+	if err := tmp.Chmod(0o600); err != nil {
+		return fmt.Errorf("init: chmod temp config: %w", err)
+	}
+	if _, err := tmp.Write(data); err != nil {
+		return fmt.Errorf("init: write temp config: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("init: close temp config: %w", err)
+	}
+	if err := os.Rename(tmpPath, cfgPath); err != nil {
+		return fmt.Errorf("init: rename config: %w", err)
+	}
 	// Update .gitignore
 	gitignorePath := filepath.Join(cwd, ".gitignore")
 	if err := appendGitignore(gitignorePath); err != nil {
