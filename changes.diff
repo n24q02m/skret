@@ -1,0 +1,626 @@
+diff --git a/internal/syncer/github_test.go b/internal/syncer/github_test.go
+new file mode 100644
+index 0000000..137e54c
+--- /dev/null
++++ b/internal/syncer/github_test.go
+@@ -0,0 +1,324 @@
++package syncer_test
++
++import (
++	"context"
++	"crypto/rand"
++	"encoding/base64"
++	"encoding/json"
++	"net/http"
++	"net/http/httptest"
++	"strings"
++	"sync"
++	"testing"
++
++	"golang.org/x/crypto/nacl/box"
++
++	"github.com/n24q02m/skret/internal/provider"
++	"github.com/n24q02m/skret/internal/syncer"
++	"github.com/stretchr/testify/assert"
++	"github.com/stretchr/testify/require"
++)
++
++func TestGitHubSyncer(t *testing.T) {
++	// Generate a real curve25519 keypair for the mock server
++	pubKey, _, err := box.GenerateKey(rand.Reader)
++	require.NoError(t, err)
++	pubKeyB64 := base64.StdEncoding.EncodeToString(pubKey[:])
++
++	var mu sync.Mutex
++	var putCalls int
++	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++		switch {
++		case r.Method == "GET" && r.URL.Path == "/repos/owner/repo/actions/secrets/public-key":
++			json.NewEncoder(w).Encode(map[string]string{
++				"key_id": "key-123",
++				"key":    pubKeyB64,
++			})
++		case r.Method == "PUT":
++			mu.Lock()
++			putCalls++
++			mu.Unlock()
++			w.WriteHeader(http.StatusCreated)
++		default:
++			w.WriteHeader(http.StatusNotFound)
++		}
++	}))
++	defer srv.Close()
++
++	secrets := []*provider.Secret{
++		{Key: "DB_URL", Value: "postgres://host"},
++		{Key: "API_KEY", Value: "sk-123"},
++	}
++
++	s := syncer.NewGitHub("owner", "repo", "ghp_test", srv.URL)
++	assert.Equal(t, "github", s.Name())
++
++	err = s.Sync(context.Background(), secrets)
++	require.NoError(t, err)
++
++	mu.Lock()
++	count := putCalls
++	mu.Unlock()
++	assert.Equal(t, 2, count)
++}
++
++func TestGitHubSyncer_APIError(t *testing.T) {
++	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
++		w.WriteHeader(http.StatusUnauthorized)
++		w.Write([]byte(`{"message":"Bad credentials"}`))
++	}))
++	defer srv.Close()
++
++	s := syncer.NewGitHub("owner", "repo", "bad_token", srv.URL)
++	err := s.Sync(context.Background(), []*provider.Secret{{Key: "K", Value: "V"}})
++	assert.Error(t, err)
++	assert.Contains(t, err.Error(), "401")
++}
++
++func TestGitHubSyncer_BadJSON(t *testing.T) {
++	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
++		w.Write([]byte(`invalid json`))
++	}))
++	defer srv.Close()
++
++	s := syncer.NewGitHub("owner", "repo", "token", srv.URL)
++	err := s.Sync(context.Background(), []*provider.Secret{{Key: "key", Value: "val"}})
++	assert.Error(t, err)
++	assert.Contains(t, err.Error(), "decode")
++}
++
++func TestGitHubSyncer_BadKeyFormat(t *testing.T) {
++	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
++		json.NewEncoder(w).Encode(map[string]string{
++			"key_id": "key-123",
++			"key":    "not-a-valid-base64!!!!!!!",
++		})
++	}))
++	defer srv.Close()
++
++	s := syncer.NewGitHub("owner", "repo", "token", srv.URL)
++	err := s.Sync(context.Background(), []*provider.Secret{{Key: "key", Value: "val"}})
++	assert.Error(t, err)
++	assert.Contains(t, err.Error(), "illegal base64 data")
++}
++
++func TestGitHubSyncer_PutError(t *testing.T) {
++	pubKey, _, _ := box.GenerateKey(rand.Reader)
++	pubKeyB64 := base64.StdEncoding.EncodeToString(pubKey[:])
++
++	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++		if r.Method == "GET" {
++			json.NewEncoder(w).Encode(map[string]string{
++				"key_id": "key-123",
++				"key":    pubKeyB64,
++			})
++			return
++		}
++		// Fail the PUT request
++		w.WriteHeader(http.StatusForbidden)
++	}))
++	defer srv.Close()
++
++	s := syncer.NewGitHub("owner", "repo", "token", srv.URL)
++	err := s.Sync(context.Background(), []*provider.Secret{{Key: "key", Value: "val"}})
++	assert.Error(t, err)
++	assert.Contains(t, err.Error(), "403")
++}
++
++func TestGitHubSyncer_MultipleSecrets_SingleKeyFetch(t *testing.T) {
++	pubKey, _, err := box.GenerateKey(rand.Reader)
++	require.NoError(t, err)
++	pubKeyB64 := base64.StdEncoding.EncodeToString(pubKey[:])
++
++	var mu sync.Mutex
++	var getKeyCalls, putCalls int
++	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++		mu.Lock()
++		defer mu.Unlock()
++		switch {
++		case r.Method == "GET" && strings.Contains(r.URL.Path, "public-key"):
++			getKeyCalls++
++			json.NewEncoder(w).Encode(map[string]string{
++				"key_id": "key-123",
++				"key":    pubKeyB64,
++			})
++		case r.Method == "PUT":
++			putCalls++
++			w.WriteHeader(http.StatusCreated)
++		default:
++			w.WriteHeader(http.StatusNotFound)
++		}
++	}))
++	defer srv.Close()
++
++	secrets := []*provider.Secret{
++		{Key: "SECRET_1", Value: "val1"},
++		{Key: "SECRET_2", Value: "val2"},
++		{Key: "SECRET_3", Value: "val3"},
++		{Key: "SECRET_4", Value: "val4"},
++		{Key: "SECRET_5", Value: "val5"},
++	}
++
++	s := syncer.NewGitHub("owner", "repo", "ghp_test", srv.URL)
++	err = s.Sync(context.Background(), secrets)
++	require.NoError(t, err)
++
++	mu.Lock()
++	g := getKeyCalls
++	p := putCalls
++	mu.Unlock()
++
++	// Public key should only be fetched once
++	assert.Equal(t, 1, g)
++	// All 5 secrets should be PUT
++	assert.Equal(t, 5, p)
++}
++
++func TestGitHubSyncer_EmptySecrets(t *testing.T) {
++	pubKey, _, err := box.GenerateKey(rand.Reader)
++	require.NoError(t, err)
++	pubKeyB64 := base64.StdEncoding.EncodeToString(pubKey[:])
++
++	var mu sync.Mutex
++	var putCalls int
++	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++		if r.Method == "GET" {
++			json.NewEncoder(w).Encode(map[string]string{
++				"key_id": "key-123",
++				"key":    pubKeyB64,
++			})
++			return
++		}
++		mu.Lock()
++		putCalls++
++		mu.Unlock()
++		w.WriteHeader(http.StatusCreated)
++	}))
++	defer srv.Close()
++
++	s := syncer.NewGitHub("owner", "repo", "token", srv.URL)
++	err = s.Sync(context.Background(), []*provider.Secret{})
++	require.NoError(t, err)
++
++	mu.Lock()
++	p := putCalls
++	mu.Unlock()
++	// No PUT calls since no secrets
++	assert.Equal(t, 0, p)
++}
++
++func TestGitHubSyncer_NoContent204(t *testing.T) {
++	pubKey, _, err := box.GenerateKey(rand.Reader)
++	require.NoError(t, err)
++	pubKeyB64 := base64.StdEncoding.EncodeToString(pubKey[:])
++
++	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++		switch {
++		case r.Method == "GET":
++			json.NewEncoder(w).Encode(map[string]string{
++				"key_id": "key-123",
++				"key":    pubKeyB64,
++			})
++		case r.Method == "PUT":
++			// 204 No Content is also a valid success response
++			w.WriteHeader(http.StatusNoContent)
++		}
++	}))
++	defer srv.Close()
++
++	s := syncer.NewGitHub("owner", "repo", "token", srv.URL)
++	err = s.Sync(context.Background(), []*provider.Secret{{Key: "KEY", Value: "val"}})
++	require.NoError(t, err)
++}
++
++func TestGitHubSyncer_InvalidKeyLength(t *testing.T) {
++	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
++		// Return a valid base64 string but wrong length (not 32 bytes)
++		shortKey := base64.StdEncoding.EncodeToString([]byte("too-short"))
++		json.NewEncoder(w).Encode(map[string]string{
++			"key_id": "key-123",
++			"key":    shortKey,
++		})
++	}))
++	defer srv.Close()
++
++	s := syncer.NewGitHub("owner", "repo", "token", srv.URL)
++	err := s.Sync(context.Background(), []*provider.Secret{{Key: "key", Value: "val"}})
++	assert.Error(t, err)
++	assert.Contains(t, err.Error(), "invalid public key length")
++}
++
++func TestGitHubSyncer_ContextCancellation(t *testing.T) {
++	pubKey, _, err := box.GenerateKey(rand.Reader)
++	require.NoError(t, err)
++	pubKeyB64 := base64.StdEncoding.EncodeToString(pubKey[:])
++
++	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++		if r.Method == "GET" {
++			json.NewEncoder(w).Encode(map[string]string{
++				"key_id": "key-123",
++				"key":    pubKeyB64,
++			})
++			return
++		}
++		w.WriteHeader(http.StatusCreated)
++	}))
++	defer srv.Close()
++
++	ctx, cancel := context.WithCancel(context.Background())
++	cancel() // Cancel immediately
++
++	s := syncer.NewGitHub("owner", "repo", "token", srv.URL)
++	err = s.Sync(ctx, []*provider.Secret{{Key: "key", Value: "val"}})
++	assert.Error(t, err)
++}
++
++func TestGitHubSyncer_DefaultBaseURL(t *testing.T) {
++	// Creating with empty base URL should use github.com
++	s := syncer.NewGitHub("owner", "repo", "token", "")
++	assert.Equal(t, "github", s.Name())
++}
++
++func TestGitHubSyncer_TransportError(t *testing.T) {
++	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++		// Do nothing
++	}))
++	// Close server immediately to cause connection error
++	srv.Close()
++
++	s := syncer.NewGitHub("owner", "repo", "token", srv.URL)
++	err := s.Sync(context.Background(), []*provider.Secret{{Key: "key", Value: "val"}})
++	assert.Error(t, err)
++	assert.Contains(t, err.Error(), "request:")
++}
++
++func TestGitHubSyncer_PutTransportError(t *testing.T) {
++	pubKey, _, err := box.GenerateKey(rand.Reader)
++	require.NoError(t, err)
++	pubKeyB64 := base64.StdEncoding.EncodeToString(pubKey[:])
++
++	var mu sync.Mutex
++	var srv *httptest.Server
++	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++		if r.Method == "GET" {
++			json.NewEncoder(w).Encode(map[string]string{
++				"key_id": "key-123",
++				"key":    pubKeyB64,
++			})
++			// Close server so the next request (PUT) fails
++			mu.Lock()
++			defer mu.Unlock()
++			if srv != nil {
++				go srv.Close()
++			}
++			return
++		}
++	}))
++
++	s := syncer.NewGitHub("owner", "repo", "token", srv.URL)
++	err = s.Sync(context.Background(), []*provider.Secret{{Key: "key", Value: "val"}})
++	assert.Error(t, err)
++	// Error should happen in putSecret
++	assert.Contains(t, err.Error(), "github: set \"key\"")
++}
++
+diff --git a/internal/syncer/syncer_comprehensive_test.go b/internal/syncer/syncer_comprehensive_test.go
+index 50ab29a..6547f14 100644
+--- a/internal/syncer/syncer_comprehensive_test.go
++++ b/internal/syncer/syncer_comprehensive_test.go
+@@ -2,18 +2,11 @@ package syncer_test
+
+ import (
+	"context"
+-	"crypto/rand"
+-	"encoding/base64"
+-	"encoding/json"
+-	"net/http"
+-	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+-	"golang.org/x/crypto/nacl/box"
+-
+	"github.com/n24q02m/skret/internal/provider"
+	"github.com/n24q02m/skret/internal/syncer"
+	"github.com/stretchr/testify/assert"
+@@ -114,144 +107,3 @@ func TestDotenvSyncer_LargeSecrets(t *testing.T) {
+	require.NoError(t, err)
+	assert.True(t, len(data) > 100000)
+ }
+-
+-// --- GitHub syncer: public key caching behavior ---
+-
+-func TestGitHubSyncer_MultipleSecrets_SingleKeyFetch(t *testing.T) {
+-	pubKey, _, err := box.GenerateKey(rand.Reader)
+-	require.NoError(t, err)
+-	pubKeyB64 := base64.StdEncoding.EncodeToString(pubKey[:])
+-
+-	var getKeyCalls, putCalls int
+-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+-		switch {
+-		case r.Method == "GET" && strings.Contains(r.URL.Path, "public-key"):
+-			getKeyCalls++
+-			json.NewEncoder(w).Encode(map[string]string{
+-				"key_id": "key-123",
+-				"key":    pubKeyB64,
+-			})
+-		case r.Method == "PUT":
+-			putCalls++
+-			w.WriteHeader(http.StatusCreated)
+-		default:
+-			w.WriteHeader(http.StatusNotFound)
+-		}
+-	}))
+-	defer srv.Close()
+-
+-	secrets := []*provider.Secret{
+-		{Key: "SECRET_1", Value: "val1"},
+-		{Key: "SECRET_2", Value: "val2"},
+-		{Key: "SECRET_3", Value: "val3"},
+-		{Key: "SECRET_4", Value: "val4"},
+-		{Key: "SECRET_5", Value: "val5"},
+-	}
+-
+-	s := syncer.NewGitHub("owner", "repo", "ghp_test", srv.URL)
+-	err = s.Sync(context.Background(), secrets)
+-	require.NoError(t, err)
+-
+-	// Public key should only be fetched once
+-	assert.Equal(t, 1, getKeyCalls)
+-	// All 5 secrets should be PUT
+-	assert.Equal(t, 5, putCalls)
+-}
+-
+-func TestGitHubSyncer_EmptySecrets(t *testing.T) {
+-	pubKey, _, err := box.GenerateKey(rand.Reader)
+-	require.NoError(t, err)
+-	pubKeyB64 := base64.StdEncoding.EncodeToString(pubKey[:])
+-
+-	var putCalls int
+-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+-		if r.Method == "GET" {
+-			json.NewEncoder(w).Encode(map[string]string{
+-				"key_id": "key-123",
+-				"key":    pubKeyB64,
+-			})
+-			return
+-		}
+-		putCalls++
+-		w.WriteHeader(http.StatusCreated)
+-	}))
+-	defer srv.Close()
+-
+-	s := syncer.NewGitHub("owner", "repo", "token", srv.URL)
+-	err = s.Sync(context.Background(), []*provider.Secret{})
+-	require.NoError(t, err)
+-	// No PUT calls since no secrets
+-	assert.Equal(t, 0, putCalls)
+-}
+-
+-func TestGitHubSyncer_NoContent204(t *testing.T) {
+-	pubKey, _, err := box.GenerateKey(rand.Reader)
+-	require.NoError(t, err)
+-	pubKeyB64 := base64.StdEncoding.EncodeToString(pubKey[:])
+-
+-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+-		switch {
+-		case r.Method == "GET":
+-			json.NewEncoder(w).Encode(map[string]string{
+-				"key_id": "key-123",
+-				"key":    pubKeyB64,
+-			})
+-		case r.Method == "PUT":
+-			// 204 No Content is also a valid success response
+-			w.WriteHeader(http.StatusNoContent)
+-		}
+-	}))
+-	defer srv.Close()
+-
+-	s := syncer.NewGitHub("owner", "repo", "token", srv.URL)
+-	err = s.Sync(context.Background(), []*provider.Secret{{Key: "KEY", Value: "val"}})
+-	require.NoError(t, err)
+-}
+-
+-func TestGitHubSyncer_InvalidKeyLength(t *testing.T) {
+-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+-		// Return a valid base64 string but wrong length (not 32 bytes)
+-		shortKey := base64.StdEncoding.EncodeToString([]byte("too-short"))
+-		json.NewEncoder(w).Encode(map[string]string{
+-			"key_id": "key-123",
+-			"key":    shortKey,
+-		})
+-	}))
+-	defer srv.Close()
+-
+-	s := syncer.NewGitHub("owner", "repo", "token", srv.URL)
+-	err := s.Sync(context.Background(), []*provider.Secret{{Key: "key", Value: "val"}})
+-	assert.Error(t, err)
+-	assert.Contains(t, err.Error(), "invalid public key length")
+-}
+-
+-func TestGitHubSyncer_ContextCancellation(t *testing.T) {
+-	pubKey, _, err := box.GenerateKey(rand.Reader)
+-	require.NoError(t, err)
+-	pubKeyB64 := base64.StdEncoding.EncodeToString(pubKey[:])
+-
+-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+-		if r.Method == "GET" {
+-			json.NewEncoder(w).Encode(map[string]string{
+-				"key_id": "key-123",
+-				"key":    pubKeyB64,
+-			})
+-			return
+-		}
+-		w.WriteHeader(http.StatusCreated)
+-	}))
+-	defer srv.Close()
+-
+-	ctx, cancel := context.WithCancel(context.Background())
+-	cancel() // Cancel immediately
+-
+-	s := syncer.NewGitHub("owner", "repo", "token", srv.URL)
+-	err = s.Sync(ctx, []*provider.Secret{{Key: "key", Value: "val"}})
+-	assert.Error(t, err)
+-}
+-
+-func TestGitHubSyncer_DefaultBaseURL(t *testing.T) {
+-	// Creating with empty base URL should use github.com
+-	s := syncer.NewGitHub("owner", "repo", "token", "")
+-	assert.Equal(t, "github", s.Name())
+-}
+diff --git a/internal/syncer/syncer_test.go b/internal/syncer/syncer_test.go
+index 13b9448..2e312a5 100644
+--- a/internal/syncer/syncer_test.go
++++ b/internal/syncer/syncer_test.go
+@@ -2,17 +2,10 @@ package syncer_test
+
+ import (
+	"context"
+-	"crypto/rand"
+-	"encoding/base64"
+-	"encoding/json"
+-	"net/http"
+-	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"testing"
+
+-	"golang.org/x/crypto/nacl/box"
+-
+	"github.com/n24q02m/skret/internal/provider"
+	"github.com/n24q02m/skret/internal/syncer"
+	"github.com/stretchr/testify/assert"
+@@ -49,105 +42,6 @@ func TestDotenvSyncer_WriteError(t *testing.T) {
+	assert.Error(t, err)
+ }
+
+-func TestGitHubSyncer(t *testing.T) {
+-	// Generate a real curve25519 keypair for the mock server
+-	pubKey, _, err := box.GenerateKey(rand.Reader)
+-	require.NoError(t, err)
+-	pubKeyB64 := base64.StdEncoding.EncodeToString(pubKey[:])
+-
+-	var putCalls int
+-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+-		switch {
+-		case r.Method == "GET" && r.URL.Path == "/repos/owner/repo/actions/secrets/public-key":
+-			json.NewEncoder(w).Encode(map[string]string{
+-				"key_id": "key-123",
+-				"key":    pubKeyB64,
+-			})
+-		case r.Method == "PUT":
+-			putCalls++
+-			w.WriteHeader(http.StatusCreated)
+-		default:
+-			w.WriteHeader(http.StatusNotFound)
+-		}
+-	}))
+-	defer srv.Close()
+-
+-	secrets := []*provider.Secret{
+-		{Key: "DB_URL", Value: "postgres://host"},
+-		{Key: "API_KEY", Value: "sk-123"},
+-	}
+-
+-	s := syncer.NewGitHub("owner", "repo", "ghp_test", srv.URL)
+-	assert.Equal(t, "github", s.Name())
+-
+-	err = s.Sync(context.Background(), secrets)
+-	require.NoError(t, err)
+-	assert.Equal(t, 2, putCalls)
+-}
+-
+-func TestGitHubSyncer_APIError(t *testing.T) {
+-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+-		w.WriteHeader(http.StatusUnauthorized)
+-		w.Write([]byte(`{"message":"Bad credentials"}`))
+-	}))
+-	defer srv.Close()
+-
+-	s := syncer.NewGitHub("owner", "repo", "bad_token", srv.URL)
+-	err := s.Sync(context.Background(), []*provider.Secret{{Key: "K", Value: "V"}})
+-	assert.Error(t, err)
+-	assert.Contains(t, err.Error(), "401")
+-}
+-
+-func TestGitHubSyncer_BadJSON(t *testing.T) {
+-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+-		w.Write([]byte(`invalid json`))
+-	}))
+-	defer srv.Close()
+-
+-	s := syncer.NewGitHub("owner", "repo", "token", srv.URL)
+-	err := s.Sync(context.Background(), []*provider.Secret{{Key: "key", Value: "val"}})
+-	assert.Error(t, err)
+-	assert.Contains(t, err.Error(), "decode")
+-}
+-
+-func TestGitHubSyncer_BadKeyFormat(t *testing.T) {
+-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+-		json.NewEncoder(w).Encode(map[string]string{
+-			"key_id": "key-123",
+-			"key":    "not-a-valid-base64!!!!!!!",
+-		})
+-	}))
+-	defer srv.Close()
+-
+-	s := syncer.NewGitHub("owner", "repo", "token", srv.URL)
+-	err := s.Sync(context.Background(), []*provider.Secret{{Key: "key", Value: "val"}})
+-	assert.Error(t, err)
+-	assert.Contains(t, err.Error(), "illegal base64 data")
+-}
+-
+-func TestGitHubSyncer_PutError(t *testing.T) {
+-	pubKey, _, _ := box.GenerateKey(rand.Reader)
+-	pubKeyB64 := base64.StdEncoding.EncodeToString(pubKey[:])
+-
+-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+-		if r.Method == "GET" {
+-			json.NewEncoder(w).Encode(map[string]string{
+-				"key_id": "key-123",
+-				"key":    pubKeyB64,
+-			})
+-			return
+-		}
+-		// Fail the PUT request
+-		w.WriteHeader(http.StatusForbidden)
+-	}))
+-	defer srv.Close()
+-
+-	s := syncer.NewGitHub("owner", "repo", "token", srv.URL)
+-	err := s.Sync(context.Background(), []*provider.Secret{{Key: "key", Value: "val"}})
+-	assert.Error(t, err)
+-	assert.Contains(t, err.Error(), "403")
+-}
+-
+ func TestDotenvSyncer_EmptySecrets(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".env.empty")
