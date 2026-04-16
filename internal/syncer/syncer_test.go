@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"os"
 	"path/filepath"
 	"testing"
@@ -56,7 +57,10 @@ func TestGitHubSyncer(t *testing.T) {
 	pubKeyB64 := base64.StdEncoding.EncodeToString(pubKey[:])
 
 	var putCalls int
+	var mu sync.Mutex
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
 		switch {
 		case r.Method == "GET" && r.URL.Path == "/repos/owner/repo/actions/secrets/public-key":
 			json.NewEncoder(w).Encode(map[string]string{
