@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"golang.org/x/crypto/nacl/box"
@@ -254,4 +255,42 @@ func TestGitHubSyncer_DefaultBaseURL(t *testing.T) {
 	// Creating with empty base URL should use github.com
 	s := syncer.NewGitHub("owner", "repo", "token", "")
 	assert.Equal(t, "github", s.Name())
+}
+
+func TestGitHubSyncer_Caching(t *testing.T) {
+	pubKey, _, err := box.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	pubKeyB64 := base64.StdEncoding.EncodeToString(pubKey[:])
+
+	var getCalls int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "GET" && strings.Contains(r.URL.Path, "public-key") {
+			atomic.AddInt32(&getCalls, 1)
+			json.NewEncoder(w).Encode(map[string]string{
+				"key_id": "key-123",
+				"key":    pubKeyB64,
+			})
+			return
+		}
+		if r.Method == "PUT" {
+			w.WriteHeader(http.StatusCreated)
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	s := syncer.NewGitHub("owner", "repo", "ghp_test", srv.URL)
+	ctx := context.Background()
+	secrets := []*provider.Secret{{Key: "K1", Value: "V1"}}
+
+	// First sync
+	err = s.Sync(ctx, secrets)
+	require.NoError(t, err)
+	assert.Equal(t, int32(1), atomic.LoadInt32(&getCalls))
+
+	// Second sync - should use cache
+	err = s.Sync(ctx, secrets)
+	require.NoError(t, err)
+	assert.Equal(t, int32(1), atomic.LoadInt32(&getCalls), "Should have cached the public key and not called the API again")
 }

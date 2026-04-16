@@ -24,6 +24,10 @@ type GitHubSyncer struct {
 	token      string
 	baseURL    string
 	httpClient *http.Client
+
+	mu     sync.Mutex
+	pubKey string
+	keyID  string
 }
 
 // NewGitHub creates a GitHub Actions secrets syncer.
@@ -86,6 +90,13 @@ func (g *GitHubSyncer) Sync(ctx context.Context, secrets []*provider.Secret) err
 }
 
 func (g *GitHubSyncer) getPublicKey(ctx context.Context) (string, string, error) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	if g.pubKey != "" && g.keyID != "" {
+		return g.pubKey, g.keyID, nil
+	}
+
 	url := fmt.Sprintf("%s/repos/%s/%s/actions/secrets/public-key", g.baseURL, g.owner, g.repo)
 
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
@@ -113,7 +124,11 @@ func (g *GitHubSyncer) getPublicKey(ctx context.Context) (string, string, error)
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return "", "", fmt.Errorf("github: decode key: %w", err)
 	}
-	return result.Key, result.KeyID, nil
+
+	g.pubKey = result.Key
+	g.keyID = result.KeyID
+
+	return g.pubKey, g.keyID, nil
 }
 
 func (g *GitHubSyncer) putSecret(ctx context.Context, name, value, pubKeyB64, keyID string) error {
