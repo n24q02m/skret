@@ -98,25 +98,52 @@ func (o *importOptions) run(cmd *cobra.Command) error {
 		return skret.NewError(skret.ExitNetworkError, "import failed", err)
 	}
 
-	// Ensure toPath ends with a slash if provided and secrets don't start with one
+	prefix := o.getPrefix()
+	existing, listLoaded := o.loadExistingSecrets(ctx, p, prefix)
+
+	imported, skipped, err := o.processImport(ctx, cmd, p, secrets, prefix, existing, listLoaded)
+	if err != nil {
+		return err
+	}
+
+	cmd.Printf("Imported: %d, Skipped: %d (from %s)\n", imported, skipped, imp.Name())
+	return nil
+}
+
+func (o *importOptions) getPrefix() string {
 	prefix := o.toPath
 	if prefix != "" && !strings.HasSuffix(prefix, "/") {
 		prefix += "/"
 	}
+	return prefix
+}
 
-	var imported, skipped int
+func (o *importOptions) loadExistingSecrets(ctx context.Context, p provider.SecretProvider, prefix string) (map[string]struct{}, bool) {
 	existing := make(map[string]struct{})
-	listLoaded := false
-	if !o.dryRun && (o.onConflict == "skip" || o.onConflict == "fail") {
-		exList, err := p.List(ctx, prefix)
-		if err == nil {
-			for _, s := range exList {
-				existing[s.Key] = struct{}{}
-			}
-			listLoaded = true
-		}
+	if o.dryRun || (o.onConflict != "skip" && o.onConflict != "fail") {
+		return existing, false
 	}
 
+	exList, err := p.List(ctx, prefix)
+	if err != nil {
+		return existing, false
+	}
+
+	for _, s := range exList {
+		existing[s.Key] = struct{}{}
+	}
+	return existing, true
+}
+
+func (o *importOptions) processImport(
+	ctx context.Context,
+	cmd *cobra.Command,
+	p provider.SecretProvider,
+	secrets []importer.ImportedSecret,
+	prefix string,
+	existing map[string]struct{},
+	listLoaded bool,
+) (imported int, skipped int, err error) {
 	for _, s := range secrets {
 		key := s.Key
 		if prefix != "" {
@@ -144,15 +171,14 @@ func (o *importOptions) run(cmd *cobra.Command) error {
 					skipped++
 					continue
 				}
-				return skret.NewError(skret.ExitConflictError, fmt.Sprintf("import: conflict on %q", key), nil)
+				return imported, skipped, skret.NewError(skret.ExitConflictError, fmt.Sprintf("import: conflict on %q", key), nil)
 			}
 		}
+
 		if err := p.Set(ctx, key, s.Value, provider.SecretMeta{}); err != nil {
-			return skret.NewError(skret.ExitProviderError, fmt.Sprintf("import: set %q", key), err)
+			return imported, skipped, skret.NewError(skret.ExitProviderError, fmt.Sprintf("import: set %q", key), err)
 		}
 		imported++
 	}
-
-	cmd.Printf("Imported: %d, Skipped: %d (from %s)\n", imported, skipped, imp.Name())
-	return nil
+	return imported, skipped, nil
 }
