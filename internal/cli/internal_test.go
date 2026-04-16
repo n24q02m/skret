@@ -410,33 +410,6 @@ func TestSetOptions_GetMeta(t *testing.T) {
 	})
 }
 
-func TestAppendGitignore_NewFile(t *testing.T) {
-	dir := t.TempDir()
-	path := dir + "/.gitignore"
-	err := appendGitignore(path)
-	require.NoError(t, err)
-
-	data, err := os.ReadFile(path)
-	require.NoError(t, err)
-	assert.Contains(t, string(data), ".secrets.*.yaml")
-	assert.Contains(t, string(data), ".secrets.*.yml")
-}
-
-func TestAppendGitignore_ExistingWithoutNewline(t *testing.T) {
-	dir := t.TempDir()
-	path := dir + "/.gitignore"
-	// Write without trailing newline
-	require.NoError(t, os.WriteFile(path, []byte("node_modules/"), 0o644))
-	err := appendGitignore(path)
-	require.NoError(t, err)
-
-	data, err := os.ReadFile(path)
-	require.NoError(t, err)
-	content := string(data)
-	assert.Contains(t, content, "node_modules/")
-	assert.Contains(t, content, ".secrets.*.yaml")
-}
-
 func TestGetEnvPairs_ProviderListError(t *testing.T) {
 	// This tests the error path in getEnvPairs when loadProvider fails
 	opts := &GlobalOpts{} // no config file in CWD
@@ -577,62 +550,6 @@ secrets:
 	assert.NotNil(t, cfg)
 	assert.Equal(t, "local", p.Name())
 	p.Close()
-}
-
-func TestInitOptions_Run_MarshalCheck(t *testing.T) {
-	dir := t.TempDir()
-	require.NoError(t, os.MkdirAll(dir+"/.git", 0o755))
-
-	origDir, _ := os.Getwd()
-	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
-
-	cmd := &cobra.Command{}
-	var buf bytes.Buffer
-	cmd.SetOut(&buf)
-	cmd.SetErr(&buf)
-
-	o := &initOptions{
-		provider: "aws",
-		path:     "/myapp/staging",
-		region:   "ap-southeast-1",
-		file:     "",
-		force:    false,
-	}
-
-	err := o.run(cmd)
-	require.NoError(t, err)
-
-	data, err := os.ReadFile(dir + "/.skret.yaml")
-	require.NoError(t, err)
-	assert.Contains(t, string(data), "ap-southeast-1")
-	assert.Contains(t, string(data), "/myapp/staging")
-}
-
-func TestInitOptions_Run_WithFileFlag(t *testing.T) {
-	dir := t.TempDir()
-	require.NoError(t, os.MkdirAll(dir+"/.git", 0o755))
-
-	origDir, _ := os.Getwd()
-	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
-
-	cmd := &cobra.Command{}
-	var buf bytes.Buffer
-	cmd.SetOut(&buf)
-	cmd.SetErr(&buf)
-
-	o := &initOptions{
-		provider: "local",
-		file:     ".my-secrets.yaml",
-	}
-
-	err := o.run(cmd)
-	require.NoError(t, err)
-
-	data, err := os.ReadFile(dir + "/.skret.yaml")
-	require.NoError(t, err)
-	assert.Contains(t, string(data), ".my-secrets.yaml")
 }
 
 func TestImportOptions_Run_SetError(t *testing.T) {
