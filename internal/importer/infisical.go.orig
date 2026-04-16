@@ -12,11 +12,11 @@ import (
 
 // InfisicalImporter reads secrets from the Infisical API.
 type InfisicalImporter struct {
-	token      string
-	projectID  string
-	env        string
+	token     string
+	projectID string
+	env       string
 	httpClient *http.Client
-	baseURL    string
+	baseURL   string
 }
 
 // NewInfisical creates an Infisical API importer.
@@ -40,7 +40,7 @@ func (i *InfisicalImporter) Name() string { return "infisical" }
 func (i *InfisicalImporter) Import(ctx context.Context) ([]ImportedSecret, error) {
 	url := fmt.Sprintf("%s/api/v3/secrets/raw?workspaceId=%s&environment=%s", i.baseURL, i.projectID, i.env)
 
-	req, err := http.NewRequestWithContext(ctx, "GET", url, http.NoBody)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("infisical: create request: %w", err)
 	}
