@@ -4,15 +4,16 @@ import (
 	"context"
 	"log/slog"
 	"regexp"
+	"strings"
 )
 
 var secretPatterns = []*regexp.Regexp{
-	regexp.MustCompile(`(?i)^[a-z0-9+/]{40,}={0,2}$`),         // Base64
 	regexp.MustCompile(`^sk-[a-zA-Z0-9]{20,}$`),               // OpenAI-style
-	regexp.MustCompile(`^dp\.st\.[a-zA-Z0-9]+$`),              // Doppler service token
 	regexp.MustCompile(`^ghp_[a-zA-Z0-9]{36,}$`),              // GitHub PAT
+	regexp.MustCompile(`^dp\.st\.[a-zA-Z0-9]+$`),              // Doppler service token
 	regexp.MustCompile(`^AKIA[A-Z0-9]{16}$`),                  // AWS access key
 	regexp.MustCompile(`(?i)^(password|secret|token|key)=.+`), // Key-value secrets
+	regexp.MustCompile(`(?i)^[a-z0-9+/]{40,}={0,2}$`),         // Base64 (Generic)
 }
 
 const redacted = "[REDACTED]"
@@ -67,11 +68,41 @@ func redactAttr(a slog.Attr) slog.Attr {
 	return a
 }
 
+// shouldRedact returns true if the value matches any secret pattern.
+// It is optimized with fast-path checks (length, prefix, and basic string operations)
+// to avoid expensive regex matching on every log attribute.
 func shouldRedact(val string) bool {
-	for _, p := range secretPatterns {
-		if p.MatchString(val) {
+	// Fast path: most log strings are short and won't match any secret pattern.
+	// The shortest tracked secret is "key=v" (5 chars).
+	if len(val) < 5 {
+		return false
+	}
+
+	// Fast path: check specific prefixes.
+	if strings.HasPrefix(val, "sk-") {
+		return secretPatterns[0].MatchString(val)
+	}
+	if strings.HasPrefix(val, "ghp_") {
+		return secretPatterns[1].MatchString(val)
+	}
+	if strings.HasPrefix(val, "AKIA") {
+		return secretPatterns[3].MatchString(val)
+	}
+	if strings.HasPrefix(val, "dp.st.") {
+		return secretPatterns[2].MatchString(val)
+	}
+
+	// Key-value secrets MUST contain '='.
+	if strings.Contains(val, "=") {
+		if secretPatterns[4].MatchString(val) {
 			return true
 		}
 	}
+
+	// Generic Base64 strings are at least 40 chars in our pattern.
+	if len(val) >= 40 {
+		return secretPatterns[5].MatchString(val)
+	}
+
 	return false
 }
