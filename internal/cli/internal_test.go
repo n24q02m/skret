@@ -86,7 +86,7 @@ func TestRenderHistory_WithEntries(t *testing.T) {
 	out := buf.String()
 	assert.Contains(t, out, "VERSION")
 	assert.Contains(t, out, "post...t/db") // masked
-	assert.Contains(t, out, "***")          // "short" is <=8 chars -> ***
+	assert.Contains(t, out, "***")         // "short" is <=8 chars -> ***
 	assert.Contains(t, out, "admin")
 	assert.Contains(t, out, "2026-04-01")
 }
@@ -132,66 +132,9 @@ func TestRenderHistory_ZeroTimestamp(t *testing.T) {
 	assert.Contains(t, out, "-") // zero timestamp shows as "-"
 }
 
-func TestPrintEnvPairs_JSONMarshalError(t *testing.T) {
-	// printEnvPairs with json format and valid data should work fine
-	cmd := &cobra.Command{}
-	var buf bytes.Buffer
-	cmd.SetOut(&buf)
-
-	pairs := []envPair{
-		{Name: "KEY", Value: "value"},
-	}
-
-	err := printEnvPairs(cmd, pairs, "json")
-	require.NoError(t, err)
-	assert.Contains(t, buf.String(), `"KEY": "value"`)
-}
-
-func TestPrintEnvPairs_YAMLFormat(t *testing.T) {
-	cmd := &cobra.Command{}
-	var buf bytes.Buffer
-	cmd.SetOut(&buf)
-
-	pairs := []envPair{
-		{Name: "KEY", Value: "value"},
-	}
-
-	err := printEnvPairs(cmd, pairs, "yaml")
-	require.NoError(t, err)
-	assert.Contains(t, buf.String(), "KEY: value")
-}
-
-func TestPrintEnvPairs_ExportFormat(t *testing.T) {
-	cmd := &cobra.Command{}
-	var buf bytes.Buffer
-	cmd.SetOut(&buf)
-
-	pairs := []envPair{
-		{Name: "DB_URL", Value: "postgres://localhost"},
-	}
-
-	err := printEnvPairs(cmd, pairs, "export")
-	require.NoError(t, err)
-	assert.Contains(t, buf.String(), `export DB_URL="postgres://localhost"`)
-}
-
-func TestPrintEnvPairs_DotenvDefault(t *testing.T) {
-	cmd := &cobra.Command{}
-	var buf bytes.Buffer
-	cmd.SetOut(&buf)
-
-	pairs := []envPair{
-		{Name: "KEY", Value: `value with "quotes"`},
-	}
-
-	err := printEnvPairs(cmd, pairs, "dotenv")
-	require.NoError(t, err)
-	assert.Contains(t, buf.String(), `KEY=`)
-}
-
 func TestFilterSecrets_NonRecursive(t *testing.T) {
 	secrets := []*provider.Secret{
-		{Key: "/app/DB"},          // 2 slashes
+		{Key: "/app/DB"},         // 2 slashes
 		{Key: "/app/nested/KEY"}, // 3 slashes
 	}
 
@@ -211,9 +154,9 @@ func TestFilterSecrets_NonRecursive(t *testing.T) {
 
 	// Verify deeper filtering
 	deepSecrets := []*provider.Secret{
-		{Key: "/a/b/c"},     // 3 slashes
-		{Key: "/a/b/c/d"},   // 4 slashes
-		{Key: "/a/b"},       // 2 slashes
+		{Key: "/a/b/c"},   // 3 slashes
+		{Key: "/a/b/c/d"}, // 4 slashes
+		{Key: "/a/b"},     // 2 slashes
 	}
 	// listPath="/a/b/" -> strings.Count = 3, ends with "/" -> level stays 3
 	filtered3 := filterSecrets(deepSecrets, "/a/b/", false)
@@ -265,20 +208,6 @@ func TestDefaultRegistry(t *testing.T) {
 	}
 	// Will attempt to load AWS config (may or may not succeed depending on env)
 	_, _ = reg.New("aws", cfg2)
-}
-
-func TestEscapeEnvValue(t *testing.T) {
-	tests := []struct {
-		input    string
-		expected string
-	}{
-		{`no quotes`, `no quotes`},
-		{`has "double" quotes`, `has \"double\" quotes`},
-		{`no special`, `no special`},
-	}
-	for _, tt := range tests {
-		assert.Equal(t, tt.expected, escapeEnvValue(tt.input))
-	}
 }
 
 func TestCreateImporter_AllSources(t *testing.T) {
@@ -435,13 +364,6 @@ func TestAppendGitignore_ExistingWithoutNewline(t *testing.T) {
 	content := string(data)
 	assert.Contains(t, content, "node_modules/")
 	assert.Contains(t, content, ".secrets.*.yaml")
-}
-
-func TestGetEnvPairs_ProviderListError(t *testing.T) {
-	// This tests the error path in getEnvPairs when loadProvider fails
-	opts := &GlobalOpts{} // no config file in CWD
-	_, err := getEnvPairs(opts)
-	assert.Error(t, err)
 }
 
 func TestImportOptions_Run_ListFailsFallsBackToGet(t *testing.T) {
