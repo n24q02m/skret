@@ -40,3 +40,12 @@ docs/.vitepress/cache/
 .code-review-graph/
 .claude-plugin/
 .wrangler/
+
+# AI Assistant / Rules
+.jules/
+.jules
+.superpower/
+superpower/
+superpowers/
+docs/superpowers/
+
