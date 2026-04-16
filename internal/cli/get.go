@@ -25,7 +25,7 @@ func newGetCmd(opts *GlobalOpts) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			defer p.Close()
+			defer func() { _ = p.Close() }()
 
 			ctx := context.Background()
 			secret, err := p.Get(ctx, args[0])
@@ -33,7 +33,8 @@ func newGetCmd(opts *GlobalOpts) *cobra.Command {
 				return skret.NewError(skret.ExitNotFoundError, fmt.Sprintf("get %q", args[0]), err)
 			}
 
-			if outputJSON || withMetadata {
+			switch {
+			case outputJSON || withMetadata:
 				out := map[string]any{
 					"key":   secret.Key,
 					"value": secret.Value,
@@ -47,9 +48,9 @@ func newGetCmd(opts *GlobalOpts) *cobra.Command {
 					return skret.NewError(skret.ExitGenericError, "failed to format JSON output", err)
 				}
 				cmd.Println(string(data))
-			} else if plain {
+			case plain:
 				cmd.Print(secret.Value)
-			} else {
+			default:
 				cmd.Println(secret.Value)
 			}
 			return nil

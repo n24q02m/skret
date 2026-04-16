@@ -15,7 +15,7 @@ func TestGetCmd_DefaultOutput(t *testing.T) {
 	dir := setupTestRepo(t)
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	var buf bytes.Buffer
 	cmd := cli.NewRootCmd()
@@ -31,7 +31,7 @@ func TestGetCmd_NotFound(t *testing.T) {
 	dir := setupTestRepo(t)
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	cmd := cli.NewRootCmd()
 	cmd.SetArgs([]string{"get", "NONEXISTENT"})
@@ -45,7 +45,7 @@ func TestGetCmd_PlainFlag(t *testing.T) {
 	dir := setupTestRepo(t)
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	var buf bytes.Buffer
 	cmd := cli.NewRootCmd()
@@ -61,7 +61,7 @@ func TestGetCmd_JSON(t *testing.T) {
 	dir := setupTestRepo(t)
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	var buf bytes.Buffer
 	cmd := cli.NewRootCmd()
@@ -83,7 +83,7 @@ func TestGetCmd_WithMetadata(t *testing.T) {
 	dir := setupTestRepo(t)
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	var buf bytes.Buffer
 	cmd := cli.NewRootCmd()
