@@ -57,12 +57,14 @@ func newRunCmd(opts *GlobalOpts) *cobra.Command {
 	return cmd
 }
 
+var skexecRun = skexec.Run
+
 func execCommand(args []string, env []string) error {
 	binary, err := osexec.LookPath(args[0])
 	if err != nil {
 		return skret.NewError(skret.ExitExecError, fmt.Sprintf("run: command not found: %s", args[0]), err)
 	}
-	err = skexec.Run(binary, args, env)
+	err = skexecRun(binary, args, env)
 	if err != nil {
 		return skret.NewError(skret.ExitExecError, "runtime error", err)
 	}

@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"golang.org/x/crypto/nacl/box"
@@ -122,8 +123,14 @@ func TestGitHubSyncer_MultipleSecrets_SingleKeyFetch(t *testing.T) {
 	require.NoError(t, err)
 	pubKeyB64 := base64.StdEncoding.EncodeToString(pubKey[:])
 
-	var getKeyCalls, putCalls int
+	var (
+		mu          sync.Mutex
+		getKeyCalls int
+		putCalls    int
+	)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
 		switch {
 		case r.Method == "GET" && strings.Contains(r.URL.Path, "public-key"):
 			getKeyCalls++
