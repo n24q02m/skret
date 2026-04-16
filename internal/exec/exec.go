@@ -11,11 +11,28 @@ import (
 // Existing env vars override secret values (user control).
 // Keys in exclude list are never injected.
 func BuildEnv(secrets []*provider.Secret, existing []string, pathPrefix string, exclude []string) []string {
+	excludeSet := parseExcludeSet(exclude)
+	existingMap, env := parseExistingEnv(existing, secrets)
+	secretVars := processSecrets(secrets, pathPrefix, excludeSet, existingMap)
+
+	expandReferences(secretVars, existingMap)
+
+	for k, v := range secretVars {
+		env = append(env, k+"="+v)
+	}
+
+	return env
+}
+
+func parseExcludeSet(exclude []string) map[string]bool {
 	excludeSet := make(map[string]bool, len(exclude))
 	for _, e := range exclude {
 		excludeSet[strings.ToUpper(e)] = true
 	}
+	return excludeSet
+}
 
+func parseExistingEnv(existing []string, secrets []*provider.Secret) (map[string]string, []string) {
 	existingMap := make(map[string]string, len(existing))
 	env := make([]string, 0, len(existing)+len(secrets))
 	for _, e := range existing {
@@ -23,7 +40,10 @@ func BuildEnv(secrets []*provider.Secret, existing []string, pathPrefix string, 
 		existingMap[key] = val
 		env = append(env, e)
 	}
+	return existingMap, env
+}
 
+func processSecrets(secrets []*provider.Secret, pathPrefix string, excludeSet map[string]bool, existingMap map[string]string) map[string]string {
 	secretVars := make(map[string]string)
 	for _, s := range secrets {
 		name := KeyToEnvName(s.Key, pathPrefix)
@@ -35,7 +55,10 @@ func BuildEnv(secrets []*provider.Secret, existing []string, pathPrefix string, 
 		}
 		secretVars[name] = s.Value
 	}
+	return secretVars
+}
 
+func expandReferences(secretVars map[string]string, existingMap map[string]string) {
 	// Expand secret references (up to 10 iterations to prevent infinite loops)
 	for i := 0; i < 10; i++ {
 		changed := false
@@ -61,12 +84,6 @@ func BuildEnv(secrets []*provider.Secret, existing []string, pathPrefix string, 
 			break
 		}
 	}
-
-	for k, v := range secretVars {
-		env = append(env, k+"="+v)
-	}
-
-	return env
 }
 
 // KeyToEnvName converts a secret key to an environment variable name.
