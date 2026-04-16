@@ -31,7 +31,7 @@ func (i *InfisicalImporter) Name() string { return "infisical" }
 func (i *InfisicalImporter) Import(ctx context.Context) ([]ImportedSecret, error) {
 	url := fmt.Sprintf("%s/api/v3/secrets/raw?workspaceId=%s&environment=%s", i.baseURL, i.projectID, i.env)
 
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, http.NoBody)
 	if err != nil {
 		return nil, fmt.Errorf("infisical: create request: %w", err)
 	}
@@ -47,7 +47,10 @@ func (i *InfisicalImporter) Import(ctx context.Context) ([]ImportedSecret, error
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, fmt.Errorf("infisical: API returned %d: failed to read body: %w", resp.StatusCode, err)
+		}
 		return nil, fmt.Errorf("infisical: API returned %d: %s", resp.StatusCode, string(body))
 	}
 

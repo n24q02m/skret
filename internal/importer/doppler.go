@@ -31,7 +31,7 @@ func (d *DopplerImporter) Name() string { return "doppler" }
 func (d *DopplerImporter) Import(ctx context.Context) ([]ImportedSecret, error) {
 	url := fmt.Sprintf("%s/v3/configs/config/secrets?project=%s&config=%s", d.baseURL, d.project, d.config)
 
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, http.NoBody)
 	if err != nil {
 		return nil, fmt.Errorf("doppler: create request: %w", err)
 	}
@@ -47,7 +47,10 @@ func (d *DopplerImporter) Import(ctx context.Context) ([]ImportedSecret, error) 
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, fmt.Errorf("doppler: API returned %d: failed to read body: %w", resp.StatusCode, err)
+		}
 		return nil, fmt.Errorf("doppler: API returned %d: %s", resp.StatusCode, string(body))
 	}
 

@@ -7,3 +7,7 @@
 ## Title: Standardized Error Handling for Body Reads
 ## Learning: Following project conventions, HTTP response body reads should always handle errors from `io.ReadAll` and wrap them with descriptive context including the status code.
 ## Action: Updated `getPublicKey` and `putSecret` in `internal/syncer/github.go` to check for and wrap errors from `io.ReadAll`.
+
+## Title: Extract Invariant Operations from GitHub Syncer Loop
+## Learning: Performing base64 decoding of the repository public key inside the concurrent processing loop caused redundant O(N) memory allocations and CPU overhead.
+## Action: Moved the decoding of the public key outside the loop in `Sync`, refactoring `putSecret` and `sealSecret` to accept the pre-decoded `[32]byte` key.
