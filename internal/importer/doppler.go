@@ -15,6 +15,7 @@ type DopplerImporter struct {
 	token   string
 	project string
 	config  string
+	httpClient *http.Client
 	baseURL string
 }
 
@@ -23,7 +24,15 @@ func NewDoppler(token, project, config, baseURL string) Importer {
 	if baseURL == "" {
 		baseURL = "https://api.doppler.com"
 	}
-	return &DopplerImporter{token: token, project: project, config: config, baseURL: baseURL}
+	return &DopplerImporter{
+		token:   token,
+		project: project,
+		config:  config,
+		baseURL: baseURL,
+		httpClient: &http.Client{
+			Timeout: 30 * time.Second,
+		},
+	}
 }
 
 func (d *DopplerImporter) Name() string { return "doppler" }
@@ -38,9 +47,7 @@ func (d *DopplerImporter) Import(ctx context.Context) ([]ImportedSecret, error) 
 	req.Header.Set("Authorization", "Bearer "+d.token)
 	req.Header.Set("Accept", "application/json")
 
-	// SECURITY: Use a custom HTTP client with an explicit timeout to prevent resource exhaustion and indefinite hangs.
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := d.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("doppler: request: %w", err)
 	}

@@ -15,6 +15,7 @@ type InfisicalImporter struct {
 	token     string
 	projectID string
 	env       string
+	httpClient *http.Client
 	baseURL   string
 }
 
@@ -23,7 +24,15 @@ func NewInfisical(token, projectID, env, baseURL string) Importer {
 	if baseURL == "" {
 		baseURL = "https://app.infisical.com"
 	}
-	return &InfisicalImporter{token: token, projectID: projectID, env: env, baseURL: baseURL}
+	return &InfisicalImporter{
+		token:     token,
+		projectID: projectID,
+		env:       env,
+		baseURL:   baseURL,
+		httpClient: &http.Client{
+			Timeout: 30 * time.Second,
+		},
+	}
 }
 
 func (i *InfisicalImporter) Name() string { return "infisical" }
@@ -38,9 +47,7 @@ func (i *InfisicalImporter) Import(ctx context.Context) ([]ImportedSecret, error
 	req.Header.Set("Authorization", "Bearer "+i.token)
 	req.Header.Set("Accept", "application/json")
 
-	// SECURITY: Use a custom HTTP client with an explicit timeout to prevent resource exhaustion and indefinite hangs.
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := i.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("infisical: request: %w", err)
 	}
