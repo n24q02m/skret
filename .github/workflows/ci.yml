@@ -41,9 +41,8 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - uses: golangci/golangci-lint-action@v6
-        with:
-          version: latest
+      - name: Run golangci-lint
+        run: go run github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8 run
 
   test:
     needs: lint
