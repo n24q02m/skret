@@ -118,8 +118,8 @@ func (p *Provider) save() error {
 	tmpPath := tmp.Name()
 
 	if _, err := tmp.Write(raw); err != nil {
-		tmp.Close()
-		os.Remove(tmpPath)
+		_ = tmp.Close()
+		_ = os.Remove(tmpPath)
 		return fmt.Errorf("local: write temp: %w", err)
 	}
 	if err := tmp.Close(); err != nil {

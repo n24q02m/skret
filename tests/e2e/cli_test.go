@@ -30,7 +30,7 @@ func TestE2E_InitGetSetDeleteListEnv(t *testing.T) {
 	_ = os.MkdirAll(filepath.Join(dir, ".git"), 0o755)
 
 	// Write local secrets file first
-	os.WriteFile(filepath.Join(dir, ".secrets.dev.yaml"), []byte("version: \"1\"\nsecrets:\n  ORIGINAL: \"original_val\""), 0o600)
+	_ = os.WriteFile(filepath.Join(dir, ".secrets.dev.yaml"), []byte("version: \"1\"\nsecrets:\n  ORIGINAL: \"original_val\""), 0o600)
 
 	// Init
 	run(t, dir, "init", "--provider=local", "--file=./.secrets.dev.yaml")

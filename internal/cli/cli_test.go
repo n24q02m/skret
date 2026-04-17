@@ -38,7 +38,7 @@ func setupTestRepo(t *testing.T) string {
 	dir := t.TempDir()
 	_ = os.MkdirAll(filepath.Join(dir, ".git"), 0o755)
 
-	os.WriteFile(filepath.Join(dir, ".skret.yaml"), []byte(`
+	_ = os.WriteFile(filepath.Join(dir, ".skret.yaml"), []byte(`
 version: "1"
 default_env: dev
 environments:
@@ -47,7 +47,7 @@ environments:
     file: ./.secrets.dev.yaml
 `), 0o644)
 
-	os.WriteFile(filepath.Join(dir, ".secrets.dev.yaml"), []byte(`
+	_ = os.WriteFile(filepath.Join(dir, ".secrets.dev.yaml"), []byte(`
 version: "1"
 secrets:
   DATABASE_URL: "postgres://dev:dev@localhost/db"
@@ -70,7 +70,7 @@ func TestInitCmd_CreatesConfigFile(t *testing.T) {
 
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	err := cmd.Execute()
 	require.NoError(t, err)
@@ -91,7 +91,7 @@ func TestInitCmd_AddsToGitignore(t *testing.T) {
 
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	err := cmd.Execute()
 	require.NoError(t, err)
@@ -111,7 +111,7 @@ func TestInitCmd_RefusesOverwrite(t *testing.T) {
 
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	err := cmd.Execute()
 	assert.Error(t, err)
@@ -128,7 +128,7 @@ func TestInitCmd_ForceOverwrite(t *testing.T) {
 
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	err := cmd.Execute()
 	require.NoError(t, err)
@@ -144,7 +144,7 @@ func TestGetCmd_PlainOutput(t *testing.T) {
 	dir := setupTestRepo(t)
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	var buf bytes.Buffer
 	cmd := cli.NewRootCmd()
@@ -160,7 +160,7 @@ func TestGetCmd_NotFound(t *testing.T) {
 	dir := setupTestRepo(t)
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	cmd := cli.NewRootCmd()
 	cmd.SetArgs([]string{"get", "NONEXISTENT"})
@@ -176,7 +176,7 @@ func TestListCmd_TableOutput(t *testing.T) {
 	dir := setupTestRepo(t)
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	var buf bytes.Buffer
 	cmd := cli.NewRootCmd()
@@ -195,7 +195,7 @@ func TestListCmd_JSONOutput(t *testing.T) {
 	dir := setupTestRepo(t)
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	var buf bytes.Buffer
 	cmd := cli.NewRootCmd()
@@ -213,7 +213,7 @@ func TestEnvCmd_DotenvFormat(t *testing.T) {
 	dir := setupTestRepo(t)
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	var buf bytes.Buffer
 	cmd := cli.NewRootCmd()
@@ -231,7 +231,7 @@ func TestEnvCmd_ExportFormat(t *testing.T) {
 	dir := setupTestRepo(t)
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	var buf bytes.Buffer
 	cmd := cli.NewRootCmd()
@@ -249,7 +249,7 @@ func TestSetCmd_BasicSet(t *testing.T) {
 	dir := setupTestRepo(t)
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	cmd := cli.NewRootCmd()
 	cmd.SetArgs([]string{"set", "NEW_KEY", "new_value"})
@@ -270,7 +270,7 @@ func TestSetCmd_MissingArgs(t *testing.T) {
 	dir := setupTestRepo(t)
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	cmd := cli.NewRootCmd()
 	cmd.SetArgs([]string{"set", "KEY_ONLY"})
@@ -284,7 +284,7 @@ func TestDeleteCmd_Success(t *testing.T) {
 	dir := setupTestRepo(t)
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	cmd := cli.NewRootCmd()
 	cmd.SetArgs([]string{"delete", "API_KEY", "--confirm"})
@@ -302,7 +302,7 @@ func TestDeleteCmd_NotFound(t *testing.T) {
 	dir := setupTestRepo(t)
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	cmd := cli.NewRootCmd()
 	cmd.SetArgs([]string{"delete", "NONEXISTENT", "--confirm"})
@@ -317,7 +317,7 @@ func TestRunCmd_MissingCommand(t *testing.T) {
 	dir := setupTestRepo(t)
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	cmd := cli.NewRootCmd()
 	cmd.SetArgs([]string{"run"})
@@ -328,7 +328,7 @@ func TestRunCmd_MissingCommand(t *testing.T) {
 func TestRunCmd_RequiredSecretMissing(t *testing.T) {
 	dir := setupTestRepo(t)
 	// Add required secret spec
-	os.WriteFile(filepath.Join(dir, ".skret.yaml"), []byte(`
+	_ = os.WriteFile(filepath.Join(dir, ".skret.yaml"), []byte(`
 version: "1"
 default_env: dev
 required: ["MISSING_REQUIRED"]
@@ -340,7 +340,7 @@ environments:
 
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	cmd := cli.NewRootCmd()
 	cmd.SetArgs([]string{"run", "--", "go", "version"})
@@ -355,10 +355,10 @@ func TestImportCmd_Dotenv(t *testing.T) {
 	dir := setupTestRepo(t)
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	envContent := `IMPORT_KEY=imported_value`
-	os.WriteFile(filepath.Join(dir, ".env"), []byte(envContent), 0o644)
+	_ = os.WriteFile(filepath.Join(dir, ".env"), []byte(envContent), 0o644)
 
 	cmd := cli.NewRootCmd()
 	cmd.SetArgs([]string{"import", "--from=dotenv", "--file=.env"})
@@ -378,10 +378,10 @@ func TestImportCmd_ToPath(t *testing.T) {
 	dir := setupTestRepo(t)
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	envContent := `IMPORT_KEY=imported_value`
-	os.WriteFile(filepath.Join(dir, ".env"), []byte(envContent), 0o644)
+	_ = os.WriteFile(filepath.Join(dir, ".env"), []byte(envContent), 0o644)
 
 	cmd := cli.NewRootCmd()
 	cmd.SetArgs([]string{"import", "--from=dotenv", "--file=.env", "--to-path=/imported/"})
@@ -403,7 +403,7 @@ func TestSyncCmd_Dotenv(t *testing.T) {
 	dir := setupTestRepo(t)
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	cmd := cli.NewRootCmd()
 	cmd.SetArgs([]string{"sync", "--to=dotenv", "--file=.env.synced"})
@@ -421,7 +421,7 @@ func TestEnvCmd_JsonYamlFormats(t *testing.T) {
 	dir := setupTestRepo(t)
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	var buf bytes.Buffer
 	cmd := cli.NewRootCmd()
@@ -442,9 +442,9 @@ func TestSetCmd_FromFile(t *testing.T) {
 	dir := setupTestRepo(t)
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
-	os.WriteFile("val.txt", []byte("file_value"), 0o644)
+	_ = os.WriteFile("val.txt", []byte("file_value"), 0o644)
 
 	cmd := cli.NewRootCmd()
 	cmd.SetArgs([]string{"set", "FILE_KEY", "--from-file=val.txt"})
@@ -462,10 +462,10 @@ func TestImportCmd_ConflictSkip(t *testing.T) {
 	dir := setupTestRepo(t)
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	envContent := "API_KEY=new_secret\nNEW_KEY=new_value"
-	os.WriteFile(filepath.Join(dir, ".env"), []byte(envContent), 0o644)
+	_ = os.WriteFile(filepath.Join(dir, ".env"), []byte(envContent), 0o644)
 
 	var buf bytes.Buffer
 	cmd := cli.NewRootCmd()
@@ -495,10 +495,10 @@ func TestImportCmd_ConflictFail(t *testing.T) {
 	dir := setupTestRepo(t)
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	envContent := "API_KEY=new_secret"
-	os.WriteFile(filepath.Join(dir, ".env"), []byte(envContent), 0o644)
+	_ = os.WriteFile(filepath.Join(dir, ".env"), []byte(envContent), 0o644)
 
 	cmd := cli.NewRootCmd()
 	cmd.SetArgs([]string{"import", "--from=dotenv", "--file=.env", "--on-conflict=fail"})
