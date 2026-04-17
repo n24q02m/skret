@@ -1,0 +1,4 @@
+fix: 🛡️ Sentinel: prevent Node 20 GitHub Actions timeout
+
+💡 What: Forced GitHub Actions to use Node 24 by setting `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24` in `ci.yml` and `cd.yml`.
+🎯 Why: GitHub Actions hosted runners occasionally lose communication with the server and cause OOM when running actions under Node 20. Forcing Node 24 circumvents this limitation for `golangci-lint` and other workflow actions, ensuring the CI suite completes consistently.
