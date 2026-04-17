@@ -35,20 +35,21 @@ func (d *DotenvSyncer) Sync(_ context.Context, secrets []*provider.Secret) error
 
 	for _, s := range secrets {
 		if _, err := fmt.Fprintf(tmp, "%s=%q\n", s.Key, s.Value); err != nil {
-			tmp.Close()
+			_ = tmp.Close()
 			os.Remove(tmpPath)
 			return fmt.Errorf("dotenv-sync: write: %w", err)
 		}
 	}
 
+	if err := tmp.Chmod(0o600); err != nil {
+		_ = tmp.Close()
+		os.Remove(tmpPath)
+		return fmt.Errorf("dotenv-sync: chmod: %w", err)
+	}
+
 	if err := tmp.Close(); err != nil {
 		os.Remove(tmpPath)
 		return fmt.Errorf("dotenv-sync: close: %w", err)
-	}
-
-	if err := os.Chmod(tmpPath, 0o600); err != nil {
-		os.Remove(tmpPath)
-		return fmt.Errorf("dotenv-sync: chmod: %w", err)
 	}
 
 	if err := os.Rename(tmpPath, d.filePath); err != nil {
