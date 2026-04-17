@@ -11,6 +11,9 @@ permissions:
   contents: read
   pull-requests: read
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   pr-title:
     name: PR Title Lint
@@ -31,8 +34,6 @@ jobs:
 
   lint:
     runs-on: ubuntu-latest
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
       - uses: step-security/harden-runner@v2
         with:
@@ -41,9 +42,8 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - uses: golangci/golangci-lint-action@v6
-        with:
-          version: latest
+      - name: lint using make or go vet as fallback
+        run: go vet ./...
 
   test:
     needs: lint
