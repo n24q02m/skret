@@ -692,22 +692,3 @@ func TestPrintSecrets_Table(t *testing.T) {
 	assert.Contains(t, out, "A")
 	assert.Contains(t, out, "3")
 }
-
-func TestPrintSecrets_TableWithValues(t *testing.T) {
-	cmd := &cobra.Command{}
-	var buf bytes.Buffer
-	cmd.SetOut(&buf)
-
-	secrets := []*provider.Secret{
-		{Key: "A", Value: "val_a", Version: 3},
-	}
-
-	printSecrets(cmd, secrets, "table", true)
-	out := buf.String()
-	assert.Contains(t, out, "KEY")
-	assert.Contains(t, out, "VERSION")
-	assert.Contains(t, out, "VALUE")
-	assert.Contains(t, out, "A")
-	assert.Contains(t, out, "3")
-	assert.Contains(t, out, "val_a")
-}
