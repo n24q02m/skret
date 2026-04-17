@@ -41,14 +41,16 @@ func (d *DotenvSyncer) Sync(_ context.Context, secrets []*provider.Secret) error
 		}
 	}
 
+	// Sentinel 🛡️: Set restrictive permissions on the open file descriptor to prevent TOCTOU vulnerabilities
+	if err := tmp.Chmod(0o600); err != nil {
+		tmp.Close()
+		os.Remove(tmpPath)
+		return fmt.Errorf("dotenv-sync: chmod: %w", err)
+	}
+
 	if err := tmp.Close(); err != nil {
 		os.Remove(tmpPath)
 		return fmt.Errorf("dotenv-sync: close: %w", err)
-	}
-
-	if err := os.Chmod(tmpPath, 0o600); err != nil {
-		os.Remove(tmpPath)
-		return fmt.Errorf("dotenv-sync: chmod: %w", err)
 	}
 
 	if err := os.Rename(tmpPath, d.filePath); err != nil {
