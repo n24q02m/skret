@@ -1,5 +1,8 @@
 name: CI
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 on:
   push:
     branches: [main, "dev/**"]
@@ -39,9 +42,8 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - uses: golangci/golangci-lint-action@v6
-        with:
-          version: latest
+      - name: Run golangci-lint
+        run: go run github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.6 run
 
   test:
     needs: lint
