@@ -119,23 +119,23 @@ func (p *Provider) save() error {
 
 	if _, err := tmp.Write(raw); err != nil {
 		_ = tmp.Close()
-		os.Remove(tmpPath)
+		_ = os.Remove(tmpPath)
 		return fmt.Errorf("local: write temp: %w", err)
 	}
 
 	// Security: Set restrictive permissions on the file descriptor before closing to prevent TOCTOU
 	if err := tmp.Chmod(0o600); err != nil {
 		_ = tmp.Close()
-		os.Remove(tmpPath)
+		_ = os.Remove(tmpPath)
 		return fmt.Errorf("local: chmod temp: %w", err)
 	}
 
 	if err := tmp.Close(); err != nil {
-		os.Remove(tmpPath)
+		_ = os.Remove(tmpPath)
 		return fmt.Errorf("local: close temp: %w", err)
 	}
 	if err := os.Rename(tmpPath, p.filePath); err != nil {
-		os.Remove(tmpPath)
+		_ = os.Remove(tmpPath)
 		return fmt.Errorf("local: rename: %w", err)
 	}
 	return nil
