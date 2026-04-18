@@ -26,7 +26,7 @@ type mockSSMClient struct {
 	history                 map[string][]ssmtypes.ParameterHistory
 	GetParametersByPathFunc func(ctx context.Context, input *ssm.GetParametersByPathInput) (*ssm.GetParametersByPathOutput, error)
 	GetParameterHistoryFunc func(ctx context.Context, input *ssm.GetParameterHistoryInput) (*ssm.GetParameterHistoryOutput, error)
-	PutParameterFunc func(ctx context.Context, input *ssm.PutParameterInput) (*ssm.PutParameterOutput, error)
+	PutParameterFunc        func(ctx context.Context, input *ssm.PutParameterInput) (*ssm.PutParameterOutput, error)
 }
 
 func (m *mockSSMClient) GetParameter(_ context.Context, input *ssm.GetParameterInput, _ ...func(*ssm.Options)) (*ssm.GetParameterOutput, error) {

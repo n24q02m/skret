@@ -40,6 +40,7 @@ func (d *DotenvSyncer) Sync(_ context.Context, secrets []*provider.Secret) error
 			return fmt.Errorf("dotenv-sync: write: %w", err)
 		}
 	}
+	defer func() { _ = tmp.Close() }()
 
 	if err := tmp.Close(); err != nil {
 		os.Remove(tmpPath)

@@ -28,6 +28,7 @@ func (m *internalMockProvider) Name() string { return "mock" }
 func (m *internalMockProvider) Capabilities() provider.Capabilities {
 	return provider.Capabilities{Write: true, Versioning: true}
 }
+
 func (m *internalMockProvider) Get(_ context.Context, key string) (*provider.Secret, error) {
 	s, ok := m.secrets[key]
 	if !ok {
@@ -35,6 +36,7 @@ func (m *internalMockProvider) Get(_ context.Context, key string) (*provider.Sec
 	}
 	return s, nil
 }
+
 func (m *internalMockProvider) List(_ context.Context, _ string) ([]*provider.Secret, error) {
 	var result []*provider.Secret
 	for _, s := range m.secrets {
@@ -42,6 +44,7 @@ func (m *internalMockProvider) List(_ context.Context, _ string) ([]*provider.Se
 	}
 	return result, nil
 }
+
 func (m *internalMockProvider) Set(_ context.Context, key string, value string, _ provider.SecretMeta) error {
 	if m.errSet != nil {
 		return m.errSet
@@ -49,10 +52,12 @@ func (m *internalMockProvider) Set(_ context.Context, key string, value string, 
 	m.secrets[key] = &provider.Secret{Key: key, Value: value}
 	return nil
 }
+
 func (m *internalMockProvider) Delete(_ context.Context, key string) error {
 	delete(m.secrets, key)
 	return nil
 }
+
 func (m *internalMockProvider) GetHistory(_ context.Context, key string) ([]*provider.Secret, error) {
 	if m.errHistory != nil {
 		return nil, m.errHistory
@@ -63,6 +68,7 @@ func (m *internalMockProvider) GetHistory(_ context.Context, key string) ([]*pro
 	}
 	return h, nil
 }
+
 func (m *internalMockProvider) Rollback(_ context.Context, key string, version int64) error {
 	m.rollbacks = append(m.rollbacks, fmt.Sprintf("%s@%d", key, version))
 	return nil
@@ -86,7 +92,7 @@ func TestRenderHistory_WithEntries(t *testing.T) {
 	out := buf.String()
 	assert.Contains(t, out, "VERSION")
 	assert.Contains(t, out, "post...t/db") // masked
-	assert.Contains(t, out, "***")          // "short" is <=8 chars -> ***
+	assert.Contains(t, out, "***")         // "short" is <=8 chars -> ***
 	assert.Contains(t, out, "admin")
 	assert.Contains(t, out, "2026-04-01")
 }
@@ -191,7 +197,7 @@ func TestPrintEnvPairs_DotenvDefault(t *testing.T) {
 
 func TestFilterSecrets_NonRecursive(t *testing.T) {
 	secrets := []*provider.Secret{
-		{Key: "/app/DB"},          // 2 slashes
+		{Key: "/app/DB"},         // 2 slashes
 		{Key: "/app/nested/KEY"}, // 3 slashes
 	}
 
@@ -211,9 +217,9 @@ func TestFilterSecrets_NonRecursive(t *testing.T) {
 
 	// Verify deeper filtering
 	deepSecrets := []*provider.Secret{
-		{Key: "/a/b/c"},     // 3 slashes
-		{Key: "/a/b/c/d"},   // 4 slashes
-		{Key: "/a/b"},       // 2 slashes
+		{Key: "/a/b/c"},   // 3 slashes
+		{Key: "/a/b/c/d"}, // 4 slashes
+		{Key: "/a/b"},     // 2 slashes
 	}
 	// listPath="/a/b/" -> strings.Count = 3, ends with "/" -> level stays 3
 	filtered3 := filterSecrets(deepSecrets, "/a/b/", false)
