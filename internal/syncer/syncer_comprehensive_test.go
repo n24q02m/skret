@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"golang.org/x/crypto/nacl/box"
@@ -123,15 +124,19 @@ func TestGitHubSyncer_MultipleSecrets_SingleKeyFetch(t *testing.T) {
 	pubKeyB64 := base64.StdEncoding.EncodeToString(pubKey[:])
 
 	var getKeyCalls, putCalls int
+	var mu sync.Mutex
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == "GET" && strings.Contains(r.URL.Path, "public-key"):
+			mu.Lock()
 			getKeyCalls++
+			mu.Unlock()
 			json.NewEncoder(w).Encode(map[string]string{
 				"key_id": "key-123",
 				"key":    pubKeyB64,
 			})
 		case r.Method == "PUT":
+			mu.Lock()
 			putCalls++
 			w.WriteHeader(http.StatusCreated)
 		default:
@@ -146,6 +151,7 @@ func TestGitHubSyncer_MultipleSecrets_SingleKeyFetch(t *testing.T) {
 		{Key: "SECRET_3", Value: "val3"},
 		{Key: "SECRET_4", Value: "val4"},
 		{Key: "SECRET_5", Value: "val5"},
+		{Key: "SECRET_5", Value: "val6"}, // Duplicate key, should only be processed once
 	}
 
 	s := syncer.NewGitHub("owner", "repo", "ghp_test", srv.URL)
@@ -153,9 +159,10 @@ func TestGitHubSyncer_MultipleSecrets_SingleKeyFetch(t *testing.T) {
 	require.NoError(t, err)
 
 	// Public key should only be fetched once
+	mu.Lock()
 	assert.Equal(t, 1, getKeyCalls)
-	// All 5 secrets should be PUT
 	assert.Equal(t, 5, putCalls)
+	mu.Unlock()
 }
 
 func TestGitHubSyncer_EmptySecrets(t *testing.T) {
@@ -164,6 +171,7 @@ func TestGitHubSyncer_EmptySecrets(t *testing.T) {
 	pubKeyB64 := base64.StdEncoding.EncodeToString(pubKey[:])
 
 	var putCalls int
+	var mu sync.Mutex
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "GET" {
 			json.NewEncoder(w).Encode(map[string]string{
@@ -172,7 +180,9 @@ func TestGitHubSyncer_EmptySecrets(t *testing.T) {
 			})
 			return
 		}
+		mu.Lock()
 		putCalls++
+		mu.Unlock()
 		w.WriteHeader(http.StatusCreated)
 	}))
 	defer srv.Close()
