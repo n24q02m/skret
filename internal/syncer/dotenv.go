@@ -35,7 +35,7 @@ func (d *DotenvSyncer) Sync(_ context.Context, secrets []*provider.Secret) error
 
 	for _, s := range secrets {
 		if _, err := fmt.Fprintf(tmp, "%s=%q\n", s.Key, s.Value); err != nil {
-			tmp.Close()
+			_ = tmp.Close()
 			os.Remove(tmpPath)
 			return fmt.Errorf("dotenv-sync: write: %w", err)
 		}
@@ -43,7 +43,7 @@ func (d *DotenvSyncer) Sync(_ context.Context, secrets []*provider.Secret) error
 
 	// Security: Chmod on the file descriptor before closing prevents a Time-of-Check to Time-of-Use (TOCTOU) vulnerability
 	if err := tmp.Chmod(0o600); err != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		os.Remove(tmpPath)
 		return fmt.Errorf("dotenv-sync: chmod: %w", err)
 	}
