@@ -80,6 +80,16 @@ func filterSecrets(secrets []*provider.Secret, listPath string, recursive bool) 
 }
 
 func printSecrets(cmd *cobra.Command, secrets []*provider.Secret, format string, values bool) {
+	if len(secrets) == 0 {
+		switch format {
+		case "json":
+			cmd.Println("[]")
+		case "table", "":
+			cmd.Println("No secrets found. Use 'skret set <key> <value>' to add one.")
+		}
+		return
+	}
+
 	switch format {
 	case "json":
 		items := make([]map[string]any, 0, len(secrets))

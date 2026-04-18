@@ -1,0 +1,3 @@
+## 2024-04-18 - Improve Empty State UX in CLI List Command
+**Learning:** Returning blank table headers or empty JSON arrays (`[]`) when a user runs `list` with no secrets creates confusion. Users are unsure if the command failed silently or if the environment truly has no secrets, leading to a poor onboarding experience.
+**Action:** Always provide explicit, actionable feedback for empty states. For human-readable formats (e.g., table), return a helpful message like "No secrets found. Use 'skret set <key> <value>' to add one." For JSON, returning `[]` is correct for programmatic parsing, but the human-readable output must guide the user on next steps.
