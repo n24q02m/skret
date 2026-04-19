@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -691,4 +692,30 @@ func TestPrintSecrets_Table(t *testing.T) {
 	assert.Contains(t, out, "VERSION")
 	assert.Contains(t, out, "A")
 	assert.Contains(t, out, "3")
+}
+
+func TestPrintSecrets_TableEmpty(t *testing.T) {
+	cmd := &cobra.Command{}
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+
+	var secrets []*provider.Secret
+
+	printSecrets(cmd, secrets, "table", false)
+	out := buf.String()
+	assert.Contains(t, out, "No secrets found. Use 'skret set <KEY> [VALUE]' to create one.")
+	// Can't use NotContains "KEY" because the command string contains "KEY"
+	assert.NotContains(t, out, "KEY\tVERSION")
+}
+
+func TestPrintSecrets_JSONEmpty(t *testing.T) {
+	cmd := &cobra.Command{}
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+
+	var secrets []*provider.Secret
+
+	printSecrets(cmd, secrets, "json", false)
+	out := strings.TrimSpace(buf.String())
+	assert.Equal(t, "[]", out)
 }

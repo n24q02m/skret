@@ -93,6 +93,10 @@ func printSecrets(cmd *cobra.Command, secrets []*provider.Secret, format string,
 		data, _ := json.MarshalIndent(items, "", "  ")
 		cmd.Println(string(data))
 	default:
+		if len(secrets) == 0 {
+			cmd.Println("No secrets found. Use 'skret set <KEY> [VALUE]' to create one.")
+			return
+		}
 		w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
 		fmt.Fprintln(w, "KEY\tVERSION")
 		for _, s := range secrets {

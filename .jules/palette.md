@@ -1,0 +1,4 @@
+## 2024-04-19 - Handle Empty Collection States Properly
+
+**Learning:** When a CLI command outputs a list or collection, it's critical to consider how it handles empty states in different formats. For human-readable output (like `table`), returning a blank table with just headers is confusing. An actionable message ("No secrets found. Use 'skret set'...") provides a much better user experience. However, for machine-readable output (like `json`), it MUST still return the empty representation (e.g. `[]`) instead of text to prevent breaking programmatic parsing tools (like `jq`).
+**Action:** Always test both human-readable and machine-readable output formats for empty state behavior. Add explicit handling in display helpers (like `printSecrets`) to branch behavior based on output format when the input collection length is 0.
