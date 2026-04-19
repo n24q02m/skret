@@ -122,7 +122,7 @@ func (p *Provider) save() error {
 		_ = os.Remove(tmpPath)
 		return fmt.Errorf("local: write temp: %w", err)
 	}
-	if err := _ = tmp.Close(); err != nil {
+	if err := tmp.Close(); err != nil {
 		_ = os.Remove(tmpPath)
 		return fmt.Errorf("local: close temp: %w", err)
 	}

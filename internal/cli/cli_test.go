@@ -104,7 +104,7 @@ func TestInitCmd_AddsToGitignore(t *testing.T) {
 func TestInitCmd_RefusesOverwrite(t *testing.T) {
 	dir := t.TempDir()
 	_ = os.MkdirAll(filepath.Join(dir, ".git"), 0o755)
-	_ = _ = os.WriteFile(filepath.Join(dir, ".skret.yaml"), []byte("existing"), 0o644)
+	_ = os.WriteFile(filepath.Join(dir, ".skret.yaml"), []byte("existing"), 0o644)
 
 	cmd := cli.NewRootCmd()
 	cmd.SetArgs([]string{"init", "--provider=aws", "--path=/app/prod"})
@@ -121,7 +121,7 @@ func TestInitCmd_RefusesOverwrite(t *testing.T) {
 func TestInitCmd_ForceOverwrite(t *testing.T) {
 	dir := t.TempDir()
 	_ = os.MkdirAll(filepath.Join(dir, ".git"), 0o755)
-	_ = _ = os.WriteFile(filepath.Join(dir, ".skret.yaml"), []byte("existing"), 0o644)
+	_ = os.WriteFile(filepath.Join(dir, ".skret.yaml"), []byte("existing"), 0o644)
 
 	cmd := cli.NewRootCmd()
 	cmd.SetArgs([]string{"init", "--provider=aws", "--path=/app/new", "--force"})
