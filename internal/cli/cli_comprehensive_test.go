@@ -27,7 +27,7 @@ func TestDeleteCmd_ForceSkipsPrompt(t *testing.T) {
 	dir := setupTestRepo(t)
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	out, err := executeCmd("delete", "API_KEY", "--force")
 	require.NoError(t, err)
@@ -44,7 +44,7 @@ func TestListCmd_WithValues(t *testing.T) {
 	dir := setupTestRepo(t)
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	out, err := executeCmd("list", "--format=json", "--values")
 	require.NoError(t, err)
@@ -56,7 +56,7 @@ func TestListCmd_NoRecursive(t *testing.T) {
 	dir := setupTestRepo(t)
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	// With --recursive=false and a path prefix, should filter
 	out, err := executeCmd("list", "--recursive=false", "--path=/nonexistent/")
@@ -71,7 +71,7 @@ func TestEnvCmd_UnknownFormatFallsBackToDotenv(t *testing.T) {
 	dir := setupTestRepo(t)
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	var buf bytes.Buffer
 	cmd := cli.NewRootCmd()
@@ -89,7 +89,7 @@ func TestGetCmd_WithMetadata(t *testing.T) {
 	dir := setupTestRepo(t)
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	out, err := executeCmd("get", "DATABASE_URL", "--with-metadata")
 	require.NoError(t, err)
@@ -104,7 +104,7 @@ func TestImportCmd_InfisicalMissingToken(t *testing.T) {
 	dir := setupTestRepo(t)
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	t.Setenv("INFISICAL_TOKEN", "")
 	_, err := executeCmd("import", "--from=infisical")
@@ -118,7 +118,7 @@ func TestImportCmd_DryRun(t *testing.T) {
 	dir := setupTestRepo(t)
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	envContent := "NEW_DRY_KEY=dry_value\nANOTHER_DRY=other"
 	os.WriteFile(filepath.Join(dir, ".env.dry"), []byte(envContent), 0o644)
@@ -139,7 +139,7 @@ func TestImportCmd_ConflictOverwrite(t *testing.T) {
 	dir := setupTestRepo(t)
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	// API_KEY already exists with value "secret123"
 	envContent := "API_KEY=new_api_key_value"
@@ -161,7 +161,7 @@ func TestSetCmd_FromFileNotFound(t *testing.T) {
 	dir := setupTestRepo(t)
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	_, err := executeCmd("set", "KEY", "--from-file=nonexistent.txt")
 	assert.Error(t, err)
@@ -174,7 +174,7 @@ func TestSetCmd_NoValue(t *testing.T) {
 	dir := setupTestRepo(t)
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	_, err := executeCmd("set", "KEY")
 	assert.Error(t, err)
@@ -187,7 +187,7 @@ func TestSyncCmd_UnknownTarget(t *testing.T) {
 	dir := setupTestRepo(t)
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	_, err := executeCmd("sync", "--to=unknown")
 	assert.Error(t, err)
@@ -200,7 +200,7 @@ func TestSyncCmd_GitHubMissingToken(t *testing.T) {
 	dir := setupTestRepo(t)
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	t.Setenv("GITHUB_TOKEN", "")
 	_, err := executeCmd("sync", "--to=github", "--github-repo=owner/repo")
@@ -219,7 +219,7 @@ func TestInitCmd_LocalProvider(t *testing.T) {
 
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	err := cmd.Execute()
 	require.NoError(t, err)
@@ -241,7 +241,7 @@ func TestInitCmd_GitignoreAlreadyComplete(t *testing.T) {
 
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	err := cmd.Execute()
 	require.NoError(t, err)
@@ -259,7 +259,7 @@ func TestHistoryCmd_ExperimentalEnabled_LocalNotSupported(t *testing.T) {
 	dir := setupTestRepo(t)
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	t.Setenv("SKRET_EXPERIMENTAL", "1")
 	_, err := executeCmd("history", "DATABASE_URL")
@@ -273,7 +273,7 @@ func TestRollbackCmd_ExperimentalEnabled_ParseError(t *testing.T) {
 	dir := setupTestRepo(t)
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	t.Setenv("SKRET_EXPERIMENTAL", "1")
 	_, err := executeCmd("rollback", "DATABASE_URL", "abc")
@@ -287,7 +287,7 @@ func TestRunCmd_SimpleCommand(t *testing.T) {
 	dir := setupTestRepo(t)
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	// "go version" should work as a simple command, though on Windows
 	// it will actually exec as a child process
@@ -305,7 +305,7 @@ func TestRunCmd_CommandNotFound(t *testing.T) {
 	dir := setupTestRepo(t)
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	_, err := executeCmd("run", "--", "nonexistent_command_12345")
 	assert.Error(t, err)
@@ -318,7 +318,7 @@ func TestRootCmd_LogLevelFlag(t *testing.T) {
 	dir := setupTestRepo(t)
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	out, err := executeCmd("--log-level=debug", "list")
 	require.NoError(t, err)
@@ -334,7 +334,7 @@ func TestEnvCmd_BrokenConfig(t *testing.T) {
 
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	_, err := executeCmd("env")
 	assert.Error(t, err)
@@ -346,7 +346,7 @@ func TestListCmd_NonRecursiveFiltering(t *testing.T) {
 	dir := setupTestRepo(t)
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	// This tests the filterSecrets path with recursive=false
 	out, err := executeCmd("list", "--recursive=false")
@@ -360,7 +360,7 @@ func TestImportCmd_InfisicalWithToken(t *testing.T) {
 	dir := setupTestRepo(t)
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	// Set the token but the URL is empty so it defaults to real Infisical API
 	// which will fail with network error - that's fine, we just want to cover createImporter
@@ -375,7 +375,7 @@ func TestDeleteCmd_WithYesStdin(t *testing.T) {
 	dir := setupTestRepo(t)
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	oldStdin := os.Stdin
 	defer func() { os.Stdin = oldStdin }()
@@ -414,7 +414,7 @@ secrets:
 
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	out, err := executeCmd("env")
 	require.NoError(t, err)
@@ -428,7 +428,7 @@ func TestListCmd_PathAutoSlash(t *testing.T) {
 	dir := setupTestRepo(t)
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	// Path without leading slash should get it added
 	out, err := executeCmd("list", "--path=prefix")
@@ -447,7 +447,7 @@ func TestInitCmd_WithRegionFlag(t *testing.T) {
 
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	err := cmd.Execute()
 	require.NoError(t, err)
@@ -481,7 +481,7 @@ secrets:
 
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	out, err := executeCmd("--env=staging", "get", "STAGING_KEY")
 	require.NoError(t, err)
