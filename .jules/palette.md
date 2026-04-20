@@ -1,0 +1,3 @@
+## 2026-04-20 - Empty state for CLI list
+**Learning:** Returning a raw table header with no items or just an empty json array provides poor feedback when no secrets match. It's confusing to the user. Providing actionable feedback is much better. Programmatic representation (like JSON) shouldn't be affected though.
+**Action:** When printing lists of items (like secrets), always check for an empty collection and return an actionable empty state (e.g. "No secrets found. Use 'skret set' to add one.") for human-readable formats, while preserving correct programmatic output (like empty array `[]` for JSON).
