@@ -49,6 +49,24 @@ func TestDotenvSyncer_WriteError(t *testing.T) {
 	assert.Error(t, err)
 }
 
+func TestDotenvSyncer_CreateTempError(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "nonexistent", "inner", ".env")
+	s := syncer.NewDotenv(target)
+	err := s.Sync(context.Background(), []*provider.Secret{{Key: "K", Value: "V"}})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "create temp")
+}
+
+func TestDotenvSyncer_RenameError(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "target")
+	require.NoError(t, os.Mkdir(target, 0o700))
+	s := syncer.NewDotenv(target)
+	err := s.Sync(context.Background(), []*provider.Secret{{Key: "K", Value: "V"}})
+	assert.Error(t, err)
+}
+
 func TestGitHubSyncer(t *testing.T) {
 	// Generate a real curve25519 keypair for the mock server
 	pubKey, _, err := box.GenerateKey(rand.Reader)
