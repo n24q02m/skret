@@ -9,6 +9,8 @@
 
 #Requires -Version 5.0
 [CmdletBinding()]
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'Quiet', Justification='Used in Log closure via script scope')]
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingWriteHost', '', Justification='Installer progress output goes to host, not pipeline')]
 param(
     [string]$Version = "",
     [string]$Prefix = "",
@@ -77,10 +79,10 @@ try {
             --certificate-oidc-issuer "https://token.actions.githubusercontent.com" `
             (Join-Path $tmp "checksums.txt") 2>&1 | Out-Null
         if ($LASTEXITCODE -ne 0) {
-            Log "WARN: cosign verify failed — continuing (checksum already matched)"
+            Log "WARN: cosign verify failed - continuing (checksum already matched)"
         }
     } else {
-        Log "cosign not installed — skipping signature check (checksum already verified)"
+        Log "cosign not installed - skipping signature check (checksum already verified)"
     }
 
     Log "Extracting"

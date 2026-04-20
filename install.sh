@@ -113,9 +113,9 @@ if command -v cosign >/dev/null 2>&1; then
     --certificate-identity-regexp "https://github.com/$REPO/.+" \
     --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
     "$tmp/checksums.txt" \
-    >/dev/null 2>&1 || log "WARN: cosign verify failed — continuing (checksum already matched)"
+    >/dev/null 2>&1 || log "WARN: cosign verify failed -continuing (checksum already matched)"
 else
-  log "cosign not installed — skipping signature check (checksum already verified)"
+  log "cosign not installed -skipping signature check (checksum already verified)"
 fi
 
 log "Extracting to $tmp"
