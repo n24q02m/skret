@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none" role="img" aria-label="skret favicon">
+  <title>skret</title>
+  <rect width="512" height="512" rx="96" fill="#0F172A"/>
+  <!-- Shackle -->
+  <path d="M 180 232 V 184 a 76 76 0 0 1 152 0 V 232"
+        stroke="#A78BFA" stroke-width="32" stroke-linecap="round" fill="none"/>
+  <!-- Body -->
+  <rect x="136" y="232" width="240" height="192" rx="26"
+        fill="#A78BFA"/>
+  <!-- Terminal screen -->
+  <rect x="172" y="274" width="168" height="108" rx="10"
+        fill="#0F172A"/>
+  <!-- > prompt -->
+  <path d="M 206 310 L 236 328 L 206 346"
+        stroke="#22D3EE" stroke-width="14" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <!-- Underscore cursor -->
+  <rect x="248" y="344" width="42" height="10" rx="4"
+        fill="#22D3EE"/>
+</svg>

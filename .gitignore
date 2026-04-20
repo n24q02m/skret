@@ -35,6 +35,13 @@ node_modules/
 docs/.vitepress/dist/
 docs/.vitepress/cache/
 
+# Branding asset raw outputs (regenerable via scripts/gen-branding.py)
+docs/public/raw/
+
+# Python bytecode
+__pycache__/
+*.pyc
+
 # Agent artifacts (not committed)
 .jules/
 .code-review-graph/
