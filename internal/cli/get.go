@@ -33,7 +33,8 @@ func newGetCmd(opts *GlobalOpts) *cobra.Command {
 				return skret.NewError(skret.ExitNotFoundError, fmt.Sprintf("get %q", args[0]), err)
 			}
 
-			if outputJSON || withMetadata {
+			switch {
+			case outputJSON || withMetadata:
 				out := map[string]any{
 					"key":   secret.Key,
 					"value": secret.Value,
@@ -44,9 +45,9 @@ func newGetCmd(opts *GlobalOpts) *cobra.Command {
 				}
 				data, _ := json.MarshalIndent(out, "", "  ")
 				cmd.Println(string(data))
-			} else if plain {
+			case plain:
 				cmd.Print(secret.Value)
-			} else {
+			default:
 				cmd.Println(secret.Value)
 			}
 			return nil

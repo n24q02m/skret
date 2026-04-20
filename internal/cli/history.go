@@ -79,7 +79,5 @@ func renderHistory(cmd *cobra.Command, history []*provider.Secret, key string, v
 
 		fmt.Fprintf(w, "%d\t%s\t%s\t%s\n", s.Version, val, updatedAt, author)
 	}
-	w.Flush()
-
-	return nil
+	return w.Flush()
 }

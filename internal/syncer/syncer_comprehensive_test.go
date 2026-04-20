@@ -190,13 +190,13 @@ func TestGitHubSyncer_NoContent204(t *testing.T) {
 	pubKeyB64 := base64.StdEncoding.EncodeToString(pubKey[:])
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.Method == "GET":
+		switch r.Method {
+		case "GET":
 			json.NewEncoder(w).Encode(map[string]string{
 				"key_id": "key-123",
 				"key":    pubKeyB64,
 			})
-		case r.Method == "PUT":
+		case "PUT":
 			// 204 No Content is also a valid success response
 			w.WriteHeader(http.StatusNoContent)
 		}

@@ -29,21 +29,27 @@ func (m *mockProvider) Capabilities() provider.Capabilities { return m.capabilit
 func (m *mockProvider) Get(ctx context.Context, key string) (*provider.Secret, error) {
 	return m.getFunc(ctx, key)
 }
+
 func (m *mockProvider) List(ctx context.Context, pathPrefix string) ([]*provider.Secret, error) {
 	return m.listFunc(ctx, pathPrefix)
 }
+
 func (m *mockProvider) Set(ctx context.Context, key string, value string, meta provider.SecretMeta) error {
 	return m.setFunc(ctx, key, value, meta)
 }
+
 func (m *mockProvider) Delete(ctx context.Context, key string) error {
 	return m.deleteFunc(ctx, key)
 }
+
 func (m *mockProvider) GetHistory(ctx context.Context, key string) ([]*provider.Secret, error) {
 	return m.getHistoryFunc(ctx, key)
 }
+
 func (m *mockProvider) Rollback(ctx context.Context, key string, version int64) error {
 	return m.rollbackFunc(ctx, key, version)
 }
+
 func (m *mockProvider) Close() error {
 	if m.closeFunc != nil {
 		return m.closeFunc()

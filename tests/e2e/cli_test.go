@@ -1,6 +1,7 @@
 package e2e_test
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -16,7 +17,7 @@ var skretBinary string
 func TestMain(m *testing.M) {
 	tmp, _ := os.MkdirTemp("", "skret-e2e")
 	skretBinary = filepath.Join(tmp, "skret.exe")
-	cmd := exec.Command("go", "build", "-o", skretBinary, "../../cmd/skret")
+	cmd := exec.CommandContext(context.Background(), "go", "build", "-o", skretBinary, "../../cmd/skret")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		panic("build failed: " + string(out))
 	}
@@ -63,14 +64,14 @@ func TestE2E_InitGetSetDeleteListEnv(t *testing.T) {
 }
 
 func TestE2E_Version(t *testing.T) {
-	out, err := exec.Command(skretBinary, "--version").CombinedOutput()
+	out, err := exec.CommandContext(t.Context(), skretBinary, "--version").CombinedOutput()
 	require.NoError(t, err)
 	assert.Contains(t, string(out), "skret")
 }
 
 func run(t *testing.T, dir string, args ...string) string {
 	t.Helper()
-	cmd := exec.Command(skretBinary, args...)
+	cmd := exec.CommandContext(t.Context(), skretBinary, args...)
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	require.NoError(t, err, "skret %v failed: %s", args, string(out))

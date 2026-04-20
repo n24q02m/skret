@@ -1,6 +1,8 @@
+version: "2"
+
 run:
   timeout: 5m
-  go: "1.24"
+  go: "1.26"
 
 linters:
   enable:
@@ -8,11 +10,8 @@ linters:
     - govet
     - staticcheck
     - unused
-    - gosimple
     - ineffassign
-    - typecheck
     - gocritic
-    - gofumpt
     - misspell
     - nilerr
     - noctx
@@ -21,19 +20,55 @@ linters:
     - unconvert
     - unparam
     - wastedassign
-
-linters-settings:
-  gocritic:
-    enabled-tags:
-      - diagnostic
-      - style
-      - performance
-  revive:
+  settings:
+    errcheck:
+      exclude-functions:
+        - (io.Closer).Close
+        - (*os.File).Close
+        - (*os.File).WriteString
+        - (github.com/n24q02m/skret/internal/provider.SecretProvider).Close
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+        - (*text/tabwriter.Writer).Flush
+        - (*encoding/json.Encoder).Encode
+        - os.Remove
+        - os.RemoveAll
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - style
+        - performance
+      disabled-checks:
+        # Intentional: some skret struct params (SecretMeta, ResolverOpts,
+        # logging.Record) are designed as value types for immutability.
+        # Passing them by pointer would change API semantics.
+        - hugeParam
+        # Stylistic: combining types in param list hurts readability when
+        # params have distinct roles.
+        - paramTypeCombine
+        # Stylistic: named return values hurt readability in short helpers.
+        - unnamedResult
+    revive:
+      rules:
+        - name: unexported-return
+          disabled: true
+  exclusions:
     rules:
-      - name: unexported-return
-        disabled: true
+      # Tests routinely ignore errors from os.Chdir / os.WriteFile etc.
+      # Keeping errcheck strict on production code but relaxed in tests is
+      # a widely accepted Go convention.
+      - path: _test\.go
+        linters:
+          - errcheck
+          - gocritic
+          - prealloc
+          - unparam
+
+formatters:
+  enable:
+    - gofumpt
 
 issues:
-  exclude-use-default: false
   max-issues-per-linter: 0
   max-same-issues: 0

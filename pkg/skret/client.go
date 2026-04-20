@@ -61,12 +61,8 @@ func New(opts ...Options) (*Client, error) {
 	}
 
 	reg := provider.NewRegistry()
-	reg.Register("local", func(c *config.ResolvedConfig) (provider.SecretProvider, error) {
-		return local.New(c)
-	})
-	reg.Register("aws", func(c *config.ResolvedConfig) (provider.SecretProvider, error) {
-		return aws.New(c)
-	})
+	reg.Register("local", local.New)
+	reg.Register("aws", aws.New)
 
 	p, err := reg.New(resolved.Provider, resolved)
 	if err != nil {
