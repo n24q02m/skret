@@ -1,0 +1,50 @@
+name: Demo GIF
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "demo.tape"
+      - ".github/workflows/demo.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: demo-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          token: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Build skret
+        run: |
+          go build -o /usr/local/bin/skret ./cmd/skret
+          skret --version
+      - name: Render demo.gif via VHS
+        uses: charmbracelet/vhs-action@v2
+        with:
+          path: demo.tape
+      - name: Copy demo.gif into docs/public
+        run: |
+          mkdir -p docs/public
+          cp demo.gif docs/public/demo.gif
+      - name: Commit if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add demo.gif docs/public/demo.gif
+          if git diff --cached --quiet; then
+            echo "No demo changes"
+          else
+            git commit -m "feat: regenerate demo.gif"
+            git push
+          fi
