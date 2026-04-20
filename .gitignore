@@ -30,10 +30,10 @@ Thumbs.db
 # Build
 vendor/
 
-# Node (VitePress docs)
+# Node (Astro Starlight docs)
 node_modules/
-docs/.vitepress/dist/
-docs/.vitepress/cache/
+docs/dist/
+docs/.astro/
 
 # Branding asset raw outputs (regenerable via scripts/gen-branding.py)
 docs/public/raw/
