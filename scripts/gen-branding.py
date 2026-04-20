@@ -35,11 +35,19 @@ PUBLIC = ROOT / "docs" / "public"
 RAW = PUBLIC / "raw"
 RAW.mkdir(parents=True, exist_ok=True)
 
-API_KEY = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
-if not API_KEY:
-    raise SystemExit("Set GEMINI_API_KEY env var before running this script.")
+_client: genai.Client | None = None
 
-client = genai.Client(api_key=API_KEY)
+
+def _get_client() -> genai.Client:
+    """Lazily construct the Gemini client so the module is importable for
+    running just the compositing helpers without API credentials."""
+    global _client
+    if _client is None:
+        api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+        if not api_key:
+            raise SystemExit("Set GEMINI_API_KEY env var before running this script.")
+        _client = genai.Client(api_key=api_key)
+    return _client
 
 # Imagen 4 (Google's latest as of 2026). Try highest quality first, fall back
 # to standard then fast if the server returns 5xx (decode timeouts are common
@@ -86,7 +94,7 @@ def imagen_to_file(prompt: str, out: Path, aspect: str = "1:1") -> Path:
             print(f"[imagen] {model:<36} -> {out.name}  aspect={aspect}  "
                   f"attempt={attempt + 1}")
             try:
-                resp = client.models.generate_images(
+                resp = _get_client().models.generate_images(
                     model=model,
                     prompt=prompt,
                     config=types.GenerateImagesConfig(
@@ -155,21 +163,31 @@ def compose_banner(bg_path: Path, logo_png: Path, out: Path) -> None:
 def compose_og(bg_path: Path, logo_png: Path, out: Path) -> None:
     print(f"[compose] og-image -> {out.name}")
     bg = Image.open(bg_path).convert("RGBA").resize((1200, 630), Image.LANCZOS)
-    logo = Image.open(logo_png).convert("RGBA").resize((160, 160), Image.LANCZOS)
-    bg.paste(logo, (380, 140), logo)
+    logo_size = 180
+    logo = Image.open(logo_png).convert("RGBA").resize((logo_size, logo_size), Image.LANCZOS)
     draw = ImageDraw.Draw(bg)
-    title_font = load_font(92, bold=True)
-    tagline_font = load_font(32)
+    title_font = load_font(148, bold=True)
     title = "skret"
-    tx = (1200 - draw.textlength(title, font=title_font)) / 2
-    draw.text((tx, 320), title, font=title_font, fill="#FFFFFF")
+    title_w = int(draw.textlength(title, font=title_font))
+    gap = 40
+    row_w = logo_size + gap + title_w
+    row_x = (1200 - row_w) // 2
+    row_y = 205
+    # Baseline-align the text so the wordmark sits centered against the logo.
+    title_y = row_y + (logo_size - 148) // 2 - 10
+    bg.paste(logo, (row_x, row_y), logo)
+    draw.text((row_x + logo_size + gap, title_y), title,
+              font=title_font, fill="#FFFFFF")
+
+    tagline_font = load_font(36)
     tagline = "Secrets without the server."
     tx = (1200 - draw.textlength(tagline, font=tagline_font)) / 2
     draw.text((tx, 440), tagline, font=tagline_font, fill="#22D3EE")
+
+    sub_font = load_font(26)
     sub = "Cloud-provider secret manager CLI"
-    sub_font = load_font(24)
     tx = (1200 - draw.textlength(sub, font=sub_font)) / 2
-    draw.text((tx, 490), sub, font=sub_font, fill="#94A3B8")
+    draw.text((tx, 495), sub, font=sub_font, fill="#94A3B8")
     bg.convert("RGB").save(out, "PNG", optimize=True)
 
 
