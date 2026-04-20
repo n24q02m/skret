@@ -66,8 +66,8 @@ jobs:
         run: |
           COVERAGE=$(go tool cover -func=coverage.out | tail -1 | awk '{print $3}' | sed 's/%//')
           echo "Internal coverage: ${COVERAGE}%"
-          if (( $(echo "$COVERAGE < 90" | bc -l) )); then
-            echo "Internal coverage ${COVERAGE}% is below 90% threshold"
+          if (( $(echo "$COVERAGE < 93" | bc -l) )); then
+            echo "Internal coverage ${COVERAGE}% is below 93% threshold"
             exit 1
           fi
       - name: Check pkg/skret coverage threshold
@@ -76,8 +76,8 @@ jobs:
         run: |
           COVERAGE=$(go tool cover -func=coverage-pkg.out | tail -1 | awk '{print $3}' | sed 's/%//')
           echo "pkg/skret coverage: ${COVERAGE}%"
-          if (( $(echo "$COVERAGE < 90" | bc -l) )); then
-            echo "pkg/skret coverage ${COVERAGE}% is below 90% threshold"
+          if (( $(echo "$COVERAGE < 95" | bc -l) )); then
+            echo "pkg/skret coverage ${COVERAGE}% is below 95% threshold"
             exit 1
           fi
       - name: Run E2E tests

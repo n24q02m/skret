@@ -155,6 +155,38 @@ func TestLocal_NewFileMissing(t *testing.T) {
 	assert.Error(t, err)
 }
 
+func TestLocal_Set_CreateTempError(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".secrets.yaml")
+	require.NoError(t, os.WriteFile(path, []byte("version: \"1\"\nsecrets: {}"), 0o600))
+	p := newProvider(t, path)
+	defer p.Close()
+
+	require.NoError(t, os.Remove(path))
+	require.NoError(t, os.RemoveAll(dir))
+
+	err := p.Set(context.Background(), "K", "V", provider.SecretMeta{})
+	assert.Error(t, err)
+}
+
+func TestLocal_Set_RenameError(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "subdir")
+	require.NoError(t, os.MkdirAll(path, 0o700))
+	seed := filepath.Join(path, ".secrets.yaml")
+	require.NoError(t, os.WriteFile(seed, []byte("version: \"1\"\nsecrets: {}"), 0o600))
+
+	p, err := local.New(&config.ResolvedConfig{File: seed})
+	require.NoError(t, err)
+	defer p.Close()
+
+	require.NoError(t, os.Remove(seed))
+	require.NoError(t, os.Mkdir(seed, 0o700))
+
+	err = p.Set(context.Background(), "K", "V", provider.SecretMeta{})
+	assert.Error(t, err)
+}
+
 func TestLocal_Concurrent(t *testing.T) {
 	path := setupFile(t, "version: \"1\"\nsecrets:\n  KEY: initial")
 	p := newProvider(t, path)
