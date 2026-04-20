@@ -30,22 +30,40 @@ archives:
 checksum:
   name_template: "checksums.txt"
 
-# brews/scoops disabled until tap/bucket repos are created
-# brews:
-#   - repository:
-#       owner: n24q02m
-#       name: homebrew-tap
-#     homepage: "https://github.com/n24q02m/skret"
-#     description: "Cloud-provider secret manager CLI wrapper"
-#     license: "MIT"
-#
-# scoops:
-#   - repository:
-#       owner: n24q02m
-#       name: scoop-bucket
-#     homepage: "https://github.com/n24q02m/skret"
-#     description: "Cloud-provider secret manager CLI wrapper"
-#     license: MIT
+brews:
+  - repository:
+      owner: n24q02m
+      name: homebrew-tap
+      branch: main
+      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
+    directory: Formula
+    homepage: "https://skret.n24q02m.com"
+    description: "Cloud-provider secret manager CLI with Doppler/Infisical-grade DX"
+    license: "MIT"
+    install: |
+      bin.install "skret"
+      generate_completions_from_executable(bin/"skret", "completion")
+    test: |
+      assert_match "skret version", shell_output("#{bin}/skret --version")
+    commit_author:
+      name: goreleaser-bot
+      email: bot@goreleaser.com
+    commit_msg_template: "feat: bump skret to {{ .Tag }}"
+
+scoops:
+  - repository:
+      owner: n24q02m
+      name: scoop-bucket
+      branch: main
+      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
+    directory: bucket
+    homepage: "https://skret.n24q02m.com"
+    description: "Cloud-provider secret manager CLI with Doppler/Infisical-grade DX"
+    license: MIT
+    commit_author:
+      name: goreleaser-bot
+      email: bot@goreleaser.com
+    commit_msg_template: "feat: bump skret to {{ .Tag }}"
 
 dockers:
   - image_templates:
