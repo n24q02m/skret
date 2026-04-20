@@ -34,6 +34,10 @@ skret import --from=doppler      # Migrate from Doppler
 skret sync --to=github           # Push secrets to GitHub Actions
 ```
 
+<p align="center">
+  <img src="https://skret.n24q02m.com/demo.gif" alt="skret demo" width="820">
+</p>
+
 ## Table of contents
 
 - [Why skret?](#why-skret)
