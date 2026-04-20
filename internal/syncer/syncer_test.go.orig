@@ -9,7 +9,6 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"sync/atomic"
 	"testing"
 
 	"golang.org/x/crypto/nacl/box"
@@ -74,7 +73,7 @@ func TestGitHubSyncer(t *testing.T) {
 	require.NoError(t, err)
 	pubKeyB64 := base64.StdEncoding.EncodeToString(pubKey[:])
 
-	var putCalls atomic.Int32
+	var putCalls int
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == "GET" && r.URL.Path == "/repos/owner/repo/actions/secrets/public-key":
@@ -83,7 +82,7 @@ func TestGitHubSyncer(t *testing.T) {
 				"key":    pubKeyB64,
 			})
 		case r.Method == "PUT":
-			putCalls.Add(1)
+			putCalls++
 			w.WriteHeader(http.StatusCreated)
 		default:
 			w.WriteHeader(http.StatusNotFound)
@@ -101,7 +100,7 @@ func TestGitHubSyncer(t *testing.T) {
 
 	err = s.Sync(context.Background(), secrets)
 	require.NoError(t, err)
-	assert.Equal(t, int32(2), putCalls.Load())
+	assert.Equal(t, 2, putCalls)
 }
 
 func TestGitHubSyncer_APIError(t *testing.T) {
