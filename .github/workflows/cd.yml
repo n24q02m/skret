@@ -109,6 +109,10 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Fine-grained PAT with `contents:write` on
+          # n24q02m/homebrew-tap + n24q02m/scoop-bucket. Goreleaser
+          # uses this to push formula/manifest updates on release.
+          TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
 
   # ==================== Docs Deploy ====================
   docs:
