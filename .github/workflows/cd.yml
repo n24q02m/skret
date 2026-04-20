@@ -133,6 +133,10 @@ jobs:
       - name: Install dependencies
         working-directory: docs
         run: pnpm install --frozen-lockfile
+      - name: Sync install scripts into docs/public
+        run: |
+          cp install.sh docs/public/install.sh
+          cp install.ps1 docs/public/install.ps1
       - name: Build Astro Starlight site
         working-directory: docs
         run: pnpm astro build

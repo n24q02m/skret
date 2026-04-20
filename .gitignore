@@ -38,6 +38,10 @@ docs/.astro/
 # Branding asset raw outputs (regenerable via scripts/gen-branding.py)
 docs/public/raw/
 
+# Installer scripts are sourced from repo root; CD syncs to docs/public/ at build time
+docs/public/install.sh
+docs/public/install.ps1
+
 # Python bytecode
 __pycache__/
 *.pyc
