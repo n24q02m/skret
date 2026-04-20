@@ -15,12 +15,8 @@ import (
 // defaultRegistry returns the global provider registry with all built-in providers.
 func defaultRegistry() *provider.Registry {
 	reg := provider.NewRegistry()
-	reg.Register("local", func(cfg *config.ResolvedConfig) (provider.SecretProvider, error) {
-		return local.New(cfg)
-	})
-	reg.Register("aws", func(cfg *config.ResolvedConfig) (provider.SecretProvider, error) {
-		return skaws.New(cfg)
-	})
+	reg.Register("local", local.New)
+	reg.Register("aws", skaws.New)
 	return reg
 }
 

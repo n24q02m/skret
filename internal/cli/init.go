@@ -129,7 +129,7 @@ func appendGitignore(path string) error {
 	}
 	defer f.Close()
 
-	if len(content) > 0 && !strings.HasSuffix(content, "\n") {
+	if content != "" && !strings.HasSuffix(content, "\n") {
 		f.WriteString("\n")
 	}
 
