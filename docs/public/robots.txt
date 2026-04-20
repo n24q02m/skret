@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://skret.n24q02m.com/sitemap-index.xml

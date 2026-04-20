@@ -133,12 +133,12 @@ jobs:
       - name: Install dependencies
         working-directory: docs
         run: pnpm install --frozen-lockfile
-      - name: Build VitePress site
+      - name: Build Astro Starlight site
         working-directory: docs
-        run: pnpm build
+        run: pnpm astro build
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy docs/.vitepress/dist --project-name=skret --branch=main
+          command: pages deploy docs/dist --project-name=skret --branch=main

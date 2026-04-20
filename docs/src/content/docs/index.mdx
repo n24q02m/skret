@@ -1,0 +1,64 @@
+---
+title: skret
+description: Cloud-provider secret manager CLI with Doppler/Infisical-grade developer experience.
+template: splash
+hero:
+  tagline: Secrets without the server. A CLI wrapper over the cloud-provider secret managers you already pay for.
+  image:
+    file: ../../assets/logo.svg
+  actions:
+    - text: Get started
+      link: /guide/getting-started/
+      icon: right-arrow
+      variant: primary
+    - text: View on GitHub
+      link: https://github.com/n24q02m/skret
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+## Why skret?
+
+<CardGrid stagger>
+  <Card title="Multi-provider" icon="seti:folder">
+    First-class AWS SSM Parameter Store plus a local YAML provider today, with OCI Vault, Azure Key Vault, and GCP Secret Manager on the roadmap. Switch backends without changing how your team works.
+  </Card>
+  <Card title="Zero lock-in" icon="random">
+    Secrets live in your own cloud account under IAM policies you already manage. No SaaS control plane, no new billing line.
+  </Card>
+  <Card title="Import & sync" icon="bars">
+    Migrate existing config from Doppler, Infisical, or dotenv files. Sync outward to GitHub Actions repository secrets with one command.
+  </Card>
+  <Card title="Env injection" icon="rocket">
+    `skret run -- your-command` hydrates process env vars at launch — no wrapper scripts, no hard-coded keys, no secret files on disk.
+  </Card>
+</CardGrid>
+
+## Install
+
+<CardGrid>
+  <Card title="macOS / Linux (one-shot)" icon="laptop">
+    ```sh
+    curl -fsSL https://skret.n24q02m.com/install.sh | sh
+    ```
+  </Card>
+  <Card title="Windows (one-shot)" icon="laptop">
+    ```powershell
+    iwr -useb https://skret.n24q02m.com/install.ps1 | iex
+    ```
+  </Card>
+  <Card title="Homebrew" icon="seti:cpp">
+    ```sh
+    brew install n24q02m/tap/skret
+    ```
+  </Card>
+  <Card title="Go developers" icon="seti:go">
+    ```sh
+    go install github.com/n24q02m/skret/cmd/skret@latest
+    ```
+  </Card>
+</CardGrid>
+
+See [Installation](/guide/installation/) for Scoop, mise, Nix, and verified binaries.
