@@ -18,21 +18,21 @@ func TestRun(t *testing.T) {
 	}
 
 	t.Run("success", func(t *testing.T) {
-		cmd := exec.Command(os.Args[0], "-test.run=TestRun")
+		cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=TestRun")
 		cmd.Env = append(os.Environ(), "BE_HELPER=1", "HELPER_CMD=true")
 		err := cmd.Run()
 		assert.NoError(t, err)
 	})
 
 	t.Run("failure", func(t *testing.T) {
-		cmd := exec.Command(os.Args[0], "-test.run=TestRun")
+		cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=TestRun")
 		cmd.Env = append(os.Environ(), "BE_HELPER=1", "HELPER_CMD=false")
 		err := cmd.Run()
 		assert.Error(t, err)
 	})
 
 	t.Run("env_passing", func(t *testing.T) {
-		cmd := exec.Command(os.Args[0], "-test.run=TestRun")
+		cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=TestRun")
 		cmd.Env = append(os.Environ(), "BE_HELPER=1", "HELPER_CMD=check_env", "TEST_VAR=true")
 		err := cmd.Run()
 		assert.NoError(t, err)
