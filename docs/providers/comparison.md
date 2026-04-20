@@ -11,8 +11,6 @@ skret supports multiple cloud-provider secret backends. This page ranks them by 
 | 3 | **Azure Key Vault (Standard)** | **~$0.09** | Azure-native workloads, multi-cloud DR |
 | 4 | **GCP Secret Manager** | **~$20** | GCP-native workloads, large (>25 KB) payloads |
 | 5 | **AWS Secrets Manager** | **~$136** | Only when managed rotation (RDS/Redshift) is required |
-| — | Cloudflare Workers Secrets | — | **Not supported** — plaintext not readable externally |
-| — | Cloudflare Secrets Store | — | **Not supported** — plaintext not readable externally |
 
 \* *Cost based on reference scenario: 17 repos × 20 secrets/repo × 1,000 reads/day (30k/month), `ap-southeast-1`/Singapore region.*
 
@@ -80,7 +78,7 @@ You can mix backends in a single `.skret.yaml`: default environment uses SSM, sp
 
 ## Feature matrix
 
-See [../superpowers/specs/2026-04-12-secrets-provider-comparison.md](../superpowers/specs/2026-04-12-secrets-provider-comparison.md) for the full matrix including:
+See the [provider comparison reference](../reference/provider-comparison.md) for the full matrix including:
 
 - Free tier details per provider
 - Max secret value sizes (4 KB – 64 KB)
@@ -93,17 +91,6 @@ See [../superpowers/specs/2026-04-12-secrets-provider-comparison.md](../superpow
 - Go SDK maturity per provider
 - Compliance certifications (SOC 2, ISO 27001, FedRAMP High, HIPAA, PCI-DSS)
 - APAC region coverage
-
-## Why Cloudflare is not supported
-
-Both Cloudflare Workers Secrets and Cloudflare Secrets Store are architecturally incompatible with skret:
-
-- **Workers Secrets** are scoped to a single Worker, only accessible as `env.MY_SECRET` inside that Worker's fetch handler. No external API returns plaintext.
-- **Secrets Store** (beta) is explicit: *"Once a secret is added to the Secrets Store, it can no longer be decrypted or accessed via API or on the dashboard. Only the service associated with a given secret will be able to access it."* The `GET` API returns metadata only.
-
-skret's core use case is external CLI reads from CI/CD pipelines, `make up-*` targets, local development laptops, and GitHub Actions runners. Cloudflare's design intentionally prevents this. This is not a gap skret can paper over.
-
-If Cloudflare ever adds an account-owner plaintext read API, skret will re-evaluate. Track: [Cloudflare Secrets Store roadmap](https://developers.cloudflare.com/secrets-store/).
 
 ## When a backend crosses a tier threshold
 
