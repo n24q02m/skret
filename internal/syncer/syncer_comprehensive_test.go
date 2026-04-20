@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"golang.org/x/crypto/nacl/box"
@@ -122,17 +123,17 @@ func TestGitHubSyncer_MultipleSecrets_SingleKeyFetch(t *testing.T) {
 	require.NoError(t, err)
 	pubKeyB64 := base64.StdEncoding.EncodeToString(pubKey[:])
 
-	var getKeyCalls, putCalls int
+	var getKeyCalls, putCalls atomic.Int64
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == "GET" && strings.Contains(r.URL.Path, "public-key"):
-			getKeyCalls++
+			getKeyCalls.Add(1)
 			json.NewEncoder(w).Encode(map[string]string{
 				"key_id": "key-123",
 				"key":    pubKeyB64,
 			})
 		case r.Method == "PUT":
-			putCalls++
+			putCalls.Add(1)
 			w.WriteHeader(http.StatusCreated)
 		default:
 			w.WriteHeader(http.StatusNotFound)
@@ -153,9 +154,9 @@ func TestGitHubSyncer_MultipleSecrets_SingleKeyFetch(t *testing.T) {
 	require.NoError(t, err)
 
 	// Public key should only be fetched once
-	assert.Equal(t, 1, getKeyCalls)
+	assert.Equal(t, int64(1), getKeyCalls.Load())
 	// All 5 secrets should be PUT
-	assert.Equal(t, 5, putCalls)
+	assert.Equal(t, int64(5), putCalls.Load())
 }
 
 func TestGitHubSyncer_EmptySecrets(t *testing.T) {

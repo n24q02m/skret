@@ -56,11 +56,13 @@ jobs:
         with:
           go-version-file: go.mod
       - name: Run tests with coverage
+        shell: bash
         run: |
           go test -race -coverprofile=coverage.out -covermode=atomic ./internal/...
           go test -race -coverprofile=coverage-pkg.out -covermode=atomic ./pkg/skret/...
       - name: Check internal coverage threshold
         if: matrix.os == 'ubuntu-latest'
+        shell: bash
         run: |
           COVERAGE=$(go tool cover -func=coverage.out | tail -1 | awk '{print $3}' | sed 's/%//')
           echo "Internal coverage: ${COVERAGE}%"
@@ -70,6 +72,7 @@ jobs:
           fi
       - name: Check pkg/skret coverage threshold
         if: matrix.os == 'ubuntu-latest'
+        shell: bash
         run: |
           COVERAGE=$(go tool cover -func=coverage-pkg.out | tail -1 | awk '{print $3}' | sed 's/%//')
           echo "pkg/skret coverage: ${COVERAGE}%"
@@ -78,6 +81,7 @@ jobs:
             exit 1
           fi
       - name: Run E2E tests
+        shell: bash
         run: go test -count=1 ./tests/e2e/...
       - uses: codecov/codecov-action@v4
         if: matrix.os == 'ubuntu-latest'
@@ -114,24 +118,11 @@ jobs:
           fi
           go build -ldflags="-s -w -X github.com/n24q02m/skret/internal/version.Version=ci-${{ github.sha }}" -o $BINARY ./cmd/skret
 
-  security:
-    runs-on: ubuntu-latest
-    needs: lint
-    permissions:
-      security-events: write
-    steps:
-      - uses: step-security/harden-runner@v2
-        with:
-          egress-policy: audit
-      - uses: actions/checkout@v6
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-      - uses: github/codeql-action/init@v3
-        with:
-          languages: go
-      - uses: github/codeql-action/autobuild@v3
-      - uses: github/codeql-action/analyze@v3
+  # CodeQL handled by GitHub default setup (repo Settings > Security > Code
+  # Scanning). Running an advanced workflow here would clash with default
+  # setup ("CodeQL analyses from advanced configurations cannot be processed
+  # when the default setup is enabled"). If we later need custom query
+  # packs, flip default setup off and restore the advanced workflow.
 
   dependency-review:
     name: Dependency Review
