@@ -61,8 +61,8 @@ func TestListCmd_NoRecursive(t *testing.T) {
 	// With --recursive=false and a path prefix, should filter
 	out, err := executeCmd("list", "--recursive=false", "--path=/nonexistent/")
 	require.NoError(t, err)
-	// Should have header but no keys since path doesn't match
-	assert.Contains(t, out, "KEY")
+	// Should not show header if no keys are found
+	assert.Contains(t, out, "No secrets found. Use 'skret set' to create one.")
 }
 
 // --- Env format tests ---
