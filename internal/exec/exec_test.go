@@ -63,3 +63,17 @@ func TestKeyToEnvName_NoMatch(t *testing.T) {
 	result := skexec.KeyToEnvName("/other/path/KEY", "/my/prefix")
 	assert.Equal(t, "_OTHER_PATH_KEY", result)
 }
+
+func BenchmarkKeyToEnvName(b *testing.B) {
+	b.Run("AlreadyUpper", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			skexec.KeyToEnvName("MY_SECRET_KEY", "")
+		}
+	})
+
+	b.Run("NeedsTransform", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			skexec.KeyToEnvName("my/secret/key", "")
+		}
+	})
+}
