@@ -8,7 +8,7 @@ dist/
 
 # Test
 coverage
-coverage.out
+*.out
 *.test
 
 # IDE
