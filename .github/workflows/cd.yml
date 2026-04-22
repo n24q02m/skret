@@ -92,7 +92,7 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ needs.release.outputs.tag || github.ref }}
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
       - uses: sigstore/cosign-installer@v3
