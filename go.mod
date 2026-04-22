@@ -1,6 +1,6 @@
 module github.com/n24q02m/skret
 
-go 1.24.3
+go 1.26
 
 require (
 	github.com/aws/aws-sdk-go-v2 v1.41.5

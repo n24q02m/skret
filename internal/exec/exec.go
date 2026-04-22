@@ -13,7 +13,7 @@ import (
 func BuildEnv(secrets []*provider.Secret, existing []string, pathPrefix string, exclude []string) []string {
 	excludeSet := make(map[string]bool, len(exclude))
 	for _, e := range exclude {
-		excludeSet[transformToEnvName(e)] = true
+		excludeSet[strings.ToUpper(e)] = true
 	}
 
 	existingMap := make(map[string]string, len(existing))
@@ -24,20 +24,9 @@ func BuildEnv(secrets []*provider.Secret, existing []string, pathPrefix string, 
 		env = append(env, e)
 	}
 
-	hasPrefix := pathPrefix != ""
-	prefixLen := len(pathPrefix)
-
 	secretVars := make(map[string]string)
 	for _, s := range secrets {
-		name := s.Key
-		if hasPrefix && strings.HasPrefix(name, pathPrefix) {
-			name = name[prefixLen:]
-			if len(name) > 0 && name[0] == '/' {
-				name = name[1:]
-			}
-		}
-		name = transformToEnvName(name)
-
+		name := KeyToEnvName(s.Key, pathPrefix)
 		if excludeSet[name] {
 			continue
 		}
@@ -81,7 +70,7 @@ func BuildEnv(secrets []*provider.Secret, existing []string, pathPrefix string, 
 }
 
 // KeyToEnvName converts a secret key to an environment variable name.
-// It strips the path prefix, replaces "/" with "_", and uppercases.
+// It strips the path prefix, replaces "/"" with "_"", and uppercases.
 // This is the single source of truth for key-to-env-var conversion.
 func KeyToEnvName(key, pathPrefix string) string {
 	name := key
@@ -91,33 +80,6 @@ func KeyToEnvName(key, pathPrefix string) string {
 			name = name[1:]
 		}
 	}
-	return transformToEnvName(name)
-}
-
-func transformToEnvName(s string) string {
-	needsTransform := false
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		if c == '/' || (c >= 'a' && c <= 'z') {
-			needsTransform = true
-			break
-		}
-	}
-	if !needsTransform {
-		return s
-	}
-
-	var b strings.Builder
-	b.Grow(len(s))
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		if c == '/' {
-			b.WriteByte('_')
-		} else if c >= 'a' && c <= 'z' {
-			b.WriteByte(c - 32)
-		} else {
-			b.WriteByte(c)
-		}
-	}
-	return b.String()
+	name = strings.ReplaceAll(name, "/", "_")
+	return strings.ToUpper(name)
 }
