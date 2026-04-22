@@ -2,6 +2,7 @@ package local_test
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -215,3 +216,65 @@ func TestLocal_Concurrent(t *testing.T) {
 		require.NoError(t, err)
 	}
 }
+
+func TestLocal_Delete_ThenSet(t *testing.T) {
+	path := setupFile(t, "version: \"1\"\nsecrets:\n  KEY: val")
+	p := newProvider(t, path)
+	defer p.Close()
+
+	ctx := context.Background()
+	require.NoError(t, p.Delete(ctx, "KEY"))
+	_, err := p.Get(ctx, "KEY")
+	assert.ErrorIs(t, err, provider.ErrNotFound)
+
+	require.NoError(t, p.Set(ctx, "KEY", "new_val", provider.SecretMeta{}))
+	s, err := p.Get(ctx, "KEY")
+	require.NoError(t, err)
+	assert.Equal(t, "new_val", s.Value)
+}
+
+func TestLocal_Set_OverwriteExisting(t *testing.T) {
+	path := setupFile(t, "version: \"1\"\nsecrets:\n  KEY: old")
+	p := newProvider(t, path)
+	defer p.Close()
+
+	ctx := context.Background()
+	require.NoError(t, p.Set(ctx, "KEY", "new", provider.SecretMeta{}))
+
+	s, err := p.Get(ctx, "KEY")
+	require.NoError(t, err)
+	assert.Equal(t, "new", s.Value)
+
+	// Verify persisted
+	p2 := newProvider(t, path)
+	defer p2.Close()
+	s2, err := p2.Get(ctx, "KEY")
+	require.NoError(t, err)
+	assert.Equal(t, "new", s2.Value)
+}
+
+func TestLocal_MultipleSetDelete(t *testing.T) {
+	path := setupFile(t, "version: \"1\"\nsecrets: {}")
+	p := newProvider(t, path)
+	defer p.Close()
+
+	ctx := context.Background()
+	// Set 20 keys
+	for i := 0; i < 20; i++ {
+		key := fmt.Sprintf("MULTI_%02d", i)
+		require.NoError(t, p.Set(ctx, key, fmt.Sprintf("val_%d", i), provider.SecretMeta{}))
+	}
+
+	// Delete odd keys
+	for i := 1; i < 20; i += 2 {
+		key := fmt.Sprintf("MULTI_%02d", i)
+		require.NoError(t, p.Delete(ctx, key))
+	}
+
+	// Verify even keys remain
+	secrets, err := p.List(ctx, "")
+	require.NoError(t, err)
+	assert.Len(t, secrets, 10)
+}
+
+
