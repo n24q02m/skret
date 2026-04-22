@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 )
@@ -34,18 +35,27 @@ func IsAuthError(err error) bool {
 // WithAutoAuth runs fn; on an auth-shaped error, prompts the user for inline
 // login (interactive TTY only) and re-runs fn once.
 func WithAutoAuth(ctx context.Context, provider string, fn func() error) error {
+	return withAutoAuthIO(ctx, provider, fn, os.Stdin, os.Stderr, isNonInteractive())
+}
+
+// isNonInteractive returns true when stdin is not a terminal or SKRET_NON_INTERACTIVE=1.
+func isNonInteractive() bool {
+	return os.Getenv("SKRET_NON_INTERACTIVE") == "1" || !IsInteractiveStdin()
+}
+
+// withAutoAuthIO is the testable core of WithAutoAuth.
+func withAutoAuthIO(ctx context.Context, provider string, fn func() error, stdin io.Reader, stderr io.Writer, nonInteractive bool) error {
 	err := fn()
 	if !IsAuthError(err) {
 		return err
 	}
 
-	nonInteractive := os.Getenv("SKRET_NON_INTERACTIVE") == "1" || !IsInteractiveStdin()
 	if nonInteractive {
 		return fmt.Errorf("%s: credentials missing or expired; run `skret auth %s`", provider, provider)
 	}
 
-	fmt.Fprintf(os.Stderr, "\n%s credentials missing or expired. ", provider)
-	if !Confirm(os.Stdin, os.Stderr, "Login now?") {
+	fmt.Fprintf(stderr, "\n%s credentials missing or expired. ", provider)
+	if !Confirm(stdin, stderr, "Login now?") {
 		return err
 	}
 
