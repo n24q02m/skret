@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/n24q02m/skret/internal/auth"
 	"github.com/n24q02m/skret/internal/importer"
 	"github.com/n24q02m/skret/internal/provider"
 	"github.com/n24q02m/skret/pkg/skret"
@@ -65,13 +66,23 @@ func (o *importOptions) createImporter() (importer.Importer, error) {
 	case "doppler":
 		token := os.Getenv("DOPPLER_TOKEN")
 		if token == "" {
-			return nil, skret.NewError(skret.ExitConfigError, "import: DOPPLER_TOKEN env var required", nil)
+			if cred, err := auth.Resolve(context.Background(), "doppler"); err == nil {
+				token = cred.Token
+			}
+		}
+		if token == "" {
+			return nil, skret.NewError(skret.ExitConfigError, "import: DOPPLER_TOKEN env var or `skret auth doppler` required", nil)
 		}
 		return importer.NewDoppler(token, o.dopplerProject, o.dopplerConfig, ""), nil
 	case "infisical":
 		token := os.Getenv("INFISICAL_TOKEN")
 		if token == "" {
-			return nil, skret.NewError(skret.ExitConfigError, "import: INFISICAL_TOKEN env var required", nil)
+			if cred, err := auth.Resolve(context.Background(), "infisical"); err == nil {
+				token = cred.Token
+			}
+		}
+		if token == "" {
+			return nil, skret.NewError(skret.ExitConfigError, "import: INFISICAL_TOKEN env var or `skret auth infisical` required", nil)
 		}
 		return importer.NewInfisical(token, o.infisicalProjID, o.infisicalEnv, o.infisicalURL), nil
 	default:
