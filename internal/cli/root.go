@@ -55,6 +55,7 @@ func NewRootCmd() *cobra.Command {
 	cmd.AddCommand(newRunCmd(opts))
 	cmd.AddCommand(newImportCmd(opts))
 	cmd.AddCommand(newSyncCmd(opts))
+	cmd.AddCommand(newAuthCmd())
 
 	return cmd
 }
