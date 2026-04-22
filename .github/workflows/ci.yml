@@ -11,10 +11,13 @@ permissions:
   contents: read
   pull-requests: read
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   pr-title:
     name: PR Title Lint
-    if: github.event_name == 'pull_request'
+    if: github.event_name == "pull_request"
     runs-on: ubuntu-latest
     steps:
       - uses: amannn/action-semantic-pull-request@v5
@@ -60,32 +63,34 @@ jobs:
           go test -race -coverprofile=coverage.out -covermode=atomic ./internal/...
           go test -race -coverprofile=coverage-pkg.out -covermode=atomic ./pkg/skret/...
       - name: Check internal coverage threshold
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os == "ubuntu-latest"
         run: |
-          COVERAGE=$(go tool cover -func=coverage.out | tail -1 | awk '{print $3}' | sed 's/%//')
+          COVERAGE=$(go tool cover -func=coverage.out | tail -1 | awk "{print \$3}" | sed "s/%//")
           echo "Internal coverage: ${COVERAGE}%"
           if (( $(echo "$COVERAGE < 90" | bc -l) )); then
             echo "Internal coverage ${COVERAGE}% is below 90% threshold"
             exit 1
+
           fi
       - name: Check pkg/skret coverage threshold
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os == "ubuntu-latest"
         run: |
-          COVERAGE=$(go tool cover -func=coverage-pkg.out | tail -1 | awk '{print $3}' | sed 's/%//')
+          COVERAGE=$(go tool cover -func=coverage-pkg.out | tail -1 | awk "{print \$3}" | sed "s/%//")
           echo "pkg/skret coverage: ${COVERAGE}%"
           if (( $(echo "$COVERAGE < 90" | bc -l) )); then
             echo "pkg/skret coverage ${COVERAGE}% is below 90% threshold"
             exit 1
+
           fi
       - name: Run E2E tests
         run: go test -count=1 ./tests/e2e/...
       - uses: codecov/codecov-action@v4
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os == "ubuntu-latest"
         with:
           file: ./coverage.out
           fail_ci_if_error: false
       - uses: actions/upload-artifact@v4
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os == "ubuntu-latest"
         with:
           name: coverage
           path: coverage.out
@@ -135,7 +140,7 @@ jobs:
 
   dependency-review:
     name: Dependency Review
-    if: github.event_name == 'pull_request'
+    if: github.event_name == "pull_request"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
