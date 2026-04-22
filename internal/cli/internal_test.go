@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -635,4 +636,28 @@ func TestPrintSecrets_Table(t *testing.T) {
 	assert.Contains(t, out, "VERSION")
 	assert.Contains(t, out, "A")
 	assert.Contains(t, out, "3")
+}
+
+func TestPrintSecrets_EmptyTable(t *testing.T) {
+	cmd := &cobra.Command{}
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+
+	var secrets []*provider.Secret
+
+	printSecrets(cmd, secrets, "table", false)
+	out := buf.String()
+	assert.Contains(t, out, "No secrets found. Use 'skret set' to create one.")
+}
+
+func TestPrintSecrets_EmptyJSON(t *testing.T) {
+	cmd := &cobra.Command{}
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+
+	var secrets []*provider.Secret
+
+	printSecrets(cmd, secrets, "json", false)
+	out := strings.TrimSpace(buf.String())
+	assert.Equal(t, "[]", out)
 }
