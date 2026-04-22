@@ -43,7 +43,10 @@ func newGetCmd(opts *GlobalOpts) *cobra.Command {
 					out["version"] = secret.Version
 					out["meta"] = secret.Meta
 				}
-				data, _ := json.MarshalIndent(out, "", "  ")
+				data, err := json.MarshalIndent(out, "", "  ")
+				if err != nil {
+					return skret.NewError(skret.ExitGenericError, "get: json marshal failed", err)
+				}
 				cmd.Println(string(data))
 			case plain:
 				cmd.Print(secret.Value)
