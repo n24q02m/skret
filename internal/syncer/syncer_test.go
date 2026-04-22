@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"golang.org/x/crypto/nacl/box"
@@ -209,6 +210,7 @@ func TestGitHubSyncer_ConcurrentManySecrets(t *testing.T) {
 	pubKeyB64 := base64.StdEncoding.EncodeToString(pubKey[:])
 
 	var putCalls int
+	var mu sync.Mutex
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "GET" {
 			json.NewEncoder(w).Encode(map[string]string{
@@ -217,7 +219,9 @@ func TestGitHubSyncer_ConcurrentManySecrets(t *testing.T) {
 			})
 			return
 		}
+		mu.Lock()
 		putCalls++
+		mu.Unlock()
 		w.WriteHeader(http.StatusCreated)
 	}))
 	defer srv.Close()
@@ -230,7 +234,10 @@ func TestGitHubSyncer_ConcurrentManySecrets(t *testing.T) {
 	s := syncer.NewGitHub("owner", "repo", "token", srv.URL)
 	err := s.Sync(context.Background(), secrets)
 	require.NoError(t, err)
-	assert.Equal(t, 15, putCalls)
+	mu.Lock()
+	calls := putCalls
+	mu.Unlock()
+	assert.Equal(t, 15, calls)
 }
 
 func TestDotenvSyncer_DollarSignValue(t *testing.T) {
