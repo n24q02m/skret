@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -178,3 +179,74 @@ func TestDotenvSyncer_EmptySecrets(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, string(data))
 }
+
+func TestGitHubSyncer_PutAPIError500WithBody(t *testing.T) {
+	pubKey, _, _ := box.GenerateKey(rand.Reader)
+	pubKeyB64 := base64.StdEncoding.EncodeToString(pubKey[:])
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "GET" {
+			json.NewEncoder(w).Encode(map[string]string{
+				"key_id": "key-123",
+				"key":    pubKeyB64,
+			})
+			return
+		}
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(`{"message":"internal error"}`))
+	}))
+	defer srv.Close()
+
+	s := syncer.NewGitHub("owner", "repo", "token", srv.URL)
+	err := s.Sync(context.Background(), []*provider.Secret{{Key: "K", Value: "V"}})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "500")
+	assert.Contains(t, err.Error(), "internal error")
+}
+
+func TestGitHubSyncer_ConcurrentManySecrets(t *testing.T) {
+	pubKey, _, _ := box.GenerateKey(rand.Reader)
+	pubKeyB64 := base64.StdEncoding.EncodeToString(pubKey[:])
+
+	var putCalls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "GET" {
+			json.NewEncoder(w).Encode(map[string]string{
+				"key_id": "key-123",
+				"key":    pubKeyB64,
+			})
+			return
+		}
+		putCalls++
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer srv.Close()
+
+	secrets := make([]*provider.Secret, 15)
+	for i := range secrets {
+		secrets[i] = &provider.Secret{Key: fmt.Sprintf("KEY_%d", i), Value: fmt.Sprintf("val_%d", i)}
+	}
+
+	s := syncer.NewGitHub("owner", "repo", "token", srv.URL)
+	err := s.Sync(context.Background(), secrets)
+	require.NoError(t, err)
+	assert.Equal(t, 15, putCalls)
+}
+
+func TestDotenvSyncer_DollarSignValue(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".env.dollar")
+
+	secrets := []*provider.Secret{
+		{Key: "PATH_VAR", Value: "$HOME/bin:$PATH"},
+	}
+
+	s := syncer.NewDotenv(path)
+	err := s.Sync(context.Background(), secrets)
+	require.NoError(t, err)
+
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "PATH_VAR=")
+}
+
