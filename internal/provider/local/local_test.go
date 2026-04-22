@@ -276,5 +276,3 @@ func TestLocal_MultipleSetDelete(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, secrets, 10)
 }
-
-

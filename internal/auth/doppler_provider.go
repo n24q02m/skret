@@ -45,7 +45,8 @@ func (p *DopplerProvider) loginToken(method string, opts map[string]string) (*Cr
 
 	// Validate token against /v3/me
 	client := &http.Client{Timeout: 10 * time.Second}
-	req, err := http.NewRequest("GET", p.baseURL+"/v3/me", http.NoBody)
+	ctx := context.Background()
+	req, err := http.NewRequestWithContext(ctx, "GET", p.baseURL+"/v3/me", http.NoBody)
 	if err != nil {
 		return nil, fmt.Errorf("doppler: create request: %w", err)
 	}

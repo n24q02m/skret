@@ -63,7 +63,8 @@ func (p *InfisicalProvider) loginToken(opts map[string]string) (*Credential, err
 
 	// Validate token
 	client := &http.Client{Timeout: 10 * time.Second}
-	req, err := http.NewRequest("GET", p.baseURL+"/api/v1/auth/check", http.NoBody)
+	ctx := context.Background()
+	req, err := http.NewRequestWithContext(ctx, "GET", p.baseURL+"/api/v1/auth/check", http.NoBody)
 	if err != nil {
 		return nil, fmt.Errorf("infisical: create request: %w", err)
 	}

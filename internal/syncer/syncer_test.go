@@ -249,4 +249,3 @@ func TestDotenvSyncer_DollarSignValue(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, string(data), "PATH_VAR=")
 }
-
