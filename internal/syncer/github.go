@@ -102,7 +102,10 @@ func (g *GitHubSyncer) getPublicKey(ctx context.Context) (string, string, error)
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		body, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			return "", "", fmt.Errorf("github: API returned %d (body unreadable: %w)", resp.StatusCode, readErr)
+		}
 		return "", "", fmt.Errorf("github: API returned %d: %s", resp.StatusCode, string(body))
 	}
 
@@ -140,7 +143,10 @@ func (g *GitHubSyncer) putSecret(ctx context.Context, name, value, pubKeyB64, ke
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusNoContent {
-		respBody, _ := io.ReadAll(resp.Body)
+		respBody, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			return fmt.Errorf("github: API returned %d (body unreadable: %w)", resp.StatusCode, readErr)
+		}
 		return fmt.Errorf("github: API returned %d: %s", resp.StatusCode, string(respBody))
 	}
 	return nil

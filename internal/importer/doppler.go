@@ -47,7 +47,10 @@ func (d *DopplerImporter) Import(ctx context.Context) ([]ImportedSecret, error) 
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		body, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			return nil, fmt.Errorf("doppler: API returned %d (body unreadable: %w)", resp.StatusCode, readErr)
+		}
 		return nil, fmt.Errorf("doppler: API returned %d: %s", resp.StatusCode, string(body))
 	}
 
