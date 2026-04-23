@@ -16,7 +16,6 @@ import (
 type fakeOIDC struct {
 	registered bool
 	pollCalls  int
-	failAfter  int // 0 = never fail
 }
 
 func (f *fakeOIDC) RegisterClient(_ context.Context, _ *ssooidc.RegisterClientInput, _ ...func(*ssooidc.Options)) (*ssooidc.RegisterClientOutput, error) {
