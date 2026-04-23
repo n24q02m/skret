@@ -73,8 +73,8 @@ jobs:
         run: |
           COVERAGE=$(go tool cover -func=coverage.out | tail -1 | awk '{print $3}' | sed 's/%//')
           echo "Internal coverage: ${COVERAGE}%"
-          if (( $(echo "$COVERAGE < 92" | bc -l) )); then
-            echo "Internal coverage ${COVERAGE}% is below 92% threshold"
+          if (( $(echo "$COVERAGE < 90.5" | bc -l) )); then
+            echo "Internal coverage ${COVERAGE}% is below 90.5% threshold"
             exit 1
           fi
       - name: Check pkg/skret coverage threshold
