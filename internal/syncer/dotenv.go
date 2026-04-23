@@ -35,4 +35,3 @@ func (d *DotenvSyncer) Sync(_ context.Context, secrets []*provider.Secret) error
 		return nil
 	})
 }
-
