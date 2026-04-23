@@ -1,0 +1,3 @@
+## 2024-05-24 - Optimize GitHub Syncer Secrets Loop
+**Learning:** O(N) Base64 decoding of the identical public repository key during the synchronization of N secrets caused redundant CPU cycles, allocations, and lock contention. In combination with missing deduplication and early returns, it negatively impacted overall efficiency.
+**Action:** Deduplicate items to prevent unnecessary API calls and OOM conditions, extract invariant operations (like decoding) outside concurrent `for` loops, and pass the results by reference to worker goroutines to eliminate redundant memory allocations and copying.
