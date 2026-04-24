@@ -14,7 +14,11 @@ func TestDopplerProvider_Methods(t *testing.T) {
 	p := NewDopplerProvider()
 	assert.Equal(t, "doppler", p.Name())
 	methods := p.Methods()
-	assert.Len(t, methods, 2)
+	assert.Len(t, methods, 3)
+	names := []string{methods[0].Name, methods[1].Name, methods[2].Name}
+	assert.Contains(t, names, "oauth")
+	assert.Contains(t, names, "service-token")
+	assert.Contains(t, names, "personal-token")
 }
 
 func TestDopplerProvider_LoginServiceToken_Success(t *testing.T) {
@@ -82,17 +86,28 @@ func TestInfisicalProvider_Methods(t *testing.T) {
 	p := NewInfisicalProvider()
 	assert.Equal(t, "infisical", p.Name())
 	methods := p.Methods()
-	assert.Len(t, methods, 2)
+	assert.Len(t, methods, 3)
+	names := []string{methods[0].Name, methods[1].Name, methods[2].Name}
+	assert.Contains(t, names, "browser")
+	assert.Contains(t, names, "universal-auth")
+	assert.Contains(t, names, "token")
 }
 
 func TestInfisicalProvider_LoginUniversalAuth(t *testing.T) {
-	p := NewInfisicalProvider()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"accessToken":"ua-access-token"}`))
+	}))
+	defer srv.Close()
+
+	p := &InfisicalProvider{baseURL: srv.URL}
 	cred, err := p.Login(context.Background(), "universal-auth", map[string]string{
 		"client_id":     "test-id",
 		"client_secret": "test-secret",
 	})
 	require.NoError(t, err)
 	assert.Equal(t, "universal-auth", cred.Method)
+	assert.Equal(t, "ua-access-token", cred.Token)
 	assert.Equal(t, "test-id", cred.Metadata["client_id"])
 }
 

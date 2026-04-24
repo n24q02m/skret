@@ -3,9 +3,11 @@ package auth
 import (
 	"context"
 	"fmt"
+	"os"
 
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ssooidc"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
 )
 
 // AWSProvider implements the auth.Provider interface for AWS.
@@ -23,7 +25,9 @@ func (p *AWSProvider) Name() string { return "aws" }
 func (p *AWSProvider) Methods() []Method {
 	return []Method{
 		{Name: "sso", Description: "AWS SSO device flow (recommended)", Interactive: true},
-		{Name: "profile", Description: "Use existing AWS CLI profile", Interactive: false},
+		{Name: "access-key", Description: "Paste AWS access key + secret", Interactive: true},
+		{Name: "assume-role", Description: "Assume IAM role (requires role_arn opt)", Interactive: false},
+		{Name: "profile", Description: "Use existing AWS CLI profile from ~/.aws/config", Interactive: false},
 	}
 }
 
@@ -31,8 +35,16 @@ func (p *AWSProvider) Login(ctx context.Context, method string, opts map[string]
 	switch method {
 	case "sso":
 		return p.loginSSO(ctx, opts)
+	case "access-key":
+		return NewAWSKeysFlow(os.Stdin).Login(ctx, opts)
+	case "assume-role":
+		cfg, err := awsconfig.LoadDefaultConfig(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("aws: load config: %w", err)
+		}
+		return NewAWSAssumeFlow(sts.NewFromConfig(cfg)).Login(ctx, opts)
 	case "profile":
-		return p.loginProfile(opts)
+		return NewAWSProfileFlow().Login(ctx, opts)
 	default:
 		return nil, fmt.Errorf("aws: %w: %s", ErrAuthMethodUnsupported, method)
 	}
@@ -51,19 +63,6 @@ func (p *AWSProvider) loginSSO(ctx context.Context, opts map[string]string) (*Cr
 		p.ssoFlow = NewAWSSSOFlow(ssooidc.NewFromConfig(cfg))
 	}
 	return p.ssoFlow.Login(ctx, opts)
-}
-
-func (p *AWSProvider) loginProfile(opts map[string]string) (*Credential, error) {
-	profile := opts["profile"]
-	if profile == "" {
-		profile = "default"
-	}
-	return &Credential{
-		Method: "profile",
-		Metadata: map[string]string{
-			"profile": profile,
-		},
-	}, nil
 }
 
 func (p *AWSProvider) Validate(_ context.Context, cred *Credential) error {
