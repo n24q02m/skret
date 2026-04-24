@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"sort"
 	"strings"
 
@@ -67,6 +68,7 @@ func getEnvPairs(opts *GlobalOpts) ([]envPair, error) {
 }
 
 func printEnvPairs(cmd *cobra.Command, pairs []envPair, format string) error {
+	out := cmd.OutOrStdout()
 	switch format {
 	case "json":
 		m := make(map[string]string, len(pairs))
@@ -77,7 +79,7 @@ func printEnvPairs(cmd *cobra.Command, pairs []envPair, format string) error {
 		if err != nil {
 			return skret.NewError(skret.ExitGenericError, "env: json marshal failed", err)
 		}
-		cmd.Println(string(data))
+		fmt.Fprintln(out, string(data))
 
 	case "yaml":
 		m := make(map[string]string, len(pairs))
@@ -88,16 +90,16 @@ func printEnvPairs(cmd *cobra.Command, pairs []envPair, format string) error {
 		if err != nil {
 			return skret.NewError(skret.ExitGenericError, "env: yaml marshal failed", err)
 		}
-		cmd.Print(string(data))
+		fmt.Fprint(out, string(data))
 
 	case "export":
 		for _, p := range pairs {
-			cmd.Printf("export %s=%q\n", p.Name, p.Value)
+			fmt.Fprintf(out, "export %s=%q\n", p.Name, p.Value)
 		}
 
 	default: // dotenv
 		for _, p := range pairs {
-			cmd.Printf("%s=%q\n", p.Name, escapeEnvValue(p.Value))
+			fmt.Fprintf(out, "%s=%q\n", p.Name, escapeEnvValue(p.Value))
 		}
 	}
 	return nil

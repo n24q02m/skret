@@ -33,6 +33,7 @@ func newGetCmd(opts *GlobalOpts) *cobra.Command {
 				return skret.NewError(skret.ExitNotFoundError, fmt.Sprintf("get %q", args[0]), err)
 			}
 
+			stdout := cmd.OutOrStdout()
 			switch {
 			case outputJSON || withMetadata:
 				out := map[string]any{
@@ -47,11 +48,11 @@ func newGetCmd(opts *GlobalOpts) *cobra.Command {
 				if err != nil {
 					return skret.NewError(skret.ExitGenericError, "get: json marshal failed", err)
 				}
-				cmd.Println(string(data))
+				fmt.Fprintln(stdout, string(data))
 			case plain:
-				cmd.Print(secret.Value)
+				fmt.Fprint(stdout, secret.Value)
 			default:
-				cmd.Println(secret.Value)
+				fmt.Fprintln(stdout, secret.Value)
 			}
 			return nil
 		},

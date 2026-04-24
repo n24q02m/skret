@@ -91,7 +91,7 @@ func printSecrets(cmd *cobra.Command, secrets []*provider.Secret, format string,
 			items = append(items, item)
 		}
 		data, _ := json.MarshalIndent(items, "", "  ")
-		cmd.Println(string(data))
+		fmt.Fprintln(cmd.OutOrStdout(), string(data))
 	default:
 		w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
 		fmt.Fprintln(w, "KEY\tVERSION")

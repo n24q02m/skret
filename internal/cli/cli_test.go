@@ -243,6 +243,29 @@ func TestEnvCmd_ExportFormat(t *testing.T) {
 	assert.Contains(t, buf.String(), `export DATABASE_URL="postgres://dev:dev@localhost/db"`)
 }
 
+// TestEnvCmd_WritesToStdoutNotStderr — regression for bug where cmd.Printf
+// routed dotenv output to stderr via cobra's default behaviour, breaking
+// shell pipelines like `skret env --format=dotenv > .env`.
+func TestEnvCmd_WritesToStdoutNotStderr(t *testing.T) {
+	dir := setupTestRepo(t)
+	origDir, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	defer os.Chdir(origDir)
+
+	var stdout, stderr bytes.Buffer
+	cmd := cli.NewRootCmd()
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+	cmd.SetArgs([]string{"env", "--format=dotenv"})
+
+	err := cmd.Execute()
+	require.NoError(t, err)
+	assert.Contains(t, stdout.String(), `DATABASE_URL=`,
+		"dotenv output MUST go to stdout so pipelines like 'skret env > .env' work")
+	assert.NotContains(t, stderr.String(), `DATABASE_URL=`,
+		"dotenv output MUST NOT appear on stderr")
+}
+
 // --- Set tests ---
 
 func TestSetCmd_BasicSet(t *testing.T) {
