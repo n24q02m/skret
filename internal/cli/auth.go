@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/n24q02m/skret/internal/auth"
 	"github.com/n24q02m/skret/pkg/skret"
@@ -23,17 +24,31 @@ func newAuthCmd() *cobra.Command {
 }
 
 func newAuthLoginCmd() *cobra.Command {
-	var method string
+	var (
+		method  string
+		rawOpts []string
+	)
 
 	cmd := &cobra.Command{
 		Use:   "login <provider>",
 		Short: "Authenticate with a secret provider (aws, doppler, infisical)",
-		Args:  cobra.ExactArgs(1),
+		Long: "Authenticate with a secret provider.\n\n" +
+			"Pass method-specific values via repeated --opt key=value (e.g. --opt token=dp.pt.xxx,\n" +
+			"--opt profile=dev, --opt role_arn=arn:aws:iam::..., --opt client_id=..., --opt client_secret=...).\n" +
+			"Token methods also accept DOPPLER_TOKEN / INFISICAL_TOKEN env vars as fallback.",
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			provider := args[0]
 			opts := map[string]string{}
 			if method != "" {
 				opts["method"] = method
+			}
+			for _, kv := range rawOpts {
+				k, v, ok := strings.Cut(kv, "=")
+				if !ok {
+					return skret.NewError(skret.ExitConfigError, fmt.Sprintf("--opt must be key=value, got %q", kv), nil)
+				}
+				opts[k] = v
 			}
 
 			ctx := context.Background()
@@ -46,7 +61,8 @@ func newAuthLoginCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&method, "method", "", "authentication method (e.g., sso, access-key, oauth)")
+	cmd.Flags().StringVar(&method, "method", "", "authentication method (e.g., sso, access-key, oauth, browser)")
+	cmd.Flags().StringArrayVar(&rawOpts, "opt", nil, "method-specific option key=value (repeatable)")
 
 	return cmd
 }

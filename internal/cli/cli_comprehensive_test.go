@@ -107,6 +107,10 @@ func TestImportCmd_InfisicalMissingToken(t *testing.T) {
 	defer os.Chdir(origDir)
 
 	t.Setenv("INFISICAL_TOKEN", "")
+	// Isolate ~/.skret/credentials.yaml so auth.Resolve cannot find a locally
+	// stored infisical token on the developer machine.
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("USERPROFILE", t.TempDir())
 	_, err := executeCmd("import", "--from=infisical")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "INFISICAL_TOKEN")

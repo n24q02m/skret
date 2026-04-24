@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"time"
 )
 
@@ -15,9 +16,15 @@ type InfisicalProvider struct {
 	baseURL string
 }
 
-// NewInfisicalProvider creates the Infisical auth provider.
+// NewInfisicalProvider creates the Infisical auth provider. Base URL can be
+// overridden by INFISICAL_API_URL env (for self-host) and falls back to the
+// SaaS endpoint.
 func NewInfisicalProvider() *InfisicalProvider {
-	return &InfisicalProvider{baseURL: "https://app.infisical.com"}
+	base := os.Getenv("INFISICAL_API_URL")
+	if base == "" {
+		base = "https://app.infisical.com"
+	}
+	return &InfisicalProvider{baseURL: base}
 }
 
 func (p *InfisicalProvider) Name() string { return "infisical" }
@@ -87,7 +94,10 @@ func (p *InfisicalProvider) loginUniversalAuth(ctx context.Context, opts map[str
 func (p *InfisicalProvider) loginToken(ctx context.Context, opts map[string]string) (*Credential, error) {
 	token := opts["token"]
 	if token == "" {
-		return nil, fmt.Errorf("infisical: token required (set via --token or INFISICAL_TOKEN)")
+		token = os.Getenv("INFISICAL_TOKEN")
+	}
+	if token == "" {
+		return nil, fmt.Errorf("infisical: token required (set via --opt token=... or INFISICAL_TOKEN env)")
 	}
 
 	// Validate token
