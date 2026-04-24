@@ -7,6 +7,9 @@ on:
     branches: [main]
     types: [opened, synchronize, reopened, edited, ready_for_review]
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 permissions:
   contents: read
   pull-requests: read
@@ -39,9 +42,10 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
-      - uses: golangci/golangci-lint-action@v8
-        with:
-          version: latest
+      - name: Install golangci-lint manually
+        run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+      - name: Run golangci-lint
+        run: $(go env GOPATH)/bin/golangci-lint run ./...
 
   test:
     needs: lint
