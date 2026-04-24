@@ -54,14 +54,19 @@ func (d *DopplerImporter) Import(ctx context.Context) ([]ImportedSecret, error) 
 		return nil, fmt.Errorf("doppler: API returned %d: %s", resp.StatusCode, string(body))
 	}
 
-	var result map[string]map[string]string
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	var payload struct {
+		Secrets map[string]struct {
+			Raw      string `json:"raw"`
+			Computed string `json:"computed"`
+		} `json:"secrets"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
 		return nil, fmt.Errorf("doppler: decode response: %w", err)
 	}
 
-	secrets := make([]ImportedSecret, 0, len(result))
-	for key, val := range result {
-		secrets = append(secrets, ImportedSecret{Key: key, Value: val["raw"]})
+	secrets := make([]ImportedSecret, 0, len(payload.Secrets))
+	for key, val := range payload.Secrets {
+		secrets = append(secrets, ImportedSecret{Key: key, Value: val.Raw})
 	}
 	sort.Slice(secrets, func(i, j int) bool { return secrets[i].Key < secrets[j].Key })
 	return secrets, nil
