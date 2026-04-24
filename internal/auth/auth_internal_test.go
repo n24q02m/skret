@@ -17,10 +17,10 @@ type fakeProvider struct {
 	loginFn func(ctx context.Context, method string, opts map[string]string) (*Credential, error)
 }
 
-func (f *fakeProvider) Name() string                                    { return f.name }
-func (f *fakeProvider) Methods() []Method                               { return f.methods }
+func (f *fakeProvider) Name() string                 { return f.name }
+func (f *fakeProvider) Methods() []Method             { return f.methods }
 func (f *fakeProvider) Validate(_ context.Context, _ *Credential) error { return nil }
-func (f *fakeProvider) Logout(_ context.Context) error                  { return nil }
+func (f *fakeProvider) Logout(_ context.Context) error { return nil }
 
 func (f *fakeProvider) Login(ctx context.Context, method string, opts map[string]string) (*Credential, error) {
 	return f.loginFn(ctx, method, opts)

@@ -16,6 +16,7 @@ import (
 type fakeOIDC struct {
 	registered bool
 	pollCalls  int
+	failAfter  int // 0 = never fail
 }
 
 func (f *fakeOIDC) RegisterClient(_ context.Context, _ *ssooidc.RegisterClientInput, _ ...func(*ssooidc.Options)) (*ssooidc.RegisterClientOutput, error) {
@@ -92,11 +93,9 @@ type fakeOIDCRegisterFail struct{}
 func (f *fakeOIDCRegisterFail) RegisterClient(_ context.Context, _ *ssooidc.RegisterClientInput, _ ...func(*ssooidc.Options)) (*ssooidc.RegisterClientOutput, error) {
 	return nil, assert.AnError
 }
-
 func (f *fakeOIDCRegisterFail) StartDeviceAuthorization(_ context.Context, _ *ssooidc.StartDeviceAuthorizationInput, _ ...func(*ssooidc.Options)) (*ssooidc.StartDeviceAuthorizationOutput, error) {
 	return nil, nil
 }
-
 func (f *fakeOIDCRegisterFail) CreateToken(_ context.Context, _ *ssooidc.CreateTokenInput, _ ...func(*ssooidc.Options)) (*ssooidc.CreateTokenOutput, error) {
 	return nil, nil
 }
@@ -119,11 +118,9 @@ func (f *fakeOIDCDeviceFail) RegisterClient(_ context.Context, _ *ssooidc.Regist
 		ClientSecret: aws.String("secret"),
 	}, nil
 }
-
 func (f *fakeOIDCDeviceFail) StartDeviceAuthorization(_ context.Context, _ *ssooidc.StartDeviceAuthorizationInput, _ ...func(*ssooidc.Options)) (*ssooidc.StartDeviceAuthorizationOutput, error) {
 	return nil, assert.AnError
 }
-
 func (f *fakeOIDCDeviceFail) CreateToken(_ context.Context, _ *ssooidc.CreateTokenInput, _ ...func(*ssooidc.Options)) (*ssooidc.CreateTokenOutput, error) {
 	return nil, nil
 }
