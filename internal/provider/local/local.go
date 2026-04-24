@@ -99,9 +99,19 @@ func (p *Provider) Close() error { return nil }
 func (p *Provider) load() error {
 	raw, err := os.ReadFile(p.filePath)
 	if err != nil {
+		if os.IsNotExist(err) {
+			p.data = localFile{Version: "1", Secrets: map[string]string{}}
+			return nil
+		}
 		return err
 	}
-	return yaml.Unmarshal(raw, &p.data)
+	if err := yaml.Unmarshal(raw, &p.data); err != nil {
+		return err
+	}
+	if p.data.Secrets == nil {
+		p.data.Secrets = map[string]string{}
+	}
+	return nil
 }
 
 func (p *Provider) save() error {

@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -193,14 +194,14 @@ func TestDefaultRegistry(t *testing.T) {
 	reg := defaultRegistry()
 	require.NotNil(t, reg)
 
-	// Test that both local and aws are registered
+	// Prove the local factory is registered.
 	cfg := &config.ResolvedConfig{
 		Provider: "local",
-		File:     "nonexistent.yaml",
+		File:     filepath.Join(t.TempDir(), "nonexistent.yaml"),
 	}
-	// This will fail because the file doesn't exist, but it proves the factory is registered
-	_, err := reg.New("local", cfg)
-	assert.Error(t, err)
+	p, err := reg.New("local", cfg)
+	require.NoError(t, err)
+	require.NotNil(t, p)
 
 	// AWS factory is also registered
 	cfg2 := &config.ResolvedConfig{

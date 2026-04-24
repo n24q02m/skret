@@ -69,9 +69,17 @@ func TestSave_Success(t *testing.T) {
 	assert.Contains(t, string(raw), "value")
 }
 
-// TestLoad_ReadError tests load() when file doesn't exist
+// TestLoad_MissingFile — missing file is treated as empty (quickstart path).
+func TestLoad_MissingFile(t *testing.T) {
+	p := &Provider{filePath: filepath.Join(t.TempDir(), "does-not-exist.yaml")}
+	require.NoError(t, p.load())
+	assert.NotNil(t, p.data.Secrets)
+	assert.Empty(t, p.data.Secrets)
+}
+
+// TestLoad_ReadError — genuine read error (directory passed as file).
 func TestLoad_ReadError(t *testing.T) {
-	p := &Provider{filePath: "/nonexistent/path/file.yaml"}
+	p := &Provider{filePath: t.TempDir()} // directory, not a file
 	err := p.load()
 	assert.Error(t, err)
 }
@@ -87,13 +95,10 @@ func TestLoad_UnmarshalError(t *testing.T) {
 	assert.Error(t, err)
 }
 
-// TestNew_PathResolveError tests New() when filepath.Abs fails
-func TestNew_PathResolveError(t *testing.T) {
-	// filepath.Abs rarely fails on real systems, but test the error handling
-	// by providing a file that doesn't exist
-	dir := t.TempDir()
-	path := filepath.Join(dir, "nonexistent.yaml")
-	p := &Provider{filePath: path}
+// TestNew_LoadErrorDirectoryAsFile tests load() when filePath points to a
+// directory (genuine read error, not just missing file).
+func TestNew_LoadErrorDirectoryAsFile(t *testing.T) {
+	p := &Provider{filePath: t.TempDir()}
 	err := p.load()
 	assert.Error(t, err)
 }

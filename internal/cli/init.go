@@ -75,16 +75,23 @@ func (o *initOptions) run(cmd *cobra.Command) error {
 
 	// Override with flags if provided
 	if o.provider != "" {
-		cfg.Environments["prod"] = config.Environment{
+		prod := config.Environment{
 			Provider: o.provider,
 			Path:     o.path,
 			Region:   o.region,
 		}
-		if o.file != "" {
-			env := cfg.Environments["prod"]
-			env.File = o.file
-			cfg.Environments["prod"] = env
+		switch o.provider {
+		case "local":
+			prod.File = o.file
+			if prod.File == "" {
+				prod.File = ".secrets.prod.yaml"
+			}
+		default:
+			if o.file != "" {
+				prod.File = o.file
+			}
 		}
+		cfg.Environments["prod"] = prod
 	}
 
 	data, err := yaml.Marshal(&cfg)
