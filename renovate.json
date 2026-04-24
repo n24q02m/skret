@@ -4,6 +4,10 @@
   "labels": ["dependencies"],
   "schedule": ["before 5am every weekday"],
   "prConcurrentLimit": 3,
+  "semanticCommits": "enabled",
+  "commitMessagePrefix": "fix(deps):",
+  "semanticCommitType": "fix",
+  "semanticCommitScope": "deps",
   "golang": {
     "postUpdateOptions": ["gomodTidy"]
   }
