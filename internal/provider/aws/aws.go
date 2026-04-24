@@ -2,8 +2,10 @@ package aws
 
 import (
 	"context"
+	"time"
 
 	awslib "github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/aws/retry"
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
 	ssmtypes "github.com/aws/aws-sdk-go-v2/service/ssm/types"
 
@@ -34,7 +36,18 @@ func New(cfg *config.ResolvedConfig) (provider.SecretProvider, error) {
 		return nil, err
 	}
 
-	client := ssm.NewFromConfig(awsCfg)
+	// SSM PutParameter is throttled at ~3 TPS/account. Default SDK retry (3
+	// attempts) is too aggressive for batch imports of 40+ keys. Configure
+	// AdaptiveMode with higher MaxAttempts + longer MaxBackoff so import
+	// sweeps survive sustained throttling instead of partially applying.
+	client := ssm.NewFromConfig(awsCfg, func(o *ssm.Options) {
+		o.Retryer = retry.NewAdaptiveMode(func(ao *retry.AdaptiveModeOptions) {
+			ao.StandardOptions = append(ao.StandardOptions, func(so *retry.StandardOptions) {
+				so.MaxAttempts = 10
+				so.MaxBackoff = 20 * time.Second
+			})
+		})
+	})
 	return &Provider{client: client, path: cfg.Path}, nil
 }
 
