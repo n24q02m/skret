@@ -25,19 +25,23 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
-      - name: Install ffmpeg
+      - name: Install VHS toolchain (ffmpeg + ttyd + vhs)
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg ttyd
+          sudo apt-get install -y ffmpeg fonts-jetbrains-mono
+          # ttyd: install from official release (apt package missing on Noble)
+          curl -sSL -o /tmp/ttyd https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64
+          chmod +x /tmp/ttyd && sudo mv /tmp/ttyd /usr/local/bin/ttyd
+          # vhs: install via Go since vhs-action ffmpeg install broken on Ubuntu 24.04 (upstream #459)
+          go install github.com/charmbracelet/vhs@latest
       - name: Build skret
         run: |
           go build -o /usr/local/bin/skret ./cmd/skret
           skret --version
-      - name: Render demo.gif via VHS
-        uses: charmbracelet/vhs-action@v2
-        with:
-          path: demo.tape
-          install-fonts: true
+      - name: Render demo.gif
+        run: |
+          export PATH="$HOME/go/bin:$PATH"
+          vhs demo.tape
       - name: Copy demo.gif into docs/public
         run: |
           mkdir -p docs/public
