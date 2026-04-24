@@ -2,6 +2,8 @@ package auth
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -16,7 +18,6 @@ import (
 type fakeOIDC struct {
 	registered bool
 	pollCalls  int
-	failAfter  int // 0 = never fail
 }
 
 func (f *fakeOIDC) RegisterClient(_ context.Context, _ *ssooidc.RegisterClientInput, _ ...func(*ssooidc.Options)) (*ssooidc.RegisterClientOutput, error) {
@@ -52,6 +53,7 @@ func (f *fakeOIDC) CreateToken(_ context.Context, _ *ssooidc.CreateTokenInput, _
 func TestAWSSSOFlow_Success(t *testing.T) {
 	fake := &fakeOIDC{}
 	flow := NewAWSSSOFlow(fake)
+	flow.Opener = func(context.Context, string) error { return nil }
 	cred, err := flow.Login(context.Background(), map[string]string{
 		"start_url": "https://example.awsapps.com/start",
 		"region":    "ap-southeast-1",
@@ -77,6 +79,7 @@ func TestAWSSSOFlow_ContextCancelled(t *testing.T) {
 	// fakeOIDC that always returns pending
 	fake := &fakeOIDC{pollCalls: -100} // Will never reach 2
 	flow := NewAWSSSOFlow(fake)
+	flow.Opener = func(context.Context, string) error { return nil }
 
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
@@ -93,9 +96,11 @@ type fakeOIDCRegisterFail struct{}
 func (f *fakeOIDCRegisterFail) RegisterClient(_ context.Context, _ *ssooidc.RegisterClientInput, _ ...func(*ssooidc.Options)) (*ssooidc.RegisterClientOutput, error) {
 	return nil, assert.AnError
 }
+
 func (f *fakeOIDCRegisterFail) StartDeviceAuthorization(_ context.Context, _ *ssooidc.StartDeviceAuthorizationInput, _ ...func(*ssooidc.Options)) (*ssooidc.StartDeviceAuthorizationOutput, error) {
 	return nil, nil
 }
+
 func (f *fakeOIDCRegisterFail) CreateToken(_ context.Context, _ *ssooidc.CreateTokenInput, _ ...func(*ssooidc.Options)) (*ssooidc.CreateTokenOutput, error) {
 	return nil, nil
 }
@@ -118,9 +123,11 @@ func (f *fakeOIDCDeviceFail) RegisterClient(_ context.Context, _ *ssooidc.Regist
 		ClientSecret: aws.String("secret"),
 	}, nil
 }
+
 func (f *fakeOIDCDeviceFail) StartDeviceAuthorization(_ context.Context, _ *ssooidc.StartDeviceAuthorizationInput, _ ...func(*ssooidc.Options)) (*ssooidc.StartDeviceAuthorizationOutput, error) {
 	return nil, assert.AnError
 }
+
 func (f *fakeOIDCDeviceFail) CreateToken(_ context.Context, _ *ssooidc.CreateTokenInput, _ ...func(*ssooidc.Options)) (*ssooidc.CreateTokenOutput, error) {
 	return nil, nil
 }
@@ -140,20 +147,40 @@ func TestAWSProvider_Methods(t *testing.T) {
 	p := NewAWSProvider()
 	assert.Equal(t, "aws", p.Name())
 	methods := p.Methods()
-	assert.Len(t, methods, 2)
-	assert.Equal(t, "sso", methods[0].Name)
-	assert.Equal(t, "profile", methods[1].Name)
+	assert.Len(t, methods, 4)
+	names := []string{methods[0].Name, methods[1].Name, methods[2].Name, methods[3].Name}
+	assert.Contains(t, names, "sso")
+	assert.Contains(t, names, "access-key")
+	assert.Contains(t, names, "assume-role")
+	assert.Contains(t, names, "profile")
+}
+
+// writeAWSConfig writes a minimal ~/.aws/config under dir with the given
+// profiles and redirects HOME/USERPROFILE to dir for the test.
+func writeAWSConfig(t *testing.T, dir, content string) {
+	t.Helper()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".aws"), 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".aws", "config"), []byte(content), 0o600))
+	t.Setenv("HOME", dir)
+	t.Setenv("USERPROFILE", dir)
 }
 
 func TestAWSProvider_LoginProfile(t *testing.T) {
+	dir := t.TempDir()
+	writeAWSConfig(t, dir, "[default]\nregion = us-east-1\n\n[profile my-profile]\nregion = ap-southeast-1\n")
+
 	p := NewAWSProvider()
 	cred, err := p.Login(context.Background(), "profile", map[string]string{"profile": "my-profile"})
 	require.NoError(t, err)
 	assert.Equal(t, "profile", cred.Method)
 	assert.Equal(t, "my-profile", cred.Metadata["profile"])
+	assert.Equal(t, "ap-southeast-1", cred.Metadata["region"])
 }
 
 func TestAWSProvider_LoginProfileDefault(t *testing.T) {
+	dir := t.TempDir()
+	writeAWSConfig(t, dir, "[default]\nregion = us-east-1\n")
+
 	p := NewAWSProvider()
 	cred, err := p.Login(context.Background(), "profile", map[string]string{})
 	require.NoError(t, err)
@@ -183,6 +210,7 @@ func TestAWSProvider_Logout(t *testing.T) {
 func TestAWSProvider_LoginSSO_WithMock(t *testing.T) {
 	p := NewAWSProvider()
 	p.ssoFlow = NewAWSSSOFlow(&fakeOIDC{})
+	p.ssoFlow.Opener = func(context.Context, string) error { return nil }
 
 	cred, err := p.Login(context.Background(), "sso", map[string]string{
 		"start_url": "https://test.awsapps.com/start",

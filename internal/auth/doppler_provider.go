@@ -23,21 +23,24 @@ func (p *DopplerProvider) Name() string { return "doppler" }
 
 func (p *DopplerProvider) Methods() []Method {
 	return []Method{
+		{Name: "oauth", Description: "Doppler OAuth device flow (recommended)", Interactive: true},
 		{Name: "service-token", Description: "Paste a Doppler service token", Interactive: true},
 		{Name: "personal-token", Description: "Paste a Doppler personal token", Interactive: true},
 	}
 }
 
-func (p *DopplerProvider) Login(_ context.Context, method string, opts map[string]string) (*Credential, error) {
+func (p *DopplerProvider) Login(ctx context.Context, method string, opts map[string]string) (*Credential, error) {
 	switch method {
+	case "oauth":
+		return NewDopplerOAuthFlow(p.baseURL).Login(ctx, opts)
 	case "service-token", "personal-token":
-		return p.loginToken(method, opts)
+		return p.loginToken(ctx, method, opts)
 	default:
 		return nil, fmt.Errorf("doppler: %w: %s", ErrAuthMethodUnsupported, method)
 	}
 }
 
-func (p *DopplerProvider) loginToken(method string, opts map[string]string) (*Credential, error) {
+func (p *DopplerProvider) loginToken(ctx context.Context, method string, opts map[string]string) (*Credential, error) {
 	token := opts["token"]
 	if token == "" {
 		return nil, fmt.Errorf("doppler: token required (set via --token or DOPPLER_TOKEN)")
@@ -45,7 +48,7 @@ func (p *DopplerProvider) loginToken(method string, opts map[string]string) (*Cr
 
 	// Validate token against /v3/me
 	client := &http.Client{Timeout: 10 * time.Second}
-	req, err := http.NewRequest("GET", p.baseURL+"/v3/me", http.NoBody)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.baseURL+"/v3/me", http.NoBody)
 	if err != nil {
 		return nil, fmt.Errorf("doppler: create request: %w", err)
 	}

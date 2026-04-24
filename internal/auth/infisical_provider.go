@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -23,39 +24,67 @@ func (p *InfisicalProvider) Name() string { return "infisical" }
 
 func (p *InfisicalProvider) Methods() []Method {
 	return []Method{
+		{Name: "browser", Description: "Browser PKCE login (recommended)", Interactive: true},
 		{Name: "universal-auth", Description: "Machine identity (client-id + client-secret)", Interactive: true},
 		{Name: "token", Description: "Paste an Infisical service token", Interactive: true},
 	}
 }
 
-func (p *InfisicalProvider) Login(_ context.Context, method string, opts map[string]string) (*Credential, error) {
+func (p *InfisicalProvider) Login(ctx context.Context, method string, opts map[string]string) (*Credential, error) {
 	switch method {
+	case "browser":
+		return NewInfisicalBrowserFlow(p.baseURL).Login(ctx, opts)
 	case "universal-auth":
-		return p.loginUniversalAuth(opts)
+		return p.loginUniversalAuth(ctx, opts)
 	case "token":
-		return p.loginToken(opts)
+		return p.loginToken(ctx, opts)
 	default:
 		return nil, fmt.Errorf("infisical: %w: %s", ErrAuthMethodUnsupported, method)
 	}
 }
 
-func (p *InfisicalProvider) loginUniversalAuth(opts map[string]string) (*Credential, error) {
+func (p *InfisicalProvider) loginUniversalAuth(ctx context.Context, opts map[string]string) (*Credential, error) {
 	clientID := opts["client_id"]
 	clientSecret := opts["client_secret"]
 	if clientID == "" || clientSecret == "" {
 		return nil, fmt.Errorf("infisical: client_id and client_secret required")
 	}
 
+	client := &http.Client{Timeout: 10 * time.Second}
+	body, _ := json.Marshal(map[string]string{
+		"clientId":     clientID,
+		"clientSecret": clientSecret,
+	})
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.baseURL+"/api/v1/auth/universal-auth/login", bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("infisical universal-auth: build request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("infisical universal-auth: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("infisical universal-auth: status %d: %s", resp.StatusCode, string(b))
+	}
+	var tok struct {
+		AccessToken string `json:"accessToken"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&tok); err != nil {
+		return nil, fmt.Errorf("infisical universal-auth: decode: %w", err)
+	}
 	return &Credential{
 		Method: "universal-auth",
-		Token:  clientSecret,
+		Token:  tok.AccessToken,
 		Metadata: map[string]string{
 			"client_id": clientID,
 		},
 	}, nil
 }
 
-func (p *InfisicalProvider) loginToken(opts map[string]string) (*Credential, error) {
+func (p *InfisicalProvider) loginToken(ctx context.Context, opts map[string]string) (*Credential, error) {
 	token := opts["token"]
 	if token == "" {
 		return nil, fmt.Errorf("infisical: token required (set via --token or INFISICAL_TOKEN)")
@@ -63,7 +92,7 @@ func (p *InfisicalProvider) loginToken(opts map[string]string) (*Credential, err
 
 	// Validate token
 	client := &http.Client{Timeout: 10 * time.Second}
-	req, err := http.NewRequest("GET", p.baseURL+"/api/v1/auth/check", http.NoBody)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.baseURL+"/api/v1/auth/check", http.NoBody)
 	if err != nil {
 		return nil, fmt.Errorf("infisical: create request: %w", err)
 	}
