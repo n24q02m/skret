@@ -40,14 +40,32 @@ version: "1"
 default_env: dev
 environments:
   dev:
-    provider: local
-    file: ./nonexistent.yaml
+    provider: not-a-real-provider
+    path: /foo
 `), 0o644))
 
 	_, err := New(Options{WorkDir: dir})
 	assert.Error(t, err)
-	// The local provider will fail because the file doesn't exist
-	assert.Equal(t, ExitProviderError, ExitCode(err))
+	assert.Equal(t, ExitConfigError, ExitCode(err))
+}
+
+// TestNew_LocalProviderMissingFileIsOK — quickstart flow creates config first,
+// then `skret set` persists the secrets file. Missing file must not block.
+func TestNew_LocalProviderMissingFileIsOK(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, ".skret.yaml")
+	require.NoError(t, os.WriteFile(cfgPath, []byte(`
+version: "1"
+default_env: dev
+environments:
+  dev:
+    provider: local
+    file: ./nonexistent.yaml
+`), 0o644))
+
+	client, err := New(Options{WorkDir: dir})
+	require.NoError(t, err)
+	assert.NotNil(t, client)
 }
 
 func TestNew_DefaultWorkDir(t *testing.T) {

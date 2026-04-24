@@ -233,6 +233,33 @@ func TestInitCmd_LocalProvider(t *testing.T) {
 	assert.Contains(t, string(data), "provider: local")
 }
 
+// TestInitCmd_LocalProviderNoFileFlag — `skret init --provider=local` without
+// --file must still populate a sane default file for prod env, otherwise the
+// generated config fails validation ("file is required for local provider").
+// Regression for demo quickstart break (2026-04-24).
+func TestInitCmd_LocalProviderNoFileFlag(t *testing.T) {
+	dir := t.TempDir()
+	_ = os.MkdirAll(filepath.Join(dir, ".git"), 0o755)
+
+	cmd := cli.NewRootCmd()
+	cmd.SetArgs([]string{"init", "--provider=local"})
+
+	origDir, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	defer os.Chdir(origDir)
+
+	require.NoError(t, cmd.Execute())
+
+	data, err := os.ReadFile(filepath.Join(dir, ".skret.yaml"))
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "file: .secrets.prod.yaml")
+
+	// Config must load without error.
+	loadCmd := cli.NewRootCmd()
+	loadCmd.SetArgs([]string{"list"})
+	assert.NoError(t, loadCmd.Execute())
+}
+
 // --- Init: gitignore already has entries ---
 
 func TestInitCmd_GitignoreAlreadyComplete(t *testing.T) {

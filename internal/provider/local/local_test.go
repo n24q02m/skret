@@ -151,8 +151,19 @@ func TestLocal_DeleteNotFound(t *testing.T) {
 	assert.ErrorIs(t, err, provider.ErrNotFound)
 }
 
-func TestLocal_NewFileMissing(t *testing.T) {
-	_, err := local.New(&config.ResolvedConfig{File: filepath.Join(t.TempDir(), "nonexistent.yaml")})
+// TestLocal_NewFileMissingIsOK — missing file is a valid first-run state;
+// quickstart flow (`skret init --provider=local` → `skret set ...`) depends on
+// this because `init` does not create the secrets file eagerly.
+func TestLocal_NewFileMissingIsOK(t *testing.T) {
+	p, err := local.New(&config.ResolvedConfig{File: filepath.Join(t.TempDir(), "nonexistent.yaml")})
+	require.NoError(t, err)
+	require.NotNil(t, p)
+}
+
+// TestLocal_NewFileDirectoryErrors — passing a directory where a file path is
+// expected is a genuine read error.
+func TestLocal_NewFileDirectoryErrors(t *testing.T) {
+	_, err := local.New(&config.ResolvedConfig{File: t.TempDir()})
 	assert.Error(t, err)
 }
 
