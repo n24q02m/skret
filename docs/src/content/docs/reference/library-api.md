@@ -59,9 +59,9 @@ client, err := skret.New()
 // With explicit options
 client, err := skret.New(skret.Options{
     WorkDir:  "/path/to/project",
-    Env:      "staging",
+    Env:      "prod",
     Provider: "aws",
-    Path:     "/myapp/staging",
+    Path:     "/myapp/prod",
 })
 ```
 

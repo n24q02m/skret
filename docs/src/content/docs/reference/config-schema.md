@@ -132,11 +132,6 @@ environments:
     path: /knowledgeprism/prod
     region: ap-southeast-1
 
-  staging:
-    provider: aws
-    path: /knowledgeprism/staging
-    region: ap-southeast-1
-
   dev:
     provider: local
     file: ./.secrets.dev.yaml
@@ -150,6 +145,8 @@ exclude:
   - GITHUB_TOKEN
 ```
 
+Environment names are free-form — use whatever your team is comfortable with (`prod`, `dev`, `staging`, `qa`, `preview`, `test`, etc.). skret does not prescribe a fixed set. The examples above pick `prod` + `dev` as the minimal pair; add more entries if you need them.
+
 ### CI-only (no local provider)
 
 ```yaml
@@ -160,10 +157,5 @@ environments:
   prod:
     provider: aws
     path: /myapp/prod
-    region: us-east-1
-
-  staging:
-    provider: aws
-    path: /myapp/staging
     region: us-east-1
 ```

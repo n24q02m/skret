@@ -92,12 +92,14 @@ down-app:
 ## Multi-Environment
 
 ```bash
-# Start staging services
-skret --env=staging run -- docker compose -f docker-compose.yml -f docker-compose.staging.yml up -d
+# Start development services (pull from dev SSM path or local .secrets.dev.yaml)
+skret --env=dev run -- docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
 
 # Start production services
 skret --env=prod run -- docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 ```
+
+Environment names are whatever you defined in `.skret.yaml` — `prod`/`dev` is the minimal pair; add `staging`, `qa`, `preview`, etc. if your workflow needs them.
 
 ## Migrating from `.env`
 

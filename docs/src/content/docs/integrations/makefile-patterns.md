@@ -44,17 +44,19 @@ Note: `down` targets do not need secrets, so no `skret run --` wrapper.
 Use `--env` to target specific environments:
 
 ```makefile
-.PHONY: deploy-staging deploy-prod
-
-deploy-staging:
-	skret --env=staging run -- docker compose up -d
+.PHONY: deploy-prod deploy-dev test-integration
 
 deploy-prod:
 	skret --env=prod run -- docker compose up -d
 
+deploy-dev:
+	skret --env=dev run -- docker compose up -d
+
 test-integration:
 	skret --env=dev run -- go test -tags=integration ./...
 ```
+
+Environment names follow whatever you defined in `.skret.yaml`. Two envs (`prod` + `dev`) is the minimum most teams need; add `staging`/`qa`/`preview`/etc. only when the workflow genuinely requires the split.
 
 ## Export to .env for Tools That Need It
 

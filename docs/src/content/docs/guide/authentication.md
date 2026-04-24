@@ -172,10 +172,10 @@ Restrict IAM users/roles to specific environments:
       "Resource": "arn:aws:ssm:*:*:parameter/myapp/prod/*"
     },
     {
-      "Sid": "StagingFullAccess",
+      "Sid": "DevFullAccess",
       "Effect": "Allow",
       "Action": ["ssm:GetParameter", "ssm:GetParametersByPath", "ssm:PutParameter", "ssm:DeleteParameter"],
-      "Resource": "arn:aws:ssm:*:*:parameter/myapp/staging/*"
+      "Resource": "arn:aws:ssm:*:*:parameter/myapp/dev/*"
     }
   ]
 }
