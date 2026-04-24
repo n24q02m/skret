@@ -25,6 +25,10 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
+      - name: Install ffmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg ttyd
       - name: Build skret
         run: |
           go build -o /usr/local/bin/skret ./cmd/skret
@@ -33,6 +37,7 @@ jobs:
         uses: charmbracelet/vhs-action@v2
         with:
           path: demo.tape
+          install-fonts: true
       - name: Copy demo.gif into docs/public
         run: |
           mkdir -p docs/public
