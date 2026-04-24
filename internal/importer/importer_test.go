@@ -67,9 +67,12 @@ func TestDopplerImporter(t *testing.T) {
 		assert.Equal(t, "test-project", r.URL.Query().Get("project"))
 		assert.Equal(t, "prd", r.URL.Query().Get("config"))
 
-		resp := map[string]map[string]string{
-			"DB_URL":  {"raw": "postgres://prod"},
-			"API_KEY": {"raw": "sk-123"},
+		resp := map[string]any{
+			"secrets": map[string]map[string]string{
+				"DB_URL":  {"raw": "postgres://prod"},
+				"API_KEY": {"raw": "sk-123"},
+			},
+			"success": true,
 		}
 		json.NewEncoder(w).Encode(resp)
 	}))

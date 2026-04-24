@@ -134,10 +134,12 @@ func TestDopplerImporter_MalformedJSON(t *testing.T) {
 
 func TestDopplerImporter_SortedOutput(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		resp := map[string]map[string]string{
-			"Z_KEY": {"raw": "z"},
-			"A_KEY": {"raw": "a"},
-			"M_KEY": {"raw": "m"},
+		resp := map[string]any{
+			"secrets": map[string]map[string]string{
+				"Z_KEY": {"raw": "z"},
+				"A_KEY": {"raw": "a"},
+				"M_KEY": {"raw": "m"},
+			},
 		}
 		json.NewEncoder(w).Encode(resp)
 	}))
@@ -154,7 +156,7 @@ func TestDopplerImporter_SortedOutput(t *testing.T) {
 
 func TestDopplerImporter_EmptyResponse(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		json.NewEncoder(w).Encode(map[string]map[string]string{})
+		json.NewEncoder(w).Encode(map[string]any{"secrets": map[string]map[string]string{}})
 	}))
 	defer srv.Close()
 
@@ -276,7 +278,7 @@ func TestDopplerImporter_RequestHeaders(t *testing.T) {
 		assert.Equal(t, "myproject", r.URL.Query().Get("project"))
 		assert.Equal(t, "myconfig", r.URL.Query().Get("config"))
 
-		json.NewEncoder(w).Encode(map[string]map[string]string{})
+		json.NewEncoder(w).Encode(map[string]any{"secrets": map[string]map[string]string{}})
 	}))
 	defer srv.Close()
 
