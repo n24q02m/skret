@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync"
 	"sync/atomic"
 	"testing"
 
@@ -103,6 +104,48 @@ func TestGitHubSyncer(t *testing.T) {
 	err = s.Sync(context.Background(), secrets)
 	require.NoError(t, err)
 	assert.Equal(t, int32(2), putCalls.Load())
+}
+
+// TestGitHubSyncer_StripsPathPrefix — SSM-sourced secrets have keys like
+// `/repo/prod/NAME`; GitHub Actions secrets API rejects any `/` in the name.
+// The syncer must strip the path prefix before issuing the PUT.
+func TestGitHubSyncer_StripsPathPrefix(t *testing.T) {
+	pubKey, _, err := box.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	pubKeyB64 := base64.StdEncoding.EncodeToString(pubKey[:])
+
+	var putNames []string
+	var mu sync.Mutex
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == "GET" && r.URL.Path == "/repos/owner/repo/actions/secrets/public-key":
+			json.NewEncoder(w).Encode(map[string]string{"key_id": "key-123", "key": pubKeyB64})
+		case r.Method == "PUT":
+			mu.Lock()
+			putNames = append(putNames, r.URL.Path)
+			mu.Unlock()
+			w.WriteHeader(http.StatusCreated)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	secrets := []*provider.Secret{
+		{Key: "/wet-mcp/prod/DOCKERHUB_TOKEN", Value: "dckr_pat_xxx"},
+		{Key: "/wet-mcp/prod/CI_APP_KEY", Value: "pem..."},
+	}
+
+	s := syncer.NewGitHub("owner", "repo", "ghp_test", srv.URL)
+	require.NoError(t, s.Sync(context.Background(), secrets))
+
+	mu.Lock()
+	defer mu.Unlock()
+	require.Len(t, putNames, 2)
+	for _, p := range putNames {
+		assert.NotContains(t, p, "/wet-mcp/prod/", "PUT path must not leak SSM prefix: %s", p)
+		assert.Regexp(t, `/repos/owner/repo/actions/secrets/(DOCKERHUB_TOKEN|CI_APP_KEY)$`, p)
+	}
 }
 
 func TestGitHubSyncer_APIError(t *testing.T) {
