@@ -83,7 +83,7 @@ jobs:
       - name: Run E2E tests
         shell: bash
         run: go test -count=1 ./tests/e2e/...
-      - uses: codecov/codecov-action@v4
+      - uses: codecov/codecov-action@v6
         if: matrix.os == 'ubuntu-latest'
         with:
           file: ./coverage.out
