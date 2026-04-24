@@ -139,6 +139,30 @@ func TestImportCmd_DryRun(t *testing.T) {
 
 // --- Import overwrite conflict strategy ---
 
+func TestImportCmd_SkipsEmptyValues(t *testing.T) {
+	dir := setupTestRepo(t)
+	origDir, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	defer os.Chdir(origDir)
+
+	// dotenv with an empty value — providers like SSM reject empty PutParameter,
+	// and Doppler regularly exports DOPPLER_CONFIG="" as a placeholder.
+	envContent := "NONEMPTY=value\nEMPTY=\n"
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".env"), []byte(envContent), 0o644))
+
+	out, err := executeCmd("import", "--from=dotenv", "--file=.env", "--on-conflict=overwrite")
+	require.NoError(t, err)
+	assert.Contains(t, out, "Imported: 1")
+	assert.Contains(t, out, "Skipped: 1")
+
+	// NONEMPTY was set; EMPTY was not.
+	val, err := executeCmd("get", "NONEMPTY", "--plain")
+	require.NoError(t, err)
+	assert.Equal(t, "value", val)
+	_, err = executeCmd("get", "EMPTY")
+	assert.Error(t, err)
+}
+
 func TestImportCmd_ConflictOverwrite(t *testing.T) {
 	dir := setupTestRepo(t)
 	origDir, _ := os.Getwd()

@@ -134,6 +134,15 @@ func (o *importOptions) run(cmd *cobra.Command) error {
 			key = prefix + strings.TrimPrefix(key, "/")
 		}
 
+		// SSM PutParameter requires Value length >= 1. Doppler exports
+		// placeholder entries like DOPPLER_CONFIG="" — skip those rather than
+		// failing the whole batch.
+		if s.Value == "" {
+			cmd.PrintErrf("skipping empty value for %s\n", key)
+			skipped++
+			continue
+		}
+
 		if o.dryRun {
 			cmd.Printf("[dry-run] would import %s\n", key)
 			imported++
