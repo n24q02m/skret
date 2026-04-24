@@ -1,0 +1,3 @@
+## 2025-04-24 - Provide Actionable Feedback for Empty CLI Output States
+**Learning:** For empty collection states, returning actionable feedback (e.g., 'No secrets found. Use skret set...') significantly improves the UX for human-readable output formats (like tables), while returning proper empty representations (like `[]`) is necessary for JSON output to support correct programmatic parsing.
+**Action:** When designing CLI outputs for lists, differentiate between human-readable and machine-readable output formats. Provide helpful call-to-actions for the former, and strict schema compliance for the latter when the result set is empty.
