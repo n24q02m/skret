@@ -75,7 +75,7 @@ func TestGitHubSyncer(t *testing.T) {
 	require.NoError(t, err)
 	pubKeyB64 := base64.StdEncoding.EncodeToString(pubKey[:])
 
-	var putCalls int
+	var putCalls atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == "GET" && r.URL.Path == "/repos/owner/repo/actions/secrets/public-key":
@@ -84,7 +84,7 @@ func TestGitHubSyncer(t *testing.T) {
 				"key":    pubKeyB64,
 			})
 		case r.Method == "PUT":
-			putCalls++
+			putCalls.Add(1)
 			w.WriteHeader(http.StatusCreated)
 		default:
 			w.WriteHeader(http.StatusNotFound)
@@ -102,7 +102,7 @@ func TestGitHubSyncer(t *testing.T) {
 
 	err = s.Sync(context.Background(), secrets)
 	require.NoError(t, err)
-	assert.Equal(t, 2, putCalls)
+	assert.Equal(t, int32(2), putCalls.Load())
 }
 
 func TestGitHubSyncer_APIError(t *testing.T) {
