@@ -37,7 +37,7 @@ func NewDopplerOAuthFlow(baseURL string) *DopplerOAuthFlow {
 // Login POSTs /v3/auth/device, opens the approval URL, and polls
 // /v3/auth/device/token until approval, error, or deadline.
 func (f *DopplerOAuthFlow) Login(ctx context.Context, _ map[string]string) (*Credential, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, f.BaseURL+"/v3/auth/device", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, f.BaseURL+"/v3/auth/device", http.NoBody)
 	if err != nil {
 		return nil, fmt.Errorf("doppler oauth: build device request: %w", err)
 	}

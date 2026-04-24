@@ -58,7 +58,8 @@ func (f *InfisicalBrowserFlow) Login(ctx context.Context, _ map[string]string) (
 		return nil, fmt.Errorf("infisical browser: pkce: %w", err)
 	}
 
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	lc := &net.ListenConfig{}
+	ln, err := lc.Listen(ctx, "tcp", "127.0.0.1:0")
 	if err != nil {
 		return nil, fmt.Errorf("infisical browser: listen: %w", err)
 	}

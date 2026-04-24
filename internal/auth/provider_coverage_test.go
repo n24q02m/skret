@@ -166,14 +166,14 @@ func TestInfisicalBrowserFlow_TokenStatusNon200(t *testing.T) {
 	defer srv.Close()
 
 	flow := NewInfisicalBrowserFlow(srv.URL)
-	flow.Opener = func(_ context.Context, authURL string) error {
+	flow.Opener = func(bgctx context.Context, authURL string) error {
 		go func() {
 			time.Sleep(50 * time.Millisecond)
 			cb := extractCallbackURL(authURL)
 			if cb == "" {
 				return
 			}
-			_, _ = http.Get(cb + "?code=c")
+			hitCallback(bgctx, cb+"?code=c")
 		}()
 		return nil
 	}
@@ -190,7 +190,7 @@ func TestInfisicalBrowserFlow_MissingCodeCallback(t *testing.T) {
 	defer srv.Close()
 
 	flow := NewInfisicalBrowserFlow(srv.URL)
-	flow.Opener = func(_ context.Context, authURL string) error {
+	flow.Opener = func(bgctx context.Context, authURL string) error {
 		go func() {
 			time.Sleep(50 * time.Millisecond)
 			cb := extractCallbackURL(authURL)
@@ -198,7 +198,7 @@ func TestInfisicalBrowserFlow_MissingCodeCallback(t *testing.T) {
 				return
 			}
 			// Hit callback with NO code param to trigger the error branch.
-			_, _ = http.Get(cb)
+			hitCallback(bgctx, cb)
 		}()
 		return nil
 	}
@@ -212,6 +212,20 @@ func TestInfisicalBrowserFlow_MissingCodeCallback(t *testing.T) {
 func TestNewInfisicalBrowserFlow_DefaultBaseURL(t *testing.T) {
 	flow := NewInfisicalBrowserFlow("")
 	assert.Equal(t, "https://app.infisical.com", flow.BaseURL)
+}
+
+// hitCallback issues a GET to the given URL with a context-bound request so
+// lint (noctx) stays happy. Test-only helper.
+func hitCallback(ctx context.Context, target string) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, http.NoBody)
+	if err != nil {
+		return
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return
+	}
+	_ = resp.Body.Close()
 }
 
 // extractCallbackURL parses callback=... out of the skret auth URL.
@@ -349,12 +363,12 @@ func TestInfisicalProvider_BrowserDispatch(t *testing.T) {
 	defer srv.Close()
 
 	flow := NewInfisicalBrowserFlow(srv.URL)
-	flow.Opener = func(_ context.Context, authURL string) error {
+	flow.Opener = func(bgctx context.Context, authURL string) error {
 		go func() {
 			time.Sleep(30 * time.Millisecond)
 			cb := extractCallbackURL(authURL)
 			if cb != "" {
-				_, _ = http.Get(cb + "?code=xyz")
+				hitCallback(bgctx, cb+"?code=xyz")
 			}
 		}()
 		return nil

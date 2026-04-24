@@ -22,21 +22,15 @@ func NewAWSKeysFlow(in io.Reader) *AWSKeysFlow {
 // token, returning a Credential on success.
 func (f *AWSKeysFlow) Login(ctx context.Context, _ map[string]string) (*Credential, error) {
 	r := bufio.NewReader(f.in)
-	akid, err := promptLine(ctx, r, "AWS Access Key ID: ")
-	if err != nil {
-		return nil, err
-	}
+	akid := promptLine(ctx, r, "AWS Access Key ID: ")
 	if akid == "" {
 		return nil, fmt.Errorf("aws keys: access key id required")
 	}
-	sak, err := promptLine(ctx, r, "AWS Secret Access Key: ")
-	if err != nil {
-		return nil, err
-	}
+	sak := promptLine(ctx, r, "AWS Secret Access Key: ")
 	if sak == "" {
 		return nil, fmt.Errorf("aws keys: secret access key required")
 	}
-	sess, _ := promptLine(ctx, r, "AWS Session Token (optional, blank = skip): ")
+	sess := promptLine(ctx, r, "AWS Session Token (optional, blank = skip): ")
 
 	return &Credential{
 		Method: "access-key",
@@ -49,12 +43,12 @@ func (f *AWSKeysFlow) Login(ctx context.Context, _ map[string]string) (*Credenti
 }
 
 // promptLine writes prompt to the context writer and reads one trimmed line
-// from r. Returns empty string + nil on EOF with no input.
-func promptLine(ctx context.Context, r *bufio.Reader, prompt string) (string, error) {
+// from r. Returns empty string on EOF with no input.
+func promptLine(ctx context.Context, r *bufio.Reader, prompt string) string {
 	fmt.Fprint(ctxOut(ctx), prompt)
 	s, err := r.ReadString('\n')
 	if err != nil && s == "" {
-		return "", nil
+		return ""
 	}
-	return strings.TrimSpace(s), nil
+	return strings.TrimSpace(s)
 }

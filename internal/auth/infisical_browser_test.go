@@ -39,7 +39,7 @@ func TestInfisicalBrowserFlow_Success(t *testing.T) {
 	// Simulate the browser: parse the callback URL embedded in authURL and
 	// hit it directly with a code query param (the upstream Infisical server
 	// would normally 302-redirect the user's browser to this callback).
-	flow.Opener = func(_ context.Context, authURL string) error {
+	flow.Opener = func(bgctx context.Context, authURL string) error {
 		go func() {
 			time.Sleep(100 * time.Millisecond)
 			u, perr := url.Parse(authURL)
@@ -50,7 +50,11 @@ func TestInfisicalBrowserFlow_Success(t *testing.T) {
 			if cb == "" {
 				return
 			}
-			http.Get(cb + "?code=browser-code")
+			req, _ := http.NewRequestWithContext(bgctx, http.MethodGet, cb+"?code=browser-code", http.NoBody)
+			resp, _ := http.DefaultClient.Do(req)
+			if resp != nil {
+				_ = resp.Body.Close()
+			}
 		}()
 		return nil
 	}
