@@ -63,7 +63,11 @@ func SelectMethod(r io.Reader, w io.Writer, methods []Method) (Method, error) {
 }
 
 // OpenBrowser attempts to open the URL in the platform browser, best-effort.
+// Honors SKRET_NO_BROWSER=1 to skip the launch (used by tests + headless runs).
 func OpenBrowser(ctx context.Context, url string) error {
+	if os.Getenv("SKRET_NO_BROWSER") != "" {
+		return nil
+	}
 	var cmd *exec.Cmd
 	switch runtime.GOOS {
 	case "darwin":

@@ -41,6 +41,7 @@ func TestDopplerOAuthFlow_Success(t *testing.T) {
 
 	flow := auth.NewDopplerOAuthFlow(srv.URL)
 	flow.PollInterval = 50 * time.Millisecond // speed up test
+	flow.Opener = func(context.Context, string) error { return nil }
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	cred, err := flow.Login(ctx, nil)
@@ -65,6 +66,7 @@ func TestDopplerOAuthFlow_ContextCancel(t *testing.T) {
 
 	flow := auth.NewDopplerOAuthFlow(srv.URL)
 	flow.PollInterval = 100 * time.Millisecond
+	flow.Opener = func(context.Context, string) error { return nil }
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() { time.Sleep(200 * time.Millisecond); cancel() }()
 	_, err := flow.Login(ctx, nil)

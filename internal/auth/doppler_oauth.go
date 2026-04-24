@@ -15,11 +15,13 @@ import (
 type DopplerOAuthFlow struct {
 	BaseURL      string
 	PollInterval time.Duration
+	Opener       func(ctx context.Context, authURL string) error
 	client       *http.Client
 }
 
 // NewDopplerOAuthFlow creates a device flow pointing at baseURL (defaults to
-// https://api.doppler.com when empty).
+// https://api.doppler.com when empty). Opener defaults to OpenBrowser; tests
+// override it to avoid launching a real browser.
 func NewDopplerOAuthFlow(baseURL string) *DopplerOAuthFlow {
 	if baseURL == "" {
 		baseURL = "https://api.doppler.com"
@@ -27,6 +29,7 @@ func NewDopplerOAuthFlow(baseURL string) *DopplerOAuthFlow {
 	return &DopplerOAuthFlow{
 		BaseURL:      baseURL,
 		PollInterval: 5 * time.Second,
+		Opener:       OpenBrowser,
 		client:       &http.Client{Timeout: 30 * time.Second},
 	}
 }
@@ -58,7 +61,7 @@ func (f *DopplerOAuthFlow) Login(ctx context.Context, _ map[string]string) (*Cre
 	}
 
 	fmt.Fprintf(ctxOut(ctx), "Open %s in your browser to approve skret.\n", dev.AuthURL)
-	_ = OpenBrowser(ctx, dev.AuthURL)
+	_ = f.Opener(ctx, dev.AuthURL)
 
 	interval := f.PollInterval
 	if dev.PollingInterval > 0 && interval >= 5*time.Second {

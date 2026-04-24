@@ -21,11 +21,14 @@ type SSOOIDCClient interface {
 // AWSSSOFlow performs the AWS SSO device-authorization flow.
 type AWSSSOFlow struct {
 	client SSOOIDCClient
+	Opener func(ctx context.Context, authURL string) error
 }
 
 // NewAWSSSOFlow creates an AWS SSO flow backed by the given ssooidc client.
+// Opener defaults to OpenBrowser; tests override it to avoid launching a real
+// browser.
 func NewAWSSSOFlow(client SSOOIDCClient) *AWSSSOFlow {
-	return &AWSSSOFlow{client: client}
+	return &AWSSSOFlow{client: client, Opener: OpenBrowser}
 }
 
 // Login registers the client, starts device auth, prints the verification URI,
@@ -56,7 +59,7 @@ func (f *AWSSSOFlow) Login(ctx context.Context, opts map[string]string) (*Creden
 
 	fmt.Fprintf(ctxOut(ctx), "Open %s and enter code %s\n",
 		aws.ToString(dev.VerificationUri), aws.ToString(dev.UserCode))
-	_ = OpenBrowser(ctx, aws.ToString(dev.VerificationUriComplete))
+	_ = f.Opener(ctx, aws.ToString(dev.VerificationUriComplete))
 
 	interval := time.Duration(dev.Interval) * time.Second
 	if interval <= 0 {
