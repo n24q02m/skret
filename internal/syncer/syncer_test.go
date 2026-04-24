@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 
 	"golang.org/x/crypto/nacl/box"
@@ -208,7 +209,7 @@ func TestGitHubSyncer_ConcurrentManySecrets(t *testing.T) {
 	pubKey, _, _ := box.GenerateKey(rand.Reader)
 	pubKeyB64 := base64.StdEncoding.EncodeToString(pubKey[:])
 
-	var putCalls int
+	var putCalls atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "GET" {
 			json.NewEncoder(w).Encode(map[string]string{
@@ -217,7 +218,7 @@ func TestGitHubSyncer_ConcurrentManySecrets(t *testing.T) {
 			})
 			return
 		}
-		putCalls++
+		putCalls.Add(1)
 		w.WriteHeader(http.StatusCreated)
 	}))
 	defer srv.Close()
@@ -230,7 +231,7 @@ func TestGitHubSyncer_ConcurrentManySecrets(t *testing.T) {
 	s := syncer.NewGitHub("owner", "repo", "token", srv.URL)
 	err := s.Sync(context.Background(), secrets)
 	require.NoError(t, err)
-	assert.Equal(t, 15, putCalls)
+	assert.Equal(t, int32(15), putCalls.Load())
 }
 
 func TestDotenvSyncer_DollarSignValue(t *testing.T) {
