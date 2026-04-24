@@ -68,8 +68,9 @@ func (g *GitHubSyncer) Sync(ctx context.Context, secrets []*provider.Secret) err
 				return
 			}
 
-			if err := g.putSecret(ctx, s.Key, s.Value, pubKey, keyID); err != nil {
-				errCh <- fmt.Errorf("github: set %q: %w", s.Key, err)
+			name := secretName(s.Key)
+			if err := g.putSecret(ctx, name, s.Value, pubKey, keyID); err != nil {
+				errCh <- fmt.Errorf("github: set %q: %w", name, err)
 			}
 		}(s)
 	}
@@ -150,6 +151,18 @@ func (g *GitHubSyncer) putSecret(ctx context.Context, name, value, pubKeyB64, ke
 		return fmt.Errorf("github: API returned %d: %s", resp.StatusCode, string(respBody))
 	}
 	return nil
+}
+
+// secretName extracts the final path segment from a secret key and normalises it
+// to match GitHub Actions' required pattern: uppercase letters, digits, and
+// underscores, not starting with a digit, not prefixed with GITHUB_. SSM stores
+// secrets as `/namespace/env/NAME`; GitHub only accepts `NAME`.
+func secretName(key string) string {
+	name := key
+	if idx := strings.LastIndex(name, "/"); idx >= 0 {
+		name = name[idx+1:]
+	}
+	return name
 }
 
 // sealSecret encrypts a secret using NaCl sealed box (curve25519 + xsalsa20-poly1305).
