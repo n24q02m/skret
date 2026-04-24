@@ -269,6 +269,14 @@ func TestCreateImporter_AllSources(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Clear leaking env + isolate ~/.skret/credentials.yaml so that
+			// "missing token" cases stay deterministic on dev machines that
+			// have DOPPLER_TOKEN / INFISICAL_TOKEN set or that have run
+			// `skret auth login ...` locally.
+			t.Setenv("DOPPLER_TOKEN", "")
+			t.Setenv("INFISICAL_TOKEN", "")
+			t.Setenv("HOME", t.TempDir())
+			t.Setenv("USERPROFILE", t.TempDir())
 			for k, v := range tt.envVars {
 				t.Setenv(k, v)
 			}

@@ -29,6 +29,14 @@ func TestCLI_EdgeCases(t *testing.T) {
 	require.NoError(t, os.Chdir(dir))
 	defer os.Chdir(origDir)
 
+	// Isolate auth credential store + token env so "doppler missing token"
+	// and similar assertions don't pick up developer-machine state
+	// (DOPPLER_TOKEN env or a prior `skret auth login doppler`).
+	t.Setenv("DOPPLER_TOKEN", "")
+	t.Setenv("INFISICAL_TOKEN", "")
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("USERPROFILE", t.TempDir())
+
 	// 1. Get: JSON output
 	out, err := executeCmd("get", "DATABASE_URL", "--json")
 	require.NoError(t, err)

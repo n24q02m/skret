@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"time"
 )
 
@@ -43,7 +44,10 @@ func (p *DopplerProvider) Login(ctx context.Context, method string, opts map[str
 func (p *DopplerProvider) loginToken(ctx context.Context, method string, opts map[string]string) (*Credential, error) {
 	token := opts["token"]
 	if token == "" {
-		return nil, fmt.Errorf("doppler: token required (set via --token or DOPPLER_TOKEN)")
+		token = os.Getenv("DOPPLER_TOKEN")
+	}
+	if token == "" {
+		return nil, fmt.Errorf("doppler: token required (set via --opt token=... or DOPPLER_TOKEN env)")
 	}
 
 	// Validate token against /v3/me
