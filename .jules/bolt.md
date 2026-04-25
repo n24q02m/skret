@@ -1,0 +1,3 @@
+## 2025-04-25 - Optimize KeyToEnvName memory allocation overhead
+**Learning:** Found an opportunity to optimize `KeyToEnvName` when injecting secrets as environment variables. Chaining multiple `strings.ReplaceAll` and `strings.ToUpper` operations incurs multiple allocations per string. Using an early fast-path check to avoid allocations when the string already conforms to requirements, and dropping to a single-pass `strings.Builder` replacement when it needs to be transformed, removes duplicate intermediate allocations and provides a significant speed-up.
+**Action:** Consolidate multi-pass string transformations into a single-pass loop using `strings.Builder` with early-exit conditions on conformant inputs to minimize allocations and GC pressure.

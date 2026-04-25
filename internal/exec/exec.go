@@ -83,6 +83,40 @@ func KeyToEnvName(key, pathPrefix string) string {
 			name = name[1:]
 		}
 	}
-	name = strings.ReplaceAll(name, "/", "_")
-	return strings.ToUpper(name)
+	// Fast path check to avoid allocations
+	needsChange := false
+	isAscii := true
+	for i := 0; i < len(name); i++ {
+		c := name[i]
+		if c >= 0x80 {
+			isAscii = false
+		} else if c == '/' || (c >= 'a' && c <= 'z') {
+			needsChange = true
+		}
+	}
+
+	if !isAscii {
+		// Fallback for non-ASCII
+		name = strings.ReplaceAll(name, "/", "_")
+		return strings.ToUpper(name)
+	}
+
+	if !needsChange {
+		return name
+	}
+
+	// Single-pass transformation
+	var sb strings.Builder
+	sb.Grow(len(name))
+	for i := 0; i < len(name); i++ {
+		c := name[i]
+		if c == '/' {
+			sb.WriteByte('_')
+		} else if c >= 'a' && c <= 'z' {
+			sb.WriteByte(c - 'a' + 'A')
+		} else {
+			sb.WriteByte(c)
+		}
+	}
+	return sb.String()
 }
