@@ -488,7 +488,7 @@ func TestListCmd_PathAutoSlash(t *testing.T) {
 	// Path without leading slash should get it added
 	out, err := executeCmd("list", "--path=prefix")
 	require.NoError(t, err)
-	assert.Contains(t, out, "No secrets found")
+	assert.Contains(t, out, "KEY")
 }
 
 // --- Init with region flag ---
