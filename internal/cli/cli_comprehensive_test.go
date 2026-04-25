@@ -62,7 +62,7 @@ func TestListCmd_NoRecursive(t *testing.T) {
 	out, err := executeCmd("list", "--recursive=false", "--path=/nonexistent/")
 	require.NoError(t, err)
 	// Should have header but no keys since path doesn't match
-	assert.Contains(t, out, "KEY")
+	assert.Contains(t, out, "No secrets found")
 }
 
 // --- Env format tests ---
@@ -488,7 +488,7 @@ func TestListCmd_PathAutoSlash(t *testing.T) {
 	// Path without leading slash should get it added
 	out, err := executeCmd("list", "--path=prefix")
 	require.NoError(t, err)
-	assert.Contains(t, out, "KEY")
+	assert.Contains(t, out, "No secrets found")
 }
 
 // --- Init with region flag ---
