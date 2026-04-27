@@ -110,11 +110,12 @@ func KeyToEnvName(key, pathPrefix string) string {
 	b.Grow(len(name))
 	for i := 0; i < len(name); i++ {
 		c := name[i]
-		if c == '/' {
+		switch {
+		case c == '/':
 			b.WriteByte('_')
-		} else if c >= 'a' && c <= 'z' {
+		case c >= 'a' && c <= 'z':
 			b.WriteByte(c - 'a' + 'A')
-		} else {
+		default:
 			b.WriteByte(c)
 		}
 	}
