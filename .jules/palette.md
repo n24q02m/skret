@@ -1,0 +1,3 @@
+## 2024-04-27 - CLI Empty State UX Differentiation
+**Learning:** Returning human-readable text for empty collection states in CLI outputs breaks programmatic pipelines expecting proper data structures (like JSON arrays). Proper UX means giving actionable feedback to humans while returning valid empty representations (e.g. `[]`) for scripts.
+**Action:** When implementing CLI collection outputs (e.g., list commands), conditionally route empty state feedback: output actionable messages ("No secrets found. Use...") to `stderr` for default text formats, and proper empty representations like `[]` to `stdout` for structured formats like JSON.
