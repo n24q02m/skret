@@ -207,6 +207,41 @@ func TestListCmd_JSONOutput(t *testing.T) {
 	assert.Contains(t, buf.String(), "DATABASE_URL")
 }
 
+func TestListCmd_EmptyState(t *testing.T) {
+	dir := setupTestRepo(t)
+	origDir, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	defer os.Chdir(origDir)
+
+	var stderrBuf bytes.Buffer
+	cmd := cli.NewRootCmd()
+	cmd.SetErr(&stderrBuf)
+	cmd.SetArgs([]string{"list", "--recursive=false", "--path=/nonexistent/"})
+
+	err := cmd.Execute()
+	require.NoError(t, err)
+	assert.Contains(t, stderrBuf.String(), "No secrets found. Use 'skret set' to add a secret.")
+}
+
+func TestListCmd_EmptyStateJSON(t *testing.T) {
+	dir := setupTestRepo(t)
+	origDir, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	defer os.Chdir(origDir)
+
+	var stdoutBuf bytes.Buffer
+	var stderrBuf bytes.Buffer
+	cmd := cli.NewRootCmd()
+	cmd.SetOut(&stdoutBuf)
+	cmd.SetErr(&stderrBuf)
+	cmd.SetArgs([]string{"list", "--recursive=false", "--path=/nonexistent/", "--format=json"})
+
+	err := cmd.Execute()
+	require.NoError(t, err)
+	assert.Equal(t, "[]\n", stdoutBuf.String())
+	assert.Empty(t, stderrBuf.String())
+}
+
 // --- Env tests ---
 
 func TestEnvCmd_DotenvFormat(t *testing.T) {
