@@ -50,7 +50,7 @@ func newHistoryCmd(opts *GlobalOpts) *cobra.Command {
 // renderHistory formats and prints the history table.
 func renderHistory(cmd *cobra.Command, history []*provider.Secret, key string, verbose bool) error {
 	if len(history) == 0 {
-		cmd.Printf("No history found for %q\n", key)
+		cmd.PrintErrf("No history found for %q\n", key)
 		return nil
 	}
 
