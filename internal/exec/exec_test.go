@@ -63,3 +63,7 @@ func TestKeyToEnvName_NoMatch(t *testing.T) {
 	result := skexec.KeyToEnvName("/other/path/KEY", "/my/prefix")
 	assert.Equal(t, "_OTHER_PATH_KEY", result)
 }
+
+func TestKeyToEnvName_NonAscii(t *testing.T) {
+	assert.Equal(t, "UNICODE_秘_密", skexec.KeyToEnvName("unicode/秘/密", ""))
+}
