@@ -6,6 +6,8 @@
   "prConcurrentLimit": 3,
   "semanticCommits": "enabled",
   "commitMessagePrefix": "fix(deps):",
+  "commitMessageAction": "update",
+  "commitMessageTopic": "{{depName}}",
   "semanticCommitType": "fix",
   "semanticCommitScope": "deps",
   "golang": {
