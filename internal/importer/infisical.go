@@ -47,7 +47,10 @@ func (i *InfisicalImporter) Import(ctx context.Context) ([]ImportedSecret, error
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		body, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			return nil, fmt.Errorf("infisical: API returned %d (body unreadable: %w)", resp.StatusCode, readErr)
+		}
 		return nil, fmt.Errorf("infisical: API returned %d: %s", resp.StatusCode, string(body))
 	}
 

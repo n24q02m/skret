@@ -138,3 +138,31 @@ func TestInfisicalImporter_APIError(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "403")
 }
+
+func TestInfisicalImporter_APIError_ReadBodyError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Length", "100")
+		w.WriteHeader(http.StatusForbidden)
+		w.Write([]byte(`{"message"`)) // short write to cause io.ErrUnexpectedEOF
+	}))
+	defer srv.Close()
+
+	imp := importer.NewInfisical("bad_token", "proj", "prod", srv.URL)
+	_, err := imp.Import(context.Background())
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "body unreadable")
+}
+
+func TestDopplerImporter_APIError_ReadBodyError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Length", "100")
+		w.WriteHeader(http.StatusForbidden)
+		w.Write([]byte(`{"message"`)) // short write to cause io.ErrUnexpectedEOF
+	}))
+	defer srv.Close()
+
+	imp := importer.NewDoppler("bad_token", "proj", "prod", srv.URL)
+	_, err := imp.Import(context.Background())
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "body unreadable")
+}
