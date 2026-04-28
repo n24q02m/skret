@@ -15,6 +15,7 @@ func TestRootCmd_VersionFlag(t *testing.T) {
 	var buf bytes.Buffer
 	cmd := cli.NewRootCmd()
 	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
 	cmd.SetArgs([]string{"--version"})
 	err := cmd.Execute()
 	assert.NoError(t, err)
@@ -25,6 +26,7 @@ func TestRootCmd_HelpFlag(t *testing.T) {
 	var buf bytes.Buffer
 	cmd := cli.NewRootCmd()
 	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
 	cmd.SetArgs([]string{"--help"})
 	err := cmd.Execute()
 	assert.NoError(t, err)
@@ -149,6 +151,7 @@ func TestGetCmd_PlainOutput(t *testing.T) {
 	var buf bytes.Buffer
 	cmd := cli.NewRootCmd()
 	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
 	cmd.SetArgs([]string{"get", "DATABASE_URL"})
 
 	err := cmd.Execute()
@@ -181,6 +184,7 @@ func TestListCmd_TableOutput(t *testing.T) {
 	var buf bytes.Buffer
 	cmd := cli.NewRootCmd()
 	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
 	cmd.SetArgs([]string{"list"})
 
 	err := cmd.Execute()
@@ -200,6 +204,7 @@ func TestListCmd_JSONOutput(t *testing.T) {
 	var buf bytes.Buffer
 	cmd := cli.NewRootCmd()
 	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
 	cmd.SetArgs([]string{"list", "--format=json"})
 
 	err := cmd.Execute()
@@ -253,6 +258,7 @@ func TestEnvCmd_DotenvFormat(t *testing.T) {
 	var buf bytes.Buffer
 	cmd := cli.NewRootCmd()
 	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
 	cmd.SetArgs([]string{"env"})
 
 	err := cmd.Execute()
@@ -271,6 +277,7 @@ func TestEnvCmd_ExportFormat(t *testing.T) {
 	var buf bytes.Buffer
 	cmd := cli.NewRootCmd()
 	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
 	cmd.SetArgs([]string{"env", "--format=export"})
 
 	err := cmd.Execute()
@@ -484,6 +491,7 @@ func TestEnvCmd_JsonYamlFormats(t *testing.T) {
 	var buf bytes.Buffer
 	cmd := cli.NewRootCmd()
 	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
 	cmd.SetArgs([]string{"env", "--format=json"})
 	require.NoError(t, cmd.Execute())
 	assert.Contains(t, buf.String(), `"DATABASE_URL": "postgres://`)
@@ -528,6 +536,7 @@ func TestImportCmd_ConflictSkip(t *testing.T) {
 	var buf bytes.Buffer
 	cmd := cli.NewRootCmd()
 	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
 	cmd.SetArgs([]string{"import", "--from=dotenv", "--file=.env", "--on-conflict=skip"})
 	err := cmd.Execute()
 	require.NoError(t, err)
