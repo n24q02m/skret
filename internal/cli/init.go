@@ -109,7 +109,7 @@ func (o *initOptions) run(cmd *cobra.Command) error {
 		cmd.PrintErrf("Warning: could not update .gitignore: %v\n", err)
 	}
 
-	cmd.Printf("Created %s\n", config.ConfigFileName)
+	cmd.PrintErrf("Created %s\n", config.ConfigFileName)
 	return nil
 }
 

@@ -56,7 +56,7 @@ func newAuthLoginCmd() *cobra.Command {
 				return skret.NewError(skret.ExitConfigError, fmt.Sprintf("auth login %s failed", provider), err)
 			}
 
-			cmd.Printf("Successfully authenticated with %s\n", provider)
+			cmd.PrintErrf("Successfully authenticated with %s\n", provider)
 			return nil
 		},
 	}
@@ -79,7 +79,7 @@ func newAuthStatusCmd() *cobra.Command {
 			for _, p := range providers {
 				cred, err := store.Load(p)
 				if err != nil {
-					cmd.Printf("  %-12s not configured\n", p)
+					cmd.PrintErrf("  %-12s not configured\n", p)
 					continue
 				}
 
@@ -93,7 +93,7 @@ func newAuthStatusCmd() *cobra.Command {
 					status = "invalid"
 				}
 
-				cmd.Printf("  %-12s %s (method: %s)\n", p, status, cred.Method)
+				cmd.PrintErrf("  %-12s %s (method: %s)\n", p, status, cred.Method)
 			}
 
 			return nil
@@ -114,7 +114,7 @@ func newAuthLogoutCmd() *cobra.Command {
 				return skret.NewError(skret.ExitGenericError, fmt.Sprintf("auth logout %s failed", provider), err)
 			}
 
-			cmd.Printf("Logged out from %s\n", provider)
+			cmd.PrintErrf("Logged out from %s\n", provider)
 			return nil
 		},
 	}

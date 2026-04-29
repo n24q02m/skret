@@ -68,6 +68,7 @@ func TestAuthStatusCmd_WithCredential(t *testing.T) {
 	cmd := newAuthStatusCmd()
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
 	err := cmd.Execute()
 	require.NoError(t, err)
 	out := buf.String()
@@ -87,6 +88,7 @@ func TestAuthLogoutCmd(t *testing.T) {
 	cmd.SetArgs([]string{"doppler"})
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
 	err := cmd.Execute()
 	require.NoError(t, err)
 	assert.Contains(t, buf.String(), "Logged out")
