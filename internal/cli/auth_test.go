@@ -107,6 +107,7 @@ func TestAuthLogoutCmd_NonExisting(t *testing.T) {
 	cmd.SetArgs([]string{"nonexistent"})
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
 	err := cmd.Execute()
 	require.NoError(t, err) // Delete missing is not an error
 }

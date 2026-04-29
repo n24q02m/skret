@@ -266,6 +266,9 @@ func TestInitCmd_LocalProviderNoFileFlag(t *testing.T) {
 	_ = os.MkdirAll(filepath.Join(dir, ".git"), 0o755)
 
 	cmd := cli.NewRootCmd()
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
 	cmd.SetArgs([]string{"init", "--provider=local"})
 
 	origDir, _ := os.Getwd()
@@ -280,6 +283,8 @@ func TestInitCmd_LocalProviderNoFileFlag(t *testing.T) {
 
 	// Config must load without error.
 	loadCmd := cli.NewRootCmd()
+	loadCmd.SetOut(&buf)
+	loadCmd.SetErr(&buf)
 	loadCmd.SetArgs([]string{"list"})
 	assert.NoError(t, loadCmd.Execute())
 }
