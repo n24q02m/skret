@@ -33,7 +33,7 @@ func TestRedactingHandler_RedactsGitHubPAT(t *testing.T) {
 	handler := logging.NewRedactingHandler(inner)
 	logger := slog.New(handler)
 
-	logger.Info("test", "token", "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghij")
+	logger.Info("test", "token", "ghp_FAKEGITHUBTOKEN123456789012345678901")
 
 	output := buf.String()
 	assert.Contains(t, output, "[REDACTED]")
@@ -106,21 +106,22 @@ func TestRedactingHandler_RedactsEmbeddedSecrets(t *testing.T) {
 	handler := logging.NewRedactingHandler(inner)
 	logger := slog.New(handler)
 
-	logger.Info("test", "error", "connection failed: invalid token ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghij")
+	logger.Info("test", "error", "connection failed: invalid token ghp_FAKEGITHUBTOKEN123456789012345678901")
 
 	output := buf.String()
-	assert.NotContains(t, output, "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghij")
+	assert.NotContains(t, output, "ghp_FAKEGITHUBTOKEN123456789012345678901")
 }
+
 func TestRedactingHandler_RedactsMultipleEmbeddedSecrets(t *testing.T) {
 	var buf bytes.Buffer
 	inner := slog.NewTextHandler(&buf, nil)
 	handler := logging.NewRedactingHandler(inner)
 	logger := slog.New(handler)
 
-	logger.Info("test", "message", "Found tokens: sk-abc123def456ghi789jkl012mno and AKIAABCDEFGHIJKLMNOP")
+	logger.Info("test", "message", "Found tokens: sk-abc123def456ghi789jkl012mno and AKIA1234567890123456")
 
 	output := buf.String()
 	assert.Contains(t, output, "[REDACTED] and [REDACTED]")
 	assert.NotContains(t, output, "sk-abc123def456ghi789jkl012mno")
-	assert.NotContains(t, output, "AKIAABCDEFGHIJKLMNOP")
+	assert.NotContains(t, output, "AKIA1234567890123456")
 }
