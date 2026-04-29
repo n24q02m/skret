@@ -17,14 +17,14 @@ func TestRedactingHandler_RedactsSecrets(t *testing.T) {
 	logger := slog.New(handler)
 
 	logger.Info("test",
-		"api_key", "sk-abc123def456ghi789jkl012mno",
+		"api_key", "sk-00000000000000000000",
 		"normal", "hello world",
 	)
 
 	output := buf.String()
 	assert.Contains(t, output, "[REDACTED]")
 	assert.Contains(t, output, "hello world")
-	assert.NotContains(t, output, "sk-abc123def456ghi789jkl012mno")
+	assert.NotContains(t, output, "sk-00000000000000000000")
 }
 
 func TestRedactingHandler_RedactsGitHubPAT(t *testing.T) {
@@ -33,7 +33,7 @@ func TestRedactingHandler_RedactsGitHubPAT(t *testing.T) {
 	handler := logging.NewRedactingHandler(inner)
 	logger := slog.New(handler)
 
-	logger.Info("test", "token", "ghp_FAKEGITHUBTOKEN123456789012345678901")
+	logger.Info("test", "token", "ghp_000000000000000000000000000000000000")
 
 	output := buf.String()
 	assert.Contains(t, output, "[REDACTED]")
@@ -66,7 +66,7 @@ func TestRedactingHandler_WithAttrs(t *testing.T) {
 	handler := logging.NewRedactingHandler(inner)
 
 	h2 := handler.WithAttrs([]slog.Attr{
-		slog.String("static_key", "sk-abc123def456ghi789jkl012mno"),
+		slog.String("static_key", "sk-00000000000000000000"),
 		slog.String("static_normal", "value"),
 	})
 	logger := slog.New(h2)
@@ -76,7 +76,7 @@ func TestRedactingHandler_WithAttrs(t *testing.T) {
 	output := buf.String()
 	assert.Contains(t, output, "static_key=[REDACTED]")
 	assert.Contains(t, output, "static_normal=value")
-	assert.NotContains(t, output, "sk-abc123def456ghi789jkl012mno")
+	assert.NotContains(t, output, "sk-00000000000000000000")
 }
 
 func TestRedactingHandler_WithGroup(t *testing.T) {
@@ -87,11 +87,11 @@ func TestRedactingHandler_WithGroup(t *testing.T) {
 	h2 := handler.WithGroup("mygroup")
 	logger := slog.New(h2)
 
-	logger.Info("test", "key", "sk-abc123def456ghi789jkl012mno")
+	logger.Info("test", "key", "sk-00000000000000000000")
 
 	output := buf.String()
 	assert.Contains(t, output, "mygroup.key=[REDACTED]")
-	assert.NotContains(t, output, "sk-abc123def456ghi789jkl012mno")
+	assert.NotContains(t, output, "sk-00000000000000000000")
 }
 
 func TestSetup(t *testing.T) {
@@ -106,10 +106,10 @@ func TestRedactingHandler_RedactsEmbeddedSecrets(t *testing.T) {
 	handler := logging.NewRedactingHandler(inner)
 	logger := slog.New(handler)
 
-	logger.Info("test", "error", "connection failed: invalid token ghp_FAKEGITHUBTOKEN123456789012345678901")
+	logger.Info("test", "error", "connection failed: invalid token ghp_000000000000000000000000000000000000")
 
 	output := buf.String()
-	assert.NotContains(t, output, "ghp_FAKEGITHUBTOKEN123456789012345678901")
+	assert.NotContains(t, output, "ghp_000000000000000000000000000000000000")
 }
 
 func TestRedactingHandler_RedactsMultipleEmbeddedSecrets(t *testing.T) {
@@ -118,10 +118,10 @@ func TestRedactingHandler_RedactsMultipleEmbeddedSecrets(t *testing.T) {
 	handler := logging.NewRedactingHandler(inner)
 	logger := slog.New(handler)
 
-	logger.Info("test", "message", "Found tokens: sk-abc123def456ghi789jkl012mno and AKIA1234567890123456")
+	logger.Info("test", "message", "Found tokens: sk-00000000000000000000 and AKIA0000000000000000")
 
 	output := buf.String()
 	assert.Contains(t, output, "[REDACTED] and [REDACTED]")
-	assert.NotContains(t, output, "sk-abc123def456ghi789jkl012mno")
-	assert.NotContains(t, output, "AKIA1234567890123456")
+	assert.NotContains(t, output, "sk-00000000000000000000")
+	assert.NotContains(t, output, "AKIA0000000000000000")
 }
