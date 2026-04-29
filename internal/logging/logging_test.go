@@ -99,3 +99,28 @@ func TestSetup(t *testing.T) {
 	logging.Setup("info", "json")
 	logging.Setup("error", "")
 }
+
+func TestRedactingHandler_RedactsEmbeddedSecrets(t *testing.T) {
+	var buf bytes.Buffer
+	inner := slog.NewTextHandler(&buf, nil)
+	handler := logging.NewRedactingHandler(inner)
+	logger := slog.New(handler)
+
+	logger.Info("test", "error", "connection failed: invalid token ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghij")
+
+	output := buf.String()
+	assert.NotContains(t, output, "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghij")
+}
+func TestRedactingHandler_RedactsMultipleEmbeddedSecrets(t *testing.T) {
+	var buf bytes.Buffer
+	inner := slog.NewTextHandler(&buf, nil)
+	handler := logging.NewRedactingHandler(inner)
+	logger := slog.New(handler)
+
+	logger.Info("test", "message", "Found tokens: sk-abc123def456ghi789jkl012mno and AKIAABCDEFGHIJKLMNOP")
+
+	output := buf.String()
+	assert.Contains(t, output, "[REDACTED] and [REDACTED]")
+	assert.NotContains(t, output, "sk-abc123def456ghi789jkl012mno")
+	assert.NotContains(t, output, "AKIAABCDEFGHIJKLMNOP")
+}
