@@ -99,3 +99,22 @@ func TestSetup(t *testing.T) {
 	logging.Setup("info", "json")
 	logging.Setup("error", "")
 }
+
+func TestRedactingHandler_EmbeddedSecrets(t *testing.T) {
+	var buf bytes.Buffer
+	inner := slog.NewTextHandler(&buf, nil)
+	handler := logging.NewRedactingHandler(inner)
+	logger := slog.New(handler)
+
+	logger.Info("test",
+		"error_msg", "failed to authenticate: invalid token sk-abc123def456ghi789jkl012mno for user",
+		"url", "https://api.example.com?token=mysecret123&other=value",
+	)
+
+	output := buf.String()
+	assert.Contains(t, output, "[REDACTED]")
+	assert.Contains(t, output, "failed to authenticate: invalid token [REDACTED] for user")
+	assert.Contains(t, output, "https://api.example.com?[REDACTED]&other=value")
+	assert.NotContains(t, output, "sk-abc123def456ghi789jkl012mno")
+	assert.NotContains(t, output, "mysecret123")
+}
