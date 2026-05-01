@@ -1,0 +1,4 @@
+## 2025-02-14 - Embedded Secrets Log Leakage
+**Vulnerability:** Secrets embedded within larger logged strings (like URLs or error messages) were bypassing redaction.
+**Learning:** In Go's `regexp` engine, using start/end anchors (`^...$`) for secret scanning fails to catch sensitive data embedded within other strings. However, removing anchors and replacing values in large strings can be CPU intensive.
+**Prevention:** Use unanchored regular expressions with global replacement functions (like `ReplaceAllString`). To maintain performance, implement an absolute minimum length requirement (e.g., `len(val) < 5`) as a safe fast-path check to bypass expensive regex evaluations for short strings. When matching key-value secrets in URLs, ensure the regex terminates on ampersands (`[^\s&]+`) to avoid over-redacting subsequent parameters.

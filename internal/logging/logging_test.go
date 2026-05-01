@@ -94,6 +94,36 @@ func TestRedactingHandler_WithGroup(t *testing.T) {
 	assert.NotContains(t, output, "sk-abc123def456ghi789jkl012mno")
 }
 
+func TestRedactingHandler_RedactsEmbeddedSecrets(t *testing.T) {
+	var buf bytes.Buffer
+	inner := slog.NewTextHandler(&buf, nil)
+	handler := logging.NewRedactingHandler(inner)
+	logger := slog.New(handler)
+
+	logger.Info("error", "err", "failed to connect: token ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghij is invalid")
+
+	output := buf.String()
+	assert.Contains(t, output, "[REDACTED]")
+	assert.Contains(t, output, "failed to connect: token")
+	assert.Contains(t, output, "is invalid")
+	assert.NotContains(t, output, "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghij")
+}
+
+func TestRedactingHandler_RedactsQueryString(t *testing.T) {
+	var buf bytes.Buffer
+	inner := slog.NewTextHandler(&buf, nil)
+	handler := logging.NewRedactingHandler(inner)
+	logger := slog.New(handler)
+
+	logger.Info("request", "url", "https://example.com/api?token=sk-1234567890abcdefghij1234&other=value")
+
+	output := buf.String()
+	assert.Contains(t, output, "[REDACTED]")
+	assert.Contains(t, output, "https://example.com/api?")
+	assert.Contains(t, output, "&other=value")
+	assert.NotContains(t, output, "sk-1234567890abcdefghij1234")
+}
+
 func TestSetup(t *testing.T) {
 	logging.Setup("debug", "text")
 	logging.Setup("info", "json")
