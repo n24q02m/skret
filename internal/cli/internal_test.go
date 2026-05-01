@@ -40,6 +40,7 @@ func TestRenderHistory_Empty(t *testing.T) {
 	cmd := &cobra.Command{}
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
 
 	err := renderHistory(cmd, nil, "EMPTY_KEY", false)
 	require.NoError(t, err)

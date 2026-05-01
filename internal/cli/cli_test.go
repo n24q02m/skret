@@ -564,3 +564,54 @@ func TestImportCmd_ConflictFail(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "conflict on \"API_KEY\"")
 }
+
+func TestEnvCmd_EmptyState(t *testing.T) {
+	dir := setupTestRepo(t)
+	// Clear the default mocked secrets in the local provider for this test
+	os.WriteFile(filepath.Join(dir, ".skret.yaml"), []byte(`
+version: "1"
+default_env: dev
+environments:
+  dev:
+    provider: local
+    file: ./.secrets.empty.yaml
+`), 0o644)
+	os.WriteFile(filepath.Join(dir, ".secrets.empty.yaml"), []byte("{}"), 0o644)
+
+	origDir, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	defer os.Chdir(origDir)
+
+	// Test human-readable format (dotenv) routing empty message to stderr
+	var stdout1, stderr1 bytes.Buffer
+	cmd1 := cli.NewRootCmd()
+	cmd1.SetOut(&stdout1)
+	cmd1.SetErr(&stderr1)
+	cmd1.SetArgs([]string{"env"})
+
+	require.NoError(t, cmd1.Execute())
+	assert.Empty(t, stdout1.String(), "stdout should be empty for human-readable empty state")
+	assert.Contains(t, stderr1.String(), "No secrets found. Use 'skret set' to add a secret.", "stderr should contain empty state message")
+
+	// Test JSON format routing empty representation to stdout, stderr should be empty
+	var stdout2, stderr2 bytes.Buffer
+	cmd2 := cli.NewRootCmd()
+	cmd2.SetOut(&stdout2)
+	cmd2.SetErr(&stderr2)
+	cmd2.SetArgs([]string{"env", "--format=json"})
+
+	require.NoError(t, cmd2.Execute())
+	assert.Equal(t, "{}\n", stdout2.String(), "stdout should contain empty JSON object")
+	assert.Empty(t, stderr2.String(), "stderr should be empty for JSON format")
+
+	// Test YAML format routing empty representation to stdout, stderr should be empty
+	var stdout3, stderr3 bytes.Buffer
+	cmd3 := cli.NewRootCmd()
+	cmd3.SetOut(&stdout3)
+	cmd3.SetErr(&stderr3)
+	cmd3.SetArgs([]string{"env", "--format=yaml"})
+
+	require.NoError(t, cmd3.Execute())
+	assert.Equal(t, "{}\n", stdout3.String(), "stdout should contain empty YAML object")
+	assert.Empty(t, stderr3.String(), "stderr should be empty for YAML format")
+}
