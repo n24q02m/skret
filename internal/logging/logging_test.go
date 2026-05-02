@@ -94,6 +94,33 @@ func TestRedactingHandler_WithGroup(t *testing.T) {
 	assert.NotContains(t, output, "sk-abc123def456ghi789jkl012mno")
 }
 
+func TestRedactingHandler_RedactsEmbeddedSecrets(t *testing.T) {
+	var buf bytes.Buffer
+	inner := slog.NewTextHandler(&buf, nil)
+	handler := logging.NewRedactingHandler(inner)
+	logger := slog.New(handler)
+
+	logger.Info("failed to fetch", "error", "auth error: ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghij is invalid")
+
+	output := buf.String()
+	assert.Contains(t, output, "[REDACTED]")
+	assert.NotContains(t, output, "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghij")
+}
+
+func TestRedactingHandler_KeyValueTerminatesOnAmpersand(t *testing.T) {
+	var buf bytes.Buffer
+	inner := slog.NewTextHandler(&buf, nil)
+	handler := logging.NewRedactingHandler(inner)
+	logger := slog.New(handler)
+
+	logger.Info("request", "url", "https://api.example.com?token=supersecret123&other=value")
+
+	output := buf.String()
+	assert.Contains(t, output, "token=[REDACTED]")
+	assert.Contains(t, output, "&other=value")
+	assert.NotContains(t, output, "supersecret123")
+}
+
 func TestSetup(t *testing.T) {
 	logging.Setup("debug", "text")
 	logging.Setup("info", "json")
