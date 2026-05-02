@@ -68,6 +68,10 @@ func redactAttr(a slog.Attr) slog.Attr {
 }
 
 func shouldRedact(val string) bool {
+	// Fast-path: The shortest possible matching string is 5 characters (e.g. "key=a")
+	if len(val) < 5 {
+		return false
+	}
 	for _, p := range secretPatterns {
 		if p.MatchString(val) {
 			return true
