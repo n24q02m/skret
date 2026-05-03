@@ -7,13 +7,14 @@ import (
 )
 
 var secretPatterns = []*regexp.Regexp{
-	regexp.MustCompile(`(?i)^[a-z0-9+/]{40,}={0,2}$`),         // Base64
-	regexp.MustCompile(`^sk-[a-zA-Z0-9]{20,}$`),               // OpenAI-style
-	regexp.MustCompile(`^dp\.st\.[a-zA-Z0-9]+$`),              // Doppler service token
-	regexp.MustCompile(`^ghp_[a-zA-Z0-9]{36,}$`),              // GitHub PAT
-	regexp.MustCompile(`^AKIA[A-Z0-9]{16}$`),                  // AWS access key
-	regexp.MustCompile(`(?i)^(password|secret|token|key)=.+`), // Key-value secrets
+	regexp.MustCompile(`(?i)[a-z0-9+/]{40,}={0,2}`), // Base64
+	regexp.MustCompile(`sk-[a-zA-Z0-9]{20,}`),       // OpenAI-style
+	regexp.MustCompile(`dp\.st\.[a-zA-Z0-9]+`),      // Doppler service token
+	regexp.MustCompile(`ghp_[a-zA-Z0-9]{36,}`),      // GitHub PAT
+	regexp.MustCompile(`AKIA[A-Z0-9]{16}`),          // AWS access key
 }
+
+var kvPattern = regexp.MustCompile(`(?i)((?:password|secret|token|key)=)[^\s&]+`)
 
 const redacted = "[REDACTED]"
 
@@ -60,18 +61,19 @@ func (h *RedactingHandler) WithGroup(name string) slog.Handler {
 func redactAttr(a slog.Attr) slog.Attr {
 	if a.Value.Kind() == slog.KindString {
 		val := a.Value.String()
-		if shouldRedact(val) {
-			return slog.String(a.Key, redacted)
+		if len(val) < 5 {
+			return a
+		}
+
+		redactedVal := val
+		for _, p := range secretPatterns {
+			redactedVal = p.ReplaceAllString(redactedVal, redacted)
+		}
+		redactedVal = kvPattern.ReplaceAllString(redactedVal, "${1}"+redacted)
+
+		if redactedVal != val {
+			return slog.String(a.Key, redactedVal)
 		}
 	}
 	return a
-}
-
-func shouldRedact(val string) bool {
-	for _, p := range secretPatterns {
-		if p.MatchString(val) {
-			return true
-		}
-	}
-	return false
 }

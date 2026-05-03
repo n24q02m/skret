@@ -94,6 +94,21 @@ func TestRedactingHandler_WithGroup(t *testing.T) {
 	assert.NotContains(t, output, "sk-abc123def456ghi789jkl012mno")
 }
 
+func TestRedactingHandler_EmbeddedSecrets(t *testing.T) {
+	var buf bytes.Buffer
+	inner := slog.NewTextHandler(&buf, nil)
+	handler := logging.NewRedactingHandler(inner)
+	logger := slog.New(handler)
+
+	logger.Info("test", "msg", "failed to fetch token=secret123&user=admin and token sk-abc123def456ghi789jkl012mno.")
+
+	output := buf.String()
+	assert.Contains(t, output, "[REDACTED]")
+	assert.Contains(t, output, "&user=admin")
+	assert.NotContains(t, output, "secret123")
+	assert.NotContains(t, output, "sk-abc123def456ghi789jkl012mno")
+}
+
 func TestSetup(t *testing.T) {
 	logging.Setup("debug", "text")
 	logging.Setup("info", "json")
