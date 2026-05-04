@@ -80,14 +80,27 @@ func TestOpenBrowser_CancelledCtx(t *testing.T) {
 		}
 	}()
 
-	// Use a cancelled context so the exec.Cmd fails immediately without launching anything
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
+	platforms := []string{"linux", "darwin", "windows"}
 
-	err := auth.OpenBrowser(ctx, "https://example.com")
-	// The command will fail to start because the context is already cancelled
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "context canceled")
+	for _, p := range platforms {
+		t.Run(p, func(t *testing.T) {
+			// Mock the GOOS check
+			auth.SetGOOSForTest(p)
+			defer auth.SetGOOSForTest("")
+
+			// Use a cancelled context so the exec.Cmd fails immediately without launching anything
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
+
+			err := auth.OpenBrowser(ctx, "https://example.com")
+			// The command will fail to start. It may fail due to "context canceled"
+			// OR due to "executable file not found in $PATH" (e.g. testing rundll32 on linux).
+			assert.Error(t, err)
+			if !strings.Contains(err.Error(), "context canceled") {
+				assert.Contains(t, err.Error(), "executable file not found")
+			}
+		})
+	}
 }
 
 func TestOpenBrowser_InvalidScheme(t *testing.T) {

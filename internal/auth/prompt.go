@@ -78,13 +78,27 @@ func OpenBrowser(ctx context.Context, inputUrl string) error {
 	}
 
 	var cmd *exec.Cmd
-	switch runtime.GOOS {
+	switch goos() {
 	case "darwin":
 		cmd = exec.CommandContext(ctx, "open", "--", inputUrl)
 	case "windows":
 		cmd = exec.CommandContext(ctx, "rundll32", "url.dll,FileProtocolHandler", inputUrl)
 	default:
-		cmd = exec.CommandContext(ctx, "xdg-open", "--", inputUrl)
+		cmd = exec.CommandContext(ctx, "xdg-open", inputUrl)
 	}
 	return cmd.Start()
+}
+
+// goos allows tests to override the operating system check
+var goos = func() string {
+	return runtime.GOOS
+}
+
+// SetGOOSForTest allows setting the OS string for testing the OpenBrowser switch statement
+func SetGOOSForTest(os string) {
+	if os == "" {
+		goos = func() string { return runtime.GOOS }
+	} else {
+		goos = func() string { return os }
+	}
 }
