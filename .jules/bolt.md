@@ -5,3 +5,7 @@
 ## 2024-04-24 - Extracting Invariant Operations out of Concurrent Synchronization Loops
 **Learning:** In concurrent loops that process slice inputs to remote systems (e.g., sync loops that make API calls per secret), any invariant logic inside the loop causes unnecessary allocations and CPU overhead on each iteration (O(N) instead of O(1)). Base64-decoding a repository public key per-secret redundantly allocated slices and failed slowly.
 **Action:** Always extract invariant parsing, decoding, or initialization operations outside concurrent loops. When an operation produces a structurally fixed type, such as an array like `[32]byte`, pass a pointer (e.g., `*[32]byte`) to the worker goroutines to safely prevent data races, guarantee constant memory usage during initialization, and improve parallel execution speed.
+
+## 2025-05-15 - Optimize secret import performance
+**Learning:** In bulk operations (like importing secrets), processing duplicate keys results in redundant API calls (e.g., `p.Set`), when only the last value matters.
+**Action:** Deduplicate secret batches by key (last value wins) before processing to reduce redundant API calls.

@@ -115,6 +115,19 @@ func (o *importOptions) run(cmd *cobra.Command) error {
 		prefix += "/"
 	}
 
+	// Deduplicate secret batches by key (last value wins) to reduce redundant API calls
+	var deduped []importer.ImportedSecret
+	seen := make(map[string]int)
+	for _, s := range secrets {
+		if idx, ok := seen[s.Key]; ok {
+			deduped[idx] = s
+		} else {
+			seen[s.Key] = len(deduped)
+			deduped = append(deduped, s)
+		}
+	}
+	secrets = deduped
+
 	var imported, skipped int
 	existing := make(map[string]struct{})
 	listLoaded := false
