@@ -70,6 +70,26 @@ func TestSelectMethod_EmptyDescription(t *testing.T) {
 	assert.Contains(t, out.String(), "sso")
 }
 
+func TestOpenBrowser_CancelledCtx(t *testing.T) {
+	// Temporarily unset SKRET_NO_BROWSER if it's set
+	origNoBrowser := os.Getenv("SKRET_NO_BROWSER")
+	os.Unsetenv("SKRET_NO_BROWSER")
+	defer func() {
+		if origNoBrowser != "" {
+			os.Setenv("SKRET_NO_BROWSER", origNoBrowser)
+		}
+	}()
+
+	// Use a cancelled context so the exec.Cmd fails immediately without launching anything
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err := auth.OpenBrowser(ctx, "https://example.com")
+	// The command will fail to start because the context is already cancelled
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "context canceled")
+}
+
 func TestOpenBrowser_InvalidScheme(t *testing.T) {
 	ctx := context.Background()
 
