@@ -25,6 +25,7 @@ func TestRenderHistory_WithEntries(t *testing.T) {
 	cmd := &cobra.Command{}
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
 
 	err := renderHistory(cmd, history, "DB_URL", false)
 	require.NoError(t, err)
@@ -40,6 +41,7 @@ func TestRenderHistory_Empty(t *testing.T) {
 	cmd := &cobra.Command{}
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
 
 	err := renderHistory(cmd, nil, "EMPTY_KEY", false)
 	require.NoError(t, err)
@@ -55,6 +57,7 @@ func TestRenderHistory_Verbose(t *testing.T) {
 	cmd := &cobra.Command{}
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
 
 	err := renderHistory(cmd, history, "KEY", true)
 	require.NoError(t, err)
@@ -70,6 +73,7 @@ func TestRenderHistory_ZeroTimestamp(t *testing.T) {
 	cmd := &cobra.Command{}
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
 
 	err := renderHistory(cmd, history, "KEY", false)
 	require.NoError(t, err)
@@ -82,6 +86,7 @@ func TestPrintEnvPairs_JSONMarshalError(t *testing.T) {
 	cmd := &cobra.Command{}
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
 
 	pairs := []envPair{
 		{Name: "KEY", Value: "value"},
@@ -96,6 +101,7 @@ func TestPrintEnvPairs_YAMLFormat(t *testing.T) {
 	cmd := &cobra.Command{}
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
 
 	pairs := []envPair{
 		{Name: "KEY", Value: "value"},
@@ -110,6 +116,7 @@ func TestPrintEnvPairs_ExportFormat(t *testing.T) {
 	cmd := &cobra.Command{}
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
 
 	pairs := []envPair{
 		{Name: "DB_URL", Value: "postgres://localhost"},
@@ -124,6 +131,7 @@ func TestPrintEnvPairs_DotenvDefault(t *testing.T) {
 	cmd := &cobra.Command{}
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
 
 	pairs := []envPair{
 		{Name: "KEY", Value: `value with "quotes"`},
@@ -422,6 +430,7 @@ secrets:
 	cmd := &cobra.Command{}
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
 
 	o := &importOptions{
 		global:     &GlobalOpts{},
@@ -459,6 +468,7 @@ secrets:
 	cmd := &cobra.Command{}
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
 
 	o := &importOptions{
 		global:     &GlobalOpts{},
@@ -475,6 +485,7 @@ func TestPrintSecrets_JSONWithValues(t *testing.T) {
 	cmd := &cobra.Command{}
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
 
 	secrets := []*provider.Secret{
 		{Key: "A", Value: "val_a", Version: 1},
@@ -491,6 +502,7 @@ func TestPrintSecrets_JSONWithoutValues(t *testing.T) {
 	cmd := &cobra.Command{}
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
 
 	secrets := []*provider.Secret{
 		{Key: "A", Value: "val_a", Version: 1},
@@ -544,6 +556,7 @@ func TestInitOptions_Run_MarshalCheck(t *testing.T) {
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
 	cmd.SetErr(&buf)
+	cmd.SetErr(&buf)
 
 	o := &initOptions{
 		provider: "aws",
@@ -573,6 +586,7 @@ func TestInitOptions_Run_WithFileFlag(t *testing.T) {
 	cmd := &cobra.Command{}
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
 	cmd.SetErr(&buf)
 
 	o := &initOptions{
@@ -616,6 +630,7 @@ secrets: {}
 	cmd := &cobra.Command{}
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
 
 	o := &importOptions{
 		global:     &GlobalOpts{},
@@ -633,6 +648,7 @@ func TestPrintSecrets_Table(t *testing.T) {
 	cmd := &cobra.Command{}
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
 
 	secrets := []*provider.Secret{
 		{Key: "A", Value: "val_a", Version: 3},
