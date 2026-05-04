@@ -40,7 +40,7 @@ func newRollbackCmd(opts *GlobalOpts) *cobra.Command {
 				return skret.NewError(skret.ExitProviderError, fmt.Sprintf("failed to rollback %q to version %d", key, version), err)
 			}
 
-			cmd.Printf("Successfully rolled back %q to version %d\n", key, version)
+			cmd.PrintErrf("Successfully rolled back %q to version %d\n", key, version)
 			return nil
 		},
 	}
