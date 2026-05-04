@@ -2,6 +2,8 @@ package auth_test
 
 import (
 	"bytes"
+	"context"
+	"os"
 	"strings"
 	"testing"
 
@@ -66,4 +68,34 @@ func TestSelectMethod_EmptyDescription(t *testing.T) {
 	assert.Equal(t, "sso", m.Name)
 	// When description is empty, should use name as fallback
 	assert.Contains(t, out.String(), "sso")
+}
+
+func TestOpenBrowser_InvalidScheme(t *testing.T) {
+	ctx := context.Background()
+
+	// Temporarily unset SKRET_NO_BROWSER if it's set, so we can test the validation logic
+	origNoBrowser := os.Getenv("SKRET_NO_BROWSER")
+	os.Unsetenv("SKRET_NO_BROWSER")
+	defer func() {
+		if origNoBrowser != "" {
+			os.Setenv("SKRET_NO_BROWSER", origNoBrowser)
+		}
+	}()
+
+	invalidURLs := []string{
+		"file:///etc/passwd",
+		"javascript:alert(1)",
+		"ftp://example.com",
+		"data:text/html,<html>",
+		"-a",
+		"--test",
+	}
+
+	for _, u := range invalidURLs {
+		t.Run(u, func(t *testing.T) {
+			err := auth.OpenBrowser(ctx, u)
+			assert.Error(t, err)
+			assert.Contains(t, err.Error(), "invalid URL scheme: only http/https allowed")
+		})
+	}
 }
