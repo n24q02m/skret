@@ -2,6 +2,7 @@ package auth_test
 
 import (
 	"bytes"
+	"context"
 	"strings"
 	"testing"
 
@@ -66,4 +67,18 @@ func TestSelectMethod_EmptyDescription(t *testing.T) {
 	assert.Equal(t, "sso", m.Name)
 	// When description is empty, should use name as fallback
 	assert.Contains(t, out.String(), "sso")
+}
+
+func TestOpenBrowser_InvalidScheme(t *testing.T) {
+	t.Setenv("SKRET_NO_BROWSER", "")
+	err := auth.OpenBrowser(context.Background(), "file:///etc/passwd")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid url scheme")
+}
+
+func TestOpenBrowser_InvalidURL(t *testing.T) {
+	t.Setenv("SKRET_NO_BROWSER", "")
+	err := auth.OpenBrowser(context.Background(), "http://%42:8080/")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid url")
 }
