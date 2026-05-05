@@ -115,9 +115,28 @@ func (o *importOptions) run(cmd *cobra.Command) error {
 		prefix += "/"
 	}
 
+	// Deduplicate secrets by destination key (last value wins) to reduce redundant API calls
+	dedupedSecrets := make([]importer.ImportedSecret, 0, len(secrets))
+	seen := make(map[string]int)
+	for _, s := range secrets {
+		key := s.Key
+		if prefix != "" {
+			key = prefix + strings.TrimPrefix(key, "/")
+		}
+		s.Key = key
+
+		if idx, ok := seen[key]; ok {
+			dedupedSecrets[idx] = s // Last value wins
+		} else {
+			seen[key] = len(dedupedSecrets)
+			dedupedSecrets = append(dedupedSecrets, s)
+		}
+	}
+
 	var imported, skipped int
 	existing := make(map[string]struct{})
 	listLoaded := false
+
 	if !o.dryRun && (o.onConflict == "skip" || o.onConflict == "fail") {
 		exList, err := p.List(ctx, prefix)
 		if err == nil {
@@ -128,11 +147,8 @@ func (o *importOptions) run(cmd *cobra.Command) error {
 		}
 	}
 
-	for _, s := range secrets {
+	for _, s := range dedupedSecrets {
 		key := s.Key
-		if prefix != "" {
-			key = prefix + strings.TrimPrefix(key, "/")
-		}
 
 		// SSM PutParameter requires Value length >= 1. Doppler exports
 		// placeholder entries like DOPPLER_CONFIG="" — skip those rather than
