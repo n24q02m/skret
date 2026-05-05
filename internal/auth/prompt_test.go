@@ -84,19 +84,26 @@ func TestOpenBrowser_InvalidURL(t *testing.T) {
 }
 
 func TestOpenBrowser_ValidScheme(t *testing.T) {
-	// Not testing browser launch, but we can verify it doesn't return
-	// scheme error.
 	t.Setenv("SKRET_NO_BROWSER", "")
-	err := auth.OpenBrowser(context.Background(), "https://example.com")
-	// It may return an exec error depending on the environment,
-	// but it should NOT return our custom url scheme error.
-	if err != nil {
-		assert.NotContains(t, err.Error(), "invalid url")
+
+	tests := []struct {
+		name string
+		goos string
+	}{
+		{"darwin", "darwin"},
+		{"windows", "windows"},
+		{"linux", "linux"},
 	}
 
-	// Just for coverage on `http` as well
-	err2 := auth.OpenBrowser(context.Background(), "http://example.com")
-	if err2 != nil {
-		assert.NotContains(t, err2.Error(), "invalid url")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			restore := auth.SetGoos(func() string { return tt.goos })
+			defer restore()
+
+			err := auth.OpenBrowser(context.Background(), "https://example.com")
+			if err != nil {
+				assert.NotContains(t, err.Error(), "invalid url")
+			}
+		})
 	}
 }

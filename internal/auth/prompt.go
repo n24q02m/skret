@@ -63,6 +63,9 @@ func SelectMethod(r io.Reader, w io.Writer, methods []Method) (Method, error) {
 	return methods[idx-1], nil
 }
 
+// goos is a package-level variable to allow mocking in tests for OS-specific branches.
+var goos = func() string { return runtime.GOOS }
+
 // OpenBrowser attempts to open the URL in the platform browser, best-effort.
 // Honors SKRET_NO_BROWSER=1 to skip the launch (used by tests + headless runs).
 func OpenBrowser(ctx context.Context, u string) error {
@@ -79,7 +82,7 @@ func OpenBrowser(ctx context.Context, u string) error {
 	}
 
 	var cmd *exec.Cmd
-	switch runtime.GOOS {
+	switch goos() {
 	case "darwin":
 		cmd = exec.CommandContext(ctx, "open", "--", u)
 	case "windows":
