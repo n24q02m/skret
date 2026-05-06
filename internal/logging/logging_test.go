@@ -27,6 +27,24 @@ func TestRedactingHandler_RedactsSecrets(t *testing.T) {
 	assert.NotContains(t, output, "sk-abc123def456ghi789jkl012mno")
 }
 
+func TestRedactingHandler_RedactsEmbeddedSecrets(t *testing.T) {
+	var buf bytes.Buffer
+	inner := slog.NewTextHandler(&buf, nil)
+	handler := logging.NewRedactingHandler(inner)
+	logger := slog.New(handler)
+
+	logger.Info("test error sk-abc123def456ghi789jkl012mno occurred",
+		"err", "failed with token=ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghij&other=value",
+	)
+
+	output := buf.String()
+	assert.Contains(t, output, "[REDACTED]")
+	assert.Contains(t, output, "test error [REDACTED] occurred")
+	assert.Contains(t, output, "token=[REDACTED]&other=value")
+	assert.NotContains(t, output, "sk-abc123def456ghi789jkl012mno")
+	assert.NotContains(t, output, "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghij")
+}
+
 func TestRedactingHandler_RedactsGitHubPAT(t *testing.T) {
 	var buf bytes.Buffer
 	inner := slog.NewTextHandler(&buf, nil)
