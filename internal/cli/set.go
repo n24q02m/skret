@@ -60,7 +60,7 @@ func (o *setOptions) run(cmd *cobra.Command, args []string) error {
 		return skret.NewError(skret.ExitProviderError, fmt.Sprintf("set %q", key), err)
 	}
 
-	cmd.Printf("Set %s\n", key)
+	cmd.PrintErrf("Set %s\n", key)
 	return nil
 }
 

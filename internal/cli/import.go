@@ -144,7 +144,7 @@ func (o *importOptions) run(cmd *cobra.Command) error {
 		}
 
 		if o.dryRun {
-			cmd.Printf("[dry-run] would import %s\n", key)
+			cmd.PrintErrf("[dry-run] would import %s\n", key)
 			imported++
 			continue
 		}
@@ -173,6 +173,6 @@ func (o *importOptions) run(cmd *cobra.Command) error {
 		imported++
 	}
 
-	cmd.Printf("Imported: %d, Skipped: %d (from %s)\n", imported, skipped, imp.Name())
+	cmd.PrintErrf("Imported: %d, Skipped: %d (from %s)\n", imported, skipped, imp.Name())
 	return nil
 }
