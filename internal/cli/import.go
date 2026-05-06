@@ -115,6 +115,20 @@ func (o *importOptions) run(cmd *cobra.Command) error {
 		prefix += "/"
 	}
 
+	// Deduplicate incoming secrets by key (last value wins) to minimize API calls.
+	uniqueSecrets := make(map[string]importer.ImportedSecret)
+	for _, s := range secrets {
+		uniqueSecrets[s.Key] = s
+	}
+
+	dedupedSecrets := make([]importer.ImportedSecret, 0, len(uniqueSecrets))
+	for _, s := range secrets {
+		if u, exists := uniqueSecrets[s.Key]; exists {
+			dedupedSecrets = append(dedupedSecrets, u)
+			delete(uniqueSecrets, s.Key)
+		}
+	}
+
 	var imported, skipped int
 	existing := make(map[string]struct{})
 	listLoaded := false
@@ -128,7 +142,7 @@ func (o *importOptions) run(cmd *cobra.Command) error {
 		}
 	}
 
-	for _, s := range secrets {
+	for _, s := range dedupedSecrets {
 		key := s.Key
 		if prefix != "" {
 			key = prefix + strings.TrimPrefix(key, "/")
