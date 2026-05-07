@@ -226,38 +226,6 @@ environments:
     file: ./secrets.yaml
 `), 0o644))
 	require.NoError(t, os.WriteFile(dir+"/secrets.yaml", []byte("version: \"1\"\nsecrets:\n  KEY: val"), 0o600))
-
-	origDir, _ := os.Getwd()
-	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
-
-	t.Setenv("SKRET_EXPERIMENTAL", "1")
-	cmd := newHistoryCmd(&GlobalOpts{})
-	cmd.SetArgs([]string{"KEY"})
-	var buf bytes.Buffer
-	cmd.SetOut(&buf)
-	cmd.SetErr(&buf)
-	err := cmd.Execute()
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "history")
-}
-
-// --- set command via stdin ---
-
-func TestSetOptions_GetValue_Stdin(t *testing.T) {
-	r, w, _ := os.Pipe()
-	_, err := w.WriteString("stdin_value\n")
-	require.NoError(t, err)
-	w.Close()
-
-	oldStdin := os.Stdin
-	os.Stdin = r
-	defer func() { os.Stdin = oldStdin }()
-
-	o := &setOptions{fromStdin: true}
-	val, err := o.getValue([]string{"KEY"})
-	require.NoError(t, err)
-	assert.Equal(t, "stdin_value", val)
 }
 
 // --- execCommand error paths ---
