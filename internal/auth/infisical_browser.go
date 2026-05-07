@@ -1,7 +1,6 @@
 package auth
 
 import (
-	"io"
 	"bytes"
 	"context"
 	"crypto/rand"
@@ -9,6 +8,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
