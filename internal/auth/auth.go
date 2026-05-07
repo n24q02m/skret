@@ -56,8 +56,6 @@ func Register(name string, p Provider) {
 	registry[name] = p
 }
 
-// Resolve returns the stored credential for a provider, performing validation
-// if the credential exists. Returns ErrCredentialNotFound if not stored.
 func Resolve(ctx context.Context, providerName string) (*Credential, error) {
 	store := NewStore()
 	cred, err := store.Load(providerName)
