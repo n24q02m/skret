@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"os/exec"
 	"runtime"
@@ -64,18 +65,27 @@ func SelectMethod(r io.Reader, w io.Writer, methods []Method) (Method, error) {
 
 // OpenBrowser attempts to open the URL in the platform browser, best-effort.
 // Honors SKRET_NO_BROWSER=1 to skip the launch (used by tests + headless runs).
-func OpenBrowser(ctx context.Context, url string) error {
+func OpenBrowser(ctx context.Context, urlStr string) error {
 	if os.Getenv("SKRET_NO_BROWSER") != "" {
 		return nil
 	}
+
+	u, err := url.Parse(urlStr)
+	if err != nil {
+		return fmt.Errorf("auth: invalid URL: %w", err)
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return fmt.Errorf("auth: insecure URL scheme %q; only http/https allowed", u.Scheme)
+	}
+
 	var cmd *exec.Cmd
 	switch runtime.GOOS {
 	case "darwin":
-		cmd = exec.CommandContext(ctx, "open", url)
+		cmd = exec.CommandContext(ctx, "open", "--", urlStr)
 	case "windows":
-		cmd = exec.CommandContext(ctx, "rundll32", "url.dll,FileProtocolHandler", url)
+		cmd = exec.CommandContext(ctx, "rundll32", "url.dll,FileProtocolHandler", urlStr)
 	default:
-		cmd = exec.CommandContext(ctx, "xdg-open", url)
+		cmd = exec.CommandContext(ctx, "xdg-open", urlStr)
 	}
 	return cmd.Start()
 }
