@@ -109,35 +109,63 @@ func (o *importOptions) run(cmd *cobra.Command) error {
 		return skret.NewError(skret.ExitNetworkError, "import failed", err)
 	}
 
-	// Ensure toPath ends with a slash if provided and secrets don't start with one
 	prefix := o.toPath
 	if prefix != "" && !strings.HasSuffix(prefix, "/") {
 		prefix += "/"
 	}
 
-	var imported, skipped int
-	existing := make(map[string]struct{})
-	listLoaded := false
-	if !o.dryRun && (o.onConflict == "skip" || o.onConflict == "fail") {
-		exList, err := p.List(ctx, prefix)
-		if err == nil {
-			for _, s := range exList {
-				existing[s.Key] = struct{}{}
-			}
-			listLoaded = true
-		}
+	existing, listLoaded := o.loadExisting(ctx, p, prefix)
+	imported, skipped, err := o.processImport(ctx, cmd, p, secrets, prefix, existing, listLoaded)
+	if err != nil {
+		return err
 	}
+
+	cmd.Printf("Imported: %d, Skipped: %d (from %s)\n", imported, skipped, imp.Name())
+	return nil
+}
+
+// loadExisting fetches existing keys for conflict detection.
+func (o *importOptions) loadExisting(ctx context.Context, p provider.SecretProvider, prefix string) (map[string]struct{}, bool) {
+	existing := make(map[string]struct{})
+	if o.dryRun || (o.onConflict != "skip" && o.onConflict != "fail") {
+		return existing, false
+	}
+
+	exList, err := p.List(ctx, prefix)
+	if err != nil {
+		return existing, false
+	}
+
+	for _, s := range exList {
+		existing[s.Key] = struct{}{}
+	}
+	return existing, true
+}
+
+// processImport deduplicates, validates, and sets the secrets in the provider.
+func (o *importOptions) processImport(ctx context.Context, cmd *cobra.Command, p provider.SecretProvider, secrets []importer.ImportedSecret, prefix string, existing map[string]struct{}, listLoaded bool) (int, int, error) {
+	deduped := make(map[string]string)
+	var keys []string
 
 	for _, s := range secrets {
 		key := s.Key
 		if prefix != "" {
 			key = prefix + strings.TrimPrefix(key, "/")
 		}
+		if _, ok := deduped[key]; !ok {
+			keys = append(keys, key)
+		}
+		deduped[key] = s.Value
+	}
+
+	var imported, skipped int
+	for _, key := range keys {
+		val := deduped[key]
 
 		// SSM PutParameter requires Value length >= 1. Doppler exports
 		// placeholder entries like DOPPLER_CONFIG="" — skip those rather than
 		// failing the whole batch.
-		if s.Value == "" {
+		if val == "" {
 			cmd.PrintErrf("skipping empty value for %s\n", key)
 			skipped++
 			continue
@@ -164,15 +192,15 @@ func (o *importOptions) run(cmd *cobra.Command) error {
 					skipped++
 					continue
 				}
-				return skret.NewError(skret.ExitConflictError, fmt.Sprintf("import: conflict on %q", key), nil)
+				return imported, skipped, skret.NewError(skret.ExitConflictError, fmt.Sprintf("import: conflict on %q", key), nil)
 			}
 		}
-		if err := p.Set(ctx, key, s.Value, provider.SecretMeta{}); err != nil {
-			return skret.NewError(skret.ExitProviderError, fmt.Sprintf("import: set %q", key), err)
+
+		if err := p.Set(ctx, key, val, provider.SecretMeta{}); err != nil {
+			return imported, skipped, skret.NewError(skret.ExitProviderError, fmt.Sprintf("import: set %q", key), err)
 		}
 		imported++
 	}
 
-	cmd.Printf("Imported: %d, Skipped: %d (from %s)\n", imported, skipped, imp.Name())
-	return nil
+	return imported, skipped, nil
 }
