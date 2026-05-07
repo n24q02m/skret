@@ -72,3 +72,79 @@ func TestDopplerOAuthFlow_ContextCancel(t *testing.T) {
 	_, err := flow.Login(ctx, nil)
 	require.Error(t, err)
 }
+
+func TestDopplerOAuthFlow_DeviceEndpointError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	flow := auth.NewDopplerOAuthFlow(srv.URL)
+	_, err := flow.Login(context.Background(), nil)
+	require.Error(t, err)
+}
+
+func TestDopplerOAuthFlow_EmptyCode(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{})
+	}))
+	defer srv.Close()
+
+	flow := auth.NewDopplerOAuthFlow(srv.URL)
+	_, err := flow.Login(context.Background(), nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "empty device code")
+}
+
+func TestDopplerOAuthFlow_PollNon2xx(t *testing.T) {
+	var srv *httptest.Server
+	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v3/auth/device":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"code": "c", "auth_url": srv.URL + "/approve",
+				"polling_interval": 1, "expires_in": 60,
+			})
+		case "/v3/auth/device/token":
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = w.Write([]byte(`forbidden`))
+		}
+	}))
+	defer srv.Close()
+
+	flow := auth.NewDopplerOAuthFlow(srv.URL)
+	flow.PollInterval = 10 * time.Millisecond
+	flow.Opener = func(context.Context, string) error { return nil }
+	_, err := flow.Login(context.Background(), nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "403")
+}
+
+func TestNewDopplerOAuthFlow_DefaultBaseURL(t *testing.T) {
+	flow := auth.NewDopplerOAuthFlow("")
+	assert.Equal(t, "https://api.doppler.com", flow.BaseURL)
+}
+
+func TestDopplerOAuthFlow_PollDecodeError(t *testing.T) {
+	var srv *httptest.Server
+	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v3/auth/device":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"code": "c", "auth_url": srv.URL + "/approve",
+				"polling_interval": 1, "expires_in": 60,
+			})
+		case "/v3/auth/device/token":
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{not-json`))
+		}
+	}))
+	defer srv.Close()
+
+	flow := auth.NewDopplerOAuthFlow(srv.URL)
+	flow.PollInterval = 10 * time.Millisecond
+	flow.Opener = func(context.Context, string) error { return nil }
+	_, err := flow.Login(context.Background(), nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "decode token")
+}
