@@ -54,6 +54,17 @@ func (p *Provider) Get(_ context.Context, key string) (*provider.Secret, error) 
 	}
 	return &provider.Secret{Key: key, Value: val}, nil
 }
+func (p *Provider) GetBatch(_ context.Context, keys []string) ([]*provider.Secret, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	var secrets []*provider.Secret
+	for _, key := range keys {
+		if val, ok := p.data.Secrets[key]; ok {
+			secrets = append(secrets, &provider.Secret{Key: key, Value: val})
+		}
+	}
+	return secrets, nil
+}
 
 func (p *Provider) List(_ context.Context, _ string) ([]*provider.Secret, error) {
 	p.mu.Lock()

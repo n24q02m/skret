@@ -39,6 +39,15 @@ func (m *mockSSMClient) GetParameter(_ context.Context, input *ssm.GetParameterI
 	}
 	return &ssm.GetParameterOutput{Parameter: &p}, nil
 }
+func (m *mockSSMClient) GetParameters(_ context.Context, input *ssm.GetParametersInput, _ ...func(*ssm.Options)) (*ssm.GetParametersOutput, error) {
+	var params []ssmtypes.Parameter
+	for _, name := range input.Names {
+		if p, ok := m.params[name]; ok {
+			params = append(params, p)
+		}
+	}
+	return &ssm.GetParametersOutput{Parameters: params}, nil
+}
 
 func (m *mockSSMClient) GetParametersByPath(ctx context.Context, input *ssm.GetParametersByPathInput, _ ...func(*ssm.Options)) (*ssm.GetParametersByPathOutput, error) {
 	if m.GetParametersByPathFunc != nil {

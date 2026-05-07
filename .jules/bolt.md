@@ -9,3 +9,7 @@
 ## 2026-05-07 - Log Redaction Performance and Scope
 **Learning:** Using anchored regexes for secret redaction in logs is insufficient as it fails to catch secrets embedded within larger strings (e.g., error messages). However, global regex replacement is CPU-intensive. Safe fast-path checks, such as a minimum length requirement, can significantly reduce regex overhead for short, non-sensitive strings.
 **Action:** Use global regex replacement for embedded secret redaction but always prefix it with a safe fast-path check (e.g., `len(val) < 5`) to bypass expensive evaluations for short values. Complement value-based redaction with key-based heuristic redaction for maximum safety.
+
+## 2026-05-07 - Mitigating N+1 Queries in Bulk Imports
+**Learning:** Sequential existence checks in loops (N+1 pattern) significantly degrade performance during bulk operations due to network latency overhead per secret.
+**Action:** Implemented a tiered discovery approach (List -> GetBatch -> Get) and deduplicated input sets to minimize provider round-trips while maintaining operational resilience.

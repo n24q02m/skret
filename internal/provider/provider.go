@@ -44,6 +44,7 @@ type SecretProvider interface {
 	Capabilities() Capabilities
 
 	Get(ctx context.Context, key string) (*Secret, error)
+	GetBatch(ctx context.Context, keys []string) ([]*Secret, error)
 	List(ctx context.Context, pathPrefix string) ([]*Secret, error)
 
 	Set(ctx context.Context, key string, value string, meta SecretMeta) error
