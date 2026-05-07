@@ -77,7 +77,10 @@ func New(opts ...Options) (*Client, error) {
 
 // Close releases resources associated with the client.
 func (c *Client) Close() error {
-	return c.provider.Close()
+	if c.provider != nil {
+		return c.provider.Close()
+	}
+	return nil
 }
 
 // Get retrieves a single secret value by key.
