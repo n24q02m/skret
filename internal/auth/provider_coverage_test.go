@@ -111,6 +111,7 @@ func TestDopplerProvider_OAuthDispatchError(t *testing.T) {
 	_, err := p.Login(context.Background(), "oauth", nil)
 	require.Error(t, err)
 }
+
 func TestAWSProfileFlow_EmptyProfileUsesDefault(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".aws"), 0o700))
