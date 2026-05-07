@@ -93,4 +93,3 @@ func TestRedactingHandler_WithGroup(t *testing.T) {
 	assert.Contains(t, output, "mygroup.key=[REDACTED]")
 	assert.NotContains(t, output, "sk-abc123def456ghi789jkl012mno")
 }
-
