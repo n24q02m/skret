@@ -148,3 +148,29 @@ func TestDopplerOAuthFlow_PollDecodeError(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "decode token")
 }
+
+func TestDopplerOAuthFlow_BuildDeviceRequestError(t *testing.T) {
+	flow := auth.NewDopplerOAuthFlow("http://bad-url\x7f")
+	_, err := flow.Login(context.Background(), nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "build device request")
+}
+
+func TestDopplerOAuthFlow_Expired(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v3/auth/device" {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"code": "c", "auth_url": "http://x", "polling_interval": 1, "expires_in": 0,
+			})
+			return
+		}
+	}))
+	defer srv.Close()
+
+	flow := auth.NewDopplerOAuthFlow(srv.URL)
+	flow.PollInterval = 10 * time.Millisecond
+	flow.Opener = func(context.Context, string) error { return nil }
+	_, err := flow.Login(context.Background(), nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "expired")
+}
