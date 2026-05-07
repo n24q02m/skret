@@ -39,6 +39,7 @@ func (m *mockSSMClient) GetParameter(_ context.Context, input *ssm.GetParameterI
 	}
 	return &ssm.GetParameterOutput{Parameter: &p}, nil
 }
+
 func (m *mockSSMClient) GetParameters(_ context.Context, input *ssm.GetParametersInput, _ ...func(*ssm.Options)) (*ssm.GetParametersOutput, error) {
 	var params []ssmtypes.Parameter
 	for _, name := range input.Names {

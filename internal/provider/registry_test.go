@@ -17,6 +17,7 @@ func (m *mockProvider) Capabilities() provider.Capabilities { return provider.Ca
 func (m *mockProvider) Get(_ context.Context, _ string) (*provider.Secret, error) {
 	return nil, nil
 }
+
 func (m *mockProvider) GetBatch(_ context.Context, _ []string) ([]*provider.Secret, error) {
 	return nil, nil
 }

@@ -54,6 +54,7 @@ func (p *Provider) Get(_ context.Context, key string) (*provider.Secret, error) 
 	}
 	return &provider.Secret{Key: key, Value: val}, nil
 }
+
 func (p *Provider) GetBatch(_ context.Context, keys []string) ([]*provider.Secret, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()

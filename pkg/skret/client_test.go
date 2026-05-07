@@ -30,6 +30,7 @@ func (m *mockProvider) Capabilities() provider.Capabilities { return m.capabilit
 func (m *mockProvider) Get(ctx context.Context, key string) (*provider.Secret, error) {
 	return m.getFunc(ctx, key)
 }
+
 func (m *mockProvider) GetBatch(ctx context.Context, keys []string) ([]*provider.Secret, error) {
 	if m.getBatchFunc != nil {
 		return m.getBatchFunc(ctx, keys)

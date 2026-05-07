@@ -89,6 +89,7 @@ func (p *Provider) Get(ctx context.Context, key string) (*provider.Secret, error
 	}
 	return s, nil
 }
+
 func (p *Provider) GetBatch(ctx context.Context, keys []string) ([]*provider.Secret, error) {
 	if len(keys) == 0 {
 		return nil, nil
