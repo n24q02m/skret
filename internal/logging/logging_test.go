@@ -94,6 +94,56 @@ func TestRedactingHandler_WithGroup(t *testing.T) {
 	assert.NotContains(t, output, "sk-abc123def456ghi789jkl012mno")
 }
 
+func TestRedactingHandler_KeyBasedRedaction(t *testing.T) {
+	var buf bytes.Buffer
+	inner := slog.NewTextHandler(&buf, nil)
+	handler := logging.NewRedactingHandler(inner)
+	logger := slog.New(handler)
+
+	tests := []struct {
+		key   string
+		value string
+	}{
+		{"password", "p4ssw0rd"},
+		{"user_token", "abc-123"},
+		{"API_KEY", "secret-value"},
+		{"db_secret", "my-secret"},
+		{"access_token", "tok-123"},
+	}
+
+	for _, tt := range tests {
+		buf.Reset()
+		logger.Info("test", tt.key, tt.value)
+		output := buf.String()
+		assert.Contains(t, output, tt.key+"=[REDACTED]", "Key %s should be redacted", tt.key)
+		assert.NotContains(t, output, tt.value)
+	}
+}
+
+func TestRedactingHandler_EmbeddedRedaction(t *testing.T) {
+	var buf bytes.Buffer
+	inner := slog.NewTextHandler(&buf, nil)
+	handler := logging.NewRedactingHandler(inner)
+	logger := slog.New(handler)
+
+	tests := []struct {
+		msg      string
+		expected string
+	}{
+		{"failed to auth with password=secret123", "failed to auth with password=[REDACTED]"},
+		{"token is ghp_123456789012345678901234567890123456", "token is [REDACTED]"},
+		{"key=val1&secret=val2&other=val3", "key=[REDACTED]&secret=[REDACTED]&other=val3"},
+		{"OpenAI key sk-123456789012345678901234", "OpenAI key [REDACTED]"},
+	}
+
+	for _, tt := range tests {
+		buf.Reset()
+		logger.Info(tt.msg)
+		output := buf.String()
+		assert.Contains(t, output, "msg=\""+tt.expected+"\"")
+	}
+}
+
 func TestSetup(t *testing.T) {
 	logging.Setup("debug", "text")
 	logging.Setup("info", "json")
