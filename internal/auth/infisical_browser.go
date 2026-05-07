@@ -15,7 +15,12 @@ import (
 	"time"
 )
 
-var randReader io.Reader = rand.Reader
+var (
+	randReader      io.Reader = rand.Reader
+	loopbackAddr              = "127.0.0.1:0"
+	callbackTimeout           = 5 * time.Minute
+	marshalJSON               = json.Marshal
+)
 
 // InfisicalBrowserFlow implements an Infisical PKCE browser login using a
 // loopback HTTP listener as the redirect target.
@@ -71,7 +76,7 @@ func (f *InfisicalBrowserFlow) Login(ctx context.Context, _ map[string]string) (
 
 func (f *InfisicalBrowserFlow) waitForCode(ctx context.Context, challenge string) (string, error) {
 	lc := &net.ListenConfig{}
-	ln, err := lc.Listen(ctx, "tcp", "127.0.0.1:0")
+	ln, err := lc.Listen(ctx, "tcp", loopbackAddr)
 	if err != nil {
 		return "", fmt.Errorf("infisical browser: listen: %w", err)
 	}
@@ -115,13 +120,13 @@ func (f *InfisicalBrowserFlow) waitForCode(ctx context.Context, challenge string
 		return "", err
 	case <-ctx.Done():
 		return "", ctx.Err()
-	case <-time.After(5 * time.Minute):
+	case <-time.After(callbackTimeout):
 		return "", fmt.Errorf("infisical browser: callback timeout")
 	}
 }
 
 func (f *InfisicalBrowserFlow) exchangeToken(ctx context.Context, code, verifier string) (*Credential, error) {
-	body, err := json.Marshal(map[string]string{"code": code, "code_verifier": verifier})
+	body, err := marshalJSON(map[string]string{"code": code, "code_verifier": verifier})
 	if err != nil {
 		return nil, fmt.Errorf("infisical browser: marshal body: %w", err)
 	}

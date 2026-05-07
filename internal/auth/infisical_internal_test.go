@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -62,4 +63,41 @@ func TestInfisicalBrowserFlow_ExchangeToken_StatusError(t *testing.T) {
 	_, err := flow.exchangeToken(context.Background(), "code", "verifier")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "token status 403")
+}
+
+func TestInfisicalBrowserFlow_WaitForCode_ListenError(t *testing.T) {
+	oldAddr := loopbackAddr
+	loopbackAddr = "invalid-address"
+	defer func() { loopbackAddr = oldAddr }()
+
+	flow := NewInfisicalBrowserFlow("")
+	_, err := flow.waitForCode(context.Background(), "challenge")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "infisical browser: listen")
+}
+
+func TestInfisicalBrowserFlow_WaitForCode_Timeout(t *testing.T) {
+	oldTimeout := callbackTimeout
+	callbackTimeout = 1 * time.Millisecond
+	defer func() { callbackTimeout = oldTimeout }()
+
+	flow := NewInfisicalBrowserFlow("")
+	flow.Opener = func(ctx context.Context, authURL string) error { return nil }
+
+	_, err := flow.waitForCode(context.Background(), "challenge")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "infisical browser: callback timeout")
+}
+
+func TestInfisicalBrowserFlow_ExchangeToken_MarshalError(t *testing.T) {
+	oldMarshal := marshalJSON
+	marshalJSON = func(v interface{}) ([]byte, error) {
+		return nil, errors.New("marshal error")
+	}
+	defer func() { marshalJSON = oldMarshal }()
+
+	flow := NewInfisicalBrowserFlow("")
+	_, err := flow.exchangeToken(context.Background(), "code", "verifier")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "infisical browser: marshal body: marshal error")
 }
