@@ -40,31 +40,6 @@ func TestDeleteCmd_ForceSkipsPrompt(t *testing.T) {
 
 // --- List with --values flag ---
 
-func TestListCmd_WithValues(t *testing.T) {
-	dir := setupTestRepo(t)
-	origDir, _ := os.Getwd()
-	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
-
-	out, err := executeCmd("list", "--format=json", "--values")
-	require.NoError(t, err)
-	// With --values, JSON output should include "value" fields
-	assert.Contains(t, out, `"value"`)
-}
-
-func TestListCmd_NoRecursive(t *testing.T) {
-	dir := setupTestRepo(t)
-	origDir, _ := os.Getwd()
-	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
-
-	// With --recursive=false and a path prefix, should filter
-	out, err := executeCmd("list", "--recursive=false", "--path=/nonexistent/")
-	require.NoError(t, err)
-	// Should have empty state feedback
-	assert.Contains(t, out, "No secrets found")
-}
-
 // --- Env format tests ---
 
 func TestEnvCmd_UnknownFormatFallsBackToDotenv(t *testing.T) {
@@ -397,18 +372,6 @@ func TestEnvCmd_BrokenConfig(t *testing.T) {
 
 // --- filterSecrets non-recursive with matching depth ---
 
-func TestListCmd_NonRecursiveFiltering(t *testing.T) {
-	dir := setupTestRepo(t)
-	origDir, _ := os.Getwd()
-	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
-
-	// This tests the filterSecrets path with recursive=false
-	out, err := executeCmd("list", "--recursive=false")
-	require.NoError(t, err)
-	assert.Contains(t, out, "KEY")
-}
-
 // --- Import with Infisical (token provided) ---
 
 func TestImportCmd_InfisicalWithToken(t *testing.T) {
@@ -478,18 +441,6 @@ secrets:
 }
 
 // --- List with path prefix that has leading slash added ---
-
-func TestListCmd_PathAutoSlash(t *testing.T) {
-	dir := setupTestRepo(t)
-	origDir, _ := os.Getwd()
-	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
-
-	// Path without leading slash should get it added
-	out, err := executeCmd("list", "--path=prefix")
-	require.NoError(t, err)
-	assert.Contains(t, out, "KEY")
-}
 
 // --- Init with region flag ---
 

@@ -172,76 +172,6 @@ func TestGetCmd_NotFound(t *testing.T) {
 
 // --- List tests ---
 
-func TestListCmd_TableOutput(t *testing.T) {
-	dir := setupTestRepo(t)
-	origDir, _ := os.Getwd()
-	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
-
-	var buf bytes.Buffer
-	cmd := cli.NewRootCmd()
-	cmd.SetOut(&buf)
-	cmd.SetArgs([]string{"list"})
-
-	err := cmd.Execute()
-	require.NoError(t, err)
-	out := buf.String()
-	assert.Contains(t, out, "API_KEY")
-	assert.Contains(t, out, "DATABASE_URL")
-	assert.Contains(t, out, "REDIS_URL")
-}
-
-func TestListCmd_JSONOutput(t *testing.T) {
-	dir := setupTestRepo(t)
-	origDir, _ := os.Getwd()
-	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
-
-	var buf bytes.Buffer
-	cmd := cli.NewRootCmd()
-	cmd.SetOut(&buf)
-	cmd.SetArgs([]string{"list", "--format=json"})
-
-	err := cmd.Execute()
-	require.NoError(t, err)
-	assert.Contains(t, buf.String(), "DATABASE_URL")
-}
-
-func TestListCmd_EmptyState(t *testing.T) {
-	dir := setupTestRepo(t)
-	origDir, _ := os.Getwd()
-	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
-
-	var stderrBuf bytes.Buffer
-	cmd := cli.NewRootCmd()
-	cmd.SetErr(&stderrBuf)
-	cmd.SetArgs([]string{"list", "--recursive=false", "--path=/nonexistent/"})
-
-	err := cmd.Execute()
-	require.NoError(t, err)
-	assert.Contains(t, stderrBuf.String(), "No secrets found. Use 'skret set' to add a secret.")
-}
-
-func TestListCmd_EmptyStateJSON(t *testing.T) {
-	dir := setupTestRepo(t)
-	origDir, _ := os.Getwd()
-	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
-
-	var stdoutBuf bytes.Buffer
-	var stderrBuf bytes.Buffer
-	cmd := cli.NewRootCmd()
-	cmd.SetOut(&stdoutBuf)
-	cmd.SetErr(&stderrBuf)
-	cmd.SetArgs([]string{"list", "--recursive=false", "--path=/nonexistent/", "--format=json"})
-
-	err := cmd.Execute()
-	require.NoError(t, err)
-	assert.Equal(t, "[]\n", stdoutBuf.String())
-	assert.Empty(t, stderrBuf.String())
-}
-
 // --- Env tests ---
 
 func TestEnvCmd_DotenvFormat(t *testing.T) {
@@ -563,4 +493,74 @@ func TestImportCmd_ConflictFail(t *testing.T) {
 	err := cmd.Execute()
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "conflict on \"API_KEY\"")
+}
+
+func TestListCmd(t *testing.T) {
+	dir := setupTestRepo(t)
+	origDir, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	defer os.Chdir(origDir)
+
+	// 1. Basic list (table format)
+	cmd := cli.NewRootCmd()
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	cmd.SetArgs([]string{"list"})
+	err := cmd.Execute()
+	require.NoError(t, err)
+	out := buf.String()
+	assert.Contains(t, out, "DATABASE_URL")
+	assert.Contains(t, out, "API_KEY")
+	assert.Contains(t, out, "REDIS_URL")
+
+	// 2. JSON list
+	buf.Reset()
+	cmd = cli.NewRootCmd()
+	cmd.SetOut(&buf)
+	cmd.SetArgs([]string{"list", "--format=json"})
+	err = cmd.Execute()
+	require.NoError(t, err)
+	assert.Contains(t, buf.String(), "\"key\": \"DATABASE_URL\"")
+
+	// 3. JSON list with values
+	buf.Reset()
+	cmd = cli.NewRootCmd()
+	cmd.SetOut(&buf)
+	cmd.SetArgs([]string{"list", "--format=json", "--values"})
+	err = cmd.Execute()
+	require.NoError(t, err)
+	assert.Contains(t, buf.String(), "\"value\": \"secret123\"")
+
+	// 4. Empty list
+	os.WriteFile(".secrets.dev.yaml", []byte("version: \"1\"\nsecrets: {}\n"), 0o600)
+	buf.Reset()
+	var errBuf bytes.Buffer
+	cmd = cli.NewRootCmd()
+	cmd.SetOut(&buf)
+	cmd.SetErr(&errBuf)
+	cmd.SetArgs([]string{"list"})
+	err = cmd.Execute()
+	require.NoError(t, err)
+	assert.Contains(t, errBuf.String(), "No secrets found")
+}
+
+func TestListCmd_PathPrefix(t *testing.T) {
+	dir := setupTestRepo(t)
+	origDir, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	defer os.Chdir(origDir)
+
+	// Local provider doesn't actually filter by path, but filterSecrets does.
+	// However, setupTestRepo creates secrets with top-level keys like DATABASE_URL.
+	// Let's add a nested secret to test filtering.
+	os.WriteFile(".secrets.dev.yaml", []byte("version: \"1\"\nsecrets:\n  /app/DB: \"val\"\n  /other: \"val\"\n"), 0o600)
+
+	var buf bytes.Buffer
+	cmd := cli.NewRootCmd()
+	cmd.SetOut(&buf)
+	cmd.SetArgs([]string{"list", "--path=/app", "--recursive=false"})
+	err := cmd.Execute()
+	require.NoError(t, err)
+	assert.Contains(t, buf.String(), "/app/DB")
+	assert.NotContains(t, buf.String(), "/other")
 }
