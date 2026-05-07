@@ -8,11 +8,14 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
 	"time"
 )
+
+var randReader io.Reader = rand.Reader
 
 // InfisicalBrowserFlow implements an Infisical PKCE browser login using a
 // loopback HTTP listener as the redirect target.
@@ -40,7 +43,7 @@ func NewInfisicalBrowserFlow(baseURL string) *InfisicalBrowserFlow {
 // challenge per RFC 7636.
 func pkcePair() (verifier, challenge string, err error) {
 	buf := make([]byte, 32)
-	if _, err = rand.Read(buf); err != nil {
+	if _, err = randReader.Read(buf); err != nil {
 		return "", "", err
 	}
 	verifier = base64.RawURLEncoding.EncodeToString(buf)
