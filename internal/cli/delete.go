@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"context"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/n24q02m/skret/pkg/skret"
@@ -32,7 +31,7 @@ func newDeleteCmd(opts *GlobalOpts) *cobra.Command {
 
 			if !confirm && !force {
 				cmd.PrintErrf("Delete secret %q? [y/N] ", key)
-				reader := bufio.NewReader(os.Stdin)
+				reader := bufio.NewReader(cmd.InOrStdin())
 				answer, _ := reader.ReadString('\n')
 				if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(answer)), "y") {
 					cmd.PrintErrln("Cancelled.")
