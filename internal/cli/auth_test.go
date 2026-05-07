@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/n24q02m/skret/internal/auth"
 	"github.com/stretchr/testify/assert"
@@ -76,6 +77,39 @@ func TestAuthStatusCmd_WithCredential(t *testing.T) {
 	out := buf.String()
 	assert.Contains(t, out, "doppler")
 	assert.Contains(t, out, "oauth")
+}
+
+func TestAuthStatusCmd_Statuses(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	t.Setenv("USERPROFILE", dir)
+
+	s := auth.NewStoreWithPath(filepath.Join(dir, ".skret", "credentials.yaml"))
+
+	// 1. Valid credential
+	require.NoError(t, s.Save(&auth.Credential{
+		Provider: "aws",
+		Method:   "sso",
+		Token:    "valid-token",
+	}))
+
+	// 2. Expired credential
+	require.NoError(t, s.Save(&auth.Credential{
+		Provider:  "doppler",
+		Method:    "oauth",
+		Token:     "expired-token",
+		ExpiresAt: time.Now().Add(-time.Hour),
+	}))
+
+	cmd := newAuthStatusCmd()
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	err := cmd.Execute()
+	require.NoError(t, err)
+	out := buf.String()
+
+	assert.Contains(t, out, "aws          valid (method: sso)")
+	assert.Contains(t, out, "doppler      expired (method: oauth)")
 }
 
 func TestAuthLogoutCmd(t *testing.T) {

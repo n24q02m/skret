@@ -83,16 +83,7 @@ func newAuthStatusCmd() *cobra.Command {
 					continue
 				}
 
-				status := "valid"
-				if cred.IsExpired() {
-					status = "expired"
-				}
-
-				// Try to validate if provider is registered
-				if _, resolveErr := auth.Resolve(ctx, p); resolveErr != nil {
-					status = "invalid"
-				}
-
+				status := getCredentialStatus(ctx, p, cred)
 				cmd.Printf("  %-12s %s (method: %s)\n", p, status, cred.Method)
 			}
 
@@ -118,4 +109,17 @@ func newAuthLogoutCmd() *cobra.Command {
 			return nil
 		},
 	}
+}
+
+func getCredentialStatus(ctx context.Context, provider string, cred *auth.Credential) string {
+	if cred.IsExpired() {
+		return "expired"
+	}
+
+	// Try to validate if provider is registered
+	if _, err := auth.Resolve(ctx, provider); err != nil {
+		return "invalid"
+	}
+
+	return "valid"
 }
