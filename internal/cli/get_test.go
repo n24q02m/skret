@@ -143,8 +143,8 @@ func TestGetCmd_Run(t *testing.T) {
 			expectedOutput: "test-value",
 		},
 		{
-			name:           "json output",
-			args:           []string{"TEST_KEY", "--json"},
+			name: "json output",
+			args: []string{"TEST_KEY", "--json"},
 			expectedOutput: `{
   "key": "TEST_KEY",
   "value": "test-value"
@@ -177,16 +177,17 @@ func TestGetCmd_Run(t *testing.T) {
 				assert.Error(t, err)
 			} else {
 				require.NoError(t, err)
-				if tt.name == "json output" {
+				switch tt.name {
+				case "json output":
 					var m map[string]string
 					err := json.Unmarshal(buf.Bytes(), &m)
 					require.NoError(t, err)
 					assert.Equal(t, "TEST_KEY", m["key"])
 					assert.Equal(t, "test-value", m["value"])
-				} else if tt.name == "with metadata" {
+				case "with metadata":
 					assert.Contains(t, buf.String(), tt.expectedOutput)
 					assert.Contains(t, buf.String(), "version")
-				} else {
+				default:
 					assert.Equal(t, tt.expectedOutput, buf.String())
 				}
 			}
