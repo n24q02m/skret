@@ -1,0 +1,4 @@
+## 2025-01-24 - Secret Leakage in Log Messages and Nested Groups
+**Vulnerability:** Secrets embedded in log messages or nested within `slog.Group` attributes were bypassing the redacting handler. Additionally, anchored regex patterns failed to detect secrets embedded in larger strings (e.g., URLs or error messages).
+**Learning:** The `slog.Record` must have its `Message` explicitly redacted, and attributes must be traversed recursively to handle nested groups. Anchored regexes (`^`, `$`) are inappropriate for redaction handlers that process arbitrary log text.
+**Prevention:** Implemented a global `redactString` helper using `ReplaceAllString` for the log message and all string-kind attributes. Updated `redactAttr` to recurse into `slog.KindGroup`. Refactored `secretPatterns` to remove anchors and use group-capturing for key-value pairs to preserve keys while redacting values.
