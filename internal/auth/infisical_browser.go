@@ -58,10 +58,19 @@ func (f *InfisicalBrowserFlow) Login(ctx context.Context, _ map[string]string) (
 		return nil, fmt.Errorf("infisical browser: pkce: %w", err)
 	}
 
+	code, err := f.waitForCode(ctx, challenge)
+	if err != nil {
+		return nil, err
+	}
+
+	return f.exchangeToken(ctx, code, verifier)
+}
+
+func (f *InfisicalBrowserFlow) waitForCode(ctx context.Context, challenge string) (string, error) {
 	lc := &net.ListenConfig{}
 	ln, err := lc.Listen(ctx, "tcp", "127.0.0.1:0")
 	if err != nil {
-		return nil, fmt.Errorf("infisical browser: listen: %w", err)
+		return "", fmt.Errorf("infisical browser: listen: %w", err)
 	}
 	port := ln.Addr().(*net.TCPAddr).Port
 
@@ -96,17 +105,19 @@ func (f *InfisicalBrowserFlow) Login(ctx context.Context, _ map[string]string) (
 	fmt.Fprintf(ctxOut(ctx), "Open %s in your browser to approve skret.\n", authURL)
 	_ = f.Opener(ctx, authURL)
 
-	var code string
 	select {
-	case code = <-codeCh:
-	case err = <-errCh:
-		return nil, err
+	case code := <-codeCh:
+		return code, nil
+	case err := <-errCh:
+		return "", err
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return "", ctx.Err()
 	case <-time.After(5 * time.Minute):
-		return nil, fmt.Errorf("infisical browser: callback timeout")
+		return "", fmt.Errorf("infisical browser: callback timeout")
 	}
+}
 
+func (f *InfisicalBrowserFlow) exchangeToken(ctx context.Context, code, verifier string) (*Credential, error) {
 	body, err := json.Marshal(map[string]string{"code": code, "code_verifier": verifier})
 	if err != nil {
 		return nil, fmt.Errorf("infisical browser: marshal body: %w", err)
