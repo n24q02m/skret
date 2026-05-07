@@ -16,15 +16,16 @@ func TestRedactingHandler_RedactsSecrets(t *testing.T) {
 	handler := logging.NewRedactingHandler(inner)
 	logger := slog.New(handler)
 
+	token := "sk-123456789012345678901234567890"
 	logger.Info("test",
-		"api_key", "sk-abc123def456ghi789jkl012mno",
+		"api_key", token,
 		"normal", "hello world",
 	)
 
 	output := buf.String()
 	assert.Contains(t, output, "[REDACTED]")
 	assert.Contains(t, output, "hello world")
-	assert.NotContains(t, output, "sk-abc123def456ghi789jkl012mno")
+	assert.NotContains(t, output, token)
 }
 
 func TestRedactingHandler_RedactsGitHubPAT(t *testing.T) {
@@ -33,10 +34,12 @@ func TestRedactingHandler_RedactsGitHubPAT(t *testing.T) {
 	handler := logging.NewRedactingHandler(inner)
 	logger := slog.New(handler)
 
-	logger.Info("test", "token", "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghij")
+	token := "ghp_EXAMPLE00000000000000000000000000000"
+	logger.Info("test", "token", token)
 
 	output := buf.String()
 	assert.Contains(t, output, "[REDACTED]")
+	assert.NotContains(t, output, token)
 }
 
 func TestRedactingHandler_PassesNonSecrets(t *testing.T) {
@@ -65,8 +68,9 @@ func TestRedactingHandler_WithAttrs(t *testing.T) {
 	inner := slog.NewTextHandler(&buf, nil)
 	handler := logging.NewRedactingHandler(inner)
 
+	token := "sk-123456789012345678901234567890"
 	h2 := handler.WithAttrs([]slog.Attr{
-		slog.String("static_key", "sk-abc123def456ghi789jkl012mno"),
+		slog.String("static_key", token),
 		slog.String("static_normal", "value"),
 	})
 	logger := slog.New(h2)
@@ -76,7 +80,7 @@ func TestRedactingHandler_WithAttrs(t *testing.T) {
 	output := buf.String()
 	assert.Contains(t, output, "static_key=[REDACTED]")
 	assert.Contains(t, output, "static_normal=value")
-	assert.NotContains(t, output, "sk-abc123def456ghi789jkl012mno")
+	assert.NotContains(t, output, token)
 }
 
 func TestRedactingHandler_WithGroup(t *testing.T) {
@@ -84,14 +88,15 @@ func TestRedactingHandler_WithGroup(t *testing.T) {
 	inner := slog.NewTextHandler(&buf, nil)
 	handler := logging.NewRedactingHandler(inner)
 
+	token := "sk-123456789012345678901234567890"
 	h2 := handler.WithGroup("mygroup")
 	logger := slog.New(h2)
 
-	logger.Info("test", "key", "sk-abc123def456ghi789jkl012mno")
+	logger.Info("test", "key", token)
 
 	output := buf.String()
 	assert.Contains(t, output, "mygroup.key=[REDACTED]")
-	assert.NotContains(t, output, "sk-abc123def456ghi789jkl012mno")
+	assert.NotContains(t, output, token)
 }
 
 func TestRedactingHandler_KeyBasedRedaction(t *testing.T) {
@@ -131,7 +136,7 @@ func TestRedactingHandler_EmbeddedRedaction(t *testing.T) {
 		expected string
 	}{
 		{"failed to auth with password=secret123", "failed to auth with password=[REDACTED]"},
-		{"token is ghp_123456789012345678901234567890123456", "token is [REDACTED]"},
+		{"token is ghp_EXAMPLE00000000000000000000000000000", "token is [REDACTED]"},
 		{"key=val1&secret=val2&other=val3", "key=[REDACTED]&secret=[REDACTED]&other=val3"},
 		{"OpenAI key sk-123456789012345678901234", "OpenAI key [REDACTED]"},
 	}
