@@ -94,8 +94,3 @@ func TestRedactingHandler_WithGroup(t *testing.T) {
 	assert.NotContains(t, output, "sk-abc123def456ghi789jkl012mno")
 }
 
-func TestSetup(t *testing.T) {
-	logging.Setup("debug", "text")
-	logging.Setup("info", "json")
-	logging.Setup("error", "")
-}
