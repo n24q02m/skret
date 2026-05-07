@@ -16,7 +16,8 @@ func TestRedactingHandler_RedactsSecrets(t *testing.T) {
 	handler := logging.NewRedactingHandler(inner)
 	logger := slog.New(handler)
 
-	logger.Info("test",
+	logger.Info(
+		"test",
 		"api_key", "sk-abc123def456ghi789jkl012mno",
 		"normal", "hello world",
 	)
