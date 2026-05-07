@@ -28,10 +28,12 @@ type Provider struct {
 	path   string
 }
 
+var loadConfig = loadAWSConfig
+
 // New creates an AWS SSM provider from resolved config.
 func New(cfg *config.ResolvedConfig) (provider.SecretProvider, error) {
 	// Use the auth.go helper to load standard credential chain
-	awsCfg, err := loadAWSConfig(context.Background(), cfg.Region, cfg.Profile)
+	awsCfg, err := loadConfig(context.Background(), cfg.Region, cfg.Profile)
 	if err != nil {
 		return nil, err
 	}

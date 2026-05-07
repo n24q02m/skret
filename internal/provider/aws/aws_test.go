@@ -9,7 +9,6 @@ import (
 	awslib "github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
 	ssmtypes "github.com/aws/aws-sdk-go-v2/service/ssm/types"
-	"github.com/n24q02m/skret/internal/config"
 	"github.com/n24q02m/skret/internal/provider"
 	skaws "github.com/n24q02m/skret/internal/provider/aws"
 	"github.com/stretchr/testify/assert"
@@ -107,12 +106,6 @@ func newTestProvider(params map[string]ssmtypes.Parameter) provider.SecretProvid
 	}
 	mock := &mockSSMClient{params: params}
 	return skaws.NewWithClient(mock, "/test/prod")
-}
-
-func TestAWS_New_EnvVars(t *testing.T) {
-	cfg := &config.ResolvedConfig{Region: "us-east-1", Profile: "test"}
-	_, err := skaws.New(cfg)
-	_ = err
 }
 
 func TestAWS_Name(t *testing.T) {
@@ -572,10 +565,4 @@ func TestAWS_PaginationFallback(t *testing.T) {
 	secrets, err := p.List(context.Background(), "/test/prod")
 	require.NoError(t, err)
 	assert.Len(t, secrets, 2)
-}
-
-func TestAWS_New_EmptyRegionProfile(t *testing.T) {
-	cfg := &config.ResolvedConfig{Region: "", Profile: ""}
-	_, err := skaws.New(cfg)
-	_ = err
 }
