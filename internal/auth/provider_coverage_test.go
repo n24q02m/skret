@@ -173,7 +173,9 @@ func TestInfisicalBrowserFlow_TokenStatusNon200(t *testing.T) {
 			if cb == "" {
 				return
 			}
-			hitCallback(bgctx, cb+"?code=c")
+			u, _ := url.Parse(authURL)
+			state := u.Query().Get("state")
+			hitCallback(bgctx, cb+"?code=c&state="+state)
 		}()
 		return nil
 	}
@@ -198,7 +200,9 @@ func TestInfisicalBrowserFlow_MissingCodeCallback(t *testing.T) {
 				return
 			}
 			// Hit callback with NO code param to trigger the error branch.
-			hitCallback(bgctx, cb)
+			u, _ := url.Parse(authURL)
+			state := u.Query().Get("state")
+			hitCallback(bgctx, cb+"?state="+state)
 		}()
 		return nil
 	}
@@ -368,7 +372,9 @@ func TestInfisicalProvider_BrowserDispatch(t *testing.T) {
 			time.Sleep(30 * time.Millisecond)
 			cb := extractCallbackURL(authURL)
 			if cb != "" {
-				hitCallback(bgctx, cb+"?code=xyz")
+				u, _ := url.Parse(authURL)
+				state := u.Query().Get("state")
+				hitCallback(bgctx, cb+"?code=xyz&state="+state)
 			}
 		}()
 		return nil
