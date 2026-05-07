@@ -90,12 +90,3 @@ func redactString(s string) string {
 	}
 	return s
 }
-
-func shouldRedact(val string) bool {
-	for _, p := range secretPatterns {
-		if p.MatchString(val) {
-			return true
-		}
-	}
-	return false
-}
