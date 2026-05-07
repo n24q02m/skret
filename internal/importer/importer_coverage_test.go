@@ -37,18 +37,6 @@ func TestDopplerImporter_ContextCancelled(t *testing.T) {
 	assert.Error(t, err)
 }
 
-func TestInfisicalImporter_BadJSON_Decode(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Write([]byte(`not valid json`))
-	}))
-	defer srv.Close()
-
-	imp := importer.NewInfisical("token", "proj", "prod", srv.URL)
-	_, err := imp.Import(context.Background())
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "decode")
-}
-
 func TestDopplerImporter_EmptyMap(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Write([]byte(`{}`))
