@@ -589,3 +589,16 @@ func TestAWS_New_EmptyRegionProfile(t *testing.T) {
 	_, err := skaws.New(cfg)
 	_ = err
 }
+
+func TestAWS_GetBatch(t *testing.T) {
+	mock := &mockSSMClient{
+		params: map[string]ssmtypes.Parameter{
+			"K1": {Name: awslib.String("K1"), Value: awslib.String("V1")},
+			"K2": {Name: awslib.String("K2"), Value: awslib.String("V2")},
+		},
+	}
+	p := skaws.NewWithClient(mock, "/test/")
+	secrets, err := p.GetBatch(context.Background(), []string{"K1", "K2", "K3"})
+	require.NoError(t, err)
+	assert.Len(t, secrets, 2)
+}
