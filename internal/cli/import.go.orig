@@ -150,7 +150,15 @@ func (o *importOptions) run(cmd *cobra.Command) error {
 		}
 
 		if o.onConflict == "skip" || o.onConflict == "fail" {
-			hasConflict := o.hasConflict(ctx, p, key, listLoaded, existing)
+			hasConflict := false
+			if listLoaded {
+				_, hasConflict = existing[key]
+			} else {
+				if _, err := p.Get(ctx, key); err == nil {
+					hasConflict = true
+				}
+			}
+
 			if hasConflict {
 				if o.onConflict == "skip" {
 					skipped++
@@ -167,16 +175,4 @@ func (o *importOptions) run(cmd *cobra.Command) error {
 
 	cmd.Printf("Imported: %d, Skipped: %d (from %s)\n", imported, skipped, imp.Name())
 	return nil
-}
-
-// hasConflict checks if a secret already exists in the provider.
-// It uses the pre-loaded 'existing' map if available, otherwise falls back to a Get call.
-func (o *importOptions) hasConflict(ctx context.Context, p provider.SecretProvider, key string, listLoaded bool, existing map[string]struct{}) bool {
-	if listLoaded {
-		_, ok := existing[key]
-		return ok
-	}
-
-	_, err := p.Get(ctx, key)
-	return err == nil
 }
