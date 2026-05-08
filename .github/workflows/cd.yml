@@ -127,7 +127,12 @@ jobs:
   # ==================== Sync Secrets (opt-in) ====================
   # Pulls /skret/ci/* from AWS SSM and pushes the values into this repo's
   # GitHub Actions secrets. Opt-in via vars.SYNC_SECRETS_ENABLED to avoid
-  # breaking pushes when CI_APP_KEY / SSM bootstrap is incomplete.
+  # breaking pushes when SECRETS_WRITE_PAT / SSM bootstrap is incomplete.
+  #
+  # Uses SECRETS_WRITE_PAT (a fine-grained PAT with `Secrets: Read & write`
+  # on this repo) instead of the n24q02m-ci App token because the App was
+  # not granted `secrets: write` permission. Migrate to the App token once
+  # that permission is added in https://github.com/settings/apps/n24q02m-ci.
   sync-secrets:
     name: Sync Secrets from AWS SSM
     if: |
@@ -140,11 +145,6 @@ jobs:
       - uses: step-security/harden-runner@v2
         with:
           egress-policy: audit
-      - uses: actions/create-github-app-token@v3
-        id: app-token
-        with:
-          app-id: ${{ vars.CI_APP_ID }}
-          private-key: ${{ secrets.CI_APP_KEY }}
       - uses: actions/checkout@v6
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v6
@@ -169,7 +169,7 @@ jobs:
           EOF
       - name: Sync secrets to GitHub
         env:
-          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+          GITHUB_TOKEN: ${{ secrets.SECRETS_WRITE_PAT }}
         run: |
           ./skret sync --to=github \
             --github-repo=${{ github.repository }} \
