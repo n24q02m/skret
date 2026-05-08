@@ -5,3 +5,6 @@
 ## 2025-05-04 - [Routing Informational Messages to Stderr]
 **Learning:** Routing informational messages such as "Deleted secret...", "Imported...", or "Logged out..." to `stderr` using `cmd.PrintErrf` or `cmd.PrintErrln` improves the programmatic experience without breaking pipelines. It enables the clean extraction of actual secret values or structured outputs from `stdout`, while keeping humans adequately informed on `stderr`.
 **Action:** When printing informational, non-data messages to CLI output (e.g., status, confirmations), direct them to `stderr` rather than `stdout`.
+## 2025-05-08 - [CLI Help Message Accuracy]
+**Learning:** Command suggestions in error messages must exactly match the expected CLI syntax (e.g., `skret auth login doppler` instead of `skret auth doppler`). Minor inaccuracies cause immediate friction for users trying to follow error-driven guidance.
+**Action:** Verify all command suggestions in error messages against the actual Cobra command hierarchy (e.g., checking `newAuthLoginCmd()` in `auth.go`).

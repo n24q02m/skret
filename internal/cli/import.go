@@ -71,7 +71,7 @@ func (o *importOptions) createImporter() (importer.Importer, error) {
 			}
 		}
 		if token == "" {
-			return nil, skret.NewError(skret.ExitConfigError, "import: DOPPLER_TOKEN env var or `skret auth doppler` required", nil)
+			return nil, skret.NewError(skret.ExitConfigError, "import: DOPPLER_TOKEN env var or `skret auth login doppler` required", nil)
 		}
 		return importer.NewDoppler(token, o.dopplerProject, o.dopplerConfig, ""), nil
 	case "infisical":
@@ -82,7 +82,7 @@ func (o *importOptions) createImporter() (importer.Importer, error) {
 			}
 		}
 		if token == "" {
-			return nil, skret.NewError(skret.ExitConfigError, "import: INFISICAL_TOKEN env var or `skret auth infisical` required", nil)
+			return nil, skret.NewError(skret.ExitConfigError, "import: INFISICAL_TOKEN env var or `skret auth login infisical` required", nil)
 		}
 		return importer.NewInfisical(token, o.infisicalProjID, o.infisicalEnv, o.infisicalURL), nil
 	default:
