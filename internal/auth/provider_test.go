@@ -79,3 +79,100 @@ func TestDopplerProvider_Logout(t *testing.T) {
 	p := NewDopplerProvider()
 	assert.NoError(t, p.Logout(context.Background()))
 }
+
+// --- Infisical Provider ---
+
+func TestInfisicalProvider_Methods(t *testing.T) {
+	p := NewInfisicalProvider()
+	assert.Equal(t, "infisical", p.Name())
+	methods := p.Methods()
+	assert.Len(t, methods, 3)
+	names := []string{methods[0].Name, methods[1].Name, methods[2].Name}
+	assert.Contains(t, names, "browser")
+	assert.Contains(t, names, "universal-auth")
+	assert.Contains(t, names, "token")
+}
+
+func TestInfisicalProvider_LoginUniversalAuth(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"accessToken":"ua-access-token"}`))
+	}))
+	defer srv.Close()
+
+	p := &InfisicalProvider{baseURL: srv.URL}
+	cred, err := p.Login(context.Background(), "universal-auth", map[string]string{
+		"client_id":     "test-id",
+		"client_secret": "test-secret",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "universal-auth", cred.Method)
+	assert.Equal(t, "ua-access-token", cred.Token)
+	assert.Equal(t, "test-id", cred.Metadata["client_id"])
+}
+
+func TestInfisicalProvider_LoginUniversalAuth_MissingCreds(t *testing.T) {
+	p := NewInfisicalProvider()
+	_, err := p.Login(context.Background(), "universal-auth", map[string]string{})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "client_id and client_secret required")
+}
+
+func TestInfisicalProvider_LoginToken_Success(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "Bearer inf-test-tok", r.Header.Get("Authorization"))
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"user":{"email":"test@example.com"}}`))
+	}))
+	defer srv.Close()
+
+	p := &InfisicalProvider{baseURL: srv.URL}
+	cred, err := p.Login(context.Background(), "token", map[string]string{
+		"token": "inf-test-tok",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "token", cred.Method)
+	assert.Equal(t, "inf-test-tok", cred.Token)
+	assert.Equal(t, "test@example.com", cred.Metadata["email"])
+}
+
+func TestInfisicalProvider_LoginToken_MissingToken(t *testing.T) {
+	p := NewInfisicalProvider()
+	_, err := p.Login(context.Background(), "token", map[string]string{})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "token required")
+}
+
+func TestInfisicalProvider_LoginToken_ValidationFails(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		w.Write([]byte(`{"message":"forbidden"}`))
+	}))
+	defer srv.Close()
+
+	p := &InfisicalProvider{baseURL: srv.URL}
+	_, err := p.Login(context.Background(), "token", map[string]string{
+		"token": "bad-token",
+	})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "403")
+}
+
+func TestInfisicalProvider_UnknownMethod(t *testing.T) {
+	p := NewInfisicalProvider()
+	_, err := p.Login(context.Background(), "unknown", nil)
+	assert.Error(t, err)
+	assert.ErrorIs(t, err, ErrAuthMethodUnsupported)
+}
+
+func TestInfisicalProvider_Validate(t *testing.T) {
+	p := NewInfisicalProvider()
+	assert.NoError(t, p.Validate(context.Background(), &Credential{Token: "tok"}))
+	assert.Error(t, p.Validate(context.Background(), nil))
+	assert.Error(t, p.Validate(context.Background(), &Credential{}))
+}
+
+func TestInfisicalProvider_Logout(t *testing.T) {
+	p := NewInfisicalProvider()
+	assert.NoError(t, p.Logout(context.Background()))
+}
