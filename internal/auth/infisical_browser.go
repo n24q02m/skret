@@ -60,9 +60,6 @@ func randomString(n int) (string, error) {
 	return base64.RawURLEncoding.EncodeToString(buf), nil
 }
 
-// Login starts a loopback listener, opens the Infisical auth redirect, waits
-// for the browser callback with the code, and exchanges it for an access
-// token via /api/v1/auth/token.
 func (f *InfisicalBrowserFlow) Login(ctx context.Context, _ map[string]string) (*Credential, error) {
 	state, err := randomString(32)
 	if err != nil {
