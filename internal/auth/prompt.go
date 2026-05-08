@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"os/exec"
 	"runtime"
@@ -62,20 +63,32 @@ func SelectMethod(r io.Reader, w io.Writer, methods []Method) (Method, error) {
 	return methods[idx-1], nil
 }
 
+// goos is a package-level variable to allow mocking in tests for OS-specific branches.
+var goos = func() string { return runtime.GOOS }
+
 // OpenBrowser attempts to open the URL in the platform browser, best-effort.
 // Honors SKRET_NO_BROWSER=1 to skip the launch (used by tests + headless runs).
-func OpenBrowser(ctx context.Context, url string) error {
+func OpenBrowser(ctx context.Context, u string) error {
 	if os.Getenv("SKRET_NO_BROWSER") != "" {
 		return nil
 	}
+
+	parsed, err := url.Parse(u)
+	if err != nil {
+		return fmt.Errorf("auth prompt: invalid url: %w", err)
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return fmt.Errorf("auth prompt: invalid url scheme %q", parsed.Scheme)
+	}
+
 	var cmd *exec.Cmd
-	switch runtime.GOOS {
+	switch goos() {
 	case "darwin":
-		cmd = exec.CommandContext(ctx, "open", url)
+		cmd = exec.CommandContext(ctx, "open", "--", u)
 	case "windows":
-		cmd = exec.CommandContext(ctx, "rundll32", "url.dll,FileProtocolHandler", url)
+		cmd = exec.CommandContext(ctx, "rundll32", "url.dll,FileProtocolHandler", u)
 	default:
-		cmd = exec.CommandContext(ctx, "xdg-open", url)
+		cmd = exec.CommandContext(ctx, "xdg-open", u)
 	}
 	return cmd.Start()
 }
