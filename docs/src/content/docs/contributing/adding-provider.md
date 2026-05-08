@@ -49,7 +49,7 @@ func (p *Provider) Close() error { /* ... */ }
 
 ## 2. Register in the Registry
 
-Add the provider constructor in two places:
+Add the provider factory in two places:
 
 **`internal/cli/root.go`** (CLI usage):
 
@@ -145,7 +145,7 @@ Add the new provider to `docs/reference/config-schema.md` and `docs/guide/config
 ## Checklist
 
 - [ ] `SecretProvider` interface fully implemented
-- [ ] Constructor registered in CLI and library
+- [ ] Factory registered in CLI and library
 - [ ] Config validation for provider-specific fields
 - [ ] Unit tests (>=95% coverage)
 - [ ] Integration tests (env-gated)

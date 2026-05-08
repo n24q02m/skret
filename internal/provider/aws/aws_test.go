@@ -40,6 +40,16 @@ func (m *mockSSMClient) GetParameter(_ context.Context, input *ssm.GetParameterI
 	return &ssm.GetParameterOutput{Parameter: &p}, nil
 }
 
+func (m *mockSSMClient) GetParameters(_ context.Context, input *ssm.GetParametersInput, _ ...func(*ssm.Options)) (*ssm.GetParametersOutput, error) {
+	var params []ssmtypes.Parameter
+	for _, name := range input.Names {
+		if p, ok := m.params[name]; ok {
+			params = append(params, p)
+		}
+	}
+	return &ssm.GetParametersOutput{Parameters: params}, nil
+}
+
 func (m *mockSSMClient) GetParametersByPath(ctx context.Context, input *ssm.GetParametersByPathInput, _ ...func(*ssm.Options)) (*ssm.GetParametersByPathOutput, error) {
 	if m.GetParametersByPathFunc != nil {
 		return m.GetParametersByPathFunc(ctx, input)
@@ -578,4 +588,17 @@ func TestAWS_New_EmptyRegionProfile(t *testing.T) {
 	cfg := &config.ResolvedConfig{Region: "", Profile: ""}
 	_, err := skaws.New(cfg)
 	_ = err
+}
+
+func TestAWS_GetBatch(t *testing.T) {
+	mock := &mockSSMClient{
+		params: map[string]ssmtypes.Parameter{
+			"K1": {Name: awslib.String("K1"), Value: awslib.String("V1")},
+			"K2": {Name: awslib.String("K2"), Value: awslib.String("V2")},
+		},
+	}
+	p := skaws.NewWithClient(mock, "/test/")
+	secrets, err := p.GetBatch(context.Background(), []string{"K1", "K2", "K3"})
+	require.NoError(t, err)
+	assert.Len(t, secrets, 2)
 }

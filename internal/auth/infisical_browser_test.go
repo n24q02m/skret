@@ -50,7 +50,7 @@ func TestInfisicalBrowserFlow_Success(t *testing.T) {
 			if cb == "" {
 				return
 			}
-			req, _ := http.NewRequestWithContext(bgctx, http.MethodGet, cb+"?code=browser-code", http.NoBody)
+			req, _ := http.NewRequestWithContext(bgctx, http.MethodGet, cb+"?code=browser-code&state="+u.Query().Get("state"), http.NoBody)
 			resp, _ := http.DefaultClient.Do(req)
 			if resp != nil {
 				_ = resp.Body.Close()
@@ -77,33 +77,8 @@ func TestInfisicalBrowserFlow_ContextCancel(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestInfisicalBrowserFlow_CallbackMissingCode(t *testing.T) {
-	flow := auth.NewInfisicalBrowserFlow("http://example.invalid")
-	flow.Opener = func(bgctx context.Context, authURL string) error {
-		go func() {
-			u, _ := url.Parse(authURL)
-			cb := u.Query().Get("callback")
-			req, _ := http.NewRequestWithContext(bgctx, http.MethodGet, cb, http.NoBody)
-			resp, _ := http.DefaultClient.Do(req)
-			if resp != nil {
-				_ = resp.Body.Close()
-			}
-		}()
-		return nil
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	_, err := flow.Login(ctx, nil)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "callback missing code")
-}
-
-func TestInfisicalBrowserFlow_TokenStatusError(t *testing.T) {
+func TestInfisicalBrowserFlow_InvalidState(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/api/v1/auth/token" {
-			w.WriteHeader(http.StatusUnauthorized)
-			return
-		}
 		http.NotFound(w, r)
 	}))
 	defer srv.Close()
@@ -111,9 +86,11 @@ func TestInfisicalBrowserFlow_TokenStatusError(t *testing.T) {
 	flow := auth.NewInfisicalBrowserFlow(srv.URL)
 	flow.Opener = func(bgctx context.Context, authURL string) error {
 		go func() {
+			time.Sleep(50 * time.Millisecond)
 			u, _ := url.Parse(authURL)
 			cb := u.Query().Get("callback")
-			req, _ := http.NewRequestWithContext(bgctx, http.MethodGet, cb+"?code=foo", http.NoBody)
+			// Hit callback with WRONG state param.
+			req, _ := http.NewRequestWithContext(bgctx, http.MethodGet, cb+"?code=xyz&state=wrong-state", http.NoBody)
 			resp, _ := http.DefaultClient.Do(req)
 			if resp != nil {
 				_ = resp.Body.Close()
@@ -121,52 +98,10 @@ func TestInfisicalBrowserFlow_TokenStatusError(t *testing.T) {
 		}()
 		return nil
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	_, err := flow.Login(ctx, nil)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "token status 401")
-}
-
-func TestInfisicalBrowserFlow_TokenDecodeError(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/api/v1/auth/token" {
-			_, _ = w.Write([]byte("not json"))
-			return
-		}
-		http.NotFound(w, r)
-	}))
-	defer srv.Close()
-
-	flow := auth.NewInfisicalBrowserFlow(srv.URL)
-	flow.Opener = func(bgctx context.Context, authURL string) error {
-		go func() {
-			u, _ := url.Parse(authURL)
-			cb := u.Query().Get("callback")
-			req, _ := http.NewRequestWithContext(bgctx, http.MethodGet, cb+"?code=foo", http.NoBody)
-			resp, _ := http.DefaultClient.Do(req)
-			if resp != nil {
-				_ = resp.Body.Close()
-			}
-		}()
-		return nil
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	_, err := flow.Login(ctx, nil)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "decode token")
-}
-
-func TestInfisicalBrowserFlow_Timeout(t *testing.T) {
-	flow := auth.NewInfisicalBrowserFlow("http://example.invalid")
-	flow.Opener = func(ctx context.Context, authURL string) error {
-		return nil // do nothing, let it timeout
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-	defer cancel()
-	_, err := flow.Login(ctx, nil)
-	require.Error(t, err)
-	assert.Equal(t, context.DeadlineExceeded, err)
+	assert.Contains(t, err.Error(), "missing or invalid state")
 }

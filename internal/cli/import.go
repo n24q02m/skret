@@ -116,6 +116,32 @@ func (o *importOptions) run(cmd *cobra.Command) error {
 	}
 
 	var imported, skipped int
+	// Deduplicate secrets by destination key, last value wins.
+	// Preserves original order of first appearance.
+	type keyMeta struct {
+		value string
+	}
+	dedupedMap := make(map[string]keyMeta)
+	var orderedKeys []string
+
+	for _, s := range secrets {
+		destKey := s.Key
+		if prefix != "" {
+			destKey = prefix + strings.TrimPrefix(destKey, "/")
+		}
+
+		if s.Value == "" {
+			cmd.PrintErrf("skipping empty value for %s\n", destKey)
+			skipped++
+			continue
+		}
+
+		if _, ok := dedupedMap[destKey]; !ok {
+			orderedKeys = append(orderedKeys, destKey)
+		}
+		dedupedMap[destKey] = keyMeta{value: s.Value}
+	}
+
 	existing := make(map[string]struct{})
 	listLoaded := false
 	if !o.dryRun && (o.onConflict == "skip" || o.onConflict == "fail") {
@@ -125,26 +151,23 @@ func (o *importOptions) run(cmd *cobra.Command) error {
 				existing[s.Key] = struct{}{}
 			}
 			listLoaded = true
+		} else if len(orderedKeys) > 0 {
+			// If List fails, try GetBatch as a more efficient fallback than individual Gets
+			exBatch, bErr := p.GetBatch(ctx, orderedKeys)
+			if bErr == nil {
+				for _, s := range exBatch {
+					existing[s.Key] = struct{}{}
+				}
+				listLoaded = true
+			}
 		}
 	}
 
-	for _, s := range secrets {
-		key := s.Key
-		if prefix != "" {
-			key = prefix + strings.TrimPrefix(key, "/")
-		}
-
-		// SSM PutParameter requires Value length >= 1. Doppler exports
-		// placeholder entries like DOPPLER_CONFIG="" — skip those rather than
-		// failing the whole batch.
-		if s.Value == "" {
-			cmd.PrintErrf("skipping empty value for %s\n", key)
-			skipped++
-			continue
-		}
+	for _, destKey := range orderedKeys {
+		s := dedupedMap[destKey]
 
 		if o.dryRun {
-			cmd.Printf("[dry-run] would import %s\n", key)
+			cmd.PrintErrf("[dry-run] would import %s\n", destKey)
 			imported++
 			continue
 		}
@@ -152,9 +175,10 @@ func (o *importOptions) run(cmd *cobra.Command) error {
 		if o.onConflict == "skip" || o.onConflict == "fail" {
 			hasConflict := false
 			if listLoaded {
-				_, hasConflict = existing[key]
+				_, hasConflict = existing[destKey]
 			} else {
-				if _, err := p.Get(ctx, key); err == nil {
+				// Fallback to individual Get if both List and GetBatch failed
+				if _, err := p.Get(ctx, destKey); err == nil {
 					hasConflict = true
 				}
 			}
@@ -164,15 +188,15 @@ func (o *importOptions) run(cmd *cobra.Command) error {
 					skipped++
 					continue
 				}
-				return skret.NewError(skret.ExitConflictError, fmt.Sprintf("import: conflict on %q", key), nil)
+				return skret.NewError(skret.ExitConflictError, fmt.Sprintf("import: conflict on %q", destKey), nil)
 			}
 		}
-		if err := p.Set(ctx, key, s.Value, provider.SecretMeta{}); err != nil {
-			return skret.NewError(skret.ExitProviderError, fmt.Sprintf("import: set %q", key), err)
+		if err := p.Set(ctx, destKey, s.value, provider.SecretMeta{}); err != nil {
+			return skret.NewError(skret.ExitProviderError, fmt.Sprintf("import: set %q", destKey), err)
 		}
 		imported++
 	}
 
-	cmd.Printf("Imported: %d, Skipped: %d (from %s)\n", imported, skipped, imp.Name())
+	cmd.PrintErrf("Imported: %d, Skipped: %d (from %s)\n", imported, skipped, imp.Name())
 	return nil
 }

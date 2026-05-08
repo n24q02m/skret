@@ -4,15 +4,25 @@ import (
 	"context"
 	"log/slog"
 	"regexp"
+	"strings"
 )
 
-var secretPatterns = []*regexp.Regexp{
-	regexp.MustCompile(`(?i)^[a-z0-9+/]{40,}={0,2}$`),         // Base64
-	regexp.MustCompile(`^sk-[a-zA-Z0-9]{20,}$`),               // OpenAI-style
-	regexp.MustCompile(`^dp\.st\.[a-zA-Z0-9]+$`),              // Doppler service token
-	regexp.MustCompile(`^ghp_[a-zA-Z0-9]{36,}$`),              // GitHub PAT
-	regexp.MustCompile(`^AKIA[A-Z0-9]{16}$`),                  // AWS access key
-	regexp.MustCompile(`(?i)^(password|secret|token|key)=.+`), // Key-value secrets
+type pattern struct {
+	re   *regexp.Regexp
+	repl string
+}
+
+var secretPatterns = []pattern{
+	{regexp.MustCompile(`(?i)((password|secret|token|key|api_key|auth)=)[^\s&]+`), "${1}[REDACTED]"},
+	{regexp.MustCompile(`sk-[a-zA-Z0-9]{20,}`), "[REDACTED]"},
+	{regexp.MustCompile(`dp\.st\.[a-zA-Z0-9]+`), "[REDACTED]"},
+	{regexp.MustCompile(`ghp_[a-zA-Z0-9]{36,}`), "[REDACTED]"},
+	{regexp.MustCompile(`AKIA[A-Z0-9]{16}`), "[REDACTED]"},
+	{regexp.MustCompile(`(?i)[a-z0-9+/]{40,}={0,2}`), "[REDACTED]"}, // Base64-like
+}
+
+var sensitiveKeyParts = []string{
+	"password", "secret", "token", "api_key", "auth_key", "credential", "private_key",
 }
 
 const redacted = "[REDACTED]"
@@ -38,7 +48,7 @@ func (h *RedactingHandler) Handle(ctx context.Context, r slog.Record) error {
 		return true
 	})
 
-	newRecord := slog.NewRecord(r.Time, r.Level, r.Message, r.PC)
+	newRecord := slog.NewRecord(r.Time, r.Level, redactString(r.Message), r.PC)
 	for _, a := range attrs {
 		newRecord.AddAttrs(a)
 	}
@@ -57,21 +67,41 @@ func (h *RedactingHandler) WithGroup(name string) slog.Handler {
 	return &RedactingHandler{inner: h.inner.WithGroup(name)}
 }
 
-func redactAttr(a slog.Attr) slog.Attr {
-	if a.Value.Kind() == slog.KindString {
-		val := a.Value.String()
-		if shouldRedact(val) {
-			return slog.String(a.Key, redacted)
-		}
-	}
-	return a
-}
-
-func shouldRedact(val string) bool {
-	for _, p := range secretPatterns {
-		if p.MatchString(val) {
+func isSensitiveKey(key string) bool {
+	key = strings.ToLower(key)
+	for _, part := range sensitiveKeyParts {
+		if strings.Contains(key, part) {
 			return true
 		}
 	}
 	return false
+}
+
+func redactAttr(a slog.Attr) slog.Attr {
+	if isSensitiveKey(a.Key) {
+		return slog.String(a.Key, redacted)
+	}
+
+	switch a.Value.Kind() {
+	case slog.KindString:
+		return slog.String(a.Key, redactString(a.Value.String()))
+	case slog.KindGroup:
+		attrs := a.Value.Group()
+		redactedAttrs := make([]slog.Attr, len(attrs))
+		for i, attr := range attrs {
+			redactedAttrs[i] = redactAttr(attr)
+		}
+		return slog.Attr{Key: a.Key, Value: slog.GroupValue(redactedAttrs...)}
+	}
+	return a
+}
+
+func redactString(val string) string {
+	if len(val) < 5 {
+		return val
+	}
+	for _, p := range secretPatterns {
+		val = p.re.ReplaceAllString(val, p.repl)
+	}
+	return val
 }

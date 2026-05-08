@@ -30,6 +30,7 @@ func TestAuthLoginCmd_UnknownProvider(t *testing.T) {
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
 	cmd.SetErr(&buf)
+	cmd.SetErr(&buf)
 	err := cmd.Execute()
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "auth login")
@@ -43,6 +44,7 @@ func TestAuthStatusCmd(t *testing.T) {
 	cmd := newAuthStatusCmd()
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
 	cmd.SetErr(&buf)
 	err := cmd.Execute()
 	require.NoError(t, err)
@@ -68,6 +70,7 @@ func TestAuthStatusCmd_WithCredential(t *testing.T) {
 	cmd := newAuthStatusCmd()
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
 	err := cmd.Execute()
 	require.NoError(t, err)
 	out := buf.String()
@@ -87,6 +90,7 @@ func TestAuthLogoutCmd(t *testing.T) {
 	cmd.SetArgs([]string{"doppler"})
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
 	err := cmd.Execute()
 	require.NoError(t, err)
 	assert.Contains(t, buf.String(), "Logged out")
@@ -105,6 +109,7 @@ func TestAuthLogoutCmd_NonExisting(t *testing.T) {
 	cmd.SetArgs([]string{"nonexistent"})
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
 	err := cmd.Execute()
 	require.NoError(t, err) // Delete missing is not an error
 }
@@ -113,6 +118,7 @@ func TestAuthCmd_Help(t *testing.T) {
 	cmd := newAuthCmd()
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
 	cmd.SetErr(&buf)
 	cmd.SetArgs([]string{"--help"})
 	err := cmd.Execute()

@@ -43,7 +43,7 @@ func newSyncCmd(opts *GlobalOpts) *cobra.Command {
 				if err := s.Sync(ctx, secrets); err != nil {
 					return skret.NewError(skret.ExitNetworkError, fmt.Sprintf("sync failed for %s", s.Name()), err)
 				}
-				cmd.Printf("Synced %d secrets to %s\n", len(secrets), s.Name())
+				cmd.PrintErrf("Synced %d secrets to %s\n", len(secrets), s.Name())
 			}
 
 			return nil

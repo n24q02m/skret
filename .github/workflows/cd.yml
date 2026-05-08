@@ -2,17 +2,15 @@ name: CD
 
 # CD handles:
 #  - Release on workflow_dispatch (semantic-release -> tag -> goreleaser -> publish)
-#  - Tag push -> goreleaser publish (still works for manual `git tag v*` flow)
+#  - Tag push -> goreleaser publish (still works for manual `git tag v*` && `git push --tags` flow)
 #  - Docs deploy on push to main when docs/** changes (Cloudflare Pages)
 #
 # Secrets required:
 #   GITHUB_TOKEN             - built-in
-#   CLOUDFLARE_API_TOKEN     - CF Pages deploy (scope: Pages:Edit)
-#   CLOUDFLARE_ACCOUNT_ID    - CF account ID
-#
-# TODO(v0.1.0-GA): migrate CLOUDFLARE_* from GitHub Secrets to AWS SSM
-# under /skret/ci/* and use `skret sync --to=github` to round-trip back.
-# Until then, set via `gh secret set` as a bootstrap step (one-time).
+#   GH_PAT                  - PAT with `secrets:write` for `skret sync`
+#   AWS_ROLE_ARN            - IAM role or OIDC AWS access
+#   CLOUDFLARE_API_TOKEN     - CF Pages deploy (synced from AWS SSM)
+#   CLOUDFLARE_ACCOUNT_ID    - CF account ID (synced from AWS SSM)
 
 on:
   push:
@@ -38,6 +36,7 @@ permissions:
   packages: write
   id-token: write
   deployments: write
+  secrets: write
 
 concurrency:
   group: cd-${{ github.ref }}
@@ -114,12 +113,46 @@ jobs:
           # uses this to push formula/manifest updates on release.
           TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
 
+  # ==================== Sync Secrets ====================
+  sync-secrets:
+    name: Sync Secrets from AWS SSM
+    if: |
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+      github.ref == 'refs/heads/main' &&
+      !startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: step-security/harden-runner@v2
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@v6
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: us-east-1
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Build skret
+        run: go build -o skret ./cmd/skret
+      - name: Sync secrets to GitHub
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
+        run: |
+          ./skret sync --to=github \
+            --github-repo=${{ github.repository }} \
+            --provider=aws \
+            --path=/skret/ci/ \
+            --region=us-east-1
+
   # ==================== Docs Deploy ====================
   docs:
     name: Deploy Docs to Cloudflare Pages
     if: |
-      github.event_name == 'push' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
       !startsWith(github.ref, 'refs/tags/v')
+    needs: [sync-secrets]
     runs-on: ubuntu-latest
     steps:
       - uses: step-security/harden-runner@v2

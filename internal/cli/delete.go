@@ -31,11 +31,11 @@ func newDeleteCmd(opts *GlobalOpts) *cobra.Command {
 			key := args[0]
 
 			if !confirm && !force {
-				cmd.Printf("Delete secret %q? [y/N] ", key)
+				cmd.PrintErrf("Delete secret %q? [y/N] ", key)
 				reader := bufio.NewReader(os.Stdin)
 				answer, _ := reader.ReadString('\n')
 				if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(answer)), "y") {
-					cmd.Println("Cancelled.")
+					cmd.PrintErrln("Cancelled.")
 					return nil
 				}
 			}
@@ -45,7 +45,7 @@ func newDeleteCmd(opts *GlobalOpts) *cobra.Command {
 				return skret.NewError(skret.ExitProviderError, fmt.Sprintf("delete %q failed", key), err)
 			}
 
-			cmd.Printf("Deleted %s\n", key)
+			cmd.PrintErrf("Deleted %s\n", key)
 			return nil
 		},
 	}

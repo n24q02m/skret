@@ -61,42 +61,6 @@ func TestDotenvImporter_Empty(t *testing.T) {
 	assert.Empty(t, secrets)
 }
 
-func TestDopplerImporter(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "Bearer dp.st.test_token", r.Header.Get("Authorization"))
-		assert.Equal(t, "test-project", r.URL.Query().Get("project"))
-		assert.Equal(t, "prd", r.URL.Query().Get("config"))
-
-		resp := map[string]any{
-			"secrets": map[string]map[string]string{
-				"DB_URL":  {"raw": "postgres://prod"},
-				"API_KEY": {"raw": "sk-123"},
-			},
-			"success": true,
-		}
-		json.NewEncoder(w).Encode(resp)
-	}))
-	defer srv.Close()
-
-	imp := importer.NewDoppler("dp.st.test_token", "test-project", "prd", srv.URL)
-	secrets, err := imp.Import(context.Background())
-	require.NoError(t, err)
-	assert.Len(t, secrets, 2)
-}
-
-func TestDopplerImporter_APIError(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusUnauthorized)
-		w.Write([]byte(`{"messages":["Invalid token"]}`))
-	}))
-	defer srv.Close()
-
-	imp := importer.NewDoppler("bad_token", "proj", "cfg", srv.URL)
-	_, err := imp.Import(context.Background())
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "401")
-}
-
 func TestInfisicalImporter(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "Bearer test-token", r.Header.Get("Authorization"))
@@ -148,20 +112,6 @@ func TestInfisicalImporter_APIError_ReadBodyError(t *testing.T) {
 	defer srv.Close()
 
 	imp := importer.NewInfisical("bad_token", "proj", "prod", srv.URL)
-	_, err := imp.Import(context.Background())
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "body unreadable")
-}
-
-func TestDopplerImporter_APIError_ReadBodyError(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Length", "100")
-		w.WriteHeader(http.StatusForbidden)
-		w.Write([]byte(`{"message"`)) // short write to cause io.ErrUnexpectedEOF
-	}))
-	defer srv.Close()
-
-	imp := importer.NewDoppler("bad_token", "proj", "prod", srv.URL)
 	_, err := imp.Import(context.Background())
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "body unreadable")

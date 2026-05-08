@@ -10,6 +10,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 )
 
+var loadAWSConfig = awsconfig.LoadDefaultConfig
+
 // AWSProvider implements the auth.Provider interface for AWS.
 type AWSProvider struct {
 	ssoFlow *AWSSSOFlow
@@ -38,7 +40,7 @@ func (p *AWSProvider) Login(ctx context.Context, method string, opts map[string]
 	case "access-key":
 		return NewAWSKeysFlow(os.Stdin).Login(ctx, opts)
 	case "assume-role":
-		cfg, err := awsconfig.LoadDefaultConfig(ctx)
+		cfg, err := loadAWSConfig(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("aws: load config: %w", err)
 		}
@@ -56,7 +58,7 @@ func (p *AWSProvider) loginSSO(ctx context.Context, opts map[string]string) (*Cr
 		if region == "" {
 			region = "us-east-1"
 		}
-		cfg, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion(region))
+		cfg, err := loadAWSConfig(ctx, awsconfig.WithRegion(region))
 		if err != nil {
 			return nil, fmt.Errorf("aws: load config: %w", err)
 		}

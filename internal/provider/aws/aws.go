@@ -16,6 +16,7 @@ import (
 // SSMClient abstracts the AWS SSM API for testability.
 type SSMClient interface {
 	GetParameter(ctx context.Context, params *ssm.GetParameterInput, optFns ...func(*ssm.Options)) (*ssm.GetParameterOutput, error)
+	GetParameters(ctx context.Context, params *ssm.GetParametersInput, optFns ...func(*ssm.Options)) (*ssm.GetParametersOutput, error)
 	GetParametersByPath(ctx context.Context, params *ssm.GetParametersByPathInput, optFns ...func(*ssm.Options)) (*ssm.GetParametersByPathOutput, error)
 	PutParameter(ctx context.Context, params *ssm.PutParameterInput, optFns ...func(*ssm.Options)) (*ssm.PutParameterOutput, error)
 	DeleteParameter(ctx context.Context, params *ssm.DeleteParameterInput, optFns ...func(*ssm.Options)) (*ssm.DeleteParameterOutput, error)
@@ -87,6 +88,42 @@ func (p *Provider) Get(ctx context.Context, key string) (*provider.Secret, error
 		s.Meta.UpdatedAt = *param.LastModifiedDate
 	}
 	return s, nil
+}
+
+func (p *Provider) GetBatch(ctx context.Context, keys []string) ([]*provider.Secret, error) {
+	if len(keys) == 0 {
+		return nil, nil
+	}
+	var allSecrets []*provider.Secret
+	for i := 0; i < len(keys); i += 10 {
+		end := i + 10
+		if end > len(keys) {
+			end = len(keys)
+		}
+		batch := keys[i:end]
+
+		output, err := p.client.GetParameters(ctx, &ssm.GetParametersInput{
+			Names:          batch,
+			WithDecryption: awslib.Bool(true),
+		})
+		if err != nil {
+			return nil, mapError("get_batch", batch[0], err)
+		}
+
+		for i := range output.Parameters {
+			param := output.Parameters[i]
+			s := &provider.Secret{
+				Key:     awslib.ToString(param.Name),
+				Value:   awslib.ToString(param.Value),
+				Version: param.Version,
+			}
+			if param.LastModifiedDate != nil {
+				s.Meta.UpdatedAt = *param.LastModifiedDate
+			}
+			allSecrets = append(allSecrets, s)
+		}
+	}
+	return allSecrets, nil
 }
 
 func (p *Provider) List(ctx context.Context, pathPrefix string) ([]*provider.Secret, error) {

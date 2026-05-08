@@ -16,6 +16,7 @@ type mockProvider struct {
 	name           string
 	capabilities   provider.Capabilities
 	getFunc        func(ctx context.Context, key string) (*provider.Secret, error)
+	getBatchFunc   func(ctx context.Context, keys []string) ([]*provider.Secret, error)
 	listFunc       func(ctx context.Context, pathPrefix string) ([]*provider.Secret, error)
 	setFunc        func(ctx context.Context, key string, value string, meta provider.SecretMeta) error
 	deleteFunc     func(ctx context.Context, key string) error
@@ -28,6 +29,13 @@ func (m *mockProvider) Name() string                        { return m.name }
 func (m *mockProvider) Capabilities() provider.Capabilities { return m.capabilities }
 func (m *mockProvider) Get(ctx context.Context, key string) (*provider.Secret, error) {
 	return m.getFunc(ctx, key)
+}
+
+func (m *mockProvider) GetBatch(ctx context.Context, keys []string) ([]*provider.Secret, error) {
+	if m.getBatchFunc != nil {
+		return m.getBatchFunc(ctx, keys)
+	}
+	return nil, nil
 }
 
 func (m *mockProvider) List(ctx context.Context, pathPrefix string) ([]*provider.Secret, error) {
@@ -174,6 +182,12 @@ func TestClientMethods(t *testing.T) {
 		err := client.Close()
 		assert.NoError(t, err)
 		assert.True(t, called)
+	})
+
+	t.Run("CloseNilProvider", func(t *testing.T) {
+		c := &Client{}
+		err := c.Close()
+		assert.NoError(t, err)
 	})
 }
 
