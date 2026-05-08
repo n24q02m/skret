@@ -183,6 +183,12 @@ func TestClientMethods(t *testing.T) {
 		assert.NoError(t, err)
 		assert.True(t, called)
 	})
+
+	t.Run("CloseNilProvider", func(t *testing.T) {
+		c := &Client{}
+		err := c.Close()
+		assert.NoError(t, err)
+	})
 }
 
 func TestConfigAndProvider(t *testing.T) {
