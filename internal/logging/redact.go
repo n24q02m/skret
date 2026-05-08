@@ -68,12 +68,6 @@ func redactAttr(a slog.Attr) slog.Attr {
 }
 
 func shouldRedact(val string) bool {
-	// Fast path: bypass expensive regex evaluation for short strings
-	// that cannot possibly contain targeted secret formats.
-	// This significantly reduces CPU overhead for general log messages.
-	if len(val) < 5 {
-		return false
-	}
 	for _, p := range secretPatterns {
 		if p.MatchString(val) {
 			return true
