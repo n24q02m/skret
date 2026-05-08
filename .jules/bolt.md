@@ -13,3 +13,7 @@
 ## 2026-05-07 - Mitigating N+1 Queries in Bulk Imports
 **Learning:** Sequential existence checks in loops (N+1 pattern) significantly degrade performance during bulk operations due to network latency overhead per secret.
 **Action:** Implemented a tiered discovery approach (List -> GetBatch -> Get) and deduplicated input sets to minimize provider round-trips while maintaining operational resilience.
+
+## 2026-05-07 - Implement OIDC-based Round-trip Secret Syncing in CI/CD
+**Learning:** Migrating secrets from GitHub Secrets to cloud-native stores like AWS SSM without breaking existing workflows requires a "round-trip" synchronization strategy. By using OIDC for credential-free AWS access, CI workflows can safely fetch secrets from the cloud provider and sync them back to repository secrets as a pre-requisite step. This ensures that downstream actions relying on standard `${{ secrets.VAR }}` syntax remain functional while shifting the source of truth to the cloud store.
+**Action:** In CI/CD pipelines, implement a synchronization job that uses OIDC and `skret sync --to=github` to refresh repository secrets from AWS SSM. Ensure this job has the necessary `id-token: write` and `secrets: write` permissions, and that subsequent deployment jobs depend on its completion.
