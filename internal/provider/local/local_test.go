@@ -287,3 +287,16 @@ func TestLocal_MultipleSetDelete(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, secrets, 10)
 }
+
+func TestLocal_GetBatch(t *testing.T) {
+	path := setupFile(t, "version: \"1\"\nsecrets:\n  KEY1: val1\n  KEY2: val2\n  KEY3: val3")
+	p := newProvider(t, path)
+	defer p.Close()
+
+	ctx := context.Background()
+	secrets, err := p.GetBatch(ctx, []string{"KEY1", "KEY3", "NONEXISTENT"})
+	require.NoError(t, err)
+	assert.Len(t, secrets, 2)
+	assert.Equal(t, "KEY1", secrets[0].Key)
+	assert.Equal(t, "KEY3", secrets[1].Key)
+}

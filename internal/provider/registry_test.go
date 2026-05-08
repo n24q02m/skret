@@ -18,6 +18,10 @@ func (m *mockProvider) Get(_ context.Context, _ string) (*provider.Secret, error
 	return nil, nil
 }
 
+func (m *mockProvider) GetBatch(_ context.Context, _ []string) ([]*provider.Secret, error) {
+	return nil, nil
+}
+
 func (m *mockProvider) List(_ context.Context, _ string) ([]*provider.Secret, error) {
 	return nil, nil
 }
