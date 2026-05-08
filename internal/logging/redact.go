@@ -68,6 +68,24 @@ func (h *RedactingHandler) WithGroup(name string) slog.Handler {
 }
 
 func isSensitiveKey(key string) bool {
+	hasUpper := false
+	for i := 0; i < len(key); i++ {
+		c := key[i]
+		if c >= 'A' && c <= 'Z' {
+			hasUpper = true
+			break
+		}
+	}
+
+	if !hasUpper {
+		for _, part := range sensitiveKeyParts {
+			if strings.Contains(key, part) {
+				return true
+			}
+		}
+		return false
+	}
+
 	key = strings.ToLower(key)
 	for _, part := range sensitiveKeyParts {
 		if strings.Contains(key, part) {
