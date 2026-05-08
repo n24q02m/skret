@@ -13,9 +13,10 @@ import (
 
 func newSyncCmd(opts *GlobalOpts) *cobra.Command {
 	var (
-		to         string
-		file       string
-		githubRepo string
+		to            string
+		file          string
+		githubRepo    string
+		skipUnchanged bool
 	)
 
 	cmd := &cobra.Command{
@@ -40,10 +41,31 @@ func newSyncCmd(opts *GlobalOpts) *cobra.Command {
 			}
 
 			for _, s := range syncers {
-				if err := s.Sync(ctx, secrets); err != nil {
+				toSync := secrets
+				var state *syncer.SyncState
+				if skipUnchanged {
+					stateID := syncerStateID(s, file, githubRepo)
+					state, err = syncer.LoadSyncState(s.Name(), stateID)
+					if err != nil {
+						return skret.NewError(skret.ExitGenericError, "sync: load state failed", err)
+					}
+					toSync = state.FilterUnchanged(secrets)
+					if skipped := len(secrets) - len(toSync); skipped > 0 {
+						cmd.PrintErrf("Skipped %d unchanged secret(s) for %s\n", skipped, s.Name())
+					}
+				}
+
+				if err := s.Sync(ctx, toSync); err != nil {
 					return skret.NewError(skret.ExitNetworkError, fmt.Sprintf("sync failed for %s", s.Name()), err)
 				}
-				cmd.PrintErrf("Synced %d secrets to %s\n", len(secrets), s.Name())
+				cmd.PrintErrf("Synced %d secrets to %s\n", len(toSync), s.Name())
+
+				if skipUnchanged && state != nil {
+					state.Update(toSync)
+					if err := syncer.SaveSyncState(state); err != nil {
+						return skret.NewError(skret.ExitGenericError, "sync: save state failed", err)
+					}
+				}
 			}
 
 			return nil
@@ -53,8 +75,21 @@ func newSyncCmd(opts *GlobalOpts) *cobra.Command {
 	cmd.Flags().StringVar(&to, "to", "dotenv", "sync target (dotenv, github)")
 	cmd.Flags().StringVar(&file, "file", "", "output file path (for dotenv)")
 	cmd.Flags().StringVar(&githubRepo, "github-repo", "", "GitHub repository (owner/repo, comma separated)")
+	cmd.Flags().BoolVar(&skipUnchanged, "skip-unchanged", false, "skip secrets whose value is unchanged since the previous successful sync (drift detection)")
 
 	return cmd
+}
+
+// syncerStateID returns the per-target identifier used to scope the sync
+// state file. Dotenv uses the output file path; GitHub uses the repo string.
+func syncerStateID(s syncer.Syncer, file, githubRepo string) string {
+	if s.Name() == "dotenv" {
+		if file == "" {
+			return ".env"
+		}
+		return file
+	}
+	return githubRepo
 }
 
 // buildSyncers initializes the requested sync targets.

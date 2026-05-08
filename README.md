@@ -111,6 +111,9 @@ skret run -- make up-prod
 export GITHUB_TOKEN=ghp_xxx
 skret sync --to=github \
   --github-repo=myorg/myapp --from-env=prod
+
+# 5. Re-sync, skip secrets that haven't changed since the last successful run
+skret sync --to=github --github-repo=myorg/myapp --skip-unchanged
 ```
 
 See [Getting started](https://skret.n24q02m.com/guide/getting-started/) for the 5-minute guided tour.
@@ -143,7 +146,7 @@ Audited 2026-05-01 against the latest release of each tool. The comparison cover
 | Cloud secret-store backends | AWS SSM today; OCI Vault, Azure KV, GCP SM on roadmap | own store | own store | own store | AWS SM, AWS SSM, GCP SM, Vault, Consul, dotenv | AWS SM/SSM, GCP SM, Azure KV, Vault, SOPS, Bitwarden | Conjur, AWS, keyring (provider plugin) |
 | `run -- cmd` injection | yes | yes | yes | yes | yes | yes (`run` and `load`) | yes |
 | Importer for Doppler / Infisical / .env | **all three built-in** | n/a | partial (one-way) | none | dotenv only | none (Infisical on roadmap) | none |
-| Sync to GitHub Actions secrets | **built-in (`skret sync --to=github`, push-all on invoke)** | via paid integration | via paid integration | none | none | none | none |
+| Sync to GitHub Actions secrets | **built-in (`skret sync --to=github`; `--skip-unchanged` for hash-based drift detection)** | via paid integration | via paid integration | none | none | none | none |
 | Release-artifact provenance | **cosign + SBOM + reproducible** | n/a (SaaS) | n/a (SaaS) | n/a (SaaS) | none | none | none |
 | Cost at our scale (17 repos × 340 secrets × 30k reads/mo, AWS SSM Standard) | **$0** | $84 / mo (10 seats) | ~$30 / mo infra (self-host) | $60 / mo (10 seats, Teams) | $0 | $0 | $0 |
 | Latest release (audit 2026-05-01) | rolling, semantic-release | rolling SaaS | rolling SaaS | rolling SaaS | v2.0.7, May 2024 (12 mo gap) | v0.20.1, Jun 2025 (10 mo gap) | v0.11.0, Mar 2026 |

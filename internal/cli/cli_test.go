@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/n24q02m/skret/internal/cli"
@@ -481,6 +482,41 @@ func TestSyncCmd_Dotenv(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join(dir, ".env.synced"))
 	require.NoError(t, err)
 	assert.Contains(t, string(data), `API_KEY="secret123"`)
+}
+
+func TestSyncCmd_SkipUnchanged(t *testing.T) {
+	dir := setupTestRepo(t)
+	origDir, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	defer os.Chdir(origDir)
+
+	// Redirect home so SaveSyncState writes inside the test dir.
+	if runtime.GOOS == "windows" {
+		t.Setenv("USERPROFILE", dir)
+	} else {
+		t.Setenv("HOME", dir)
+	}
+
+	// First sync: state file does not exist, all secrets should be written.
+	first := cli.NewRootCmd()
+	var firstBuf bytes.Buffer
+	first.SetOut(&firstBuf)
+	first.SetErr(&firstBuf)
+	first.SetArgs([]string{"sync", "--to=dotenv", "--file=.env.synced", "--skip-unchanged"})
+	require.NoError(t, first.Execute())
+	assert.Contains(t, firstBuf.String(), "Synced")
+	assert.NotContains(t, firstBuf.String(), "Skipped")
+
+	// Second sync without changing source: every secret matches the saved
+	// state, so the syncer should write zero secrets and report skipped.
+	second := cli.NewRootCmd()
+	var secondBuf bytes.Buffer
+	second.SetOut(&secondBuf)
+	second.SetErr(&secondBuf)
+	second.SetArgs([]string{"sync", "--to=dotenv", "--file=.env.synced", "--skip-unchanged"})
+	require.NoError(t, second.Execute())
+	assert.Contains(t, secondBuf.String(), "Skipped")
+	assert.Contains(t, secondBuf.String(), "Synced 0 secrets")
 }
 
 // --- Additional format tests ---
