@@ -10,19 +10,28 @@ import (
 	"time"
 )
 
-// DopplerProvider implements auth.Provider for Doppler.
-type DopplerProvider struct {
+type dopplerOAuthFlow interface {
+	Login(ctx context.Context, opts map[string]string) (*Credential, error)
+}
+
+// dopplerProvider implements auth.Provider for Doppler.
+type dopplerProvider struct {
 	baseURL string
+	oauth   dopplerOAuthFlow
 }
 
 // NewDopplerProvider creates the Doppler auth provider.
-func NewDopplerProvider() *DopplerProvider {
-	return &DopplerProvider{baseURL: "https://api.doppler.com"}
+func NewDopplerProvider() Provider {
+	baseURL := "https://api.doppler.com"
+	return &dopplerProvider{
+		baseURL: baseURL,
+		oauth:   NewDopplerOAuthFlow(baseURL),
+	}
 }
 
-func (p *DopplerProvider) Name() string { return "doppler" }
+func (p *dopplerProvider) Name() string { return "doppler" }
 
-func (p *DopplerProvider) Methods() []Method {
+func (p *dopplerProvider) Methods() []Method {
 	return []Method{
 		{Name: "oauth", Description: "Doppler OAuth device flow (recommended)", Interactive: true},
 		{Name: "service-token", Description: "Paste a Doppler service token", Interactive: true},
@@ -30,10 +39,10 @@ func (p *DopplerProvider) Methods() []Method {
 	}
 }
 
-func (p *DopplerProvider) Login(ctx context.Context, method string, opts map[string]string) (*Credential, error) {
+func (p *dopplerProvider) Login(ctx context.Context, method string, opts map[string]string) (*Credential, error) {
 	switch method {
 	case "oauth":
-		return NewDopplerOAuthFlow(p.baseURL).Login(ctx, opts)
+		return p.oauth.Login(ctx, opts)
 	case "service-token", "personal-token":
 		return p.loginToken(ctx, method, opts)
 	default:
@@ -41,7 +50,7 @@ func (p *DopplerProvider) Login(ctx context.Context, method string, opts map[str
 	}
 }
 
-func (p *DopplerProvider) loginToken(ctx context.Context, method string, opts map[string]string) (*Credential, error) {
+func (p *dopplerProvider) loginToken(ctx context.Context, method string, opts map[string]string) (*Credential, error) {
 	token := opts["token"]
 	if token == "" {
 		token = os.Getenv("DOPPLER_TOKEN")
@@ -86,14 +95,14 @@ func (p *DopplerProvider) loginToken(ctx context.Context, method string, opts ma
 	}, nil
 }
 
-func (p *DopplerProvider) Validate(_ context.Context, cred *Credential) error {
+func (p *dopplerProvider) Validate(_ context.Context, cred *Credential) error {
 	if cred == nil || cred.Token == "" {
 		return fmt.Errorf("doppler: invalid credential")
 	}
 	return nil
 }
 
-func (p *DopplerProvider) Logout(_ context.Context) error {
+func (p *dopplerProvider) Logout(_ context.Context) error {
 	return nil
 }
 
