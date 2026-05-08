@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/n24q02m/skret/internal/provider"
 	"github.com/n24q02m/skret/pkg/skret"
 	"github.com/spf13/cobra"
 )
@@ -33,28 +34,7 @@ func newGetCmd(opts *GlobalOpts) *cobra.Command {
 				return skret.NewError(skret.ExitNotFoundError, fmt.Sprintf("get %q", args[0]), err)
 			}
 
-			stdout := cmd.OutOrStdout()
-			switch {
-			case outputJSON || withMetadata:
-				out := map[string]any{
-					"key":   secret.Key,
-					"value": secret.Value,
-				}
-				if withMetadata {
-					out["version"] = secret.Version
-					out["meta"] = secret.Meta
-				}
-				data, err := json.MarshalIndent(out, "", "  ")
-				if err != nil {
-					return skret.NewError(skret.ExitGenericError, "get: json marshal failed", err)
-				}
-				fmt.Fprintln(stdout, string(data))
-			case plain:
-				fmt.Fprint(stdout, secret.Value)
-			default:
-				fmt.Fprintln(stdout, secret.Value)
-			}
-			return nil
+			return printSecret(cmd, secret, outputJSON, withMetadata, plain)
 		},
 	}
 
@@ -63,4 +43,29 @@ func newGetCmd(opts *GlobalOpts) *cobra.Command {
 	cmd.Flags().BoolVar(&plain, "plain", false, "print value without trailing newline")
 
 	return cmd
+}
+
+func printSecret(cmd *cobra.Command, secret *provider.Secret, outputJSON, withMetadata, plain bool) error {
+	stdout := cmd.OutOrStdout()
+	switch {
+	case outputJSON || withMetadata:
+		out := map[string]any{
+			"key":   secret.Key,
+			"value": secret.Value,
+		}
+		if withMetadata {
+			out["version"] = secret.Version
+			out["meta"] = secret.Meta
+		}
+		data, err := json.MarshalIndent(out, "", "  ")
+		if err != nil {
+			return skret.NewError(skret.ExitGenericError, "get: json marshal failed", err)
+		}
+		fmt.Fprintln(stdout, string(data))
+	case plain:
+		fmt.Fprint(stdout, secret.Value)
+	default:
+		fmt.Fprintln(stdout, secret.Value)
+	}
+	return nil
 }
