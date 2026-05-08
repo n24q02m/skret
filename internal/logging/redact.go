@@ -82,8 +82,16 @@ func redactAttr(a slog.Attr) slog.Attr {
 		return slog.String(a.Key, redacted)
 	}
 
-	if a.Value.Kind() == slog.KindString {
+	switch a.Value.Kind() {
+	case slog.KindString:
 		return slog.String(a.Key, redactString(a.Value.String()))
+	case slog.KindGroup:
+		attrs := a.Value.Group()
+		redactedAttrs := make([]slog.Attr, len(attrs))
+		for i, attr := range attrs {
+			redactedAttrs[i] = redactAttr(attr)
+		}
+		return slog.Attr{Key: a.Key, Value: slog.GroupValue(redactedAttrs...)}
 	}
 	return a
 }

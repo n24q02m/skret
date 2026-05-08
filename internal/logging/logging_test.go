@@ -153,6 +153,27 @@ func TestRedactingHandler_EmbeddedRedaction(t *testing.T) {
 	}
 }
 
+func TestRedactingHandler_RedactsNestedGroup(t *testing.T) {
+	var buf bytes.Buffer
+	inner := slog.NewTextHandler(&buf, nil)
+	handler := logging.NewRedactingHandler(inner)
+	logger := slog.New(handler)
+
+	token := "ghp_" + "TEST" + "ABCDEF" + "GHIJKLMNOPQRSTUVWXYZ" + "0123456789"
+	logger.Info(
+		"test",
+		slog.Group("user",
+			slog.String("token", token),
+			slog.String("name", "alice"),
+		),
+	)
+
+	output := buf.String()
+	assert.Contains(t, output, "user.token=[REDACTED]")
+	assert.Contains(t, output, "user.name=alice")
+	assert.NotContains(t, output, token)
+}
+
 func TestSetup(t *testing.T) {
 	logging.Setup("debug", "text")
 	logging.Setup("info", "json")
