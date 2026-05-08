@@ -15,6 +15,7 @@ func TestRootCmd_VersionFlag(t *testing.T) {
 	var buf bytes.Buffer
 	cmd := cli.NewRootCmd()
 	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
 	cmd.SetArgs([]string{"--version"})
 	err := cmd.Execute()
 	assert.NoError(t, err)
@@ -25,6 +26,7 @@ func TestRootCmd_HelpFlag(t *testing.T) {
 	var buf bytes.Buffer
 	cmd := cli.NewRootCmd()
 	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
 	cmd.SetArgs([]string{"--help"})
 	err := cmd.Execute()
 	assert.NoError(t, err)
@@ -149,6 +151,7 @@ func TestGetCmd_PlainOutput(t *testing.T) {
 	var buf bytes.Buffer
 	cmd := cli.NewRootCmd()
 	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
 	cmd.SetArgs([]string{"get", "DATABASE_URL"})
 
 	err := cmd.Execute()
@@ -181,6 +184,7 @@ func TestListCmd_TableOutput(t *testing.T) {
 	var buf bytes.Buffer
 	cmd := cli.NewRootCmd()
 	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
 	cmd.SetArgs([]string{"list"})
 
 	err := cmd.Execute()
@@ -200,6 +204,7 @@ func TestListCmd_JSONOutput(t *testing.T) {
 	var buf bytes.Buffer
 	cmd := cli.NewRootCmd()
 	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
 	cmd.SetArgs([]string{"list", "--format=json"})
 
 	err := cmd.Execute()
@@ -253,6 +258,7 @@ func TestEnvCmd_DotenvFormat(t *testing.T) {
 	var buf bytes.Buffer
 	cmd := cli.NewRootCmd()
 	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
 	cmd.SetArgs([]string{"env"})
 
 	err := cmd.Execute()
@@ -271,6 +277,7 @@ func TestEnvCmd_ExportFormat(t *testing.T) {
 	var buf bytes.Buffer
 	cmd := cli.NewRootCmd()
 	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
 	cmd.SetArgs([]string{"env", "--format=export"})
 
 	err := cmd.Execute()
@@ -318,6 +325,7 @@ func TestSetCmd_BasicSet(t *testing.T) {
 	var buf bytes.Buffer
 	cmd2 := cli.NewRootCmd()
 	cmd2.SetOut(&buf)
+	cmd2.SetErr(&buf)
 	cmd2.SetArgs([]string{"get", "NEW_KEY"})
 	err = cmd2.Execute()
 	require.NoError(t, err)
@@ -426,6 +434,7 @@ func TestImportCmd_Dotenv(t *testing.T) {
 	var buf bytes.Buffer
 	cmd2 := cli.NewRootCmd()
 	cmd2.SetOut(&buf)
+	cmd2.SetErr(&buf)
 	cmd2.SetArgs([]string{"get", "IMPORT_KEY"})
 	err = cmd2.Execute()
 	require.NoError(t, err)
@@ -449,6 +458,7 @@ func TestImportCmd_ToPath(t *testing.T) {
 	var buf bytes.Buffer
 	cmd2 := cli.NewRootCmd()
 	cmd2.SetOut(&buf)
+	cmd2.SetErr(&buf)
 	cmd2.SetArgs([]string{"get", "/imported/IMPORT_KEY"})
 	err = cmd2.Execute()
 	require.NoError(t, err)
@@ -484,6 +494,7 @@ func TestEnvCmd_JsonYamlFormats(t *testing.T) {
 	var buf bytes.Buffer
 	cmd := cli.NewRootCmd()
 	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
 	cmd.SetArgs([]string{"env", "--format=json"})
 	require.NoError(t, cmd.Execute())
 	assert.Contains(t, buf.String(), `"DATABASE_URL": "postgres://`)
@@ -491,6 +502,7 @@ func TestEnvCmd_JsonYamlFormats(t *testing.T) {
 	buf.Reset()
 	cmd2 := cli.NewRootCmd()
 	cmd2.SetOut(&buf)
+	cmd2.SetErr(&buf)
 	cmd2.SetArgs([]string{"env", "--format=yaml"})
 	require.NoError(t, cmd2.Execute())
 	assert.Contains(t, buf.String(), "DATABASE_URL: postgres://")
@@ -511,6 +523,7 @@ func TestSetCmd_FromFile(t *testing.T) {
 	var buf bytes.Buffer
 	cmd2 := cli.NewRootCmd()
 	cmd2.SetOut(&buf)
+	cmd2.SetErr(&buf)
 	cmd2.SetArgs([]string{"get", "FILE_KEY"})
 	require.NoError(t, cmd2.Execute())
 	assert.Contains(t, buf.String(), "file_value")
@@ -528,6 +541,7 @@ func TestImportCmd_ConflictSkip(t *testing.T) {
 	var buf bytes.Buffer
 	cmd := cli.NewRootCmd()
 	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
 	cmd.SetArgs([]string{"import", "--from=dotenv", "--file=.env", "--on-conflict=skip"})
 	err := cmd.Execute()
 	require.NoError(t, err)
@@ -537,6 +551,7 @@ func TestImportCmd_ConflictSkip(t *testing.T) {
 	buf.Reset()
 	cmd2 := cli.NewRootCmd()
 	cmd2.SetOut(&buf)
+	cmd2.SetErr(&buf)
 	cmd2.SetArgs([]string{"get", "API_KEY"})
 	require.NoError(t, cmd2.Execute())
 	assert.Equal(t, "secret123\n", buf.String())
@@ -544,6 +559,7 @@ func TestImportCmd_ConflictSkip(t *testing.T) {
 	buf.Reset()
 	cmd3 := cli.NewRootCmd()
 	cmd3.SetOut(&buf)
+	cmd3.SetErr(&buf)
 	cmd3.SetArgs([]string{"get", "NEW_KEY"})
 	require.NoError(t, cmd3.Execute())
 	assert.Equal(t, "new_value\n", buf.String())

@@ -76,6 +76,7 @@ func TestEnvCmd_UnknownFormatFallsBackToDotenv(t *testing.T) {
 	var buf bytes.Buffer
 	cmd := cli.NewRootCmd()
 	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
 	cmd.SetArgs([]string{"env", "--format=unknown"})
 	err := cmd.Execute()
 	require.NoError(t, err)

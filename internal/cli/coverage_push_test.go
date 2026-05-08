@@ -87,6 +87,7 @@ func TestInitOptions_Run_AlreadyExists(t *testing.T) {
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
 	cmd.SetErr(&buf)
+	cmd.SetErr(&buf)
 
 	o := &initOptions{force: false}
 	err := o.run(cmd)
@@ -106,6 +107,7 @@ func TestInitOptions_Run_ForceOverwrite(t *testing.T) {
 	cmd := &cobra.Command{}
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
 	cmd.SetErr(&buf)
 
 	o := &initOptions{provider: "local", file: ".secrets.yaml", force: true}
@@ -139,6 +141,7 @@ environments:
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
 	cmd.SetErr(&buf)
+	cmd.SetErr(&buf)
 	err := cmd.Execute()
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "experimental")
@@ -166,6 +169,7 @@ environments:
 	cmd.SetArgs([]string{"KEY", "not-a-number"})
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
 	cmd.SetErr(&buf)
 	err := cmd.Execute()
 	assert.Error(t, err)
@@ -195,6 +199,7 @@ environments:
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
 	cmd.SetErr(&buf)
+	cmd.SetErr(&buf)
 	err := cmd.Execute()
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "rollback")
@@ -208,6 +213,7 @@ func TestHistory_NonExperimental(t *testing.T) {
 	cmd.SetArgs([]string{"KEY"})
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
 	cmd.SetErr(&buf)
 	err := cmd.Execute()
 	assert.Error(t, err)
@@ -236,6 +242,7 @@ environments:
 	cmd.SetArgs([]string{"KEY"})
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
 	cmd.SetErr(&buf)
 	err := cmd.Execute()
 	assert.Error(t, err)
@@ -310,6 +317,7 @@ func TestPrintEnvPairs_UnknownFormat(t *testing.T) {
 	cmd := &cobra.Command{}
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
 
 	pairs := []envPair{
 		{Name: "KEY", Value: "value"},

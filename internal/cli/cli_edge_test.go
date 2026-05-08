@@ -18,6 +18,7 @@ func executeCmd(args ...string) (string, error) {
 	cmd := cli.NewRootCmd()
 	cmd.SetOut(&buf)
 	cmd.SetErr(&buf)
+	cmd.SetErr(&buf)
 	cmd.SetArgs(args)
 	err := cmd.Execute()
 	return buf.String(), err
