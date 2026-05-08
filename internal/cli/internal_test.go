@@ -677,6 +677,7 @@ func TestImportOptions_Deduplication(t *testing.T) {
 	cmd := &cobra.Command{}
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
 
 	o := &importOptions{
 		global:     &GlobalOpts{},
@@ -815,6 +816,7 @@ func TestImportOptions_Run_Comprehensive(t *testing.T) {
 		cmd := &cobra.Command{}
 		var buf bytes.Buffer
 		cmd.SetOut(&buf)
+		cmd.SetErr(&buf)
 
 		o := &importOptions{
 			global:     &GlobalOpts{},
@@ -839,6 +841,7 @@ func TestImportOptions_Run_Comprehensive(t *testing.T) {
 		cmd := &cobra.Command{}
 		var buf bytes.Buffer
 		cmd.SetOut(&buf)
+		cmd.SetErr(&buf)
 
 		o := &importOptions{
 			global:     &GlobalOpts{},
