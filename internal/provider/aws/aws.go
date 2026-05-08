@@ -94,6 +94,8 @@ func (p *Provider) GetBatch(ctx context.Context, keys []string) ([]*provider.Sec
 	if len(keys) == 0 {
 		return nil, nil
 	}
+	// ⚡ Bolt: Pre-allocate slice capacity to length of keys to prevent dynamic reallocation
+	// during the chunking loop, improving batch retrieval performance.
 	allSecrets := make([]*provider.Secret, 0, len(keys))
 	for i := 0; i < len(keys); i += 10 {
 		end := i + 10
