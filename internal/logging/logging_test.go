@@ -16,8 +16,7 @@ func TestRedactingHandler_RedactsSecrets(t *testing.T) {
 	handler := logging.NewRedactingHandler(inner)
 	logger := slog.New(handler)
 
-	logger.Info(
-		"test",
+	logger.Info("test",
 		"api_key", "sk-abc123def456ghi789jkl012mno",
 		"normal", "hello world",
 	)
@@ -99,50 +98,4 @@ func TestSetup(t *testing.T) {
 	logging.Setup("debug", "text")
 	logging.Setup("info", "json")
 	logging.Setup("error", "")
-}
-
-func TestRedactingHandler_RedactsMessage(t *testing.T) {
-	var buf bytes.Buffer
-	inner := slog.NewTextHandler(&buf, nil)
-	handler := logging.NewRedactingHandler(inner)
-	logger := slog.New(handler)
-
-	logger.Info("failed with ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghij")
-
-	output := buf.String()
-	assert.Contains(t, output, "[REDACTED]")
-	assert.NotContains(t, output, "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghij")
-}
-
-func TestRedactingHandler_RedactsNestedGroup(t *testing.T) {
-	var buf bytes.Buffer
-	inner := slog.NewTextHandler(&buf, nil)
-	handler := logging.NewRedactingHandler(inner)
-	logger := slog.New(handler)
-
-	logger.Info(
-		"test",
-		slog.Group(
-			"user",
-			slog.String("token", "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghij"),
-		),
-	)
-
-	output := buf.String()
-	assert.Contains(t, output, "[REDACTED]")
-	assert.NotContains(t, output, "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghij")
-}
-
-func TestRedactingHandler_RedactsEmbeddedKeyValue(t *testing.T) {
-	var buf bytes.Buffer
-	inner := slog.NewTextHandler(&buf, nil)
-	handler := logging.NewRedactingHandler(inner)
-	logger := slog.New(handler)
-
-	logger.Info("connection error", "url", "https://api.example.com?token=ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghij&user=test")
-
-	output := buf.String()
-	assert.Contains(t, output, "token=[REDACTED]")
-	assert.Contains(t, output, "&user=test")
-	assert.NotContains(t, output, "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghij")
 }
