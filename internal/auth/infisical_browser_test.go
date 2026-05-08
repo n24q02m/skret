@@ -50,7 +50,7 @@ func TestInfisicalBrowserFlow_Success(t *testing.T) {
 			if cb == "" {
 				return
 			}
-			req, _ := http.NewRequestWithContext(bgctx, http.MethodGet, cb+"?code=browser-code", http.NoBody)
+			req, _ := http.NewRequestWithContext(bgctx, http.MethodGet, cb+"?code=browser-code&state="+u.Query().Get("state"), http.NoBody)
 			resp, _ := http.DefaultClient.Do(req)
 			if resp != nil {
 				_ = resp.Body.Close()
@@ -75,4 +75,33 @@ func TestInfisicalBrowserFlow_ContextCancel(t *testing.T) {
 	cancel()
 	_, err := flow.Login(ctx, nil)
 	require.Error(t, err)
+}
+
+func TestInfisicalBrowserFlow_InvalidState(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+
+	flow := auth.NewInfisicalBrowserFlow(srv.URL)
+	flow.Opener = func(bgctx context.Context, authURL string) error {
+		go func() {
+			time.Sleep(50 * time.Millisecond)
+			u, _ := url.Parse(authURL)
+			cb := u.Query().Get("callback")
+			// Hit callback with WRONG state param.
+			req, _ := http.NewRequestWithContext(bgctx, http.MethodGet, cb+"?code=xyz&state=wrong-state", http.NoBody)
+			resp, _ := http.DefaultClient.Do(req)
+			if resp != nil {
+				_ = resp.Body.Close()
+			}
+		}()
+		return nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	_, err := flow.Login(ctx, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "missing or invalid state")
 }

@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -16,6 +17,8 @@ import (
 
 // InfisicalBrowserFlow implements an Infisical PKCE browser login using a
 // loopback HTTP listener as the redirect target.
+var cryptoRandReader = rand.Reader
+
 type InfisicalBrowserFlow struct {
 	BaseURL string
 	Opener  func(ctx context.Context, authURL string) error
@@ -40,7 +43,7 @@ func NewInfisicalBrowserFlow(baseURL string) *InfisicalBrowserFlow {
 // challenge per RFC 7636.
 func pkcePair() (verifier, challenge string, err error) {
 	buf := make([]byte, 32)
-	if _, err = rand.Read(buf); err != nil {
+	if _, err = io.ReadFull(cryptoRandReader, buf); err != nil {
 		return "", "", err
 	}
 	verifier = base64.RawURLEncoding.EncodeToString(buf)
@@ -49,10 +52,22 @@ func pkcePair() (verifier, challenge string, err error) {
 	return verifier, challenge, nil
 }
 
+func randomString(n int) (string, error) {
+	buf := make([]byte, n)
+	if _, err := io.ReadFull(cryptoRandReader, buf); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(buf), nil
+}
+
 // Login starts a loopback listener, opens the Infisical auth redirect, waits
 // for the browser callback with the code, and exchanges it for an access
 // token via /api/v1/auth/token.
 func (f *InfisicalBrowserFlow) Login(ctx context.Context, _ map[string]string) (*Credential, error) {
+	state, err := randomString(32)
+	if err != nil {
+		return nil, fmt.Errorf("infisical browser: state: %w", err)
+	}
 	verifier, challenge, err := pkcePair()
 	if err != nil {
 		return nil, fmt.Errorf("infisical browser: pkce: %w", err)
@@ -69,7 +84,14 @@ func (f *InfisicalBrowserFlow) Login(ctx context.Context, _ map[string]string) (
 	errCh := make(chan error, 1)
 	srv := &http.Server{
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			code := r.URL.Query().Get("code")
+			query := r.URL.Query()
+			gotState := query.Get("state")
+			if gotState == "" || gotState != state {
+				http.Error(w, "invalid state", http.StatusBadRequest)
+				errCh <- fmt.Errorf("infisical browser: callback missing or invalid state")
+				return
+			}
+			code := query.Get("code")
 			if code == "" {
 				http.Error(w, "missing code", http.StatusBadRequest)
 				errCh <- fmt.Errorf("infisical browser: callback missing code")
@@ -92,6 +114,7 @@ func (f *InfisicalBrowserFlow) Login(ctx context.Context, _ map[string]string) (
 		"callback":       {callback},
 		"code_challenge": {challenge},
 		"method":         {"S256"},
+		"state":          {state},
 	}.Encode()
 	fmt.Fprintf(ctxOut(ctx), "Open %s in your browser to approve skret.\n", authURL)
 	_ = f.Opener(ctx, authURL)
