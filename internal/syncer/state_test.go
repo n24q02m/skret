@@ -1,6 +1,7 @@
 package syncer
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -165,4 +166,45 @@ func TestHashSecret_Stable(t *testing.T) {
 	assert.Equal(t, a, b)
 	assert.NotEqual(t, a, c)
 	assert.Len(t, a, 64) // sha256 hex = 64 chars
+}
+
+func TestStatePathFor_NoHomeDir(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Setenv("USERPROFILE", "")
+		t.Setenv("HOMEDRIVE", "")
+		t.Setenv("HOMEPATH", "")
+	} else {
+		t.Setenv("HOME", "")
+	}
+	_, err := StatePathFor("github", "owner/repo")
+	if err == nil {
+		t.Skip("UserHomeDir did not error in this environment; nothing to assert")
+	}
+	assert.Contains(t, err.Error(), "user home dir")
+}
+
+func TestSaveSyncState_UpdatedTimeStamp(t *testing.T) {
+	withFakeHome(t)
+	state := &SyncState{Target: "github", ID: "owner/repo", Hashes: map[string]string{"K": hashSecret("v")}}
+	require.NoError(t, SaveSyncState(state))
+	first := state.Updated
+	assert.False(t, first.IsZero())
+
+	// Roundtrip preserves Updated; second SaveSyncState advances it.
+	require.NoError(t, SaveSyncState(state))
+	assert.False(t, state.Updated.Before(first))
+}
+
+func TestSaveSyncState_Atomic(t *testing.T) {
+	home := withFakeHome(t)
+	state := &SyncState{Target: "github", ID: "owner/repo", Hashes: map[string]string{"K": hashSecret("v")}}
+	require.NoError(t, SaveSyncState(state))
+
+	path, err := StatePathFor("github", "owner/repo")
+	require.NoError(t, err)
+	assert.True(t, strings.HasPrefix(path, home))
+
+	// .tmp file should not survive a successful SaveSyncState.
+	_, statErr := os.Stat(path + ".tmp")
+	assert.True(t, errors.Is(statErr, os.ErrNotExist))
 }

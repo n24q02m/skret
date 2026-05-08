@@ -200,6 +200,22 @@ func TestBuildSyncers_DotenvDefault(t *testing.T) {
 	assert.Equal(t, "dotenv", syncers[0].Name())
 }
 
+func TestSyncerStateID(t *testing.T) {
+	t.Setenv("GITHUB_TOKEN", "ghp_test")
+
+	dotenvDefault, err := buildSyncers("dotenv", "", "")
+	require.NoError(t, err)
+	assert.Equal(t, ".env", syncerStateID(dotenvDefault[0], "", ""))
+
+	dotenvCustom, err := buildSyncers("dotenv", "custom.env", "")
+	require.NoError(t, err)
+	assert.Equal(t, "custom.env", syncerStateID(dotenvCustom[0], "custom.env", ""))
+
+	github, err := buildSyncers("github", "", "owner/repo")
+	require.NoError(t, err)
+	assert.Equal(t, "owner/repo", syncerStateID(github[0], "", "owner/repo"))
+}
+
 func TestDefaultRegistry(t *testing.T) {
 	reg := defaultRegistry()
 	require.NotNil(t, reg)
