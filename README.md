@@ -45,7 +45,7 @@ skret sync --to=github           # Push secrets to GitHub Actions
 - [Install](#install)
 - [Quick start](#quick-start)
 - [Provider ranking](#provider-ranking)
-- [Comparison vs Doppler and Infisical](#comparison-vs-doppler-and-infisical)
+- [Comparison vs alternatives](#comparison-vs-alternatives)
 - [Documentation](#documentation)
 - [Command overview](#command-overview)
 - [Contributing](#contributing)
@@ -55,13 +55,14 @@ skret sync --to=github           # Push secrets to GitHub Actions
 
 ## Why skret?
 
-Managing secrets across many repositories, VMs, and developer machines is painful:
+CLI wrappers that inject cloud secrets into a `run -- cmd` invocation already exist — `teller`, `novops`, `summon`, and a long tail of single-backend tools like `chamber`. What was missing for our use case was a single binary that combines:
 
-- **Doppler** charges per user seat; the free tier maxes out at five projects.
-- **Infisical self-host** has real ops overhead — database, web UI, container, upgrades.
-- **Raw AWS SSM / GCP SM CLIs** lack the developer-friendly `run -- cmd` pattern that makes Doppler and Infisical pleasant.
+1. **Migration importers** for Doppler, Infisical, and `.env` — so a team can leave a paid SaaS without rewriting deploy pipelines.
+2. **CI/CD sync** that pushes the same secret set to GitHub Actions in one command, with hash-based drift detection.
+3. **Production-grade release artifacts** — cosign signatures, SBOMs, reproducible builds — so the binary itself can sit on a build agent without separate hardening.
+4. **Doppler-grade DX** (`skret run -- your-cmd`) on top of cloud-native IAM, no self-hosted control plane, no per-seat licence.
 
-skret gives you Doppler-grade DX on top of free cloud secret stores. A single Go binary, no server, no subscription, secrets stay inside the cloud account you already pay for.
+If you only need a single-cloud injector and you don't care about migration or CI sync, `teller` or `summon` may already be enough — see the [comparison table](#comparison-vs-alternatives) for the honest trade-offs.
 
 ## Features
 
@@ -128,18 +129,31 @@ Cost figures below use a representative scale: 17 repos × 340 secrets × 30,000
 
 See [provider comparison](https://skret.n24q02m.com/reference/provider-comparison/) for the full feature matrix.
 
-## Comparison vs Doppler and Infisical
+## Comparison vs alternatives
 
-| Feature | skret | Doppler | Infisical (self-host) |
-|---------|-------|---------|------------------------|
-| Server required | No | No (SaaS) | Yes (container + DB) |
-| Cost (10 devs, 17 repos) | **$0** | $84/mo | ~$30/mo infra |
-| `run -- cmd` DX | Yes | Yes | Yes |
-| Multi-cloud storage backends | Yes | No | No |
-| Migration from other tools | Yes | Limited | No |
-| Sync to GitHub Actions | Built-in | Via integration | Via integration |
-| Open source license | MIT | Proprietary | MIT (but complex) |
-| Release artifact signing | Cosign + SBOM | n/a | n/a |
+Audited 2026-05-01 against the latest release of each tool. The comparison covers three SaaS / self-host secret managers (Doppler, Infisical, Bitwarden Secrets Manager) and three OSS CLI wrappers in skret's design space (teller, novops, summon).
+
+| Feature | skret | Doppler | Infisical | Bitwarden SM | teller | novops | summon |
+|---|---|---|---|---|---|---|---|
+| Type | OSS CLI | SaaS | SaaS / self-host | SaaS / self-host | OSS CLI | OSS CLI | OSS CLI |
+| Language | Go 1.26 | proprietary | TypeScript | Rust | Rust | Rust | Go |
+| Licence | MIT | proprietary | MIT (complex) | GPL-3.0 (CLI) | Apache-2.0 | LGPL-3.0 | MIT |
+| Server / control plane | none | none (SaaS) | container + Postgres | none (SaaS) | none | none | none |
+| Free tier ceiling (10 devs, 17 repos) | unlimited (cloud cost only) | 5 projects, then $7/seat | self-host or $7/seat | 3 projects, then $6/seat (Teams) | unlimited | unlimited | unlimited |
+| Cloud secret-store backends | AWS SSM today; OCI Vault, Azure KV, GCP SM on roadmap | own store | own store | own store | AWS SM, AWS SSM, GCP SM, Vault, Consul, dotenv | AWS SM/SSM, GCP SM, Azure KV, Vault, SOPS, Bitwarden | Conjur, AWS, keyring (provider plugin) |
+| `run -- cmd` injection | yes | yes | yes | yes | yes | yes (`run` and `load`) | yes |
+| Importer for Doppler / Infisical / .env | **all three built-in** | n/a | partial (one-way) | none | dotenv only | none (Infisical on roadmap) | none |
+| Sync to GitHub Actions secrets | **built-in (`skret sync --to=github`, push-all on invoke)** | via paid integration | via paid integration | none | none | none | none |
+| Release-artifact provenance | **cosign + SBOM + reproducible** | n/a (SaaS) | n/a (SaaS) | n/a (SaaS) | none | none | none |
+| Cost at our scale (17 repos × 340 secrets × 30k reads/mo, AWS SSM Standard) | **$0** | $84 / mo (10 seats) | ~$30 / mo infra (self-host) | $60 / mo (10 seats, Teams) | $0 | $0 | $0 |
+| Latest release (audit 2026-05-01) | rolling, semantic-release | rolling SaaS | rolling SaaS | rolling SaaS | v2.0.7, May 2024 (12 mo gap) | v0.20.1, Jun 2025 (10 mo gap) | v0.11.0, Mar 2026 |
+
+**How to read this:**
+
+- If you want a managed UX and you're happy paying per seat, **Doppler** still has the best DX in this space.
+- If you want self-host SaaS with K8s-native operators and a web UI, **Infisical** is the right pick — accept the Postgres + container ops cost.
+- If you only need a single-cloud `run -- cmd` injector and don't care about migration / CI sync, **summon** (most actively maintained) or **novops** (broadest backend list) is enough — and shorter than skret.
+- skret's wedge is the combination: cloud-native backend ranking + migration importers + GitHub Actions sync + signed release artifacts in one binary. If two or more of those matter to you, skret is meant to replace the patchwork.
 
 ## Documentation
 
@@ -192,7 +206,7 @@ If skret saves your team the Doppler seat cost or the Infisical ops overhead, pl
 
 ## Acknowledgments
 
-skret was inspired by [Doppler](https://www.doppler.com) and [Infisical](https://infisical.com) — teams who made CLI-first secrets management pleasant. It is built on [AWS SDK for Go v2](https://github.com/aws/aws-sdk-go-v2), [Cobra](https://github.com/spf13/cobra), and documented with [Astro Starlight](https://starlight.astro.build) on Cloudflare Pages.
+skret was inspired by [Doppler](https://www.doppler.com) and [Infisical](https://infisical.com) — teams who made CLI-first secrets management pleasant — and by the OSS injection-wrapper lineage of [teller](https://github.com/tellerops/teller), [novops](https://github.com/PierreBeucher/novops), [summon](https://github.com/cyberark/summon), and [chamber](https://github.com/segmentio/chamber). It is built on [AWS SDK for Go v2](https://github.com/aws/aws-sdk-go-v2), [Cobra](https://github.com/spf13/cobra), and documented with [Astro Starlight](https://starlight.astro.build) on Cloudflare Pages.
 
 ## Security
 
