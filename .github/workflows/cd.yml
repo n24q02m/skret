@@ -4,13 +4,20 @@ name: CD
 #  - Release on workflow_dispatch (semantic-release -> tag -> goreleaser -> publish)
 #  - Tag push -> goreleaser publish (still works for manual `git tag v*` && `git push --tags` flow)
 #  - Docs deploy on push to main when docs/** changes (Cloudflare Pages)
+#  - Optional sync-secrets job that pulls /skret/ci/* from AWS SSM and pushes
+#    them to GitHub Actions repository secrets (opt-in via vars.SYNC_SECRETS_ENABLED)
 #
-# Secrets required:
+# Repo Secrets required:
 #   GITHUB_TOKEN             - built-in
-#   GH_PAT                  - PAT with `secrets:write` for `skret sync`
-#   AWS_ROLE_ARN            - IAM role or OIDC AWS access
-#   CLOUDFLARE_API_TOKEN     - CF Pages deploy (synced from AWS SSM)
-#   CLOUDFLARE_ACCOUNT_ID    - CF account ID (synced from AWS SSM)
+#   AWS_ROLE_ARN             - OIDC role with read on /skret/ci/* in SSM
+#   CI_APP_KEY               - n24q02m-ci GitHub App private key (for skret sync to push GH Actions secrets)
+#   CLOUDFLARE_API_TOKEN     - CF Pages deploy
+#   CLOUDFLARE_ACCOUNT_ID    - CF account ID
+#   TAP_GITHUB_TOKEN         - fine-grained PAT for tap repo updates
+#
+# Repo Variables required:
+#   CI_APP_ID                - n24q02m-ci GitHub App ID (3200052)
+#   SYNC_SECRETS_ENABLED     - set to "true" to enable the SSM->GH-Actions sync job
 
 on:
   push:
@@ -36,7 +43,6 @@ permissions:
   packages: write
   id-token: write
   deployments: write
-  secrets: write
 
 concurrency:
   group: cd-${{ github.ref }}
@@ -56,10 +62,15 @@ jobs:
       - uses: step-security/harden-runner@v2
         with:
           egress-policy: audit
+      - uses: actions/create-github-app-token@v3
+        id: app-token
+        with:
+          app-id: ${{ vars.CI_APP_ID }}
+          private-key: ${{ secrets.CI_APP_KEY }}
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-          token: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
+          token: ${{ steps.app-token.outputs.token }}
       - id: release
         uses: python-semantic-release/python-semantic-release@v10
         with:
@@ -113,24 +124,33 @@ jobs:
           # uses this to push formula/manifest updates on release.
           TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
 
-  # ==================== Sync Secrets ====================
+  # ==================== Sync Secrets (opt-in) ====================
+  # Pulls /skret/ci/* from AWS SSM and pushes the values into this repo's
+  # GitHub Actions secrets. Opt-in via vars.SYNC_SECRETS_ENABLED to avoid
+  # breaking pushes when CI_APP_KEY / SSM bootstrap is incomplete.
   sync-secrets:
     name: Sync Secrets from AWS SSM
     if: |
       (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
       github.ref == 'refs/heads/main' &&
-      !startsWith(github.ref, 'refs/tags/v')
+      !startsWith(github.ref, 'refs/tags/v') &&
+      vars.SYNC_SECRETS_ENABLED == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: step-security/harden-runner@v2
         with:
           egress-policy: audit
+      - uses: actions/create-github-app-token@v3
+        id: app-token
+        with:
+          app-id: ${{ vars.CI_APP_ID }}
+          private-key: ${{ secrets.CI_APP_KEY }}
       - uses: actions/checkout@v6
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: us-east-1
+          aws-region: ap-southeast-1
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
@@ -138,13 +158,13 @@ jobs:
         run: go build -o skret ./cmd/skret
       - name: Sync secrets to GitHub
         env:
-          GITHUB_TOKEN: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           ./skret sync --to=github \
             --github-repo=${{ github.repository }} \
             --provider=aws \
             --path=/skret/ci/ \
-            --region=us-east-1
+            --region=ap-southeast-1
 
   # ==================== Docs Deploy ====================
   docs:
@@ -152,7 +172,6 @@ jobs:
     if: |
       (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
       !startsWith(github.ref, 'refs/tags/v')
-    needs: [sync-secrets]
     runs-on: ubuntu-latest
     steps:
       - uses: step-security/harden-runner@v2
