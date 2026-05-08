@@ -43,10 +43,10 @@ jobs:
       - name: Put CLOUDFLARE_API_TOKEN into /skret/ci
         env:
           VALUE: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        run: ./skret set CLOUDFLARE_API_TOKEN "$VALUE" -e prod
+        run: ./skret set /skret/ci/CLOUDFLARE_API_TOKEN "$VALUE" -e prod
       - name: Put CLOUDFLARE_ACCOUNT_ID into /skret/ci
         env:
           VALUE: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: ./skret set CLOUDFLARE_ACCOUNT_ID "$VALUE" -e prod
+        run: ./skret set /skret/ci/CLOUDFLARE_ACCOUNT_ID "$VALUE" -e prod
       - name: Verify
         run: ./skret list -e prod
