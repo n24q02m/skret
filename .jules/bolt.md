@@ -21,3 +21,7 @@
 ## 2026-05-07 - Refactor Complex Conditional Logic into Named Helper Functions
 **Learning:** Nested conditional checks within long loops (like the `auth status` iteration) reduce readability and can lead to logic errors where state is unintentionally overwritten (e.g., "expired" being masked by "invalid"). Extracting this logic into a small, focused helper function clarifies the priority of states and makes the core loop easier to maintain.
 **Action:** Identify multi-state conditional blocks within loops and extract them into named helper functions (e.g., `getCredentialStatus`). This improves testability of the status logic itself and ensures a clean separation of concerns between data retrieval and display formatting.
+
+## 2026-05-07 - Pre-allocate Slice Capacity in Bounded Bulk Operations
+**Learning:** During bulk secret retrieval operations like `GetBatch`, appending to a slice with no initial capacity results in dynamic reallocations, which puts unnecessary pressure on the Garbage Collector and degrades performance. When the final or maximum size of the slice is known (e.g., `len(keys)`), pre-allocating the slice capacity avoids these reallocations.
+**Action:** Always pre-allocate slice capacity (e.g., `make([]*provider.Secret, 0, expectedLength)`) when iterating over inputs where the maximum or final size is known. This is a critical fast-path optimization that improves bulk retrieval performance without sacrificing readability.

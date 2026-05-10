@@ -94,7 +94,7 @@ func (p *Provider) GetBatch(ctx context.Context, keys []string) ([]*provider.Sec
 	if len(keys) == 0 {
 		return nil, nil
 	}
-	var allSecrets []*provider.Secret
+	allSecrets := make([]*provider.Secret, 0, len(keys))
 	for i := 0; i < len(keys); i += 10 {
 		end := i + 10
 		if end > len(keys) {
