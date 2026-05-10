@@ -195,6 +195,13 @@ environments:
 
 	t.Setenv("SKRET_EXPERIMENTAL", "1")
 	cmd := newRollbackCmd(&GlobalOpts{})
+
+	// Mock stdin so we don't panic on bufio.NewReader(nil)
+	r, w, _ := os.Pipe()
+	w.WriteString("y\n")
+	w.Close()
+	cmd.SetIn(r)
+
 	cmd.SetArgs([]string{"KEY", "1"})
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
