@@ -24,7 +24,7 @@ func BuildEnv(secrets []*provider.Secret, existing []string, pathPrefix string, 
 		env = append(env, e)
 	}
 
-	secretVars := make(map[string]string)
+	secretVars := make(map[string]string, len(secrets))
 	for _, s := range secrets {
 		name := KeyToEnvName(s.Key, pathPrefix)
 		if excludeSet[name] {

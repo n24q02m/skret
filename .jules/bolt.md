@@ -21,3 +21,6 @@
 ## 2026-05-07 - Refactor Complex Conditional Logic into Named Helper Functions
 **Learning:** Nested conditional checks within long loops (like the `auth status` iteration) reduce readability and can lead to logic errors where state is unintentionally overwritten (e.g., "expired" being masked by "invalid"). Extracting this logic into a small, focused helper function clarifies the priority of states and makes the core loop easier to maintain.
 **Action:** Identify multi-state conditional blocks within loops and extract them into named helper functions (e.g., `getCredentialStatus`). This improves testability of the status logic itself and ensures a clean separation of concerns between data retrieval and display formatting.
+## 2025-04-27 - Pre-allocate slice and map capacity
+**Learning:** Pre-allocating the capacity of slices and maps when the expected length is known ahead of time significantly improves performance by reducing dynamic memory allocations and Garbage Collection overhead, especially within loops like those used for mapping keys to secrets.
+**Action:** Always employ pre-allocation (e.g. `make([]T, 0, len(items))`) when mapping one list to another or when the total size can be anticipated.
