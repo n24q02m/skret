@@ -137,12 +137,18 @@ func appendGitignore(path string) error {
 	defer f.Close()
 
 	if content != "" && !strings.HasSuffix(content, "\n") {
-		f.WriteString("\n")
+		if _, err := f.WriteString("\n"); err != nil {
+			return err
+		}
 	}
 
-	f.WriteString("\n# skret local provider files\n")
+	if _, err := f.WriteString("\n# skret local provider files\n"); err != nil {
+		return err
+	}
 	for _, entry := range toAdd {
-		f.WriteString(entry + "\n")
+		if _, err := f.WriteString(entry + "\n"); err != nil {
+			return err
+		}
 	}
 	return nil
 }
