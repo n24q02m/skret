@@ -19,7 +19,6 @@ func executeCmd(args ...string) (string, error) {
 	cmd.SetOut(&buf)
 	cmd.SetErr(&buf)
 	cmd.SetErr(&buf)
-	cmd.SetIn(bytes.NewBufferString("y\n"))
 	cmd.SetArgs(args)
 	err := cmd.Execute()
 	return buf.String(), err
