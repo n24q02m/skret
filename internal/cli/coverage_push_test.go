@@ -166,6 +166,7 @@ environments:
 
 	t.Setenv("SKRET_EXPERIMENTAL", "1")
 	cmd := newRollbackCmd(&GlobalOpts{})
+	cmd.SetIn(bytes.NewBufferString("y\n"))
 	cmd.SetArgs([]string{"KEY", "not-a-number"})
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
@@ -195,6 +196,8 @@ environments:
 
 	t.Setenv("SKRET_EXPERIMENTAL", "1")
 	cmd := newRollbackCmd(&GlobalOpts{})
+	// mock stdin
+	cmd.SetIn(bytes.NewBufferString("y\n"))
 	cmd.SetArgs([]string{"KEY", "1"})
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)

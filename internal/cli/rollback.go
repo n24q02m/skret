@@ -1,16 +1,23 @@
 package cli
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/n24q02m/skret/pkg/skret"
 	"github.com/spf13/cobra"
 )
 
 func newRollbackCmd(opts *GlobalOpts) *cobra.Command {
+	var (
+		confirm bool
+		force   bool
+	)
+
 	cmd := &cobra.Command{
 		Use:   "rollback <KEY> <VERSION>",
 		Short: "Restore a secret to a specific previous version",
@@ -30,6 +37,16 @@ func newRollbackCmd(opts *GlobalOpts) *cobra.Command {
 			key := args[0]
 			versionStr := args[1]
 
+			if !confirm && !force {
+				cmd.PrintErrf("Rollback secret %q to version %s? [y/N] ", key, versionStr)
+				reader := bufio.NewReader(cmd.InOrStdin())
+				answer, _ := reader.ReadString('\n')
+				if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(answer)), "y") {
+					cmd.PrintErrln("Cancelled.")
+					return nil
+				}
+			}
+
 			version, err := strconv.ParseInt(versionStr, 10, 64)
 			if err != nil {
 				return skret.NewError(skret.ExitProviderError, "invalid version number", err)
@@ -44,6 +61,9 @@ func newRollbackCmd(opts *GlobalOpts) *cobra.Command {
 			return nil
 		},
 	}
+
+	cmd.Flags().BoolVar(&confirm, "confirm", false, "skip confirmation prompt")
+	cmd.Flags().BoolVarP(&force, "force", "f", false, "skip confirmation prompt (alias for --confirm)")
 
 	return cmd
 }
