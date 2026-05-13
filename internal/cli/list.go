@@ -105,7 +105,9 @@ func printSecrets(cmd *cobra.Command, secrets []*provider.Secret, format string,
 		for _, s := range secrets {
 			fmt.Fprintf(w, "%s\t%d\n", s.Key, s.Version)
 		}
-		w.Flush()
+		if err := w.Flush(); err != nil {
+			return fmt.Errorf("flush tabwriter: %w", err)
+		}
 	}
 	return nil
 }
