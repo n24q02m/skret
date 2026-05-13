@@ -124,7 +124,15 @@ func TestDeleteCmd_Cancel(t *testing.T) {
 	w.Write([]byte("n\n"))
 	w.Close()
 
-	out, err := executeCmd("delete", "API_KEY")
+	var buf bytes.Buffer
+	cmd := cli.NewRootCmd()
+	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
+	cmd.SetIn(r)
+	cmd.SetArgs([]string{"delete", "API_KEY"})
+	err := cmd.Execute()
+	out := buf.String()
+
 	require.NoError(t, err)
 	assert.Contains(t, out, "Cancelled.")
 }
