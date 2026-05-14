@@ -25,3 +25,4 @@
 ## 2026-05-14 - Optimizing String Matching in Loops
 **Learning:** Calling `strings.ToLower()` inside a loop on a dynamic string and against a set of static strings results in significant redundant allocations (O(N) vs O(1)).
 **Action:** When performing case-insensitive string matching within a loop, hoist the `strings.ToLower` call for the dynamic string outside the loop and pre-lowercase the static list of strings.
+Learning: The semantic PR action checks the PR title for 'fix:' or 'feat:' and fails if uppercase characters follow the colon. We need to submit with a lowercase title
