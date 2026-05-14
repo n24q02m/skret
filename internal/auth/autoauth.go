@@ -14,18 +14,19 @@ func IsAuthError(err error) bool {
 	if err == nil {
 		return false
 	}
-	msg := err.Error()
+	// Fast path: lowercasing the message once outside the loop to avoid O(N) allocations
+	msgLower := strings.ToLower(err.Error())
 	for _, substr := range []string{
-		"UnauthorizedException",
-		"InvalidGrantException",
-		"ExpiredTokenException",
+		"unauthorizedexception",
+		"invalidgrantexception",
+		"expiredtokenexception",
 		"401",
 		"403",
 		"credentials missing",
 		"could not resolve credentials",
 		"credential not found",
 	} {
-		if strings.Contains(strings.ToLower(msg), strings.ToLower(substr)) {
+		if strings.Contains(msgLower, substr) {
 			return true
 		}
 	}
