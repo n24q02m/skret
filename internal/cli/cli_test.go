@@ -245,7 +245,7 @@ func TestListCmd_EmptyStateJSON(t *testing.T) {
 	err := cmd.Execute()
 	require.NoError(t, err)
 	assert.Equal(t, "[]\n", stdoutBuf.String())
-	assert.Empty(t, stderrBuf.String())
+	assert.Contains(t, stderrBuf.String(), "No secrets found. Use 'skret set' to add a secret.")
 }
 
 // --- Env tests ---
@@ -615,4 +615,26 @@ func TestImportCmd_ConflictFail(t *testing.T) {
 	err := cmd.Execute()
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "conflict on \"API_KEY\"")
+}
+
+func TestEnvCmd_EmptyState(t *testing.T) {
+	dir := setupTestRepo(t)
+	origDir, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	defer os.Chdir(origDir)
+
+	// Clean out existing secrets for the test repo
+	os.WriteFile(filepath.Join(dir, ".secrets.dev.yaml"), []byte("version: \"1\"\nsecrets: {}\n"), 0o600)
+
+	var stdoutBuf bytes.Buffer
+	var stderrBuf bytes.Buffer
+	cmd := cli.NewRootCmd()
+	cmd.SetOut(&stdoutBuf)
+	cmd.SetErr(&stderrBuf)
+	cmd.SetArgs([]string{"env", "--format=json"})
+
+	err := cmd.Execute()
+	require.NoError(t, err)
+	assert.Equal(t, "{}\n", stdoutBuf.String())
+	assert.Contains(t, stderrBuf.String(), "No secrets found. Use 'skret set' to add a secret.")
 }
