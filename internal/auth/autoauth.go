@@ -8,24 +8,27 @@ import (
 	"strings"
 )
 
+// authErrorSubstrings contains lowercased substrings used to match auth errors.
+var authErrorSubstrings = []string{
+	"unauthorizedexception",
+	"invalidgrantexception",
+	"expiredtokenexception",
+	"401",
+	"403",
+	"credentials missing",
+	"could not resolve credentials",
+	"credential not found",
+}
+
 // IsAuthError classifies whether an error is auth-related and should trigger
 // the auto-relogin prompt.
 func IsAuthError(err error) bool {
 	if err == nil {
 		return false
 	}
-	msg := err.Error()
-	for _, substr := range []string{
-		"UnauthorizedException",
-		"InvalidGrantException",
-		"ExpiredTokenException",
-		"401",
-		"403",
-		"credentials missing",
-		"could not resolve credentials",
-		"credential not found",
-	} {
-		if strings.Contains(strings.ToLower(msg), strings.ToLower(substr)) {
+	msgLower := strings.ToLower(err.Error())
+	for _, substr := range authErrorSubstrings {
+		if strings.Contains(msgLower, substr) {
 			return true
 		}
 	}

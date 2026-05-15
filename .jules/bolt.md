@@ -21,3 +21,6 @@
 ## 2026-05-07 - Refactor Complex Conditional Logic into Named Helper Functions
 **Learning:** Nested conditional checks within long loops (like the `auth status` iteration) reduce readability and can lead to logic errors where state is unintentionally overwritten (e.g., "expired" being masked by "invalid"). Extracting this logic into a small, focused helper function clarifies the priority of states and makes the core loop easier to maintain.
 **Action:** Identify multi-state conditional blocks within loops and extract them into named helper functions (e.g., `getCredentialStatus`). This improves testability of the status logic itself and ensures a clean separation of concerns between data retrieval and display formatting.
+## 2025-02-27 - [Optimize IsAuthError String Matching]
+**Learning:** Redundant `strings.ToLower` inside string matching loops against static arrays causes significant O(N) allocation and CPU overhead in the tight loop of checking error strings for auth errors.
+**Action:** Always pre-lowercase static arrays at initialization (package level variables) and hoist `strings.ToLower` outside the loop to execute only once against the dynamic string being compared.
