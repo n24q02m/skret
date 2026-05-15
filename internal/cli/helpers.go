@@ -12,6 +12,10 @@ import (
 	"github.com/n24q02m/skret/pkg/skret"
 )
 
+// configNotFoundMsg is the actionable error shown when a command needs a config
+// but neither a .skret.yaml nor --path is available.
+const configNotFoundMsg = "no .skret.yaml found here or in any parent up to the git root, and no --path given. Run 'skret init' to create one, or pass --path=/namespace/env (e.g. --path=/myapp/prod)"
+
 // defaultRegistry returns the global provider registry with all built-in providers.
 func defaultRegistry() *provider.Registry {
 	reg := provider.NewRegistry()
@@ -20,21 +24,12 @@ func defaultRegistry() *provider.Registry {
 	return reg
 }
 
-// loadProvider discovers config, resolves it, and creates the appropriate provider.
+// loadProvider resolves config (from .skret.yaml, or synthesized from --path)
+// and creates the appropriate provider.
 func loadProvider(opts *GlobalOpts) (*config.ResolvedConfig, provider.SecretProvider, error) {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return nil, nil, skret.NewError(skret.ExitConfigError, "get working directory failed", err)
-	}
-
-	cfgPath, err := config.Discover(cwd)
-	if err != nil {
-		return nil, nil, skret.NewError(skret.ExitConfigError, "find config failed", err)
-	}
-
-	cfg, err := config.Load(cfgPath)
-	if err != nil {
-		return nil, nil, skret.NewError(skret.ExitConfigError, "load config failed", err)
 	}
 
 	resolveOpts := config.ResolveOpts{
@@ -45,6 +40,26 @@ func loadProvider(opts *GlobalOpts) (*config.ResolvedConfig, provider.SecretProv
 		Profile:  opts.Profile,
 		File:     opts.File,
 	}
+
+	// Prefer a discovered .skret.yaml so its provider/region/profile are kept;
+	// --path then overrides the path within it (config.Resolve precedence).
+	// Only synthesize an ephemeral config when no .skret.yaml exists and --path
+	// was supplied — that is what makes ad-hoc `skret ... --path=/ns/env` work.
+	var cfg *config.Config
+	cfgPath, derr := config.Discover(cwd)
+	switch {
+	case derr == nil:
+		loaded, lerr := config.Load(cfgPath)
+		if lerr != nil {
+			return nil, nil, skret.NewError(skret.ExitConfigError, "load config failed", lerr)
+		}
+		cfg = loaded
+	case opts.Path != "":
+		cfg = config.EphemeralConfig(resolveOpts)
+	default:
+		return nil, nil, skret.NewError(skret.ExitConfigError, configNotFoundMsg, derr)
+	}
+
 	resolved, err := config.Resolve(cfg, resolveOpts)
 	if err != nil {
 		return nil, nil, skret.NewError(skret.ExitConfigError, "resolve config failed", err)

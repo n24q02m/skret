@@ -48,7 +48,7 @@ func Resolve(cfg *Config, opts ResolveOpts) (*ResolvedConfig, error) {
 	return &ResolvedConfig{
 		EnvName:  envName,
 		Provider: firstNonEmpty(opts.Provider, os.Getenv("SKRET_PROVIDER"), env.Provider),
-		Path:     firstNonEmpty(opts.Path, os.Getenv("SKRET_PATH"), env.Path),
+		Path:     NormalizeSSMPath(firstNonEmpty(opts.Path, os.Getenv("SKRET_PATH"), env.Path)),
 		Region:   firstNonEmpty(opts.Region, os.Getenv("SKRET_REGION"), os.Getenv("AWS_REGION"), env.Region),
 		Profile:  firstNonEmpty(opts.Profile, os.Getenv("SKRET_PROFILE"), os.Getenv("AWS_PROFILE"), env.Profile),
 		KMSKeyID: env.KMSKeyID,
