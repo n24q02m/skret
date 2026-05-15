@@ -25,7 +25,7 @@ func NewRootCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "skret",
 		Short:         "Cloud-provider secret manager CLI wrapper",
-		Long:          "skret wraps cloud-provider secret managers (AWS SSM, GCP, Azure, OCI, Cloudflare)\nwith Doppler/Infisical-grade developer experience.",
+		Long:          "skret wraps cloud-provider secret managers (currently AWS SSM Parameter Store\nand a local file provider) with Doppler/Infisical-grade developer experience.",
 		Version:       version.String(),
 		SilenceUsage:  true,
 		SilenceErrors: true,
