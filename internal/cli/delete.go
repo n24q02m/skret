@@ -21,13 +21,16 @@ func newDeleteCmd(opts *GlobalOpts) *cobra.Command {
 		Short: "Delete a secret",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			_, p, err := loadProvider(opts)
+			resolved, p, err := loadProvider(opts)
 			if err != nil {
 				return err
 			}
 			defer p.Close()
 
-			key := args[0]
+			key, mangled := resolveKeyArg(resolved.Path, args[0])
+			if mangled {
+				cmd.PrintErrf("warning: key looked shell-mangled; using %q (omit the leading slash, or set MSYS_NO_PATHCONV=1)\n", key)
+			}
 
 			if !confirm && !force {
 				cmd.PrintErrf("Delete secret %q? [y/N] ", key)

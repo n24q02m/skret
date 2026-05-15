@@ -62,3 +62,10 @@ func loadProvider(opts *GlobalOpts) (*config.ResolvedConfig, provider.SecretProv
 // KeyToEnvName is the single source of truth for converting secret keys to env var names.
 // Delegates to exec.KeyToEnvName to avoid duplication.
 var KeyToEnvName = skexec.KeyToEnvName
+
+// resolveKeyArg qualifies a user-supplied key with the resolved path prefix so
+// get/set/delete/history/rollback accept the same key strings list/env display.
+// Returns the resolved key and whether a shell-mangled prefix was recovered.
+func resolveKeyArg(resolvedPath, raw string) (string, bool) {
+	return config.ResolveKey(resolvedPath, raw)
+}

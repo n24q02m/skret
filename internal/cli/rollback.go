@@ -20,14 +20,17 @@ func newRollbackCmd(opts *GlobalOpts) *cobra.Command {
 				return skret.NewError(skret.ExitValidationError, "rollback is experimental; set SKRET_EXPERIMENTAL=1 to enable", nil)
 			}
 
-			_, p, err := loadProvider(opts)
+			resolved, p, err := loadProvider(opts)
 			if err != nil {
 				return err
 			}
 			defer p.Close()
 
 			ctx := context.Background()
-			key := args[0]
+			key, mangled := resolveKeyArg(resolved.Path, args[0])
+			if mangled {
+				cmd.PrintErrf("warning: key looked shell-mangled; using %q (omit the leading slash, or set MSYS_NO_PATHCONV=1)\n", key)
+			}
 			versionStr := args[1]
 
 			version, err := strconv.ParseInt(versionStr, 10, 64)
