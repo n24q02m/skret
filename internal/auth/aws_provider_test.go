@@ -82,12 +82,25 @@ func TestAWSProvider_LoginSSO_WithMock(t *testing.T) {
 	p.ssoFlow.Opener = func(context.Context, string) error { return nil }
 
 	cred, err := p.Login(context.Background(), "sso", map[string]string{
-		"start_url": "https://test.awsapps.com/start",
-		"region":    "us-east-1",
+		"start_url":  "https://test.awsapps.com/start",
+		"region":     "us-east-1",
+		"account_id": "111122223333",
+		"role_name":  "SkretRole",
 	})
 	require.NoError(t, err)
 	assert.Equal(t, "sso", cred.Method)
 	assert.Equal(t, "sso-access-token", cred.Token)
+}
+
+func TestAWSProvider_Login_DefaultMethodIsSSO(t *testing.T) {
+	p := NewAWSProvider()
+	p.ssoFlow = NewAWSSSOFlow(&fakeOIDC{})
+	p.ssoFlow.Opener = func(context.Context, string) error { return nil }
+
+	// Empty method must default to sso, not ErrAuthMethodUnsupported.
+	cred, err := p.Login(context.Background(), "", ssoOpts())
+	require.NoError(t, err)
+	assert.Equal(t, "sso", cred.Method)
 }
 
 func TestAWSProvider_LoginAssumeRole_LoadConfigFail(t *testing.T) {

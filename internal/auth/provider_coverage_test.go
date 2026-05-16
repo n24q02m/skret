@@ -179,8 +179,10 @@ func TestAWSProvider_Login_SSODispatch(t *testing.T) {
 	p.ssoFlow = NewAWSSSOFlow(&fakeOIDC{})
 	p.ssoFlow.Opener = func(context.Context, string) error { return nil }
 	cred, err := p.Login(context.Background(), "sso", map[string]string{
-		"start_url": "https://test.awsapps.com/start",
-		"region":    "us-east-1",
+		"start_url":  "https://test.awsapps.com/start",
+		"region":     "us-east-1",
+		"account_id": "111122223333",
+		"role_name":  "SkretRole",
 	})
 	require.NoError(t, err)
 	assert.Equal(t, "sso", cred.Method)

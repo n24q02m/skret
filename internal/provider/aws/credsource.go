@@ -28,19 +28,35 @@ var authStoreLoad = func(provider string) (*auth.Credential, error) {
 // supported via --profile / .skret.yaml); sso is Phase 2.
 func resolveStoredCredentials() (aws.CredentialsProvider, bool) {
 	cred, err := authStoreLoad("aws")
-	if err != nil || cred == nil || cred.IsExpired() {
+	if err != nil || cred == nil {
 		return nil, false
 	}
-	if cred.Method != "access-key" {
+	switch cred.Method {
+	case "access-key":
+		// Static keys: an expiry (if any) means the key is dead.
+		if cred.IsExpired() {
+			return nil, false
+		}
+		id := cred.Metadata["access_key_id"]
+		if id == "" || cred.Token == "" {
+			return nil, false
+		}
+		return aws.NewCredentialsCache(
+			credentials.NewStaticCredentialsProvider(id, cred.Token, cred.Metadata["session_token"]),
+		), true
+	case "sso":
+		// The SSO access token is short-lived by design; cred.IsExpired() must
+		// NOT reject it. Validity rests on the refresh token + registration,
+		// re-checked inside ssoProvider on every Retrieve.
+		m := cred.Metadata
+		if m["refresh_token"] == "" || m["account_id"] == "" ||
+			m["role_name"] == "" || m["client_id"] == "" {
+			return nil, false
+		}
+		return aws.NewCredentialsCache(&ssoProvider{cred: cred}), true
+	default:
 		return nil, false
 	}
-	id := cred.Metadata["access_key_id"]
-	if id == "" || cred.Token == "" {
-		return nil, false
-	}
-	return aws.NewCredentialsCache(
-		credentials.NewStaticCredentialsProvider(id, cred.Token, cred.Metadata["session_token"]),
-	), true
 }
 
 // Probe verifies AWS reachability using the SAME credential resolution skret

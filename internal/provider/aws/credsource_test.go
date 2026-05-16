@@ -6,8 +6,46 @@ import (
 	"testing"
 	"time"
 
+	awslib "github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/ssooidc"
 	"github.com/n24q02m/skret/internal/auth"
 )
+
+func TestResolveStoredCredentials_SSO(t *testing.T) {
+	orig := authStoreLoad
+	defer func() { authStoreLoad = orig }()
+
+	// SSO access token expired BY DESIGN (short-lived); validity rests on the
+	// refresh token. Must still resolve (not rejected by IsExpired guard).
+	authStoreLoad = func(string) (*auth.Credential, error) {
+		return ssoCred(time.Now().Add(-time.Hour)), nil
+	}
+	ref := &fakeRefresher{out: &ssooidc.CreateTokenOutput{
+		AccessToken: awslib.String("nt"), ExpiresIn: 3600,
+	}}
+	role := &fakeRole{out: roleOut()}
+	var saved []*auth.Credential
+	defer withFakes(t, ref, role, &saved)()
+
+	cp, ok := resolveStoredCredentials()
+	if !ok || cp == nil {
+		t.Fatal("sso cred with expired access token must still resolve via ssoProvider")
+	}
+	got, err := cp.Retrieve(context.Background())
+	if err != nil || got.AccessKeyID != "ASIAEXAMPLE" {
+		t.Fatalf("retrieve via sso provider failed: err=%v id=%q", err, got.AccessKeyID)
+	}
+
+	// Incomplete sso metadata -> fall back to default chain.
+	authStoreLoad = func(string) (*auth.Credential, error) {
+		c := ssoCred(time.Now().Add(-time.Hour))
+		delete(c.Metadata, "refresh_token")
+		return c, nil
+	}
+	if _, ok := resolveStoredCredentials(); ok {
+		t.Fatal("sso without refresh_token must not resolve")
+	}
+}
 
 func TestResolveStoredCredentials(t *testing.T) {
 	orig := authStoreLoad

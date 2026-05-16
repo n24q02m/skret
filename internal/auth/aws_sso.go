@@ -39,10 +39,16 @@ func (f *AWSSSOFlow) Login(ctx context.Context, opts map[string]string) (*Creden
 	if startURL == "" {
 		return nil, fmt.Errorf("aws sso: start_url required")
 	}
+	accountID := opts["account_id"]
+	roleName := opts["role_name"]
+	if accountID == "" || roleName == "" {
+		return nil, fmt.Errorf("aws sso: account_id and role_name required (pass --opt account_id=... --opt role_name=...)")
+	}
 
 	reg, err := f.client.RegisterClient(ctx, &ssooidc.RegisterClientInput{
 		ClientName: aws.String("skret-cli"),
 		ClientType: aws.String("public"),
+		Scopes:     []string{"sso:account:access"},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("aws sso: register client: %w", err)
@@ -80,8 +86,14 @@ func (f *AWSSSOFlow) Login(ctx context.Context, opts map[string]string) (*Creden
 				Token:     aws.ToString(tok.AccessToken),
 				ExpiresAt: time.Now().Add(time.Duration(tok.ExpiresIn) * time.Second),
 				Metadata: map[string]string{
-					"start_url": startURL,
-					"region":    opts["region"],
+					"start_url":               startURL,
+					"region":                  opts["region"],
+					"refresh_token":           aws.ToString(tok.RefreshToken),
+					"client_id":               aws.ToString(reg.ClientId),
+					"client_secret":           aws.ToString(reg.ClientSecret),
+					"registration_expires_at": time.Unix(reg.ClientSecretExpiresAt, 0).UTC().Format(time.RFC3339),
+					"account_id":              accountID,
+					"role_name":               roleName,
 				},
 			}, nil
 		}

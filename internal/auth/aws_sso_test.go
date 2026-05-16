@@ -21,8 +21,9 @@ type fakeOIDC struct {
 func (f *fakeOIDC) RegisterClient(_ context.Context, _ *ssooidc.RegisterClientInput, _ ...func(*ssooidc.Options)) (*ssooidc.RegisterClientOutput, error) {
 	f.registered = true
 	return &ssooidc.RegisterClientOutput{
-		ClientId:     aws.String("client-id"),
-		ClientSecret: aws.String("client-secret"),
+		ClientId:              aws.String("client-id"),
+		ClientSecret:          aws.String("client-secret"),
+		ClientSecretExpiresAt: 1893456000, // 2030-01-01
 	}, nil
 }
 
@@ -43,19 +44,27 @@ func (f *fakeOIDC) CreateToken(_ context.Context, _ *ssooidc.CreateTokenInput, _
 		return nil, &ssooidctypes.AuthorizationPendingException{}
 	}
 	return &ssooidc.CreateTokenOutput{
-		AccessToken: aws.String("sso-access-token"),
-		ExpiresIn:   3600,
+		AccessToken:  aws.String("sso-access-token"),
+		ExpiresIn:    3600,
+		RefreshToken: aws.String("sso-refresh-token"),
 	}, nil
+}
+
+// ssoOpts returns valid login opts including the account/role now required.
+func ssoOpts() map[string]string {
+	return map[string]string{
+		"start_url":  "https://example.awsapps.com/start",
+		"region":     "ap-southeast-1",
+		"account_id": "111122223333",
+		"role_name":  "SkretRole",
+	}
 }
 
 func TestAWSSSOFlow_Success(t *testing.T) {
 	fake := &fakeOIDC{}
 	flow := NewAWSSSOFlow(fake)
 	flow.Opener = func(context.Context, string) error { return nil }
-	cred, err := flow.Login(context.Background(), map[string]string{
-		"start_url": "https://example.awsapps.com/start",
-		"region":    "ap-southeast-1",
-	})
+	cred, err := flow.Login(context.Background(), ssoOpts())
 	require.NoError(t, err)
 	assert.Equal(t, "sso-access-token", cred.Token)
 	assert.Equal(t, "sso", cred.Method)
@@ -64,6 +73,23 @@ func TestAWSSSOFlow_Success(t *testing.T) {
 	assert.GreaterOrEqual(t, fake.pollCalls, 2)
 	assert.Equal(t, "https://example.awsapps.com/start", cred.Metadata["start_url"])
 	assert.Equal(t, "ap-southeast-1", cred.Metadata["region"])
+	assert.Equal(t, "sso-refresh-token", cred.Metadata["refresh_token"])
+	assert.Equal(t, "client-id", cred.Metadata["client_id"])
+	assert.Equal(t, "client-secret", cred.Metadata["client_secret"])
+	assert.Equal(t, "111122223333", cred.Metadata["account_id"])
+	assert.Equal(t, "SkretRole", cred.Metadata["role_name"])
+	assert.NotEmpty(t, cred.Metadata["registration_expires_at"])
+}
+
+func TestAWSSSOFlow_MissingAccountRole(t *testing.T) {
+	flow := NewAWSSSOFlow(&fakeOIDC{})
+	flow.Opener = func(context.Context, string) error { return nil }
+	_, err := flow.Login(context.Background(), map[string]string{
+		"start_url": "https://example.awsapps.com/start",
+		"region":    "ap-southeast-1",
+	})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "account_id and role_name required")
 }
 
 func TestAWSSSOFlow_MissingStartURL(t *testing.T) {
@@ -82,9 +108,7 @@ func TestAWSSSOFlow_ContextCancelled(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 
-	_, err := flow.Login(ctx, map[string]string{
-		"start_url": "https://example.awsapps.com/start",
-	})
+	_, err := flow.Login(ctx, ssoOpts())
 	assert.Error(t, err)
 }
 
@@ -105,9 +129,7 @@ func (f *fakeOIDCRegisterFail) CreateToken(_ context.Context, _ *ssooidc.CreateT
 
 func TestAWSSSOFlow_RegisterFails(t *testing.T) {
 	flow := NewAWSSSOFlow(&fakeOIDCRegisterFail{})
-	_, err := flow.Login(context.Background(), map[string]string{
-		"start_url": "https://example.awsapps.com/start",
-	})
+	_, err := flow.Login(context.Background(), ssoOpts())
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "register client")
 }
@@ -132,9 +154,7 @@ func (f *fakeOIDCDeviceFail) CreateToken(_ context.Context, _ *ssooidc.CreateTok
 
 func TestAWSSSOFlow_DeviceAuthFails(t *testing.T) {
 	flow := NewAWSSSOFlow(&fakeOIDCDeviceFail{})
-	_, err := flow.Login(context.Background(), map[string]string{
-		"start_url": "https://example.awsapps.com/start",
-	})
+	_, err := flow.Login(context.Background(), ssoOpts())
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "start device auth")
 }
