@@ -34,6 +34,11 @@ func (p *AWSProvider) Methods() []Method {
 }
 
 func (p *AWSProvider) Login(ctx context.Context, method string, opts map[string]string) (*Credential, error) {
+	if method == "" {
+		// Default to sso: the 90-day silent-refresh path is the recommended
+		// "authenticate once" method (spec §2.3).
+		method = "sso"
+	}
 	switch method {
 	case "sso":
 		return p.loginSSO(ctx, opts)

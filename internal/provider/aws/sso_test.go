@@ -114,6 +114,34 @@ func TestSSOProvider_ExpiredToken_RefreshAndPersist(t *testing.T) {
 	}
 }
 
+func TestSSOProvider_RegionFallback(t *testing.T) {
+	p := &ssoProvider{cred: &auth.Credential{Method: "sso", Metadata: map[string]string{}}}
+	if got := p.region(); got != "us-east-1" {
+		t.Fatalf("region fallback = %q, want us-east-1", got)
+	}
+	p.cred.Metadata["region"] = "eu-west-1"
+	if got := p.region(); got != "eu-west-1" {
+		t.Fatalf("region = %q, want eu-west-1", got)
+	}
+}
+
+func TestSSODefaultFactoriesAndStoreSave(t *testing.T) {
+	// Default factories build real clients without credentials (no network
+	// call until used) — exercises the default closures.
+	if r, err := newSSORefresher("us-east-1"); err != nil || r == nil {
+		t.Fatalf("newSSORefresher: r=%v err=%v", r, err)
+	}
+	if rf, err := newSSORoleFetcher("us-east-1"); err != nil || rf == nil {
+		t.Fatalf("newSSORoleFetcher: rf=%v err=%v", rf, err)
+	}
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	t.Setenv("USERPROFILE", dir)
+	if err := ssoStoreSave(&auth.Credential{Provider: "aws", Method: "sso", Token: "t"}); err != nil {
+		t.Fatalf("ssoStoreSave default: %v", err)
+	}
+}
+
 func TestSSOProvider_RefreshError(t *testing.T) {
 	ref := &fakeRefresher{err: errors.New("InvalidGrantException: refresh token expired")}
 	role := &fakeRole{out: roleOut()}
@@ -127,5 +155,18 @@ func TestSSOProvider_RefreshError(t *testing.T) {
 	}
 	if role.called {
 		t.Fatal("role fetcher must NOT be called after refresh failure")
+	}
+}
+
+func TestSSOProvider_GetRoleError(t *testing.T) {
+	ref := &fakeRefresher{}
+	role := &fakeRole{err: errors.New("ForbiddenException: no access to role")}
+	var saved []*auth.Credential
+	defer withFakes(t, ref, role, &saved)()
+
+	p := &ssoProvider{cred: ssoCred(time.Now().Add(time.Hour))}
+	_, err := p.Retrieve(context.Background())
+	if err == nil {
+		t.Fatal("expected get-role error")
 	}
 }

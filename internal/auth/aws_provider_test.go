@@ -92,6 +92,17 @@ func TestAWSProvider_LoginSSO_WithMock(t *testing.T) {
 	assert.Equal(t, "sso-access-token", cred.Token)
 }
 
+func TestAWSProvider_Login_DefaultMethodIsSSO(t *testing.T) {
+	p := NewAWSProvider()
+	p.ssoFlow = NewAWSSSOFlow(&fakeOIDC{})
+	p.ssoFlow.Opener = func(context.Context, string) error { return nil }
+
+	// Empty method must default to sso, not ErrAuthMethodUnsupported.
+	cred, err := p.Login(context.Background(), "", ssoOpts())
+	require.NoError(t, err)
+	assert.Equal(t, "sso", cred.Method)
+}
+
 func TestAWSProvider_LoginAssumeRole_LoadConfigFail(t *testing.T) {
 	orig := loadAWSConfig
 	defer func() { loadAWSConfig = orig }()
