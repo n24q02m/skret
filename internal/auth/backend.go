@@ -81,19 +81,3 @@ func (b *fileBackend) delete(provider string) error {
 	delete(f.Providers, provider)
 	return b.write(f)
 }
-
-// --- Temporary stubs (replaced for real in Phase 3 Tasks 2-3) ---
-
-const keyringService = "skret"
-
-type keyringBackend struct{ service string }
-
-func (b *keyringBackend) read() (*storeFile, error) {
-	return &storeFile{Version: "1", Providers: map[string]*Credential{}}, nil
-}
-func (b *keyringBackend) write(*storeFile) error { return nil }
-func (b *keyringBackend) delete(string) error    { return nil }
-
-var keyringAvailable = func() bool { return false }
-
-func migrateFileToKeyring(_ *fileBackend, _ *keyringBackend) {}

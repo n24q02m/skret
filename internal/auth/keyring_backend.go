@@ -1,0 +1,106 @@
+package auth
+
+import (
+	"fmt"
+	"os"
+	"strings"
+
+	"github.com/zalando/go-keyring"
+	"gopkg.in/yaml.v3"
+)
+
+const (
+	keyringService   = "skret"
+	keyringIndexUser = "__index__"
+)
+
+// keyringBackend stores one keyring entry per provider (value = YAML of that
+// Credential) plus an index entry listing provider names. Small per-entry
+// blobs keep within OS limits (e.g. Windows Credential Manager).
+type keyringBackend struct{ service string }
+
+func (b *keyringBackend) read() (*storeFile, error) {
+	f := &storeFile{Version: "1", Providers: map[string]*Credential{}}
+	idx, err := keyring.Get(b.service, keyringIndexUser)
+	if err != nil {
+		if err == keyring.ErrNotFound {
+			return f, nil
+		}
+		return nil, fmt.Errorf("auth keyring: read index: %w", err)
+	}
+	for _, name := range strings.Split(idx, ",") {
+		if name == "" {
+			continue
+		}
+		raw, err := keyring.Get(b.service, "cred:"+name)
+		if err != nil {
+			if err == keyring.ErrNotFound {
+				continue
+			}
+			return nil, fmt.Errorf("auth keyring: read %q: %w", name, err)
+		}
+		var c Credential
+		if err := yaml.Unmarshal([]byte(raw), &c); err != nil {
+			return nil, fmt.Errorf("auth keyring: parse %q: %w", name, err)
+		}
+		c.Provider = name
+		f.Providers[name] = &c
+	}
+	return f, nil
+}
+
+func (b *keyringBackend) write(f *storeFile) error {
+	names := make([]string, 0, len(f.Providers))
+	for name, c := range f.Providers {
+		raw, err := yaml.Marshal(c)
+		if err != nil {
+			return fmt.Errorf("auth keyring: marshal %q: %w", name, err)
+		}
+		if err := keyring.Set(b.service, "cred:"+name, string(raw)); err != nil {
+			return fmt.Errorf("auth keyring: set %q: %w", name, err)
+		}
+		names = append(names, name)
+	}
+	if err := keyring.Set(b.service, keyringIndexUser, strings.Join(names, ",")); err != nil {
+		return fmt.Errorf("auth keyring: set index: %w", err)
+	}
+	return nil
+}
+
+func (b *keyringBackend) delete(provider string) error {
+	f, err := b.read()
+	if err != nil {
+		return err
+	}
+	delete(f.Providers, provider)
+	_ = keyring.Delete(b.service, "cred:"+provider)
+	return b.write(f)
+}
+
+// keyringAvailable probes the OS keyring with a throwaway entry. Overridable
+// in tests. Returns false on headless Linux/CI without a Secret Service.
+var keyringAvailable = func() bool {
+	const probe = "__skret_probe__"
+	if err := keyring.Set(keyringService, probe, "1"); err != nil {
+		return false
+	}
+	_ = keyring.Delete(keyringService, probe)
+	return true
+}
+
+// migrateFileToKeyring moves a legacy ~/.skret/credentials.yaml into the
+// keyring exactly once, then renames the file to a .migrated backup. Best
+// effort: any error leaves the file untouched (NewStore still works).
+func migrateFileToKeyring(fb *fileBackend, kb *keyringBackend) {
+	if _, err := os.Stat(fb.path); err != nil {
+		return // nothing to migrate
+	}
+	f, err := fb.read()
+	if err != nil || len(f.Providers) == 0 {
+		return
+	}
+	if err := kb.write(f); err != nil {
+		return
+	}
+	_ = os.Rename(fb.path, fb.path+".migrated")
+}
