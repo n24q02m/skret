@@ -133,6 +133,7 @@ func TestResolve_ExpiredCredential(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
+	t.Setenv("SKRET_KEYRING", "file")
 
 	s := NewStore()
 	require.NoError(t, s.Save(&Credential{
@@ -150,6 +151,7 @@ func TestResolve_LoadError(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
+	t.Setenv("SKRET_KEYRING", "file")
 
 	require.NoError(t, os.MkdirAll(filepath.Join(home, ".skret"), 0o700))
 	require.NoError(t, os.WriteFile(filepath.Join(home, ".skret", "credentials.yaml"), []byte("{{{bad"), 0o600))

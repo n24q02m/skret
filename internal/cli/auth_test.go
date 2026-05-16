@@ -167,10 +167,11 @@ func TestAuthCmd_Help(t *testing.T) {
 	assert.Contains(t, buf.String(), "auth")
 }
 
-func TestNewStore_Default(t *testing.T) {
+func TestNewStore_FileBackendCreatesFile(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("HOME", dir)
 	t.Setenv("USERPROFILE", dir)
+	t.Setenv("SKRET_KEYRING", "file") // force file backend (keyring is opt-in)
 
 	s := auth.NewStore()
 	require.NoError(t, s.Save(&auth.Credential{Provider: "test", Token: "t"}))
