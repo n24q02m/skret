@@ -28,6 +28,30 @@ The credential is stored locally and never printed in logs, errors, or
 `auth status` output. A stored credential takes precedence over the default
 chain; `skret auth logout aws` reverts to the default chain.
 
+### IAM Identity Center SSO (90-day silent refresh, no static key)
+
+If your org uses IAM Identity Center, log in once via the browser device
+flow and skret keeps the session alive silently — refreshing the access
+token from the OIDC refresh token (no browser) for the whole SSO session
+(admin-configurable up to 90 days), then minting short-lived role
+credentials per call. No static key to rotate, no `aws` CLI.
+
+```bash
+skret auth login aws --method sso \
+  --opt start_url=https://<your-sso>.awsapps.com/start \
+  --opt region=<region> \
+  --opt account_id=<account-id> \
+  --opt role_name=<permission-set-role>
+
+skret auth status   # aws  valid (method: sso)
+skret list -e prod  # silent refresh; re-login only when the SSO session ends
+```
+
+`skret auth login aws` with no `--method` defaults to this SSO flow.
+Set the SSO session duration in the IAM Identity Center console
+(Settings → Authentication) up to 90 days. The refresh token and client
+registration are stored locally and never logged.
+
 ### Least-Privilege IAM User (recommended)
 
 Create a dedicated IAM user for the access-key method, scoped to only the
