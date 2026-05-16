@@ -45,6 +45,7 @@ func NewRootCmd() *cobra.Command {
 
 	// Register subcommands — pass opts explicitly
 	cmd.AddCommand(newInitCmd())
+	cmd.AddCommand(newSetupCmd())
 	cmd.AddCommand(newGetCmd(opts))
 	cmd.AddCommand(newListCmd(opts))
 	cmd.AddCommand(newEnvCmd(opts))
