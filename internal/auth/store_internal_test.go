@@ -14,7 +14,7 @@ import (
 
 func TestStore_Write_WithNewDir(t *testing.T) {
 	dir := t.TempDir()
-	s := &Store{path: filepath.Join(dir, "deep", "nested", "creds.yaml")}
+	s := NewStoreWithPath(filepath.Join(dir, "deep", "nested", "creds.yaml"))
 	err := s.Save(&Credential{Provider: "test", Token: "x"})
 	require.NoError(t, err)
 
@@ -24,7 +24,7 @@ func TestStore_Write_WithNewDir(t *testing.T) {
 
 func TestStore_Write_DirectCall(t *testing.T) {
 	dir := t.TempDir()
-	s := &Store{path: filepath.Join(dir, "creds.yaml")}
+	b := &fileBackend{path: filepath.Join(dir, "creds.yaml")}
 
 	f := &storeFile{
 		Version: "1",
@@ -33,9 +33,9 @@ func TestStore_Write_DirectCall(t *testing.T) {
 			"doppler": {Method: "oauth", Token: "dp-tok"},
 		},
 	}
-	require.NoError(t, s.write(f))
+	require.NoError(t, b.write(f))
 
-	loaded, err := s.read()
+	loaded, err := b.read()
 	require.NoError(t, err)
 	assert.Len(t, loaded.Providers, 2)
 	assert.Equal(t, "aws-tok", loaded.Providers["aws"].Token)
@@ -45,15 +45,15 @@ func TestStore_Write_RenameError(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "target")
 	require.NoError(t, os.Mkdir(target, 0o700))
-	s := &Store{path: target}
+	b := &fileBackend{path: target}
 	f := &storeFile{Version: "1", Providers: map[string]*Credential{}}
-	err := s.write(f)
+	err := b.write(f)
 	assert.Error(t, err)
 }
 
 func TestStore_Read_NonExistent(t *testing.T) {
-	s := &Store{path: "/nonexistent/path/that/fails"}
-	f, err := s.read()
+	b := &fileBackend{path: "/nonexistent/path/that/fails"}
+	f, err := b.read()
 	require.NoError(t, err)
 	assert.NotNil(t, f)
 	assert.Empty(t, f.Providers)
@@ -64,8 +64,8 @@ func TestStore_Read_ValidYAMLMissingVersion(t *testing.T) {
 	path := filepath.Join(dir, "creds.yaml")
 	require.NoError(t, os.WriteFile(path, []byte("providers:\n  aws:\n    token: tok"), 0o600))
 
-	s := &Store{path: path}
-	f, err := s.read()
+	b := &fileBackend{path: path}
+	f, err := b.read()
 	require.NoError(t, err)
 	assert.Equal(t, "1", f.Version)
 	assert.Equal(t, "tok", f.Providers["aws"].Token)
@@ -76,8 +76,8 @@ func TestStore_Read_ValidYAMLNilProviders(t *testing.T) {
 	path := filepath.Join(dir, "creds.yaml")
 	require.NoError(t, os.WriteFile(path, []byte("version: \"1\"\n"), 0o600))
 
-	s := &Store{path: path}
-	f, err := s.read()
+	b := &fileBackend{path: path}
+	f, err := b.read()
 	require.NoError(t, err)
 	assert.NotNil(t, f.Providers)
 	assert.Empty(t, f.Providers)
@@ -88,7 +88,7 @@ func TestStore_Save_ReadError(t *testing.T) {
 	path := filepath.Join(dir, "creds.yaml")
 	require.NoError(t, os.WriteFile(path, []byte("{{{bad yaml"), 0o600))
 
-	s := &Store{path: path}
+	s := NewStoreWithPath(path)
 	err := s.Save(&Credential{Provider: "test", Token: "x"})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "parse")
@@ -99,7 +99,7 @@ func TestStore_Delete_ReadError(t *testing.T) {
 	path := filepath.Join(dir, "creds.yaml")
 	require.NoError(t, os.WriteFile(path, []byte("{{{bad yaml"), 0o600))
 
-	s := &Store{path: path}
+	s := NewStoreWithPath(path)
 	err := s.Delete("test")
 	assert.Error(t, err)
 }
@@ -109,7 +109,7 @@ func TestStore_List_ReadError(t *testing.T) {
 	path := filepath.Join(dir, "creds.yaml")
 	require.NoError(t, os.WriteFile(path, []byte("{{{bad yaml"), 0o600))
 
-	s := &Store{path: path}
+	s := NewStoreWithPath(path)
 	_, err := s.List()
 	assert.Error(t, err)
 }
@@ -119,7 +119,7 @@ func TestStore_Load_ReadError(t *testing.T) {
 	path := filepath.Join(dir, "creds.yaml")
 	require.NoError(t, os.WriteFile(path, []byte("{{{bad yaml"), 0o600))
 
-	s := &Store{path: path}
+	s := NewStoreWithPath(path)
 	_, err := s.Load("test")
 	assert.Error(t, err)
 }
@@ -207,9 +207,11 @@ func TestIsAuthError_Comprehensive(t *testing.T) {
 }
 
 func TestNewStore_Fallback(t *testing.T) {
+	t.Setenv("SKRET_KEYRING", "file")
 	s := NewStore()
 	assert.NotNil(t, s)
-	assert.NotEmpty(t, s.path)
+	_, ok := s.b.(*fileBackend)
+	assert.True(t, ok, "SKRET_KEYRING=file must select fileBackend")
 }
 
 func TestCtxOut_Returns(t *testing.T) {
