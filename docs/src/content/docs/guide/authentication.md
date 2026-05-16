@@ -1,11 +1,75 @@
 ---
 title: Authentication
-description: "skret delegates all authentication to the underlying provider's SDK. It stores no credentials itself."
+description: "skret authenticates from its own credential store when you log in with it, and otherwise delegates to the provider SDK's default chain."
 ---
 
-skret delegates all authentication to the underlying provider's SDK. It stores no credentials itself.
+skret resolves AWS credentials in two layers:
 
-## AWS Credential Chain
+1. **skret-managed credential** -- if you ran `skret auth login aws`, skret uses
+   the credential it stored (`~/.skret/credentials.yaml`). This is what lets
+   skret authenticate on its own, with no `aws` CLI and no daily re-login.
+2. **AWS SDK default chain** -- if no skret credential is stored, skret falls
+   back to the standard chain below, so existing `aws login`, environment
+   variable, shared-profile, and CI OIDC setups keep working unchanged.
+
+## skret-Managed Credentials
+
+Authenticate once and let skret hold the credential:
+
+```bash
+skret auth login aws --method access-key
+# paste Access Key ID + Secret Access Key (session token optional)
+
+skret auth status   # aws  valid (method: access-key)  -- real STS probe
+skret list -e prod  # no aws login, no ~/.aws needed
+```
+
+The credential is stored locally and never printed in logs, errors, or
+`auth status` output. A stored credential takes precedence over the default
+chain; `skret auth logout aws` reverts to the default chain.
+
+### Least-Privilege IAM User (recommended)
+
+Create a dedicated IAM user for the access-key method, scoped to only the
+paths skret manages. Replace `<account-id>` and `<region>` / `<namespace>`:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "SkretManagedPaths",
+      "Effect": "Allow",
+      "Action": [
+        "ssm:GetParameter",
+        "ssm:GetParameters",
+        "ssm:GetParametersByPath",
+        "ssm:PutParameter",
+        "ssm:DeleteParameter",
+        "ssm:GetParameterHistory"
+      ],
+      "Resource": "arn:aws:ssm:<region>:<account-id>:parameter/<namespace>/*"
+    },
+    {
+      "Sid": "SkretKMS",
+      "Effect": "Allow",
+      "Action": ["kms:Decrypt", "kms:Encrypt", "kms:GenerateDataKey"],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": { "kms:ViaService": "ssm.<region>.amazonaws.com" }
+      }
+    }
+  ]
+}
+```
+
+Rotate the access key on a regular schedule (e.g. every 90 days):
+`skret auth login aws --method access-key` again with the new key overwrites
+the stored credential. Static keys rely on local disk security — prefer a
+machine with full-disk encryption. (A 90-day auto-refreshing IAM Identity
+Center SSO method is planned so even this rotation becomes unnecessary.)
+
+## AWS Credential Chain (fallback)
 
 The AWS provider uses the [AWS SDK v2 default credential chain](https://docs.aws.amazon.com/sdk-for-go/v2/developer-guide/configure-sdk.html), resolved in this order:
 

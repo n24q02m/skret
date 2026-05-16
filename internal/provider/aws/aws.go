@@ -31,8 +31,11 @@ type Provider struct {
 
 // New creates an AWS SSM provider from resolved config.
 func New(cfg *config.ResolvedConfig) (provider.SecretProvider, error) {
-	// Use the auth.go helper to load standard credential chain
-	awsCfg, err := loadAWSConfig(context.Background(), cfg.Region, cfg.Profile)
+	// Prefer a skret-stored credential (skret auth login aws ...) so skret
+	// authenticates on its own; fall back to the standard SDK credential
+	// chain (aws login / env / shared profile / OIDC) when none is stored.
+	creds, _ := resolveStoredCredentials()
+	awsCfg, err := loadAWSConfig(context.Background(), cfg.Region, cfg.Profile, creds)
 	if err != nil {
 		return nil, err
 	}
