@@ -36,6 +36,33 @@ func TestSetupNonInteractiveWritesConfigAndAuths(t *testing.T) {
 	}
 }
 
+func TestSetupPassesOptsToAuth(t *testing.T) {
+	dir := t.TempDir()
+	_ = os.MkdirAll(filepath.Join(dir, ".git"), 0o755)
+	orig, _ := os.Getwd()
+	defer os.Chdir(orig)
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+
+	var gotOpts map[string]string
+	origHook := setupAuthHook
+	defer func() { setupAuthHook = origHook }()
+	setupAuthHook = func(_, _ string, o map[string]string) error { gotOpts = o; return nil }
+
+	cmd := NewRootCmd()
+	cmd.SetArgs([]string{
+		"setup", "--provider=aws", "--path=/myapp/prod",
+		"--method=sso", "--opt", "account_id=111122223333", "--opt", "role_name=R", "--yes",
+	})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	if gotOpts["account_id"] != "111122223333" || gotOpts["role_name"] != "R" {
+		t.Fatalf("opts not forwarded: %+v", gotOpts)
+	}
+}
+
 func TestSetupLocalProviderSkipsAuth(t *testing.T) {
 	dir := t.TempDir()
 	_ = os.MkdirAll(filepath.Join(dir, ".git"), 0o755)
