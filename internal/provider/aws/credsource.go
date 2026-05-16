@@ -1,8 +1,13 @@
 package aws
 
 import (
+	"context"
+	"os"
+	"time"
+
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/n24q02m/skret/internal/auth"
 )
 
@@ -36,4 +41,28 @@ func resolveStoredCredentials() (aws.CredentialsProvider, bool) {
 	return aws.NewCredentialsCache(
 		credentials.NewStaticCredentialsProvider(id, cred.Token, cred.Metadata["session_token"]),
 	), true
+}
+
+// Probe verifies AWS reachability using the SAME credential resolution skret
+// uses for real operations (stored credential first, else SDK default chain),
+// so `skret auth status` cannot disagree with what `skret list` actually does.
+// Region comes from AWS_REGION/SKRET_REGION, falling back to us-east-1 purely
+// for the region-agnostic GetCallerIdentity check. Never surfaces secrets.
+func Probe(ctx context.Context) error {
+	creds, _ := resolveStoredCredentials()
+	region := os.Getenv("AWS_REGION")
+	if region == "" {
+		region = os.Getenv("SKRET_REGION")
+	}
+	if region == "" {
+		region = "us-east-1"
+	}
+	cfg, err := loadAWSConfig(ctx, region, "", creds)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	_, err = sts.NewFromConfig(cfg).GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{})
+	return err
 }
