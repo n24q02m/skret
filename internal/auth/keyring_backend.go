@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/zalando/go-keyring"
 	"gopkg.in/yaml.v3"
@@ -78,14 +79,27 @@ func (b *keyringBackend) delete(provider string) error {
 }
 
 // keyringAvailable probes the OS keyring with a throwaway entry. Overridable
-// in tests. Returns false on headless Linux/CI without a Secret Service.
+// in tests. Returns false on headless Linux/CI without a Secret Service, AND
+// on a 3s timeout — a locked/no-GUI macOS Keychain makes the underlying
+// `security` CLI block indefinitely, so skret must never wait on it: it falls
+// back to the file store instead of hanging.
 var keyringAvailable = func() bool {
 	const probe = "__skret_probe__"
-	if err := keyring.Set(keyringService, probe, "1"); err != nil {
+	done := make(chan bool, 1)
+	go func() {
+		if err := keyring.Set(keyringService, probe, "1"); err != nil {
+			done <- false
+			return
+		}
+		_ = keyring.Delete(keyringService, probe)
+		done <- true
+	}()
+	select {
+	case ok := <-done:
+		return ok
+	case <-time.After(3 * time.Second):
 		return false
 	}
-	_ = keyring.Delete(keyringService, probe)
-	return true
 }
 
 // migrateFileToKeyring moves a legacy ~/.skret/credentials.yaml into the
