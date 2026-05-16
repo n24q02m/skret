@@ -30,6 +30,7 @@ func TestLogin_RegisteredProvider(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
+	t.Setenv("SKRET_KEYRING", "file")
 
 	Register("test-provider", &fakeProvider{
 		name:    "test-provider",
@@ -58,6 +59,7 @@ func TestLogin_WithMethod(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
+	t.Setenv("SKRET_KEYRING", "file")
 
 	var capturedMethod string
 	Register("test-method", &fakeProvider{
@@ -79,6 +81,7 @@ func TestResolve_ValidCredential(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
+	t.Setenv("SKRET_KEYRING", "file")
 
 	s := NewStore()
 	require.NoError(t, s.Save(&Credential{
@@ -126,6 +129,7 @@ func TestWithAutoAuthIO_Interactive_LoginSuccessRetry(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
+	t.Setenv("SKRET_KEYRING", "file")
 
 	Register("retry-test", &fakeProvider{
 		name:    "retry-test",

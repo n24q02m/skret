@@ -137,6 +137,7 @@ func TestSSODefaultFactoriesAndStoreSave(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("HOME", dir)
 	t.Setenv("USERPROFILE", dir)
+	t.Setenv("SKRET_KEYRING", "file") // isolate: don't touch the dev OS keyring
 	if err := ssoStoreSave(&auth.Credential{Provider: "aws", Method: "sso", Token: "t"}); err != nil {
 		t.Fatalf("ssoStoreSave default: %v", err)
 	}

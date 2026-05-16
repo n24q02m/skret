@@ -259,7 +259,9 @@ func TestInfisicalProvider_BrowserDispatch(t *testing.T) {
 
 func TestNewStoreWithPath_CustomPath(t *testing.T) {
 	s := NewStoreWithPath("/tmp/x.yaml")
-	assert.Contains(t, s.path, "x.yaml")
+	fb, ok := s.b.(*fileBackend)
+	require.True(t, ok)
+	assert.Contains(t, fb.path, "x.yaml")
 }
 
 func TestConfirm_ReadErr(t *testing.T) {

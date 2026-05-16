@@ -5,6 +5,17 @@ description: "Get up and running with skret in under 5 minutes."
 
 Get up and running with skret in under 5 minutes.
 
+The whole loop is two commands — the same shape as `doppler setup && doppler run`:
+
+```bash
+skret setup            # pick provider + path, then authenticate (once)
+skret run -- <command> # run anything with secrets injected
+```
+
+`skret setup` authenticates once (SSO refreshes silently for the whole
+session, or a stored access key) so you never re-run `aws login`. The
+sections below walk through each piece.
+
 ## 1. Install
 
 ```bash

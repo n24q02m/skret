@@ -95,6 +95,17 @@ The `install.sh` and `install.ps1` scripts verify SHA256 checksums and (if `cosi
 ## Quick start
 
 ```sh
+skret setup            # pick provider + path, then authenticate (once)
+skret run -- <command> # run anything with secrets injected
+```
+
+That's the whole loop — same shape as `doppler setup && doppler run`.
+`skret setup` authenticates once (SSO refreshes silently for the whole
+session, or a stored access key) so you never re-run `aws login`.
+
+Or step by step:
+
+```sh
 # 1. Initialise .skret.yaml in your repo
 skret init --provider=aws --path=/myapp/prod --region=ap-southeast-1
 
@@ -177,6 +188,7 @@ Full docs at **[skret.n24q02m.com](https://skret.n24q02m.com)**:
 
 | Command | Purpose |
 |---------|---------|
+| `skret setup` | Create `.skret.yaml` + authenticate in one step |
 | `skret init` | Create `.skret.yaml` in the current repo |
 | `skret run -- <cmd>` | Inject secrets as env vars and exec a command |
 | `skret get <KEY>` | Print a single secret value |
