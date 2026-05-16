@@ -4,11 +4,9 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 
-	awsconfig "github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/n24q02m/skret/internal/auth"
+	skaws "github.com/n24q02m/skret/internal/provider/aws"
 	"github.com/n24q02m/skret/pkg/skret"
 	"github.com/spf13/cobra"
 )
@@ -114,18 +112,11 @@ func newAuthLogoutCmd() *cobra.Command {
 	}
 }
 
-// awsLivenessProbe verifies real AWS reachability via the resolved default
-// credential chain. Overridable in tests. It must never surface secret values.
-var awsLivenessProbe = func(ctx context.Context) error {
-	cfg, err := awsconfig.LoadDefaultConfig(ctx)
-	if err != nil {
-		return err
-	}
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-	_, err = sts.NewFromConfig(cfg).GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{})
-	return err
-}
+// awsLivenessProbe verifies real AWS reachability using the same credential
+// resolution skret uses for operations (stored credential first, else SDK
+// default chain), so status never disagrees with what `skret list` does.
+// Overridable in tests. It must never surface secret values.
+var awsLivenessProbe = skaws.Probe
 
 func getCredentialStatus(ctx context.Context, provider string, cred *auth.Credential) string {
 	if cred.IsExpired() {
