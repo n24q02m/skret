@@ -103,11 +103,12 @@ func TestCLI_EdgeCases(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "load config failed")
 
-	// 12. Helpers missing config
+	// 12. Helpers missing config -> actionable error (Bug E fix)
 	os.Remove(".skret.yaml")
 	_, err = executeCmd("list")
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "find config failed")
+	assert.Contains(t, err.Error(), "skret init")
+	assert.Contains(t, err.Error(), "--path=")
 }
 
 func TestDeleteCmd_Cancel(t *testing.T) {

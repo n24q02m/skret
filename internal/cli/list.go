@@ -16,7 +16,6 @@ func newListCmd(opts *GlobalOpts) *cobra.Command {
 	var (
 		format    string
 		values    bool
-		path      string
 		recursive bool
 	)
 
@@ -30,15 +29,10 @@ func newListCmd(opts *GlobalOpts) *cobra.Command {
 			}
 			defer p.Close()
 
+			// Path comes from the resolved config (root persistent --path /
+			// SKRET_PATH / .skret.yaml). A local --path here would shadow the
+			// root persistent flag and break configless --path usage.
 			listPath := resolved.Path
-			if path != "" {
-				listPath = path
-			}
-
-			// Ensure prefix slash
-			if listPath != "" && !strings.HasPrefix(listPath, "/") {
-				listPath = "/" + listPath
-			}
 
 			ctx := context.Background()
 			secrets, err := p.List(ctx, listPath)
@@ -53,7 +47,6 @@ func newListCmd(opts *GlobalOpts) *cobra.Command {
 
 	cmd.Flags().StringVar(&format, "format", "table", "output format (table, json)")
 	cmd.Flags().BoolVar(&values, "values", false, "include secret values in output")
-	cmd.Flags().StringVar(&path, "path", "", "override path prefix to list")
 	cmd.Flags().BoolVar(&recursive, "recursive", true, "list secrets recursively")
 
 	return cmd

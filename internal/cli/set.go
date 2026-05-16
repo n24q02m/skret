@@ -41,13 +41,16 @@ func newSetCmd(opts *GlobalOpts) *cobra.Command {
 }
 
 func (o *setOptions) run(cmd *cobra.Command, args []string) error {
-	_, p, err := loadProvider(o.globals)
+	resolved, p, err := loadProvider(o.globals)
 	if err != nil {
 		return err
 	}
 	defer p.Close()
 
-	key := args[0]
+	key, mangled := resolveKeyArg(resolved.Path, args[0])
+	if mangled {
+		cmd.PrintErrf("warning: key looked shell-mangled; using %q (omit the leading slash, or set MSYS_NO_PATHCONV=1)\n", key)
+	}
 	value, err := o.getValue(args)
 	if err != nil {
 		return err

@@ -4,7 +4,10 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
+	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/n24q02m/skret/internal/auth"
 	"github.com/n24q02m/skret/pkg/skret"
 	"github.com/spf13/cobra"
@@ -111,15 +114,38 @@ func newAuthLogoutCmd() *cobra.Command {
 	}
 }
 
+// awsLivenessProbe verifies real AWS reachability via the resolved default
+// credential chain. Overridable in tests. It must never surface secret values.
+var awsLivenessProbe = func(ctx context.Context) error {
+	cfg, err := awsconfig.LoadDefaultConfig(ctx)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	_, err = sts.NewFromConfig(cfg).GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{})
+	return err
+}
+
 func getCredentialStatus(ctx context.Context, provider string, cred *auth.Credential) string {
 	if cred.IsExpired() {
 		return "expired"
 	}
 
-	// Try to validate if provider is registered
+	// AWS: probe real reachability instead of trusting stored metadata —
+	// "method: profile" used to report "valid" with no working credential.
+	if provider == "aws" {
+		if err := awsLivenessProbe(ctx); err != nil {
+			if auth.IsAuthError(err) {
+				return "expired"
+			}
+			return "unreachable"
+		}
+		return "valid"
+	}
+
 	if _, err := auth.Resolve(ctx, provider); err != nil {
 		return "invalid"
 	}
-
 	return "valid"
 }
