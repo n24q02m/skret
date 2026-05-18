@@ -50,7 +50,7 @@ func getEnvPairs(opts *GlobalOpts) ([]envPair, error) {
 		return nil, skret.NewError(skret.ExitProviderError, "env: list secrets failed", err)
 	}
 
-	var pairs []envPair
+	pairs := make([]envPair, 0, len(secrets))
 	excludeSet := make(map[string]bool, len(resolved.Exclude))
 	for _, e := range resolved.Exclude {
 		excludeSet[e] = true

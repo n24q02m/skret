@@ -122,7 +122,7 @@ func (o *importOptions) run(cmd *cobra.Command) error {
 		value string
 	}
 	dedupedMap := make(map[string]keyMeta)
-	var orderedKeys []string
+	orderedKeys := make([]string, 0, len(secrets))
 
 	for _, s := range secrets {
 		destKey := s.Key

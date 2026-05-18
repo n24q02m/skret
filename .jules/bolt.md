@@ -21,3 +21,7 @@
 ## 2026-05-07 - Refactor Complex Conditional Logic into Named Helper Functions
 **Learning:** Nested conditional checks within long loops (like the `auth status` iteration) reduce readability and can lead to logic errors where state is unintentionally overwritten (e.g., "expired" being masked by "invalid"). Extracting this logic into a small, focused helper function clarifies the priority of states and makes the core loop easier to maintain.
 **Action:** Identify multi-state conditional blocks within loops and extract them into named helper functions (e.g., `getCredentialStatus`). This improves testability of the status logic itself and ensures a clean separation of concerns between data retrieval and display formatting.
+
+## 2026-05-18 - Prevent GC Overhead in Loop Slices
+**Learning:** Initializing slices within loops without a known length using `var slice []T` results in dynamic reallocation every time `append()` reaches its limit. During bulk API imports or processing, this dynamic capacity scaling results in severe Garbage Collection overhead.
+**Action:** Always utilize `make([]T, 0, expectedCapacity)` to pre-allocate slices when the final size is predictable (e.g., using `len(sourceList)`) to improve CPU throughput and significantly decrease memory fragmentation.
