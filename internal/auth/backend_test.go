@@ -17,12 +17,35 @@ func TestNewStoreSelectsFileWhenForced(t *testing.T) {
 	}
 }
 
+func TestNewStoreDefaultsToFileBackend(t *testing.T) {
+	// No SKRET_KEYRING -> durable file store (keyring is opt-in). Prevents the
+	// Windows-keyring data-loss regression where keyring was the default.
+	t.Setenv("SKRET_KEYRING", "")
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("USERPROFILE", t.TempDir())
+	if _, ok := NewStore().b.(*fileBackend); !ok {
+		t.Fatal("NewStore must default to fileBackend when SKRET_KEYRING is unset")
+	}
+}
+
+func TestNewStoreKeyringOptInUnreliableFallsBackToFile(t *testing.T) {
+	orig := keyringAvailable
+	defer func() { keyringAvailable = orig }()
+	keyringAvailable = func() bool { return false } // unreliable keyring
+	t.Setenv("SKRET_KEYRING", "keyring")
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("USERPROFILE", t.TempDir())
+	if _, ok := NewStore().b.(*fileBackend); !ok {
+		t.Fatal("opt-in keyring that is unreliable must fall back to fileBackend")
+	}
+}
+
 func TestNewStoreSelectsKeyringWhenAvailable(t *testing.T) {
 	orig := keyringAvailable
 	defer func() { keyringAvailable = orig }()
 	keyringAvailable = func() bool { return true }
 	keyring.MockInit()
-	t.Setenv("SKRET_KEYRING", "")
+	t.Setenv("SKRET_KEYRING", "keyring") // keyring is opt-in now
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("USERPROFILE", t.TempDir())
 	if _, ok := NewStore().b.(*keyringBackend); !ok {
