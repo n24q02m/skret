@@ -195,7 +195,7 @@ environments:
 
 	t.Setenv("SKRET_EXPERIMENTAL", "1")
 	cmd := newRollbackCmd(&GlobalOpts{})
-	cmd.SetArgs([]string{"KEY", "1"})
+	cmd.SetArgs([]string{"KEY", "1", "--force"}) // skip confirmation prompt
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
 	cmd.SetErr(&buf)

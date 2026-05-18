@@ -59,11 +59,26 @@ func TestRollbackCmd_NotSupported(t *testing.T) {
 	require.NoError(t, os.Chdir(dir))
 	defer os.Chdir(origDir)
 
-	// Enable experimental flag, then test local provider does not support rollback
+	// Enable experimental flag, then test local provider does not support rollback.
+	// --force skips the confirmation prompt so this exercises the provider path.
 	t.Setenv("SKRET_EXPERIMENTAL", "1")
-	_, err := executeCmd("rollback", "DATABASE_URL", "1")
+	_, err := executeCmd("rollback", "DATABASE_URL", "1", "--force")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "does not support this operation")
+}
+
+func TestRollbackCmd_ConfirmCancel(t *testing.T) {
+	dir := setupTestRepo(t)
+	origDir, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	defer os.Chdir(origDir)
+
+	// No --force and no "y" on stdin -> confirmation declined, no rollback,
+	// no error (rollback is destructive; default is to cancel).
+	t.Setenv("SKRET_EXPERIMENTAL", "1")
+	out, err := executeCmd("rollback", "DATABASE_URL", "1")
+	assert.NoError(t, err)
+	assert.Contains(t, out, "Cancelled")
 }
 
 func TestRollbackCmd_InvalidVersion(t *testing.T) {
