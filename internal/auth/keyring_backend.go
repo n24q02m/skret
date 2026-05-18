@@ -84,15 +84,23 @@ func (b *keyringBackend) delete(provider string) error {
 // `security` CLI block indefinitely, so skret must never wait on it: it falls
 // back to the file store instead of hanging.
 var keyringAvailable = func() bool {
-	const probe = "__skret_probe__"
+	const (
+		probe = "__skret_probe__"
+		token = "skret-probe-v1"
+	)
 	done := make(chan bool, 1)
 	go func() {
-		if err := keyring.Set(keyringService, probe, "1"); err != nil {
+		if err := keyring.Set(keyringService, probe, token); err != nil {
 			done <- false
 			return
 		}
+		// Set succeeding is NOT enough: some backends (observed: Windows
+		// Credential Manager on this machine) accept Set but read back
+		// empty/different. Require a round-trip match, else treat the keyring
+		// as unusable and fall back to the file store.
+		got, err := keyring.Get(keyringService, probe)
 		_ = keyring.Delete(keyringService, probe)
-		done <- true
+		done <- err == nil && got == token
 	}()
 	select {
 	case ok := <-done:
@@ -103,9 +111,12 @@ var keyringAvailable = func() bool {
 }
 
 // migrateFileToKeyring moves a legacy ~/.skret/credentials.yaml into the
-// keyring exactly once, then renames the file to a .migrated backup. Best
-// effort: any error leaves the file untouched (NewStore still works).
-func migrateFileToKeyring(fb *fileBackend, kb *keyringBackend) {
+// keyring exactly once. It renames the file to a .migrated backup ONLY after
+// verifying the keyring reads the data back intact — never destroy the source
+// before the destination is confirmed (a Set-OK-but-read-empty keyring would
+// otherwise lose all credentials). On any failure the file is left untouched
+// so NewStore's file fallback keeps working.
+func migrateFileToKeyring(fb *fileBackend, kb backend) {
 	if _, err := os.Stat(fb.path); err != nil {
 		return // nothing to migrate
 	}
@@ -115,6 +126,16 @@ func migrateFileToKeyring(fb *fileBackend, kb *keyringBackend) {
 	}
 	if err := kb.write(f); err != nil {
 		return
+	}
+	// Read-back verification: keyring must return every provider written.
+	got, err := kb.read()
+	if err != nil || len(got.Providers) != len(f.Providers) {
+		return // do NOT rename — source stays intact
+	}
+	for name := range f.Providers {
+		if got.Providers[name] == nil {
+			return
+		}
 	}
 	_ = os.Rename(fb.path, fb.path+".migrated")
 }
