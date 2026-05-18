@@ -54,7 +54,7 @@ func withAutoAuthIO(ctx context.Context, provider string, fn func() error, stdin
 	}
 
 	if nonInteractive {
-		return fmt.Errorf("%s: credentials missing or expired; run `skret auth %s`", provider, provider)
+		return fmt.Errorf("%s: credentials missing or expired; run `skret auth login %s`", provider, provider)
 	}
 
 	fmt.Fprintf(stderr, "\n%s credentials missing or expired. ", provider)

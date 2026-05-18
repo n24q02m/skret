@@ -26,7 +26,7 @@ func TestWithAutoAuth_NonInteractiveReturnsInstructive(t *testing.T) {
 		return auth.ErrCredentialNotFound
 	})
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "skret auth doppler")
+	assert.Contains(t, err.Error(), "skret auth login doppler")
 }
 
 func TestIsAuthError_Various(t *testing.T) {
