@@ -97,7 +97,9 @@ func (p *Provider) GetBatch(ctx context.Context, keys []string) ([]*provider.Sec
 	if len(keys) == 0 {
 		return nil, nil
 	}
-	var allSecrets []*provider.Secret
+	// Pre-allocate to the max possible result size (one secret per key) so the
+	// append calls inside the chunking loop don't trigger slice reallocation.
+	allSecrets := make([]*provider.Secret, 0, len(keys))
 	for i := 0; i < len(keys); i += 10 {
 		end := i + 10
 		if end > len(keys) {

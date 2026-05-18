@@ -14,18 +14,21 @@ func IsAuthError(err error) bool {
 	if err == nil {
 		return false
 	}
-	msg := err.Error()
+	// Lowercase the message once instead of per-substring (the loop body
+	// previously called strings.ToLower on both operands every iteration);
+	// the needles are kept pre-lowercased. Behavior is identical.
+	lower := strings.ToLower(err.Error())
 	for _, substr := range []string{
-		"UnauthorizedException",
-		"InvalidGrantException",
-		"ExpiredTokenException",
+		"unauthorizedexception",
+		"invalidgrantexception",
+		"expiredtokenexception",
 		"401",
 		"403",
 		"credentials missing",
 		"could not resolve credentials",
 		"credential not found",
 	} {
-		if strings.Contains(strings.ToLower(msg), strings.ToLower(substr)) {
+		if strings.Contains(lower, substr) {
 			return true
 		}
 	}
