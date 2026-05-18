@@ -35,7 +35,7 @@ func TestRollbackCmd_ExperimentalGate(t *testing.T) {
 
 	// Without SKRET_EXPERIMENTAL, should be blocked
 	t.Setenv("SKRET_EXPERIMENTAL", "")
-	_, err := executeCmd("rollback", "DATABASE_URL", "1")
+	_, err := executeCmd("rollback", "DATABASE_URL", "1", "--confirm")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "experimental")
 }
@@ -61,7 +61,7 @@ func TestRollbackCmd_NotSupported(t *testing.T) {
 
 	// Enable experimental flag, then test local provider does not support rollback
 	t.Setenv("SKRET_EXPERIMENTAL", "1")
-	_, err := executeCmd("rollback", "DATABASE_URL", "1")
+	_, err := executeCmd("rollback", "DATABASE_URL", "1", "--confirm")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "does not support this operation")
 }
@@ -74,7 +74,7 @@ func TestRollbackCmd_InvalidVersion(t *testing.T) {
 
 	// Enable experimental flag to test past the gate
 	t.Setenv("SKRET_EXPERIMENTAL", "1")
-	_, err := executeCmd("rollback", "DATABASE_URL", "not-a-number")
+	_, err := executeCmd("rollback", "DATABASE_URL", "not-a-number", "--confirm")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid version number")
 }

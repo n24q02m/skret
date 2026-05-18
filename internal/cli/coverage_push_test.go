@@ -137,7 +137,7 @@ environments:
 
 	t.Setenv("SKRET_EXPERIMENTAL", "0")
 	cmd := newRollbackCmd(&GlobalOpts{})
-	cmd.SetArgs([]string{"KEY", "1"})
+	cmd.SetArgs([]string{"KEY", "1", "--confirm"})
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
 	cmd.SetErr(&buf)
@@ -166,7 +166,7 @@ environments:
 
 	t.Setenv("SKRET_EXPERIMENTAL", "1")
 	cmd := newRollbackCmd(&GlobalOpts{})
-	cmd.SetArgs([]string{"KEY", "not-a-number"})
+	cmd.SetArgs([]string{"KEY", "not-a-number", "--confirm"})
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
 	cmd.SetErr(&buf)
@@ -195,7 +195,7 @@ environments:
 
 	t.Setenv("SKRET_EXPERIMENTAL", "1")
 	cmd := newRollbackCmd(&GlobalOpts{})
-	cmd.SetArgs([]string{"KEY", "1"})
+	cmd.SetArgs([]string{"KEY", "1", "--confirm"})
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
 	cmd.SetErr(&buf)
