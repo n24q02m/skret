@@ -57,7 +57,7 @@ func filterSecrets(secrets []*provider.Secret, listPath string, recursive bool) 
 		return secrets
 	}
 
-	var filtered []*provider.Secret
+	filtered := make([]*provider.Secret, 0, len(secrets))
 	level := strings.Count(listPath, "/")
 	if !strings.HasSuffix(listPath, "/") {
 		level++
