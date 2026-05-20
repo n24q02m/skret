@@ -245,7 +245,7 @@ func TestListCmd_EmptyStateJSON(t *testing.T) {
 	err := cmd.Execute()
 	require.NoError(t, err)
 	assert.Equal(t, "[]\n", stdoutBuf.String())
-	assert.Empty(t, stderrBuf.String())
+	assert.Contains(t, stderrBuf.String(), "No secrets found. Use 'skret set' to add a secret.")
 }
 
 // --- Env tests ---
