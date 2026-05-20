@@ -30,8 +30,9 @@ func StatePathFor(target, id string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("user home dir: %w", err)
 	}
+	safeTarget := sanitizeID(target)
 	safe := sanitizeID(id)
-	return filepath.Join(home, ".skret", "sync-state", fmt.Sprintf("%s-%s.json", target, safe)), nil
+	return filepath.Join(home, ".skret", "sync-state", fmt.Sprintf("%s-%s.json", safeTarget, safe)), nil
 }
 
 func sanitizeID(id string) string {
