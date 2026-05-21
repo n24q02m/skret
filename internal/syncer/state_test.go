@@ -48,6 +48,68 @@ func TestStatePathFor_SanitizesID(t *testing.T) {
 	}
 }
 
+// TestStatePathFor_BlocksPathTraversal verifies neither target nor id can
+// escape the ~/.skret/sync-state directory. This guards a HIGH severity
+// path-traversal class of bugs where untrusted input (target/id) could
+// otherwise be written outside the intended directory.
+func TestStatePathFor_BlocksPathTraversal(t *testing.T) {
+	cases := []struct {
+		name   string
+		target string
+		id     string
+	}{
+		{"dotdot in id", "github", "../../etc/passwd"},
+		{"dotdot in target", "../../etc", "owner-repo"},
+		{"slash separator", "gh", "a/b/c/d"},
+		{"backslash separator", "gh", `a\b\c`},
+		{"null byte", "gh", "id\x00x"},
+		{"only dots", "gh", ".."},
+		{"empty id", "gh", ""},
+		{"single dot", "gh", "."},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			home := withFakeHome(t)
+			path, err := StatePathFor(tc.target, tc.id)
+			require.NoError(t, err)
+			expectedDir := filepath.Join(home, ".skret", "sync-state")
+			assert.True(t, strings.HasPrefix(path, expectedDir+string(filepath.Separator)),
+				"path %q must live inside %q", path, expectedDir)
+			// Resolved path must not contain ".." segments.
+			rel, err := filepath.Rel(expectedDir, path)
+			require.NoError(t, err)
+			assert.NotContains(t, rel, "..", "rel %q must not contain ..", rel)
+			assert.NotContains(t, rel, string(filepath.Separator),
+				"sanitized filename must not include separators (got %q)", rel)
+		})
+	}
+}
+
+// TestSaveSyncState_PathTraversal verifies that even with a malicious id,
+// the file is written inside the sync-state directory and the attacker can't
+// land a file at /tmp/evil or sibling directories.
+func TestSaveSyncState_PathTraversal(t *testing.T) {
+	home := withFakeHome(t)
+	state := &SyncState{
+		Target: "../../../evil-target",
+		ID:     "../../etc/passwd",
+		Hashes: map[string]string{"K": hashSecret("v")},
+	}
+	require.NoError(t, SaveSyncState(state))
+
+	// Confirm nothing was written above sync-state.
+	stateDir := filepath.Join(home, ".skret", "sync-state")
+	_, err := os.Stat(filepath.Join(home, ".skret", "evil-target"))
+	assert.True(t, errors.Is(err, os.ErrNotExist), "no escape above sync-state")
+
+	// Confirm one file was created inside sync-state.
+	entries, err := os.ReadDir(stateDir)
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+	assert.True(t, strings.HasSuffix(entries[0].Name(), ".json"))
+	assert.NotContains(t, entries[0].Name(), "..")
+}
+
 func TestLoadSyncState_FirstRun_ReturnsEmpty(t *testing.T) {
 	withFakeHome(t)
 	state, err := LoadSyncState("github", "owner/repo")
