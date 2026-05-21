@@ -42,16 +42,16 @@ func (h *RedactingHandler) Enabled(ctx context.Context, level slog.Level) bool {
 }
 
 func (h *RedactingHandler) Handle(ctx context.Context, r slog.Record) error {
-	var attrs []slog.Attr
+	// pre-allocate the slice capacity to prevent dynamic reallocation during the loop.
+	attrs := make([]slog.Attr, 0, r.NumAttrs())
 	r.Attrs(func(a slog.Attr) bool {
 		attrs = append(attrs, redactAttr(a))
 		return true
 	})
 
 	newRecord := slog.NewRecord(r.Time, r.Level, redactString(r.Message), r.PC)
-	for _, a := range attrs {
-		newRecord.AddAttrs(a)
-	}
+	// Add all attributes at once rather than appending one-by-one in a loop.
+	newRecord.AddAttrs(attrs...)
 	return h.inner.Handle(ctx, newRecord)
 }
 
