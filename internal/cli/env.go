@@ -50,7 +50,7 @@ func getEnvPairs(opts *GlobalOpts) ([]envPair, error) {
 		return nil, skret.NewError(skret.ExitProviderError, "env: list secrets failed", err)
 	}
 
-	var pairs []envPair
+	pairs := make([]envPair, 0, len(secrets))
 	excludeSet := make(map[string]bool, len(resolved.Exclude))
 	for _, e := range resolved.Exclude {
 		excludeSet[e] = true
@@ -68,9 +68,11 @@ func getEnvPairs(opts *GlobalOpts) ([]envPair, error) {
 }
 
 func printEnvPairs(cmd *cobra.Command, pairs []envPair, format string) error {
-	if len(pairs) == 0 && format != "json" && format != "yaml" {
+	if len(pairs) == 0 {
 		cmd.PrintErrln("No secrets found. Use 'skret set' to add a secret.")
-		return nil
+		if format != "json" && format != "yaml" {
+			return nil
+		}
 	}
 
 	out := cmd.OutOrStdout()
