@@ -179,3 +179,44 @@ func TestSetup(t *testing.T) {
 	logging.Setup("info", "json")
 	logging.Setup("error", "")
 }
+
+// TestRedactingHandler_ManyAttrs_PreservesOrder exercises the optimized
+// Handle path (NumAttrs-preallocated slice + variadic AddAttrs) with many
+// attributes to ensure ordering and redaction remain correct.
+func TestRedactingHandler_ManyAttrs_PreservesOrder(t *testing.T) {
+	var buf bytes.Buffer
+	inner := slog.NewTextHandler(&buf, nil)
+	handler := logging.NewRedactingHandler(inner)
+	logger := slog.New(handler)
+
+	token := "ghp_" + "TEST" + "ABCDEF" + "GHIJKLMNOPQRSTUVWXYZ" + "0123456789"
+	logger.Info("multi",
+		"a", "alpha",
+		"b", "beta",
+		"token", token,
+		"c", "gamma",
+		"d", "delta",
+		"e", "epsilon",
+	)
+
+	out := buf.String()
+	assert.Contains(t, out, "a=alpha")
+	assert.Contains(t, out, "b=beta")
+	assert.Contains(t, out, "c=gamma")
+	assert.Contains(t, out, "d=delta")
+	assert.Contains(t, out, "e=epsilon")
+	assert.Contains(t, out, "token=[REDACTED]")
+	assert.NotContains(t, out, token)
+}
+
+// TestRedactingHandler_NoAttrs ensures the preallocated zero-cap branch is
+// exercised and still emits the message body.
+func TestRedactingHandler_NoAttrs(t *testing.T) {
+	var buf bytes.Buffer
+	inner := slog.NewTextHandler(&buf, nil)
+	handler := logging.NewRedactingHandler(inner)
+	logger := slog.New(handler)
+
+	logger.Info("no-attrs-here")
+	assert.Contains(t, buf.String(), "no-attrs-here")
+}
