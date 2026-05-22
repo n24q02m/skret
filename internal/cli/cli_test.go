@@ -254,16 +254,28 @@ func TestListCmd_EmptyStateJSON(t *testing.T) {
 // working.
 func TestEnvCmd_EmptyStateJSONYAML(t *testing.T) {
 	for _, tc := range []struct {
-		format   string
-		wantOut  string
-		wantHint bool
+		format  string
+		wantOut string
 	}{
-		{"json", "{}\n", true},
-		{"yaml", "{}\n", true},
-		{"dotenv", "", true},
+		{"json", "{}\n"},
+		{"yaml", "{}\n"},
+		{"dotenv", ""},
 	} {
 		t.Run(tc.format, func(t *testing.T) {
-			dir := setupTestRepo(t)
+			dir := t.TempDir()
+			require.NoError(t, os.MkdirAll(filepath.Join(dir, ".git"), 0o755))
+			require.NoError(t, os.WriteFile(filepath.Join(dir, ".skret.yaml"), []byte(`
+version: "1"
+default_env: dev
+environments:
+  dev:
+    provider: local
+    file: ./.secrets.dev.yaml
+`), 0o644))
+			require.NoError(t, os.WriteFile(filepath.Join(dir, ".secrets.dev.yaml"), []byte(`
+version: "1"
+secrets: {}
+`), 0o600))
 			origDir, _ := os.Getwd()
 			require.NoError(t, os.Chdir(dir))
 			defer os.Chdir(origDir)
@@ -272,13 +284,11 @@ func TestEnvCmd_EmptyStateJSONYAML(t *testing.T) {
 			cmd := cli.NewRootCmd()
 			cmd.SetOut(&stdoutBuf)
 			cmd.SetErr(&stderrBuf)
-			cmd.SetArgs([]string{"env", "--path=/nonexistent/", "--format=" + tc.format})
+			cmd.SetArgs([]string{"env", "--format=" + tc.format})
 
 			require.NoError(t, cmd.Execute())
 			assert.Equal(t, tc.wantOut, stdoutBuf.String())
-			if tc.wantHint {
-				assert.Contains(t, stderrBuf.String(), "No secrets found. Use 'skret set' to add a secret.")
-			}
+			assert.Contains(t, stderrBuf.String(), "No secrets found. Use 'skret set' to add a secret.")
 		})
 	}
 }
