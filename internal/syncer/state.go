@@ -30,13 +30,26 @@ func StatePathFor(target, id string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("user home dir: %w", err)
 	}
-	safe := sanitizeID(id)
-	return filepath.Join(home, ".skret", "sync-state", fmt.Sprintf("%s-%s.json", target, safe)), nil
+	return filepath.Join(home, ".skret", "sync-state", fmt.Sprintf("%s-%s.json", sanitizeID(target), sanitizeID(id))), nil
 }
 
+// sanitizeID neutralizes characters that could escape the sync-state
+// directory (path traversal) or break the on-disk file-name scheme.
+// "..", path separators and NULs are collapsed to inert runes.
 func sanitizeID(id string) string {
-	r := strings.NewReplacer("/", "-", ":", "-", "\\", "-", " ", "_")
-	return r.Replace(id)
+	r := strings.NewReplacer(
+		"..", "_",
+		"/", "-",
+		":", "-",
+		`\`, "-",
+		" ", "_",
+		"\x00", "_",
+	)
+	out := r.Replace(id)
+	if out == "" || out == "." {
+		return "_"
+	}
+	return out
 }
 
 // LoadSyncState reads the state file for target+id, returning an empty
