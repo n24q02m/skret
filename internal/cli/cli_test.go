@@ -245,7 +245,52 @@ func TestListCmd_EmptyStateJSON(t *testing.T) {
 	err := cmd.Execute()
 	require.NoError(t, err)
 	assert.Equal(t, "[]\n", stdoutBuf.String())
-	assert.Empty(t, stderrBuf.String())
+	assert.Contains(t, stderrBuf.String(), "No secrets found. Use 'skret set' to add a secret.")
+}
+
+// TestEnvCmd_EmptyStateJSONYAML verifies that with no secrets the env command
+// still emits a valid empty structure on stdout for machine-readable formats
+// while routing the human hint to stderr, so scripts parsing the output keep
+// working.
+func TestEnvCmd_EmptyStateJSONYAML(t *testing.T) {
+	for _, tc := range []struct {
+		format  string
+		wantOut string
+	}{
+		{"json", "{}\n"},
+		{"yaml", "{}\n"},
+		{"dotenv", ""},
+	} {
+		t.Run(tc.format, func(t *testing.T) {
+			dir := t.TempDir()
+			require.NoError(t, os.MkdirAll(filepath.Join(dir, ".git"), 0o755))
+			require.NoError(t, os.WriteFile(filepath.Join(dir, ".skret.yaml"), []byte(`
+version: "1"
+default_env: dev
+environments:
+  dev:
+    provider: local
+    file: ./.secrets.dev.yaml
+`), 0o644))
+			require.NoError(t, os.WriteFile(filepath.Join(dir, ".secrets.dev.yaml"), []byte(`
+version: "1"
+secrets: {}
+`), 0o600))
+			origDir, _ := os.Getwd()
+			require.NoError(t, os.Chdir(dir))
+			defer os.Chdir(origDir)
+
+			var stdoutBuf, stderrBuf bytes.Buffer
+			cmd := cli.NewRootCmd()
+			cmd.SetOut(&stdoutBuf)
+			cmd.SetErr(&stderrBuf)
+			cmd.SetArgs([]string{"env", "--format=" + tc.format})
+
+			require.NoError(t, cmd.Execute())
+			assert.Equal(t, tc.wantOut, stdoutBuf.String())
+			assert.Contains(t, stderrBuf.String(), "No secrets found. Use 'skret set' to add a secret.")
+		})
+	}
 }
 
 // --- Env tests ---
