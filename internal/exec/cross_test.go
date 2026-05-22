@@ -21,11 +21,15 @@ func TestBuildEnv_CrossReference(t *testing.T) {
 	defer os.Unsetenv("TEST_REGION")
 
 	secretsWithOsEnv := append(secrets, &provider.Secret{Key: "TEST_INFO", Value: "region=${TEST_REGION}"})
+	secretsWithOsEnv = append(secretsWithOsEnv, &provider.Secret{Key: "EXISTING_OVERRIDE", Value: "port=${PORT}"})
 
-	env := skexec.BuildEnv(secretsWithOsEnv, nil, "", nil)
+	existing := []string{"PORT=8080"}
+
+	env := skexec.BuildEnv(secretsWithOsEnv, existing, "", nil)
 
 	assert.Contains(t, env, "DB_USER=admin")
 	assert.Contains(t, env, "DB_URL=postgres://admin:supersecret@localhost")
 	assert.Contains(t, env, "DB_CONNECTION=connected to postgres://admin:supersecret@localhost")
 	assert.Contains(t, env, "TEST_INFO=region=us-east-1")
+	assert.Contains(t, env, "EXISTING_OVERRIDE=port=8080")
 }
