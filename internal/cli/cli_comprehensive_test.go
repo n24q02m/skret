@@ -356,7 +356,7 @@ func TestRunCmd_SimpleCommand(t *testing.T) {
 	}
 
 	dir := setupTestRepo(t)
-	child := exec.Command(os.Args[0], "-test.run=^TestRunCmd_SimpleCommand$")
+	child := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^TestRunCmd_SimpleCommand$")
 	child.Env = append(os.Environ(),
 		"SKRET_TEST_RUNCMD_CHILD=1",
 		"SKRET_TEST_RUNCMD_DIR="+dir,
