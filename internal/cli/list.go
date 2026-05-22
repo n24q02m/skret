@@ -72,11 +72,9 @@ func filterSecrets(secrets []*provider.Secret, listPath string, recursive bool) 
 }
 
 func printSecrets(cmd *cobra.Command, secrets []*provider.Secret, format string, values bool) error {
-	if len(secrets) == 0 {
+	if len(secrets) == 0 && format != "json" {
 		cmd.PrintErrln("No secrets found. Use 'skret set' to add a secret.")
-		if format != "json" {
-			return nil
-		}
+		return nil
 	}
 
 	switch format {

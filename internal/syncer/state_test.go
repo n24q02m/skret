@@ -270,3 +270,50 @@ func TestSaveSyncState_Atomic(t *testing.T) {
 	_, statErr := os.Stat(path + ".tmp")
 	assert.True(t, errors.Is(statErr, os.ErrNotExist))
 }
+
+// TestSaveSyncState_MkdirError verifies SaveSyncState surfaces a directory
+// creation failure rather than panicking — here ~/.skret already exists as a
+// regular file, so MkdirAll for the sync-state subdirectory cannot succeed.
+func TestSaveSyncState_MkdirError(t *testing.T) {
+	home := withFakeHome(t)
+	require.NoError(t, os.WriteFile(filepath.Join(home, ".skret"), []byte("x"), 0o600))
+
+	state := &SyncState{Target: "github", ID: "owner/repo", Hashes: map[string]string{"K": hashSecret("v")}}
+	err := SaveSyncState(state)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "create sync state dir")
+}
+
+// TestLoadSyncState_PathIsDirectory verifies a non-NotExist read error (the
+// state path resolving to a directory) is reported instead of being treated
+// as a first-run empty state.
+func TestLoadSyncState_PathIsDirectory(t *testing.T) {
+	home := withFakeHome(t)
+	dir := filepath.Join(home, ".skret", "sync-state")
+	require.NoError(t, os.MkdirAll(dir, 0o700))
+	path, err := StatePathFor("github", "owner/repo")
+	require.NoError(t, err)
+	require.NoError(t, os.Mkdir(path, 0o700))
+
+	_, err = LoadSyncState("github", "owner/repo")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "read sync state")
+}
+
+// TestLoadSyncState_NilHashesField verifies a persisted state whose "hashes"
+// field is JSON null is re-initialised to a usable empty map.
+func TestLoadSyncState_NilHashesField(t *testing.T) {
+	home := withFakeHome(t)
+	dir := filepath.Join(home, ".skret", "sync-state")
+	require.NoError(t, os.MkdirAll(dir, 0o700))
+	path, err := StatePathFor("github", "owner/repo")
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(path, []byte(`{"target":"x","id":"y","hashes":null}`), 0o600))
+
+	state, err := LoadSyncState("github", "owner/repo")
+	require.NoError(t, err)
+	require.NotNil(t, state.Hashes)
+	assert.Empty(t, state.Hashes)
+	state.Update([]*provider.Secret{{Key: "K", Value: "v"}})
+	assert.Equal(t, hashSecret("v"), state.Hashes["K"])
+}

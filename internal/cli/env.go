@@ -68,11 +68,9 @@ func getEnvPairs(opts *GlobalOpts) ([]envPair, error) {
 }
 
 func printEnvPairs(cmd *cobra.Command, pairs []envPair, format string) error {
-	if len(pairs) == 0 {
+	if len(pairs) == 0 && format != "json" && format != "yaml" {
 		cmd.PrintErrln("No secrets found. Use 'skret set' to add a secret.")
-		if format != "json" && format != "yaml" {
-			return nil
-		}
+		return nil
 	}
 
 	out := cmd.OutOrStdout()

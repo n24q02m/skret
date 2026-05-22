@@ -3,6 +3,7 @@ package cli_test
 import (
 	"bytes"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 
@@ -340,19 +341,29 @@ func TestRollbackCmd_ExperimentalEnabled_ParseError(t *testing.T) {
 // --- Run with existing command ---
 
 func TestRunCmd_SimpleCommand(t *testing.T) {
-	dir := setupTestRepo(t)
-	origDir, _ := os.Getwd()
-	require.NoError(t, os.Chdir(dir))
-	defer os.Chdir(origDir)
+	// On Unix the `run` command replaces the process image via syscall.Exec.
+	// Executing it inline would terminate the test binary and silently skip
+	// every test ordered after this one, so drive it from a re-exec of the
+	// test binary — only the child process gets replaced.
+	if os.Getenv("SKRET_TEST_RUNCMD_CHILD") == "1" {
+		if err := os.Chdir(os.Getenv("SKRET_TEST_RUNCMD_DIR")); err != nil {
+			t.Fatalf("child chdir: %v", err)
+		}
+		cmd := cli.NewRootCmd()
+		cmd.SetArgs([]string{"run", "--", "go", "version"})
+		_ = cmd.Execute()
+		return
+	}
 
-	// "go version" should work as a simple command, though on Windows
-	// it will actually exec as a child process
-	cmd := cli.NewRootCmd()
-	cmd.SetArgs([]string{"run", "--", "go", "version"})
-	// This will exec "go version" which replaces the process on Unix
-	// but on Windows runs as child. Either way we test the path.
-	// We don't assert on error because exec behavior varies by OS.
-	_ = cmd.Execute()
+	dir := setupTestRepo(t)
+	child := exec.Command(os.Args[0], "-test.run=^TestRunCmd_SimpleCommand$")
+	child.Env = append(os.Environ(),
+		"SKRET_TEST_RUNCMD_CHILD=1",
+		"SKRET_TEST_RUNCMD_DIR="+dir,
+	)
+	out, err := child.CombinedOutput()
+	require.NoError(t, err, "run subprocess failed: %s", out)
+	assert.Contains(t, string(out), "go version")
 }
 
 // --- Run with non-existent command ---
