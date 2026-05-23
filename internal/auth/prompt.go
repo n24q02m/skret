@@ -81,14 +81,15 @@ func OpenBrowser(ctx context.Context, u string) error {
 		return fmt.Errorf("auth prompt: invalid url scheme %q", parsed.Scheme)
 	}
 
+	safeURL := parsed.String()
 	var cmd *exec.Cmd
 	switch goos() {
 	case "darwin":
-		cmd = exec.CommandContext(ctx, "open", "--", u)
+		cmd = exec.CommandContext(ctx, "open", "--", safeURL)
 	case "windows":
-		cmd = exec.CommandContext(ctx, "rundll32", "url.dll,FileProtocolHandler", u)
+		cmd = exec.CommandContext(ctx, "rundll32", "url.dll,FileProtocolHandler", safeURL)
 	default:
-		cmd = exec.CommandContext(ctx, "xdg-open", u)
+		cmd = exec.CommandContext(ctx, "xdg-open", safeURL)
 	}
 	return cmd.Start()
 }
