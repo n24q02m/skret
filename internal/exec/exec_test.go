@@ -67,3 +67,38 @@ func TestKeyToEnvName_NoMatch(t *testing.T) {
 func TestKeyToEnvName_NonAscii(t *testing.T) {
 	assert.Equal(t, "UNICODE_秘_密", skexec.KeyToEnvName("unicode/秘/密", ""))
 }
+
+func TestBuildEnv_ExpansionSecretVars(t *testing.T) {
+	secrets := []*provider.Secret{
+		{Key: "A", Value: "1"},
+		{Key: "B", Value: "${A}"},
+	}
+	existing := []string{}
+
+	env := skexec.BuildEnv(secrets, existing, "", nil)
+
+	assert.Contains(t, env, "B=1")
+}
+
+func TestBuildEnv_ExpansionExistingVars(t *testing.T) {
+	secrets := []*provider.Secret{
+		{Key: "B", Value: "${A}"},
+	}
+	existing := []string{"A=2"}
+
+	env := skexec.BuildEnv(secrets, existing, "", nil)
+
+	assert.Contains(t, env, "B=2")
+}
+
+func TestBuildEnv_ExpansionHostEnv(t *testing.T) {
+	t.Setenv("HOST_ENV", "host_value")
+	secrets := []*provider.Secret{
+		{Key: "DB_PASS", Value: "${HOST_ENV}"},
+	}
+	existing := []string{}
+
+	env := skexec.BuildEnv(secrets, existing, "", nil)
+
+	assert.Contains(t, env, "DB_PASS=host_value")
+}
