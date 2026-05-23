@@ -36,6 +36,22 @@ func BuildEnv(secrets []*provider.Secret, existing []string, pathPrefix string, 
 		secretVars[name] = s.Value
 	}
 
+	// Pre-allocate the expand function to avoid dynamic allocations inside the nested loops
+	// Performance impact: Reduces Garbage Collector overhead by preventing
+	// the creation of a new closure for every secret expansion iteration.
+	expandFunc := func(ref string) string {
+		// 1. check existing environment variables (highest priority)
+		if val, ok := existingMap[ref]; ok {
+			return val
+		}
+		// 2. check other secrets
+		if sv, ok := secretVars[ref]; ok {
+			return sv
+		}
+		// 3. fallback to host env
+		return os.Getenv(ref)
+	}
+
 	// Expand secret references (up to 10 iterations to prevent infinite loops)
 	for i := 0; i < 10; i++ {
 		changed := false
@@ -43,18 +59,7 @@ func BuildEnv(secrets []*provider.Secret, existing []string, pathPrefix string, 
 			if !strings.Contains(v, "$") {
 				continue
 			}
-			newVal := os.Expand(v, func(ref string) string {
-				// 1. check existing environment variables (highest priority)
-				if val, ok := existingMap[ref]; ok {
-					return val
-				}
-				// 2. check other secrets
-				if sv, ok := secretVars[ref]; ok {
-					return sv
-				}
-				// 3. fallback to host env
-				return os.Getenv(ref)
-			})
+			newVal := os.Expand(v, expandFunc)
 			if newVal != v {
 				secretVars[k] = newVal
 				changed = true
