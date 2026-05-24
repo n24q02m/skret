@@ -19,12 +19,16 @@ func BuildEnv(secrets []*provider.Secret, existing []string, pathPrefix string, 
 	existingMap := make(map[string]string, len(existing))
 	env := make([]string, 0, len(existing)+len(secrets))
 	for _, e := range existing {
-		key, val, _ := strings.Cut(e, "=")
-		existingMap[key] = val
+		idx := strings.IndexByte(e, '=')
+		if idx >= 0 {
+			existingMap[e[:idx]] = e[idx+1:]
+		} else {
+			existingMap[e] = ""
+		}
 		env = append(env, e)
 	}
 
-	secretVars := make(map[string]string)
+	secretVars := make(map[string]string, len(secrets))
 	for _, s := range secrets {
 		name := KeyToEnvName(s.Key, pathPrefix)
 		if excludeSet[name] {
@@ -55,7 +59,7 @@ func BuildEnv(secrets []*provider.Secret, existing []string, pathPrefix string, 
 	for i := 0; i < 10; i++ {
 		changed := false
 		for k, v := range secretVars {
-			if !strings.Contains(v, "$") {
+			if strings.IndexByte(v, '$') < 0 {
 				continue
 			}
 			newVal := os.Expand(v, expandFunc)

@@ -21,3 +21,7 @@
 ## 2026-05-07 - Refactor Complex Conditional Logic into Named Helper Functions
 **Learning:** Nested conditional checks within long loops (like the `auth status` iteration) reduce readability and can lead to logic errors where state is unintentionally overwritten (e.g., "expired" being masked by "invalid"). Extracting this logic into a small, focused helper function clarifies the priority of states and makes the core loop easier to maintain.
 **Action:** Identify multi-state conditional blocks within loops and extract them into named helper functions (e.g., `getCredentialStatus`). This improves testability of the status logic itself and ensures a clean separation of concerns between data retrieval and display formatting.
+
+## 2026-06-25 - Avoid String Function Overhead in Hot Loops
+**Learning:** Functions like `strings.Cut` and `strings.Contains` provide a convenient API, but when used extensively in hot loops (such as parsing `KEY=VALUE` environment variables or scanning for a single delimiter like `$`), they incur measurable execution time overhead compared to lower-level operations.
+**Action:** For single-byte searches in high-performance or frequently executed code paths, prefer `strings.IndexByte`. When splitting strings by a single character, use `strings.IndexByte` and manual slicing (e.g., `s[:idx]` and `s[idx+1:]`) instead of `strings.Cut`. This optimization reduces execution time and bypasses unnecessary standard library call overhead.
