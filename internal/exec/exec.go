@@ -52,22 +52,6 @@ func BuildEnv(secrets []*provider.Secret, existing []string, pathPrefix string, 
 		return os.Getenv(ref)
 	}
 
-	// Expand secret references (up to 10 iterations to prevent infinite loops)
-	// Hoisted closure: prevents generating an anonymous function dynamically on
-	// every iteration of the nested loop (O(N)), reducing Garbage Collector overhead.
-	expandFunc := func(ref string) string {
-		// 1. check existing environment variables (highest priority)
-		if val, ok := existingMap[ref]; ok {
-			return val
-		}
-		// 2. check other secrets
-		if sv, ok := secretVars[ref]; ok {
-			return sv
-		}
-		// 3. fallback to host env
-		return os.Getenv(ref)
-	}
-
 	for i := 0; i < 10; i++ {
 		changed := false
 		for k, v := range secretVars {
