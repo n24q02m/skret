@@ -102,3 +102,9 @@ func TestBuildEnv_ExpansionHostEnv(t *testing.T) {
 
 	assert.Contains(t, env, "DB_PASS=host_value")
 }
+
+func TestBuildEnv_ExistingNoValue(t *testing.T) {
+	existing := []string{"NO_VALUE"}
+	env := skexec.BuildEnv(nil, existing, "", nil)
+	assert.Contains(t, env, "NO_VALUE")
+}
