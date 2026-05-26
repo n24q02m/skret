@@ -202,7 +202,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6
         with:
-          version: 11
+          version: 10
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: "24"
@@ -210,7 +210,7 @@ jobs:
           cache-dependency-path: docs/pnpm-lock.yaml
       - name: Install dependencies
         working-directory: docs
-        run: pnpm install --frozen-lockfile --config.strict-build=false
+        run: pnpm install --frozen-lockfile
       - name: Sync install scripts into docs/public
         run: |
           cp install.sh docs/public/install.sh
