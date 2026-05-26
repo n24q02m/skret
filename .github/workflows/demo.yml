@@ -36,7 +36,7 @@ jobs:
           curl -sSL -o /tmp/ttyd https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64
           chmod +x /tmp/ttyd && sudo mv /tmp/ttyd /usr/local/bin/ttyd
           # vhs: install via Go since vhs-action ffmpeg install broken on Ubuntu 24.04 (upstream #459)
-          go install github.com/charmbracelet/vhs@latest
+          go install github.com/charmbracelet/vhs@v0.10.0
       - name: Build skret
         run: |
           go build -o /usr/local/bin/skret ./cmd/skret
