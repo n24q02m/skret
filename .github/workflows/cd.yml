@@ -210,7 +210,7 @@ jobs:
           cache-dependency-path: docs/pnpm-lock.yaml
       - name: Install dependencies
         working-directory: docs
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile --config.strict-build=false
       - name: Sync install scripts into docs/public
         run: |
           cp install.sh docs/public/install.sh
