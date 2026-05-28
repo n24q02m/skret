@@ -3,7 +3,6 @@ package auth
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
@@ -17,7 +16,6 @@ import (
 
 // InfisicalBrowserFlow implements an Infisical PKCE browser login using a
 // loopback HTTP listener as the redirect target.
-var cryptoRandReader = rand.Reader
 
 type InfisicalBrowserFlow struct {
 	BaseURL string
@@ -50,14 +48,6 @@ func pkcePair() (verifier, challenge string, err error) {
 	sum := sha256.Sum256([]byte(verifier))
 	challenge = base64.RawURLEncoding.EncodeToString(sum[:])
 	return verifier, challenge, nil
-}
-
-func randomString(n int) (string, error) {
-	buf := make([]byte, n)
-	if _, err := io.ReadFull(cryptoRandReader, buf); err != nil {
-		return "", err
-	}
-	return base64.RawURLEncoding.EncodeToString(buf), nil
 }
 
 func (f *InfisicalBrowserFlow) Login(ctx context.Context, _ map[string]string) (*Credential, error) {
