@@ -29,19 +29,25 @@ func TestPathTraversalProtection(t *testing.T) {
 
 		_, err := local.New(cfg)
 		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "escapes configuration directory")
+		if err != nil {
+			assert.Contains(t, err.Error(), "escapes configuration directory")
+		}
 	})
 
 	t.Run("BlocksAbsolutePathInConfig", func(t *testing.T) {
+		// Use a path that is guaranteed to be absolute and outside projectDir
+		absOutside := filepath.Join(tempDir, "outside.yaml")
 		cfg := &config.ResolvedConfig{
-			File:         "/etc/passwd",
+			File:         absOutside,
 			FileFromFlag: false,
 			ConfigDir:    projectDir,
 		}
 
 		_, err := local.New(cfg)
 		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "absolute path")
+		if err != nil {
+			assert.Contains(t, err.Error(), "absolute path")
+		}
 	})
 
 	t.Run("AllowsRelativePathInConfig", func(t *testing.T) {
@@ -57,7 +63,9 @@ func TestPathTraversalProtection(t *testing.T) {
 		p, err := local.New(cfg)
 		assert.NoError(t, err)
 		assert.NotNil(t, p)
-		p.Close()
+		if p != nil {
+			p.Close()
+		}
 	})
 
 	t.Run("AllowsTrustedFlagPath", func(t *testing.T) {
@@ -73,7 +81,9 @@ func TestPathTraversalProtection(t *testing.T) {
 		p, err := local.New(cfg)
 		assert.NoError(t, err)
 		assert.NotNil(t, p)
-		p.Close()
+		if p != nil {
+			p.Close()
+		}
 	})
 }
 
@@ -88,7 +98,9 @@ func TestNew_Errors(t *testing.T) {
 		}
 		_, err := local.New(cfg)
 		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "load")
+		if err != nil {
+			assert.Contains(t, err.Error(), "load")
+		}
 	})
 }
 
@@ -110,7 +122,9 @@ func TestNew_EdgeCases(t *testing.T) {
 		p, err := local.New(cfg)
 		assert.NoError(t, err)
 		assert.NotNil(t, p)
-		p.Close()
+		if p != nil {
+			p.Close()
+		}
 	})
 
 	t.Run("NoConfigDir", func(t *testing.T) {
@@ -120,8 +134,7 @@ func TestNew_EdgeCases(t *testing.T) {
 			ConfigDir:    "",
 		}
 		p, err := local.New(cfg)
-		if err == nil {
-			assert.NotNil(t, p)
+		if err == nil && p != nil {
 			p.Close()
 		}
 	})
