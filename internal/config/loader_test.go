@@ -31,64 +31,91 @@ environments:
 	assert.Equal(t, dir, cfg.ConfigDir)
 }
 
-func TestLoad_FileNotFound(t *testing.T) {
-	_, err := config.Load("/nonexistent/.skret.yaml")
-	assert.Error(t, err)
+func TestLoad_Errors(t *testing.T) {
+	t.Run("NotFound", func(t *testing.T) {
+		_, err := config.Load("/nonexistent/.skret.yaml")
+		assert.Error(t, err)
+	})
+
+	t.Run("InvalidYAML", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, ".skret.yaml")
+		require.NoError(t, os.WriteFile(path, []byte("{{{invalid"), 0o644))
+		_, err := config.Load(path)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "parse")
+	})
+
+	t.Run("ValidationError", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, ".skret.yaml")
+		require.NoError(t, os.WriteFile(path, []byte("version: \"2\"\n"), 0o644))
+		_, err := config.Load(path)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "unsupported version")
+	})
+
+	t.Run("AbsError", func(t *testing.T) {
+		oldWd, _ := os.Getwd()
+		defer os.Chdir(oldWd)
+		dir := t.TempDir()
+		require.NoError(t, os.Chdir(dir))
+		require.NoError(t, os.RemoveAll(dir))
+		_, err := config.Load("relative.yaml")
+		assert.Error(t, err)
+	})
 }
 
-func TestLoad_InvalidYAML(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, ".skret.yaml")
-	require.NoError(t, os.WriteFile(path, []byte("{{{invalid"), 0o644))
+func TestDiscover(t *testing.T) {
+	t.Run("FindsInCurrentDir", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, ".skret.yaml")
+		require.NoError(t, os.WriteFile(path, []byte("version: \"1\"\n"), 0o644))
+		found, err := config.Discover(dir)
+		require.NoError(t, err)
+		assert.Equal(t, path, found)
+	})
 
-	_, err := config.Load(path)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "parse")
-}
+	t.Run("WalksUpToGitRoot", func(t *testing.T) {
+		root := t.TempDir()
+		_ = os.MkdirAll(filepath.Join(root, ".git"), 0o755)
+		path := filepath.Join(root, ".skret.yaml")
+		require.NoError(t, os.WriteFile(path, []byte("version: \"1\"\n"), 0o644))
+		subdir := filepath.Join(root, "a", "b", "c")
+		require.NoError(t, os.MkdirAll(subdir, 0o755))
+		found, err := config.Discover(subdir)
+		require.NoError(t, err)
+		assert.Equal(t, path, found)
+	})
 
-func TestLoad_ValidationError(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, ".skret.yaml")
-	require.NoError(t, os.WriteFile(path, []byte("version: \"2\"\n"), 0o644))
+	t.Run("NotFound", func(t *testing.T) {
+		dir := t.TempDir()
+		_ = os.MkdirAll(filepath.Join(dir, ".git"), 0o755)
+		_, err := config.Discover(dir)
+		assert.ErrorIs(t, err, config.ErrConfigNotFound)
+	})
 
-	_, err := config.Load(path)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "unsupported version")
-}
+	t.Run("FailsRecursion", func(t *testing.T) {
+		_, err := config.Discover("/")
+		assert.ErrorIs(t, err, config.ErrConfigNotFound)
+	})
 
-func TestDiscover_FindsInCurrentDir(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, ".skret.yaml")
-	require.NoError(t, os.WriteFile(path, []byte("version: \"1\"\n"), 0o644))
+	t.Run("AbsError", func(t *testing.T) {
+		oldWd, _ := os.Getwd()
+		defer os.Chdir(oldWd)
+		dir := t.TempDir()
+		require.NoError(t, os.Chdir(dir))
+		require.NoError(t, os.RemoveAll(dir))
+		_, err := config.Discover(".")
+		assert.Error(t, err)
+	})
 
-	found, err := config.Discover(dir)
-	require.NoError(t, err)
-	assert.Equal(t, path, found)
-}
-
-func TestDiscover_WalksUpToGitRoot(t *testing.T) {
-	root := t.TempDir()
-	_ = os.MkdirAll(filepath.Join(root, ".git"), 0o755)
-	path := filepath.Join(root, ".skret.yaml")
-	require.NoError(t, os.WriteFile(path, []byte("version: \"1\"\n"), 0o644))
-
-	subdir := filepath.Join(root, "a", "b", "c")
-	require.NoError(t, os.MkdirAll(subdir, 0o755))
-
-	found, err := config.Discover(subdir)
-	require.NoError(t, err)
-	assert.Equal(t, path, found)
-}
-
-func TestDiscover_NotFound(t *testing.T) {
-	dir := t.TempDir()
-	_ = os.MkdirAll(filepath.Join(dir, ".git"), 0o755)
-	_, err := config.Discover(dir)
-	assert.ErrorIs(t, err, config.ErrConfigNotFound)
-}
-
-func TestDiscover_FailsRecursion(t *testing.T) {
-	// Root dir check: parent == dir
-	_, err := config.Discover("/")
-	assert.ErrorIs(t, err, config.ErrConfigNotFound)
+	t.Run("StopsAtGitRoot", func(t *testing.T) {
+		root := t.TempDir()
+		require.NoError(t, os.Mkdir(filepath.Join(root, ".git"), 0o755))
+		subdir := filepath.Join(root, "subdir")
+		require.NoError(t, os.Mkdir(subdir, 0o755))
+		_, err := config.Discover(subdir)
+		assert.ErrorIs(t, err, config.ErrConfigNotFound)
+	})
 }

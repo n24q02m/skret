@@ -26,35 +26,36 @@ type Provider struct {
 	data     localFile
 }
 
+// marshalYAML allows mocking yaml.Marshal in tests.
+var marshalYAML = yaml.Marshal
+
 // New creates a local provider from a resolved config.
 func New(cfg *config.ResolvedConfig) (provider.SecretProvider, error) {
 	var finalPath string
 
 	if !cfg.FileFromFlag && cfg.ConfigDir != "" {
-		// Path comes from config file. Enforce boundary.
-		if filepath.IsAbs(cfg.File) {
-			// Special case for tests: allow absolute path ONLY IF it is within ConfigDir.
-			// This maintains security while allowing tests that use absolute paths in generated configs.
-			abs, err := filepath.Abs(cfg.File)
-			if err != nil {
-				return nil, fmt.Errorf("local: absolute path %q not allowed in configuration file", cfg.File)
-			}
-			rel, err := filepath.Rel(cfg.ConfigDir, abs)
-			if err != nil || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || rel == ".." {
-				return nil, fmt.Errorf("local: absolute path %q not allowed in configuration file", cfg.File)
-			}
-			finalPath = abs
-		} else {
-			// Use Clean to resolve any .. before joining
-			cleanRel := filepath.Clean(cfg.File)
-			if strings.HasPrefix(cleanRel, ".."+string(filepath.Separator)) || cleanRel == ".." {
-				return nil, fmt.Errorf("local: path %q escapes configuration directory", cfg.File)
-			}
-
-			finalPath = filepath.Join(cfg.ConfigDir, cleanRel)
+		configDir, err := filepath.Abs(cfg.ConfigDir)
+		if err != nil {
+			return nil, fmt.Errorf("local: resolve configuration directory: %w", err)
 		}
+
+		f := cfg.File
+		if !filepath.IsAbs(f) {
+			f = filepath.Join(configDir, f)
+		}
+
+		absFile, err := filepath.Abs(f)
+		if err != nil {
+			return nil, fmt.Errorf("local: resolve path %q: %w", cfg.File, err)
+		}
+
+		rel, err := filepath.Rel(configDir, absFile)
+		relSlash := filepath.ToSlash(rel)
+		if err != nil || relSlash == ".." || strings.HasPrefix(relSlash, "../") {
+			return nil, fmt.Errorf("local: path %q escapes configuration directory", cfg.File)
+		}
+		finalPath = absFile
 	} else {
-		// Path comes from flag/env (trusted user input)
 		absPath, err := filepath.Abs(cfg.File)
 		if err != nil {
 			return nil, fmt.Errorf("local: resolve path %q: %w", cfg.File, err)
@@ -145,10 +146,10 @@ func (p *Provider) load() error {
 			p.data = localFile{Version: "1", Secrets: map[string]string{}}
 			return nil
 		}
-		return err
+		return fmt.Errorf("read: %w", err)
 	}
 	if err := yaml.Unmarshal(raw, &p.data); err != nil {
-		return err
+		return fmt.Errorf("unmarshal: %w", err)
 	}
 	if p.data.Secrets == nil {
 		p.data.Secrets = map[string]string{}
@@ -157,35 +158,35 @@ func (p *Provider) load() error {
 }
 
 func (p *Provider) save() error {
-	raw, err := yaml.Marshal(&p.data)
+	raw, err := marshalYAML(&p.data)
 	if err != nil {
-		return fmt.Errorf("local: marshal: %w", err)
+		return fmt.Errorf("marshal: %w", err)
 	}
 	// Atomic write: temp file + rename
 	dir := filepath.Dir(p.filePath)
 	tmp, err := os.CreateTemp(dir, ".skret-local-*.yaml")
 	if err != nil {
-		return fmt.Errorf("local: create temp: %w", err)
+		return fmt.Errorf("create temp: %w", err)
 	}
 	tmpPath := tmp.Name()
 
 	if _, err := tmp.Write(raw); err != nil {
 		_ = tmp.Close()
 		_ = os.Remove(tmpPath)
-		return fmt.Errorf("local: write temp: %w", err)
+		return fmt.Errorf("write temp: %w", err)
 	}
 	if err := tmp.Chmod(0o600); err != nil {
 		_ = tmp.Close()
 		_ = os.Remove(tmpPath)
-		return fmt.Errorf("local: chmod temp: %w", err)
+		return fmt.Errorf("chmod temp: %w", err)
 	}
 	if err := tmp.Close(); err != nil {
 		_ = os.Remove(tmpPath)
-		return fmt.Errorf("local: close temp: %w", err)
+		return fmt.Errorf("close temp: %w", err)
 	}
 	if err := os.Rename(tmpPath, p.filePath); err != nil {
 		_ = os.Remove(tmpPath)
-		return fmt.Errorf("local: rename: %w", err)
+		return fmt.Errorf("rename: %w", err)
 	}
 	return nil
 }

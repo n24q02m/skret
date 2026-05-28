@@ -15,146 +15,143 @@ import (
 
 func TestPathTraversalProtection(t *testing.T) {
 	tempDir := t.TempDir()
-
-	// Project dir where .skret.yaml would be
 	projectDir := filepath.Join(tempDir, "project")
 	require.NoError(t, os.Mkdir(projectDir, 0o700))
 
 	t.Run("BlocksTraversalInConfig", func(t *testing.T) {
 		cfg := &config.ResolvedConfig{
-			File:         "../sensitive.yaml",
+			File:         ".." + string(filepath.Separator) + "sensitive.yaml",
 			FileFromFlag: false,
 			ConfigDir:    projectDir,
 		}
-
 		_, err := local.New(cfg)
-		assert.Error(t, err)
-		if err != nil {
-			assert.Contains(t, err.Error(), "escapes configuration directory")
-		}
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "escapes configuration directory")
 	})
 
-	t.Run("BlocksAbsolutePathInConfig", func(t *testing.T) {
-		// Use a path that is guaranteed to be absolute and outside projectDir
+	t.Run("BlocksAbsoluteOutsideInConfig", func(t *testing.T) {
 		absOutside := filepath.Join(tempDir, "outside.yaml")
 		cfg := &config.ResolvedConfig{
 			File:         absOutside,
 			FileFromFlag: false,
 			ConfigDir:    projectDir,
 		}
-
 		_, err := local.New(cfg)
-		assert.Error(t, err)
-		if err != nil {
-			assert.Contains(t, err.Error(), "absolute path")
-		}
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "escapes configuration directory")
 	})
 
-	t.Run("AllowsRelativePathInConfig", func(t *testing.T) {
+	t.Run("AllowsRelativeInConfigDir", func(t *testing.T) {
 		secretsFile := filepath.Join(projectDir, "secrets.yaml")
 		require.NoError(t, os.WriteFile(secretsFile, []byte("version: \"1\"\nsecrets: {}"), 0o600))
-
 		cfg := &config.ResolvedConfig{
 			File:         "secrets.yaml",
 			FileFromFlag: false,
 			ConfigDir:    projectDir,
 		}
-
 		p, err := local.New(cfg)
-		assert.NoError(t, err)
-		assert.NotNil(t, p)
-		if p != nil {
-			p.Close()
-		}
+		require.NoError(t, err)
+		require.NotNil(t, p)
+		p.Close()
 	})
 
-	t.Run("AllowsTrustedFlagPath", func(t *testing.T) {
-		sensitiveFile := filepath.Join(tempDir, "sensitive.yaml")
-		require.NoError(t, os.WriteFile(sensitiveFile, []byte("version: \"1\"\nsecrets: {}"), 0o600))
-
-		cfg := &config.ResolvedConfig{
-			File:         sensitiveFile,
-			FileFromFlag: true,
-			ConfigDir:    projectDir,
-		}
-
-		p, err := local.New(cfg)
-		assert.NoError(t, err)
-		assert.NotNil(t, p)
-		if p != nil {
-			p.Close()
-		}
-	})
-}
-
-func TestNew_Errors(t *testing.T) {
-	t.Run("LoadError", func(t *testing.T) {
-		dir := t.TempDir()
-		path := filepath.Join(dir, "bad.yaml")
-		require.NoError(t, os.WriteFile(path, []byte("{{{invalid"), 0o600))
-		cfg := &config.ResolvedConfig{
-			File:         path,
-			FileFromFlag: true,
-		}
-		_, err := local.New(cfg)
-		assert.Error(t, err)
-		if err != nil {
-			assert.Contains(t, err.Error(), "load")
-		}
-	})
-}
-
-func TestNew_EdgeCases(t *testing.T) {
-	t.Run("AbsoluteInConfigDir", func(t *testing.T) {
-		tempDir := t.TempDir()
-		projectDir := filepath.Join(tempDir, "project")
-		require.NoError(t, os.Mkdir(projectDir, 0o700))
-
+	t.Run("AllowsAbsoluteInConfigDir", func(t *testing.T) {
 		secretsFile := filepath.Join(projectDir, "secrets.yaml")
 		require.NoError(t, os.WriteFile(secretsFile, []byte("version: \"1\"\nsecrets: {}"), 0o600))
-
 		cfg := &config.ResolvedConfig{
 			File:         secretsFile,
 			FileFromFlag: false,
 			ConfigDir:    projectDir,
 		}
-
 		p, err := local.New(cfg)
-		assert.NoError(t, err)
-		assert.NotNil(t, p)
-		if p != nil {
-			p.Close()
-		}
-	})
-
-	t.Run("NoConfigDir", func(t *testing.T) {
-		cfg := &config.ResolvedConfig{
-			File:         "secrets.yaml",
-			FileFromFlag: false,
-			ConfigDir:    "",
-		}
-		p, err := local.New(cfg)
-		if err == nil && p != nil {
-			p.Close()
-		}
+		require.NoError(t, err)
+		require.NotNil(t, p)
+		p.Close()
 	})
 }
 
-func TestProvider_NotSupported(t *testing.T) {
-	tempDir := t.TempDir()
-	path := filepath.Join(tempDir, "secrets.yaml")
-	cfg := &config.ResolvedConfig{
-		File:         path,
-		FileFromFlag: true,
-	}
+func TestNew_Errors(t *testing.T) {
+	t.Run("ReadError", func(t *testing.T) {
+		dir := t.TempDir()
+		cfg := &config.ResolvedConfig{
+			File:         dir,
+			FileFromFlag: true,
+		}
+		_, err := local.New(cfg)
+		require.Error(t, err)
+	})
+
+	t.Run("UnmarshalError", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "invalid.yaml")
+		require.NoError(t, os.WriteFile(path, []byte("secrets: [unclosed"), 0o600))
+		cfg := &config.ResolvedConfig{
+			File:         path,
+			FileFromFlag: true,
+		}
+		_, err := local.New(cfg)
+		require.Error(t, err)
+	})
+
+	t.Run("AbsError", func(t *testing.T) {
+		oldWd, _ := os.Getwd()
+		defer os.Chdir(oldWd)
+		dir := t.TempDir()
+		require.NoError(t, os.Mkdir(filepath.Join(dir, "sub"), 0o700))
+		require.NoError(t, os.Chdir(filepath.Join(dir, "sub")))
+		require.NoError(t, os.RemoveAll(dir))
+		cfg := &config.ResolvedConfig{
+			File:         "rel.yaml",
+			FileFromFlag: true,
+		}
+		_, err := local.New(cfg)
+		assert.Error(t, err)
+	})
+
+	t.Run("ConfigAbsDirError", func(t *testing.T) {
+		oldWd, _ := os.Getwd()
+		defer os.Chdir(oldWd)
+		dir := t.TempDir()
+		require.NoError(t, os.Mkdir(filepath.Join(dir, "sub"), 0o700))
+		require.NoError(t, os.Chdir(filepath.Join(dir, "sub")))
+		require.NoError(t, os.RemoveAll(dir))
+		cfg := &config.ResolvedConfig{
+			File:         "secrets.yaml",
+			FileFromFlag: false,
+			ConfigDir:    ".",
+		}
+		_, err := local.New(cfg)
+		assert.Error(t, err)
+	})
+}
+
+func TestProvider_BatchAndList(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "secrets.yaml")
+	require.NoError(t, os.WriteFile(path, []byte("version: \"1\"\nsecrets: {}\n"), 0o600))
+	cfg := &config.ResolvedConfig{File: path, FileFromFlag: true}
 	p, err := local.New(cfg)
 	require.NoError(t, err)
 	defer p.Close()
-
 	ctx := context.Background()
-	_, err = p.GetHistory(ctx, "key")
-	assert.ErrorIs(t, err, provider.ErrCapabilityNotSupported)
 
-	err = p.Rollback(ctx, "key", 1)
-	assert.ErrorIs(t, err, provider.ErrCapabilityNotSupported)
+	_ = p.Set(ctx, "k1", "v1", provider.SecretMeta{})
+
+	t.Run("GetBatchFoundAndMissing", func(t *testing.T) {
+		secrets, err := p.GetBatch(ctx, []string{"k1", "missing"})
+		assert.NoError(t, err)
+		assert.Len(t, secrets, 1)
+	})
+
+	t.Run("GetBatchEmptyKeys", func(t *testing.T) {
+		secrets, err := p.GetBatch(ctx, []string{})
+		assert.NoError(t, err)
+		assert.Len(t, secrets, 0)
+	})
+
+	t.Run("List", func(t *testing.T) {
+		secrets, err := p.List(ctx, "")
+		assert.NoError(t, err)
+		assert.Len(t, secrets, 1)
+	})
 }

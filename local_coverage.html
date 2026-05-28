@@ -55,7 +55,7 @@
 			<div id="nav">
 				<select id="files">
 
-				<option value="file0">github.com/n24q02m/skret/internal/provider/local/local.go (86.2%)</option>
+				<option value="file0">github.com/n24q02m/skret/internal/provider/local/local.go (87.2%)</option>
 
 				</select>
 			</div>
@@ -114,7 +114,7 @@ func New(cfg *config.ResolvedConfig) (provider.SecretProvider, error) <span clas
                         if err != nil || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || rel == ".." </span><span class="cov8" title="1">{
                                 return nil, fmt.Errorf("local: absolute path %q not allowed in configuration file", cfg.File)
                         }</span>
-                        <span class="cov0" title="0">finalPath = abs</span>
+                        <span class="cov8" title="1">finalPath = abs</span>
                 } else<span class="cov8" title="1"> {
                         // Use Clean to resolve any .. before joining
                         cleanRel := filepath.Clean(cfg.File)
