@@ -159,6 +159,8 @@ func (o *importOptions) run(cmd *cobra.Command) error {
 					existing[s.Key] = struct{}{}
 				}
 				listLoaded = true
+			} else {
+				cmd.PrintErrln("warning: could not list existing secrets; conflict detection may be incomplete")
 			}
 		}
 	}
@@ -176,11 +178,6 @@ func (o *importOptions) run(cmd *cobra.Command) error {
 			hasConflict := false
 			if listLoaded {
 				_, hasConflict = existing[destKey]
-			} else {
-				// Fallback to individual Get if both List and GetBatch failed
-				if _, err := p.Get(ctx, destKey); err == nil {
-					hasConflict = true
-				}
 			}
 
 			if hasConflict {
