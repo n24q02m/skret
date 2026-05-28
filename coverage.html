@@ -1,0 +1,1684 @@
+
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+		<title>auth: Go Coverage Report</title>
+		<style>
+			body {
+				background: black;
+				color: rgb(80, 80, 80);
+			}
+			body, pre, #legend span {
+				font-family: Menlo, monospace;
+				font-weight: bold;
+			}
+			#topbar {
+				background: black;
+				position: fixed;
+				top: 0; left: 0; right: 0;
+				height: 42px;
+				border-bottom: 1px solid rgb(80, 80, 80);
+			}
+			#content {
+				margin-top: 50px;
+			}
+			#nav, #legend {
+				float: left;
+				margin-left: 10px;
+			}
+			#legend {
+				margin-top: 12px;
+			}
+			#nav {
+				margin-top: 10px;
+			}
+			#legend span {
+				margin: 0 5px;
+			}
+			.cov0 { color: rgb(192, 0, 0) }
+.cov1 { color: rgb(128, 128, 128) }
+.cov2 { color: rgb(116, 140, 131) }
+.cov3 { color: rgb(104, 152, 134) }
+.cov4 { color: rgb(92, 164, 137) }
+.cov5 { color: rgb(80, 176, 140) }
+.cov6 { color: rgb(68, 188, 143) }
+.cov7 { color: rgb(56, 200, 146) }
+.cov8 { color: rgb(44, 212, 149) }
+.cov9 { color: rgb(32, 224, 152) }
+.cov10 { color: rgb(20, 236, 155) }
+
+		</style>
+	</head>
+	<body>
+		<div id="topbar">
+			<div id="nav">
+				<select id="files">
+
+				<option value="file0">github.com/n24q02m/skret/internal/auth/auth.go (96.0%)</option>
+
+				<option value="file1">github.com/n24q02m/skret/internal/auth/autoauth.go (100.0%)</option>
+
+				<option value="file2">github.com/n24q02m/skret/internal/auth/aws_assume.go (93.8%)</option>
+
+				<option value="file3">github.com/n24q02m/skret/internal/auth/aws_keys.go (100.0%)</option>
+
+				<option value="file4">github.com/n24q02m/skret/internal/auth/aws_profile.go (90.2%)</option>
+
+				<option value="file5">github.com/n24q02m/skret/internal/auth/aws_provider.go (100.0%)</option>
+
+				<option value="file6">github.com/n24q02m/skret/internal/auth/aws_sso.go (88.2%)</option>
+
+				<option value="file7">github.com/n24q02m/skret/internal/auth/backend.go (71.4%)</option>
+
+				<option value="file8">github.com/n24q02m/skret/internal/auth/doppler_oauth.go (91.5%)</option>
+
+				<option value="file9">github.com/n24q02m/skret/internal/auth/doppler_provider.go (97.1%)</option>
+
+				<option value="file10">github.com/n24q02m/skret/internal/auth/infisical_browser.go (91.8%)</option>
+
+				<option value="file11">github.com/n24q02m/skret/internal/auth/infisical_provider.go (94.7%)</option>
+
+				<option value="file12">github.com/n24q02m/skret/internal/auth/keyring_backend.go (79.4%)</option>
+
+				<option value="file13">github.com/n24q02m/skret/internal/auth/prompt.go (92.5%)</option>
+
+				<option value="file14">github.com/n24q02m/skret/internal/auth/store.go (96.9%)</option>
+
+				</select>
+			</div>
+			<div id="legend">
+				<span>not tracked</span>
+
+				<span class="cov0">not covered</span>
+				<span class="cov8">covered</span>
+
+			</div>
+		</div>
+		<div id="content">
+
+		<pre class="file" id="file0" style="display: none">// Package auth provides native authentication flows for skret-supported
+// secret backends (AWS, Doppler, Infisical) with zero external CLI deps.
+package auth
+
+import (
+        "context"
+        "errors"
+        "fmt"
+        "time"
+)
+
+// ErrCredentialNotFound is returned when a credential is absent from the store.
+var ErrCredentialNotFound = errors.New("auth: credential not found")
+
+// ErrAuthMethodUnsupported is returned when a provider does not support the named method.
+var ErrAuthMethodUnsupported = errors.New("auth: method not supported")
+
+// Credential represents a single provider's authentication state.
+type Credential struct {
+        Provider  string            `yaml:"-"`
+        Method    string            `yaml:"method"`
+        Token     string            `yaml:"token,omitempty"`
+        ExpiresAt time.Time         `yaml:"expires_at,omitempty"`
+        Metadata  map[string]string `yaml:"metadata,omitempty"`
+}
+
+// IsExpired checks if the credential has a non-zero expiry that is past.
+func (c *Credential) IsExpired() bool <span class="cov8" title="1">{
+        if c.ExpiresAt.IsZero() </span><span class="cov8" title="1">{
+                return false
+        }</span>
+        <span class="cov8" title="1">return time.Now().After(c.ExpiresAt)</span>
+}
+
+// Method describes one authentication path exposed by a provider.
+type Method struct {
+        Name        string
+        Description string
+        Interactive bool
+}
+
+// Provider is the interface each backend implements.
+type Provider interface {
+        Name() string
+        Methods() []Method
+        Login(ctx context.Context, method string, opts map[string]string) (*Credential, error)
+        Validate(ctx context.Context, cred *Credential) error
+        Logout(ctx context.Context) error
+}
+
+// registry maps provider names to their implementations.
+var registry = map[string]Provider{}
+
+// Register adds a provider to the global registry.
+func Register(name string, p Provider) <span class="cov8" title="1">{
+        registry[name] = p
+}</span>
+
+func Resolve(ctx context.Context, providerName string) (*Credential, error) <span class="cov8" title="1">{
+        store := NewStore()
+        cred, err := store.Load(providerName)
+        if err != nil </span><span class="cov8" title="1">{
+                return nil, err
+        }</span>
+        <span class="cov8" title="1">if cred.IsExpired() </span><span class="cov8" title="1">{
+                return nil, fmt.Errorf("auth: %s credential expired at %s", providerName, cred.ExpiresAt.Format(time.RFC3339))
+        }</span>
+        <span class="cov8" title="1">return cred, nil</span>
+}
+
+// Login performs interactive login for a provider using the given method.
+func Login(ctx context.Context, providerName string, opts map[string]string) error <span class="cov8" title="1">{
+        p, ok := registry[providerName]
+        if !ok </span><span class="cov8" title="1">{
+                return fmt.Errorf("auth: unknown provider %q", providerName)
+        }</span>
+
+        <span class="cov8" title="1">method := ""
+        if opts != nil </span><span class="cov8" title="1">{
+                method = opts["method"]
+        }</span>
+        <span class="cov8" title="1">if method == "" &amp;&amp; len(p.Methods()) == 1 </span><span class="cov8" title="1">{
+                method = p.Methods()[0].Name
+        }</span>
+
+        <span class="cov8" title="1">cred, err := p.Login(ctx, method, opts)
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("auth %s: login: %w", providerName, err)
+        }</span>
+        <span class="cov8" title="1">cred.Provider = providerName
+
+        store := NewStore()
+        return store.Save(cred)</span>
+}
+</pre>
+
+		<pre class="file" id="file1" style="display: none">package auth
+
+import (
+        "context"
+        "fmt"
+        "io"
+        "os"
+        "strings"
+)
+
+// IsAuthError classifies whether an error is auth-related and should trigger
+// the auto-relogin prompt.
+func IsAuthError(err error) bool <span class="cov8" title="1">{
+        if err == nil </span><span class="cov8" title="1">{
+                return false
+        }</span>
+        // Lowercase the message once instead of per-substring (the loop body
+        // previously called strings.ToLower on both operands every iteration);
+        // the needles are kept pre-lowercased. Behavior is identical.
+        <span class="cov8" title="1">lower := strings.ToLower(err.Error())
+        for _, substr := range []string{
+                "unauthorizedexception",
+                "invalidgrantexception",
+                "expiredtokenexception",
+                "401",
+                "403",
+                "credentials missing",
+                "could not resolve credentials",
+                "credential not found",
+        } </span><span class="cov8" title="1">{
+                if strings.Contains(lower, substr) </span><span class="cov8" title="1">{
+                        return true
+                }</span>
+        }
+        <span class="cov8" title="1">return false</span>
+}
+
+// WithAutoAuth runs fn; on an auth-shaped error, prompts the user for inline
+// login (interactive TTY only) and re-runs fn once.
+func WithAutoAuth(ctx context.Context, provider string, fn func() error) error <span class="cov8" title="1">{
+        return withAutoAuthIO(ctx, provider, fn, os.Stdin, os.Stderr, isNonInteractive())
+}</span>
+
+// isNonInteractive returns true when stdin is not a terminal or SKRET_NON_INTERACTIVE=1.
+func isNonInteractive() bool <span class="cov8" title="1">{
+        return os.Getenv("SKRET_NON_INTERACTIVE") == "1" || !IsInteractiveStdin()
+}</span>
+
+// withAutoAuthIO is the testable core of WithAutoAuth.
+func withAutoAuthIO(ctx context.Context, provider string, fn func() error, stdin io.Reader, stderr io.Writer, nonInteractive bool) error <span class="cov8" title="1">{
+        err := fn()
+        if !IsAuthError(err) </span><span class="cov8" title="1">{
+                return err
+        }</span>
+
+        <span class="cov8" title="1">if nonInteractive </span><span class="cov8" title="1">{
+                return fmt.Errorf("%s: credentials missing or expired; run `skret auth login %s`", provider, provider)
+        }</span>
+
+        <span class="cov8" title="1">fmt.Fprintf(stderr, "\n%s credentials missing or expired. ", provider)
+        if !Confirm(stdin, stderr, "Login now?") </span><span class="cov8" title="1">{
+                return err
+        }</span>
+
+        <span class="cov8" title="1">if loginErr := Login(ctx, provider, nil); loginErr != nil </span><span class="cov8" title="1">{
+                return fmt.Errorf("auth %s: %w", provider, loginErr)
+        }</span>
+        <span class="cov8" title="1">return fn()</span>
+}
+</pre>
+
+		<pre class="file" id="file2" style="display: none">package auth
+
+import (
+        "context"
+        "fmt"
+        "time"
+
+        "github.com/aws/aws-sdk-go-v2/aws"
+        "github.com/aws/aws-sdk-go-v2/service/sts"
+)
+
+// STSAssumer is the subset of the STS client used by the assume-role flow.
+type STSAssumer interface {
+        AssumeRole(ctx context.Context, in *sts.AssumeRoleInput, opts ...func(*sts.Options)) (*sts.AssumeRoleOutput, error)
+}
+
+// AWSAssumeFlow performs an STS AssumeRole call and returns temporary
+// credentials with expiration tracking.
+type AWSAssumeFlow struct {
+        client STSAssumer
+}
+
+// NewAWSAssumeFlow creates an assume-role flow backed by the given STS client.
+func NewAWSAssumeFlow(client STSAssumer) *AWSAssumeFlow <span class="cov8" title="1">{
+        return &amp;AWSAssumeFlow{client: client}
+}</span>
+
+// Login assumes opts["role_arn"] using opts["session_name"] (defaults to
+// "skret-cli") and returns the resulting temporary credential.
+func (f *AWSAssumeFlow) Login(ctx context.Context, opts map[string]string) (*Credential, error) <span class="cov8" title="1">{
+        roleArn := opts["role_arn"]
+        if roleArn == "" </span><span class="cov8" title="1">{
+                return nil, fmt.Errorf("aws assume: role_arn required")
+        }</span>
+        <span class="cov8" title="1">sessionName := opts["session_name"]
+        if sessionName == "" </span><span class="cov8" title="1">{
+                sessionName = "skret-cli"
+        }</span>
+        <span class="cov8" title="1">out, err := f.client.AssumeRole(ctx, &amp;sts.AssumeRoleInput{
+                RoleArn:         aws.String(roleArn),
+                RoleSessionName: aws.String(sessionName),
+        })
+        if err != nil </span><span class="cov8" title="1">{
+                return nil, fmt.Errorf("aws assume: %w", err)
+        }</span>
+        <span class="cov8" title="1">if out.Credentials == nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("aws assume: sts returned nil credentials")
+        }</span>
+        <span class="cov8" title="1">exp := time.Time{}
+        if out.Credentials.Expiration != nil </span><span class="cov8" title="1">{
+                exp = *out.Credentials.Expiration
+        }</span>
+        <span class="cov8" title="1">return &amp;Credential{
+                Method:    "assume-role",
+                Token:     aws.ToString(out.Credentials.SecretAccessKey),
+                ExpiresAt: exp,
+                Metadata: map[string]string{
+                        "access_key_id": aws.ToString(out.Credentials.AccessKeyId),
+                        "session_token": aws.ToString(out.Credentials.SessionToken),
+                        "role_arn":      roleArn,
+                },
+        }, nil</span>
+}
+</pre>
+
+		<pre class="file" id="file3" style="display: none">package auth
+
+import (
+        "bufio"
+        "context"
+        "fmt"
+        "io"
+        "strings"
+)
+
+// AWSKeysFlow performs interactive paste of AWS access key credentials.
+type AWSKeysFlow struct {
+        in io.Reader
+}
+
+// NewAWSKeysFlow creates a paste flow that reads from the given reader.
+func NewAWSKeysFlow(in io.Reader) *AWSKeysFlow <span class="cov8" title="1">{
+        return &amp;AWSKeysFlow{in: in}
+}</span>
+
+// Login prompts for access key id, secret access key, and optional session
+// token, returning a Credential on success.
+func (f *AWSKeysFlow) Login(ctx context.Context, _ map[string]string) (*Credential, error) <span class="cov8" title="1">{
+        r := bufio.NewReader(f.in)
+        akid := promptLine(ctx, r, "AWS Access Key ID: ")
+        if akid == "" </span><span class="cov8" title="1">{
+                return nil, fmt.Errorf("aws keys: access key id required")
+        }</span>
+        <span class="cov8" title="1">sak := promptLine(ctx, r, "AWS Secret Access Key: ")
+        if sak == "" </span><span class="cov8" title="1">{
+                return nil, fmt.Errorf("aws keys: secret access key required")
+        }</span>
+        <span class="cov8" title="1">sess := promptLine(ctx, r, "AWS Session Token (optional, blank = skip): ")
+
+        return &amp;Credential{
+                Method: "access-key",
+                Token:  sak,
+                Metadata: map[string]string{
+                        "access_key_id": akid,
+                        "session_token": sess,
+                },
+        }, nil</span>
+}
+
+// promptLine writes prompt to the context writer and reads one trimmed line
+// from r. Returns empty string on EOF with no input.
+func promptLine(ctx context.Context, r *bufio.Reader, prompt string) string <span class="cov8" title="1">{
+        fmt.Fprint(ctxOut(ctx), prompt)
+        s, err := r.ReadString('\n')
+        if err != nil &amp;&amp; s == "" </span><span class="cov8" title="1">{
+                return ""
+        }</span>
+        <span class="cov8" title="1">return strings.TrimSpace(s)</span>
+}
+</pre>
+
+		<pre class="file" id="file4" style="display: none">package auth
+
+import (
+        "context"
+        "fmt"
+        "os"
+        "path/filepath"
+        "sort"
+        "strings"
+
+        "gopkg.in/ini.v1"
+)
+
+// AWSProfileFlow enumerates and selects profiles from ~/.aws/config.
+type AWSProfileFlow struct{}
+
+// NewAWSProfileFlow creates a profile enumeration flow.
+func NewAWSProfileFlow() *AWSProfileFlow <span class="cov8" title="1">{ return &amp;AWSProfileFlow{} }</span>
+
+// awsConfigPath returns the standard ~/.aws/config path.
+func awsConfigPath() string <span class="cov8" title="1">{
+        home, err := os.UserHomeDir()
+        if err != nil </span><span class="cov0" title="0">{
+                return ""
+        }</span>
+        <span class="cov8" title="1">return filepath.Join(home, ".aws", "config")</span>
+}
+
+// List returns the sorted set of AWS profile names declared in ~/.aws/config.
+// The section [default] becomes "default"; [profile foo] becomes "foo".
+func (f *AWSProfileFlow) List() ([]string, error) <span class="cov8" title="1">{
+        path := awsConfigPath()
+        if _, err := os.Stat(path); err != nil </span><span class="cov8" title="1">{
+                return nil, fmt.Errorf("aws profile: %w", err)
+        }</span>
+        <span class="cov8" title="1">cfg, err := ini.Load(path)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("aws profile: parse %s: %w", path, err)
+        }</span>
+        <span class="cov8" title="1">var names []string
+        for _, s := range cfg.Sections() </span><span class="cov8" title="1">{
+                name := s.Name()
+                switch </span>{
+                case name == "default":<span class="cov8" title="1">
+                        names = append(names, "default")</span>
+                case strings.HasPrefix(name, "profile "):<span class="cov8" title="1">
+                        names = append(names, strings.TrimPrefix(name, "profile "))</span>
+                }
+        }
+        <span class="cov8" title="1">sort.Strings(names)
+        return names, nil</span>
+}
+
+// Login selects opts["profile"] (defaults to "default") from ~/.aws/config
+// and returns a Credential that records the profile name and region.
+func (f *AWSProfileFlow) Login(_ context.Context, opts map[string]string) (*Credential, error) <span class="cov8" title="1">{
+        profile := opts["profile"]
+        if profile == "" </span><span class="cov8" title="1">{
+                profile = "default"
+        }</span>
+        <span class="cov8" title="1">names, err := f.List()
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov8" title="1">found := false
+        for _, n := range names </span><span class="cov8" title="1">{
+                if n == profile </span><span class="cov8" title="1">{
+                        found = true
+                        break</span>
+                }
+        }
+        <span class="cov8" title="1">if !found </span><span class="cov8" title="1">{
+                return nil, fmt.Errorf("aws profile: %q not found in ~/.aws/config (available: %s)", profile, strings.Join(names, ", "))
+        }</span>
+        <span class="cov8" title="1">cfg, err := ini.Load(awsConfigPath())
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("aws profile: reload: %w", err)
+        }</span>
+        <span class="cov8" title="1">sectionName := "profile " + profile
+        if profile == "default" </span><span class="cov8" title="1">{
+                sectionName = "default"
+        }</span>
+        <span class="cov8" title="1">section := cfg.Section(sectionName)
+        region := section.Key("region").String()
+        return &amp;Credential{
+                Method: "profile",
+                Metadata: map[string]string{
+                        "profile": profile,
+                        "region":  region,
+                },
+        }, nil</span>
+}
+</pre>
+
+		<pre class="file" id="file5" style="display: none">package auth
+
+import (
+        "context"
+        "fmt"
+        "os"
+
+        awsconfig "github.com/aws/aws-sdk-go-v2/config"
+        "github.com/aws/aws-sdk-go-v2/service/ssooidc"
+        "github.com/aws/aws-sdk-go-v2/service/sts"
+)
+
+var loadAWSConfig = awsconfig.LoadDefaultConfig
+
+// AWSProvider implements the auth.Provider interface for AWS.
+type AWSProvider struct {
+        ssoFlow *AWSSSOFlow
+}
+
+// NewAWSProvider creates the AWS auth provider.
+func NewAWSProvider() *AWSProvider <span class="cov8" title="1">{
+        return &amp;AWSProvider{}
+}</span>
+
+func (p *AWSProvider) Name() string <span class="cov8" title="1">{ return "aws" }</span>
+
+func (p *AWSProvider) Methods() []Method <span class="cov8" title="1">{
+        return []Method{
+                {Name: "sso", Description: "AWS SSO device flow (recommended)", Interactive: true},
+                {Name: "access-key", Description: "Paste AWS access key + secret", Interactive: true},
+                {Name: "assume-role", Description: "Assume IAM role (requires role_arn opt)", Interactive: false},
+                {Name: "profile", Description: "Use existing AWS CLI profile from ~/.aws/config", Interactive: false},
+        }
+}</span>
+
+func (p *AWSProvider) Login(ctx context.Context, method string, opts map[string]string) (*Credential, error) <span class="cov8" title="1">{
+        if method == "" </span><span class="cov8" title="1">{
+                // Default to sso: the 90-day silent-refresh path is the recommended
+                // "authenticate once" method (spec §2.3).
+                method = "sso"
+        }</span>
+        <span class="cov8" title="1">switch method </span>{
+        case "sso":<span class="cov8" title="1">
+                return p.loginSSO(ctx, opts)</span>
+        case "access-key":<span class="cov8" title="1">
+                return NewAWSKeysFlow(os.Stdin).Login(ctx, opts)</span>
+        case "assume-role":<span class="cov8" title="1">
+                cfg, err := loadAWSConfig(ctx)
+                if err != nil </span><span class="cov8" title="1">{
+                        return nil, fmt.Errorf("aws: load config: %w", err)
+                }</span>
+                <span class="cov8" title="1">return NewAWSAssumeFlow(sts.NewFromConfig(cfg)).Login(ctx, opts)</span>
+        case "profile":<span class="cov8" title="1">
+                return NewAWSProfileFlow().Login(ctx, opts)</span>
+        default:<span class="cov8" title="1">
+                return nil, fmt.Errorf("aws: %w: %s", ErrAuthMethodUnsupported, method)</span>
+        }
+}
+
+func (p *AWSProvider) loginSSO(ctx context.Context, opts map[string]string) (*Credential, error) <span class="cov8" title="1">{
+        if p.ssoFlow == nil </span><span class="cov8" title="1">{
+                region := opts["region"]
+                if region == "" </span><span class="cov8" title="1">{
+                        region = "us-east-1"
+                }</span>
+                <span class="cov8" title="1">cfg, err := loadAWSConfig(ctx, awsconfig.WithRegion(region))
+                if err != nil </span><span class="cov8" title="1">{
+                        return nil, fmt.Errorf("aws: load config: %w", err)
+                }</span>
+                <span class="cov8" title="1">p.ssoFlow = NewAWSSSOFlow(ssooidc.NewFromConfig(cfg))</span>
+        }
+        <span class="cov8" title="1">return p.ssoFlow.Login(ctx, opts)</span>
+}
+
+func (p *AWSProvider) Validate(_ context.Context, cred *Credential) error <span class="cov8" title="1">{
+        if cred == nil || (cred.Token == "" &amp;&amp; cred.Method != "profile") </span><span class="cov8" title="1">{
+                return fmt.Errorf("aws: invalid credential")
+        }</span>
+        <span class="cov8" title="1">return nil</span>
+}
+
+func (p *AWSProvider) Logout(_ context.Context) error <span class="cov8" title="1">{
+        return nil
+}</span>
+
+func init() <span class="cov8" title="1">{
+        Register("aws", NewAWSProvider())
+}</span>
+</pre>
+
+		<pre class="file" id="file6" style="display: none">package auth
+
+import (
+        "context"
+        "errors"
+        "fmt"
+        "time"
+
+        "github.com/aws/aws-sdk-go-v2/aws"
+        "github.com/aws/aws-sdk-go-v2/service/ssooidc"
+        ssooidctypes "github.com/aws/aws-sdk-go-v2/service/ssooidc/types"
+)
+
+// SSOOIDCClient is the subset of ssooidc used by the SSO login flow.
+type SSOOIDCClient interface {
+        RegisterClient(ctx context.Context, in *ssooidc.RegisterClientInput, opts ...func(*ssooidc.Options)) (*ssooidc.RegisterClientOutput, error)
+        StartDeviceAuthorization(ctx context.Context, in *ssooidc.StartDeviceAuthorizationInput, opts ...func(*ssooidc.Options)) (*ssooidc.StartDeviceAuthorizationOutput, error)
+        CreateToken(ctx context.Context, in *ssooidc.CreateTokenInput, opts ...func(*ssooidc.Options)) (*ssooidc.CreateTokenOutput, error)
+}
+
+// AWSSSOFlow performs the AWS SSO device-authorization flow.
+type AWSSSOFlow struct {
+        client SSOOIDCClient
+        Opener func(ctx context.Context, authURL string) error
+}
+
+// NewAWSSSOFlow creates an AWS SSO flow backed by the given ssooidc client.
+// Opener defaults to OpenBrowser; tests override it to avoid launching a real
+// browser.
+func NewAWSSSOFlow(client SSOOIDCClient) *AWSSSOFlow <span class="cov8" title="1">{
+        return &amp;AWSSSOFlow{client: client, Opener: OpenBrowser}
+}</span>
+
+// Login registers the client, starts device auth, prints the verification URI,
+// opens the browser best-effort, and polls CreateToken until the user authorizes.
+// opts must contain "start_url" and "region".
+func (f *AWSSSOFlow) Login(ctx context.Context, opts map[string]string) (*Credential, error) <span class="cov8" title="1">{
+        startURL := opts["start_url"]
+        if startURL == "" </span><span class="cov8" title="1">{
+                return nil, fmt.Errorf("aws sso: start_url required")
+        }</span>
+        <span class="cov8" title="1">accountID := opts["account_id"]
+        roleName := opts["role_name"]
+        if accountID == "" || roleName == "" </span><span class="cov8" title="1">{
+                return nil, fmt.Errorf("aws sso: account_id and role_name required (pass --opt account_id=... --opt role_name=...)")
+        }</span>
+
+        <span class="cov8" title="1">reg, err := f.client.RegisterClient(ctx, &amp;ssooidc.RegisterClientInput{
+                ClientName: aws.String("skret-cli"),
+                ClientType: aws.String("public"),
+                Scopes:     []string{"sso:account:access"},
+        })
+        if err != nil </span><span class="cov8" title="1">{
+                return nil, fmt.Errorf("aws sso: register client: %w", err)
+        }</span>
+
+        <span class="cov8" title="1">dev, err := f.client.StartDeviceAuthorization(ctx, &amp;ssooidc.StartDeviceAuthorizationInput{
+                ClientId:     reg.ClientId,
+                ClientSecret: reg.ClientSecret,
+                StartUrl:     aws.String(startURL),
+        })
+        if err != nil </span><span class="cov8" title="1">{
+                return nil, fmt.Errorf("aws sso: start device auth: %w", err)
+        }</span>
+
+        <span class="cov8" title="1">fmt.Fprintf(ctxOut(ctx), "Open %s and enter code %s\n",
+                aws.ToString(dev.VerificationUri), aws.ToString(dev.UserCode))
+        _ = f.Opener(ctx, aws.ToString(dev.VerificationUriComplete))
+
+        interval := time.Duration(dev.Interval) * time.Second
+        if interval &lt;= 0 </span><span class="cov0" title="0">{
+                interval = 5 * time.Second
+        }</span>
+        <span class="cov8" title="1">deadline := time.Now().Add(time.Duration(dev.ExpiresIn) * time.Second)
+
+        for time.Now().Before(deadline) </span><span class="cov8" title="1">{
+                tok, err := f.client.CreateToken(ctx, &amp;ssooidc.CreateTokenInput{
+                        ClientId:     reg.ClientId,
+                        ClientSecret: reg.ClientSecret,
+                        GrantType:    aws.String("urn:ietf:params:oauth:grant-type:device_code"),
+                        DeviceCode:   dev.DeviceCode,
+                })
+                if err == nil </span><span class="cov8" title="1">{
+                        return &amp;Credential{
+                                Method:    "sso",
+                                Token:     aws.ToString(tok.AccessToken),
+                                ExpiresAt: time.Now().Add(time.Duration(tok.ExpiresIn) * time.Second),
+                                Metadata: map[string]string{
+                                        "start_url":               startURL,
+                                        "region":                  opts["region"],
+                                        "refresh_token":           aws.ToString(tok.RefreshToken),
+                                        "client_id":               aws.ToString(reg.ClientId),
+                                        "client_secret":           aws.ToString(reg.ClientSecret),
+                                        "registration_expires_at": time.Unix(reg.ClientSecretExpiresAt, 0).UTC().Format(time.RFC3339),
+                                        "account_id":              accountID,
+                                        "role_name":               roleName,
+                                },
+                        }, nil
+                }</span>
+                <span class="cov8" title="1">var pending *ssooidctypes.AuthorizationPendingException
+                var slow *ssooidctypes.SlowDownException
+                if errors.As(err, &amp;pending) || errors.As(err, &amp;slow) </span><span class="cov8" title="1">{
+                        if errors.As(err, &amp;slow) </span><span class="cov0" title="0">{
+                                interval += 5 * time.Second
+                        }</span>
+                        <span class="cov8" title="1">select </span>{
+                        case &lt;-ctx.Done():<span class="cov8" title="1">
+                                return nil, ctx.Err()</span>
+                        case &lt;-time.After(interval):<span class="cov8" title="1">
+                                continue</span>
+                        }
+                }
+                <span class="cov0" title="0">return nil, fmt.Errorf("aws sso: create token: %w", err)</span>
+        }
+
+        <span class="cov0" title="0">return nil, fmt.Errorf("aws sso: device authorization timed out")</span>
+}
+</pre>
+
+		<pre class="file" id="file7" style="display: none">package auth
+
+import (
+        "fmt"
+        "os"
+        "path/filepath"
+
+        "gopkg.in/yaml.v3"
+)
+
+// backend persists the whole credential store.
+type backend interface {
+        read() (*storeFile, error)
+        write(f *storeFile) error
+        delete(provider string) error
+}
+
+// fileBackend is the legacy ~/.skret/credentials.yaml store (0600).
+type fileBackend struct{ path string }
+
+func (b *fileBackend) read() (*storeFile, error) <span class="cov8" title="1">{
+        raw, err := os.ReadFile(b.path)
+        if err != nil </span><span class="cov8" title="1">{
+                if os.IsNotExist(err) </span><span class="cov8" title="1">{
+                        return &amp;storeFile{Version: "1", Providers: map[string]*Credential{}}, nil
+                }</span>
+                <span class="cov0" title="0">return nil, fmt.Errorf("auth store: read %q: %w", b.path, err)</span>
+        }
+        <span class="cov8" title="1">var f storeFile
+        if err := yaml.Unmarshal(raw, &amp;f); err != nil </span><span class="cov8" title="1">{
+                return nil, fmt.Errorf("auth store: parse %q: %w", b.path, err)
+        }</span>
+        <span class="cov8" title="1">if f.Providers == nil </span><span class="cov8" title="1">{
+                f.Providers = map[string]*Credential{}
+        }</span>
+        <span class="cov8" title="1">if f.Version == "" </span><span class="cov8" title="1">{
+                f.Version = "1"
+        }</span>
+        <span class="cov8" title="1">return &amp;f, nil</span>
+}
+
+func (b *fileBackend) write(f *storeFile) error <span class="cov8" title="1">{
+        if err := os.MkdirAll(filepath.Dir(b.path), 0o700); err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("auth store: mkdir: %w", err)
+        }</span>
+        <span class="cov8" title="1">raw, err := yaml.Marshal(f)
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("auth store: marshal: %w", err)
+        }</span>
+        <span class="cov8" title="1">tmp, err := os.CreateTemp(filepath.Dir(b.path), ".credentials-*.yaml")
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("auth store: create temp: %w", err)
+        }</span>
+        <span class="cov8" title="1">tmpPath := tmp.Name()
+        if _, err := tmp.Write(raw); err != nil </span><span class="cov0" title="0">{
+                _ = tmp.Close()
+                _ = os.Remove(tmpPath)
+                return fmt.Errorf("auth store: write temp: %w", err)
+        }</span>
+        <span class="cov8" title="1">if err := tmp.Chmod(0o600); err != nil </span><span class="cov0" title="0">{
+                _ = tmp.Close()
+                _ = os.Remove(tmpPath)
+                return fmt.Errorf("auth store: chmod: %w", err)
+        }</span>
+        <span class="cov8" title="1">if err := tmp.Close(); err != nil </span><span class="cov0" title="0">{
+                _ = os.Remove(tmpPath)
+                return fmt.Errorf("auth store: close: %w", err)
+        }</span>
+        <span class="cov8" title="1">if err := os.Rename(tmpPath, b.path); err != nil </span><span class="cov8" title="1">{
+                _ = os.Remove(tmpPath)
+                return fmt.Errorf("auth store: rename: %w", err)
+        }</span>
+        <span class="cov8" title="1">return nil</span>
+}
+
+func (b *fileBackend) delete(provider string) error <span class="cov8" title="1">{
+        f, err := b.read()
+        if err != nil </span><span class="cov8" title="1">{
+                return err
+        }</span>
+        <span class="cov8" title="1">delete(f.Providers, provider)
+        return b.write(f)</span>
+}
+</pre>
+
+		<pre class="file" id="file8" style="display: none">package auth
+
+import (
+        "context"
+        "encoding/json"
+        "fmt"
+        "io"
+        "net/http"
+        "net/url"
+        "strings"
+        "time"
+)
+
+// DopplerOAuthFlow implements Doppler's OAuth device-authorization flow.
+type DopplerOAuthFlow struct {
+        BaseURL      string
+        PollInterval time.Duration
+        Opener       func(ctx context.Context, authURL string) error
+        client       *http.Client
+}
+
+// NewDopplerOAuthFlow creates a device flow pointing at baseURL (defaults to
+// https://api.doppler.com when empty). Opener defaults to OpenBrowser; tests
+// override it to avoid launching a real browser.
+func NewDopplerOAuthFlow(baseURL string) *DopplerOAuthFlow <span class="cov8" title="1">{
+        if baseURL == "" </span><span class="cov8" title="1">{
+                baseURL = "https://api.doppler.com"
+        }</span>
+        <span class="cov8" title="1">return &amp;DopplerOAuthFlow{
+                BaseURL:      baseURL,
+                PollInterval: 5 * time.Second,
+                Opener:       OpenBrowser,
+                client:       &amp;http.Client{Timeout: 30 * time.Second},
+        }</span>
+}
+
+// Login POSTs /v3/auth/device, opens the approval URL, and polls
+// /v3/auth/device/token until approval, error, or deadline.
+func (f *DopplerOAuthFlow) Login(ctx context.Context, _ map[string]string) (*Credential, error) <span class="cov8" title="1">{
+        req, err := http.NewRequestWithContext(ctx, http.MethodPost, f.BaseURL+"/v3/auth/device", http.NoBody)
+        if err != nil </span><span class="cov8" title="1">{
+                return nil, fmt.Errorf("doppler oauth: build device request: %w", err)
+        }</span>
+        <span class="cov8" title="1">resp, err := f.client.Do(req)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("doppler oauth: device request: %w", err)
+        }</span>
+        <span class="cov8" title="1">var dev struct {
+                Code            string `json:"code"`
+                AuthURL         string `json:"auth_url"`
+                PollingInterval int    `json:"polling_interval"`
+                ExpiresIn       int    `json:"expires_in"`
+        }
+        decodeErr := json.NewDecoder(resp.Body).Decode(&amp;dev)
+        _ = resp.Body.Close()
+        if decodeErr != nil </span><span class="cov8" title="1">{
+                return nil, fmt.Errorf("doppler oauth: decode device: %w", decodeErr)
+        }</span>
+        <span class="cov8" title="1">if dev.Code == "" </span><span class="cov8" title="1">{
+                return nil, fmt.Errorf("doppler oauth: empty device code")
+        }</span>
+
+        <span class="cov8" title="1">fmt.Fprintf(ctxOut(ctx), "Open %s in your browser to approve skret.\n", dev.AuthURL)
+        _ = f.Opener(ctx, dev.AuthURL)
+
+        interval := f.PollInterval
+        if dev.PollingInterval &gt; 0 &amp;&amp; interval &gt;= 5*time.Second </span><span class="cov0" title="0">{
+                interval = time.Duration(dev.PollingInterval) * time.Second
+        }</span>
+        <span class="cov8" title="1">deadline := time.Now().Add(time.Duration(dev.ExpiresIn) * time.Second)
+
+        form := url.Values{"code": []string{dev.Code}}
+        for time.Now().Before(deadline) </span><span class="cov8" title="1">{
+                tReq, err := http.NewRequestWithContext(ctx, http.MethodPost, f.BaseURL+"/v3/auth/device/token", strings.NewReader(form.Encode()))
+                if err != nil </span><span class="cov0" title="0">{
+                        return nil, fmt.Errorf("doppler oauth: build poll request: %w", err)
+                }</span>
+                <span class="cov8" title="1">tReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+                tResp, err := f.client.Do(tReq)
+                if err != nil </span><span class="cov0" title="0">{
+                        return nil, fmt.Errorf("doppler oauth: poll: %w", err)
+                }</span>
+                <span class="cov8" title="1">if tResp.StatusCode == http.StatusAccepted </span><span class="cov8" title="1">{
+                        _ = tResp.Body.Close()
+                        select </span>{
+                        case &lt;-ctx.Done():<span class="cov8" title="1">
+                                return nil, ctx.Err()</span>
+                        case &lt;-time.After(interval):<span class="cov8" title="1"></span>
+                        }
+                        <span class="cov8" title="1">continue</span>
+                }
+                <span class="cov8" title="1">if tResp.StatusCode != http.StatusOK </span><span class="cov8" title="1">{
+                        body, _ := io.ReadAll(tResp.Body)
+                        _ = tResp.Body.Close()
+                        return nil, fmt.Errorf("doppler oauth: poll status %d: %s", tResp.StatusCode, string(body))
+                }</span>
+                <span class="cov8" title="1">var tok struct {
+                        Token string `json:"token"`
+                        Name  string `json:"name"`
+                }
+                err = json.NewDecoder(tResp.Body).Decode(&amp;tok)
+                _ = tResp.Body.Close()
+                if err != nil </span><span class="cov8" title="1">{
+                        return nil, fmt.Errorf("doppler oauth: decode token: %w", err)
+                }</span>
+                <span class="cov8" title="1">return &amp;Credential{
+                        Method: "oauth",
+                        Token:  tok.Token,
+                        Metadata: map[string]string{
+                                "email": tok.Name,
+                        },
+                }, nil</span>
+        }
+        <span class="cov8" title="1">return nil, fmt.Errorf("doppler oauth: expired waiting for approval")</span>
+}
+</pre>
+
+		<pre class="file" id="file9" style="display: none">package auth
+
+import (
+        "context"
+        "encoding/json"
+        "fmt"
+        "io"
+        "net/http"
+        "os"
+        "time"
+)
+
+type dopplerOAuthFlow interface {
+        Login(ctx context.Context, opts map[string]string) (*Credential, error)
+}
+
+// dopplerProvider implements auth.Provider for Doppler.
+type dopplerProvider struct {
+        baseURL string
+        oauth   dopplerOAuthFlow
+}
+
+// NewDopplerProvider creates the Doppler auth provider.
+func NewDopplerProvider() Provider <span class="cov8" title="1">{
+        baseURL := "https://api.doppler.com"
+        return &amp;dopplerProvider{
+                baseURL: baseURL,
+                oauth:   NewDopplerOAuthFlow(baseURL),
+        }
+}</span>
+
+func (p *dopplerProvider) Name() string <span class="cov8" title="1">{ return "doppler" }</span>
+
+func (p *dopplerProvider) Methods() []Method <span class="cov8" title="1">{
+        return []Method{
+                {Name: "oauth", Description: "Doppler OAuth device flow (recommended)", Interactive: true},
+                {Name: "service-token", Description: "Paste a Doppler service token", Interactive: true},
+                {Name: "personal-token", Description: "Paste a Doppler personal token", Interactive: true},
+        }
+}</span>
+
+func (p *dopplerProvider) Login(ctx context.Context, method string, opts map[string]string) (*Credential, error) <span class="cov8" title="1">{
+        switch method </span>{
+        case "oauth":<span class="cov8" title="1">
+                return p.oauth.Login(ctx, opts)</span>
+        case "service-token", "personal-token":<span class="cov8" title="1">
+                return p.loginToken(ctx, method, opts)</span>
+        default:<span class="cov8" title="1">
+                return nil, fmt.Errorf("doppler: %w: %s", ErrAuthMethodUnsupported, method)</span>
+        }
+}
+
+func (p *dopplerProvider) loginToken(ctx context.Context, method string, opts map[string]string) (*Credential, error) <span class="cov8" title="1">{
+        token := opts["token"]
+        if token == "" </span><span class="cov8" title="1">{
+                token = os.Getenv("DOPPLER_TOKEN")
+        }</span>
+        <span class="cov8" title="1">if token == "" </span><span class="cov8" title="1">{
+                return nil, fmt.Errorf("doppler: token required (set via --opt token=... or DOPPLER_TOKEN env)")
+        }</span>
+
+        // Validate token against /v3/me
+        <span class="cov8" title="1">client := &amp;http.Client{Timeout: 10 * time.Second}
+        req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.baseURL+"/v3/me", http.NoBody)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("doppler: create request: %w", err)
+        }</span>
+        <span class="cov8" title="1">req.Header.Set("Authorization", "Bearer "+token)
+        req.Header.Set("Accept", "application/json")
+
+        resp, err := client.Do(req)
+        if err != nil </span><span class="cov8" title="1">{
+                return nil, fmt.Errorf("doppler: validate token: %w", err)
+        }</span>
+        <span class="cov8" title="1">defer resp.Body.Close()
+
+        if resp.StatusCode != http.StatusOK </span><span class="cov8" title="1">{
+                body, _ := io.ReadAll(resp.Body)
+                return nil, fmt.Errorf("doppler: token validation failed (%d): %s", resp.StatusCode, string(body))
+        }</span>
+
+        <span class="cov8" title="1">var result struct {
+                Workplace struct {
+                        Name string `json:"name"`
+                } `json:"workplace"`
+        }
+        _ = json.NewDecoder(resp.Body).Decode(&amp;result)
+
+        return &amp;Credential{
+                Method: method,
+                Token:  token,
+                Metadata: map[string]string{
+                        "workplace": result.Workplace.Name,
+                },
+        }, nil</span>
+}
+
+func (p *dopplerProvider) Validate(_ context.Context, cred *Credential) error <span class="cov8" title="1">{
+        if cred == nil || cred.Token == "" </span><span class="cov8" title="1">{
+                return fmt.Errorf("doppler: invalid credential")
+        }</span>
+        <span class="cov8" title="1">return nil</span>
+}
+
+func (p *dopplerProvider) Logout(_ context.Context) error <span class="cov8" title="1">{
+        return nil
+}</span>
+
+func init() <span class="cov8" title="1">{
+        Register("doppler", NewDopplerProvider())
+}</span>
+</pre>
+
+		<pre class="file" id="file10" style="display: none">package auth
+
+import (
+        "bytes"
+        "context"
+        "crypto/rand"
+        "crypto/sha256"
+        "encoding/base64"
+        "encoding/json"
+        "fmt"
+        "io"
+        "net"
+        "net/http"
+        "net/url"
+        "time"
+)
+
+// InfisicalBrowserFlow implements an Infisical PKCE browser login using a
+// loopback HTTP listener as the redirect target.
+var cryptoRandReader = rand.Reader
+
+type InfisicalBrowserFlow struct {
+        BaseURL string
+        Opener  func(ctx context.Context, authURL string) error
+        client  *http.Client
+}
+
+// NewInfisicalBrowserFlow creates a browser flow pointing at baseURL (defaults
+// to https://app.infisical.com when empty). The Opener hook is overridable for
+// tests.
+func NewInfisicalBrowserFlow(baseURL string) *InfisicalBrowserFlow <span class="cov8" title="1">{
+        if baseURL == "" </span><span class="cov8" title="1">{
+                baseURL = "https://app.infisical.com"
+        }</span>
+        <span class="cov8" title="1">return &amp;InfisicalBrowserFlow{
+                BaseURL: baseURL,
+                Opener:  OpenBrowser,
+                client:  &amp;http.Client{Timeout: 30 * time.Second},
+        }</span>
+}
+
+// pkcePair generates a 32-byte random verifier and its base64url S256
+// challenge per RFC 7636.
+func pkcePair() (verifier, challenge string, err error) <span class="cov8" title="1">{
+        buf := make([]byte, 32)
+        if _, err = io.ReadFull(cryptoRandReader, buf); err != nil </span><span class="cov8" title="1">{
+                return "", "", err
+        }</span>
+        <span class="cov8" title="1">verifier = base64.RawURLEncoding.EncodeToString(buf)
+        sum := sha256.Sum256([]byte(verifier))
+        challenge = base64.RawURLEncoding.EncodeToString(sum[:])
+        return verifier, challenge, nil</span>
+}
+
+func randomString(n int) (string, error) <span class="cov8" title="1">{
+        buf := make([]byte, n)
+        if _, err := io.ReadFull(cryptoRandReader, buf); err != nil </span><span class="cov8" title="1">{
+                return "", err
+        }</span>
+        <span class="cov8" title="1">return base64.RawURLEncoding.EncodeToString(buf), nil</span>
+}
+
+func (f *InfisicalBrowserFlow) Login(ctx context.Context, _ map[string]string) (*Credential, error) <span class="cov8" title="1">{
+        state, err := randomString(32)
+        if err != nil </span><span class="cov8" title="1">{
+                return nil, fmt.Errorf("infisical browser: state: %w", err)
+        }</span>
+        <span class="cov8" title="1">verifier, challenge, err := pkcePair()
+        if err != nil </span><span class="cov8" title="1">{
+                return nil, fmt.Errorf("infisical browser: pkce: %w", err)
+        }</span>
+
+        <span class="cov8" title="1">lc := &amp;net.ListenConfig{}
+        ln, err := lc.Listen(ctx, "tcp", "127.0.0.1:0")
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("infisical browser: listen: %w", err)
+        }</span>
+        <span class="cov8" title="1">port := ln.Addr().(*net.TCPAddr).Port
+
+        codeCh := make(chan string, 1)
+        errCh := make(chan error, 1)
+        srv := &amp;http.Server{
+                Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) </span><span class="cov8" title="1">{
+                        query := r.URL.Query()
+                        gotState := query.Get("state")
+                        if gotState == "" || gotState != state </span><span class="cov8" title="1">{
+                                http.Error(w, "invalid state", http.StatusBadRequest)
+                                errCh &lt;- fmt.Errorf("infisical browser: callback missing or invalid state")
+                                return
+                        }</span>
+                        <span class="cov8" title="1">code := query.Get("code")
+                        if code == "" </span><span class="cov8" title="1">{
+                                http.Error(w, "missing code", http.StatusBadRequest)
+                                errCh &lt;- fmt.Errorf("infisical browser: callback missing code")
+                                return
+                        }</span>
+                        <span class="cov8" title="1">_, _ = w.Write([]byte("skret authentication complete. You can close this tab."))
+                        codeCh &lt;- code</span>
+                }),
+                ReadHeaderTimeout: 5 * time.Second,
+        }
+        <span class="cov8" title="1">go func() </span><span class="cov8" title="1">{ _ = srv.Serve(ln) }</span>()
+        <span class="cov8" title="1">defer func() </span><span class="cov8" title="1">{
+                shutdownCtx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+                defer cancel()
+                _ = srv.Shutdown(shutdownCtx)
+        }</span>()
+
+        <span class="cov8" title="1">callback := fmt.Sprintf("http://127.0.0.1:%d/callback", port)
+        authURL := f.BaseURL + "/api/v1/auth/redirect?" + url.Values{
+                "callback":       {callback},
+                "code_challenge": {challenge},
+                "method":         {"S256"},
+                "state":          {state},
+        }.Encode()
+        fmt.Fprintf(ctxOut(ctx), "Open %s in your browser to approve skret.\n", authURL)
+        _ = f.Opener(ctx, authURL)
+
+        var code string
+        select </span>{
+        case code = &lt;-codeCh:<span class="cov8" title="1"></span>
+        case err = &lt;-errCh:<span class="cov8" title="1">
+                return nil, err</span>
+        case &lt;-ctx.Done():<span class="cov8" title="1">
+                return nil, ctx.Err()</span>
+        case &lt;-time.After(5 * time.Minute):<span class="cov0" title="0">
+                return nil, fmt.Errorf("infisical browser: callback timeout")</span>
+        }
+
+        <span class="cov8" title="1">body, err := json.Marshal(map[string]string{"code": code, "code_verifier": verifier})
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("infisical browser: marshal body: %w", err)
+        }</span>
+        <span class="cov8" title="1">req, err := http.NewRequestWithContext(ctx, http.MethodPost, f.BaseURL+"/api/v1/auth/token", bytes.NewReader(body))
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("infisical browser: build request: %w", err)
+        }</span>
+        <span class="cov8" title="1">req.Header.Set("Content-Type", "application/json")
+        resp, err := f.client.Do(req)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("infisical browser: token exchange: %w", err)
+        }</span>
+        <span class="cov8" title="1">defer resp.Body.Close()
+        if resp.StatusCode != http.StatusOK </span><span class="cov8" title="1">{
+                return nil, fmt.Errorf("infisical browser: token status %d", resp.StatusCode)
+        }</span>
+        <span class="cov8" title="1">var out struct {
+                AccessToken string `json:"access_token"`
+                Email       string `json:"email"`
+        }
+        if err := json.NewDecoder(resp.Body).Decode(&amp;out); err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("infisical browser: decode token: %w", err)
+        }</span>
+        <span class="cov8" title="1">return &amp;Credential{
+                Method: "browser",
+                Token:  out.AccessToken,
+                Metadata: map[string]string{
+                        "email": out.Email,
+                        "url":   f.BaseURL,
+                },
+        }, nil</span>
+}
+</pre>
+
+		<pre class="file" id="file11" style="display: none">package auth
+
+import (
+        "bytes"
+        "context"
+        "encoding/json"
+        "fmt"
+        "io"
+        "net/http"
+        "os"
+        "time"
+)
+
+// InfisicalProvider implements auth.Provider for Infisical.
+type InfisicalProvider struct {
+        baseURL string
+}
+
+// NewInfisicalProvider creates the Infisical auth provider. Base URL can be
+// overridden by INFISICAL_API_URL env (for self-host) and falls back to the
+// SaaS endpoint.
+func NewInfisicalProvider() *InfisicalProvider <span class="cov8" title="1">{
+        base := os.Getenv("INFISICAL_API_URL")
+        if base == "" </span><span class="cov8" title="1">{
+                base = "https://app.infisical.com"
+        }</span>
+        <span class="cov8" title="1">return &amp;InfisicalProvider{baseURL: base}</span>
+}
+
+func (p *InfisicalProvider) Name() string <span class="cov8" title="1">{ return "infisical" }</span>
+
+func (p *InfisicalProvider) Methods() []Method <span class="cov8" title="1">{
+        return []Method{
+                {Name: "browser", Description: "Browser PKCE login (recommended)", Interactive: true},
+                {Name: "universal-auth", Description: "Machine identity (client-id + client-secret)", Interactive: true},
+                {Name: "token", Description: "Paste an Infisical service token", Interactive: true},
+        }
+}</span>
+
+func (p *InfisicalProvider) Login(ctx context.Context, method string, opts map[string]string) (*Credential, error) <span class="cov8" title="1">{
+        switch method </span>{
+        case "browser":<span class="cov8" title="1">
+                return NewInfisicalBrowserFlow(p.baseURL).Login(ctx, opts)</span>
+        case "universal-auth":<span class="cov8" title="1">
+                return p.loginUniversalAuth(ctx, opts)</span>
+        case "token":<span class="cov8" title="1">
+                return p.loginToken(ctx, opts)</span>
+        default:<span class="cov8" title="1">
+                return nil, fmt.Errorf("infisical: %w: %s", ErrAuthMethodUnsupported, method)</span>
+        }
+}
+
+func (p *InfisicalProvider) loginUniversalAuth(ctx context.Context, opts map[string]string) (*Credential, error) <span class="cov8" title="1">{
+        clientID := opts["client_id"]
+        clientSecret := opts["client_secret"]
+        if clientID == "" || clientSecret == "" </span><span class="cov8" title="1">{
+                return nil, fmt.Errorf("infisical: client_id and client_secret required")
+        }</span>
+
+        <span class="cov8" title="1">client := &amp;http.Client{Timeout: 10 * time.Second}
+        body, _ := json.Marshal(map[string]string{
+                "clientId":     clientID,
+                "clientSecret": clientSecret,
+        })
+        req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.baseURL+"/api/v1/auth/universal-auth/login", bytes.NewReader(body))
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("infisical universal-auth: build request: %w", err)
+        }</span>
+        <span class="cov8" title="1">req.Header.Set("Content-Type", "application/json")
+        resp, err := client.Do(req)
+        if err != nil </span><span class="cov8" title="1">{
+                return nil, fmt.Errorf("infisical universal-auth: %w", err)
+        }</span>
+        <span class="cov8" title="1">defer resp.Body.Close()
+        if resp.StatusCode != http.StatusOK </span><span class="cov8" title="1">{
+                b, _ := io.ReadAll(resp.Body)
+                return nil, fmt.Errorf("infisical universal-auth: status %d: %s", resp.StatusCode, string(b))
+        }</span>
+        <span class="cov8" title="1">var tok struct {
+                AccessToken string `json:"accessToken"`
+        }
+        if err := json.NewDecoder(resp.Body).Decode(&amp;tok); err != nil </span><span class="cov8" title="1">{
+                return nil, fmt.Errorf("infisical universal-auth: decode: %w", err)
+        }</span>
+        <span class="cov8" title="1">return &amp;Credential{
+                Method: "universal-auth",
+                Token:  tok.AccessToken,
+                Metadata: map[string]string{
+                        "client_id": clientID,
+                },
+        }, nil</span>
+}
+
+func (p *InfisicalProvider) loginToken(ctx context.Context, opts map[string]string) (*Credential, error) <span class="cov8" title="1">{
+        token := opts["token"]
+        if token == "" </span><span class="cov8" title="1">{
+                token = os.Getenv("INFISICAL_TOKEN")
+        }</span>
+        <span class="cov8" title="1">if token == "" </span><span class="cov8" title="1">{
+                return nil, fmt.Errorf("infisical: token required (set via --opt token=... or INFISICAL_TOKEN env)")
+        }</span>
+
+        // Validate token
+        <span class="cov8" title="1">client := &amp;http.Client{Timeout: 10 * time.Second}
+        req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.baseURL+"/api/v1/auth/check", http.NoBody)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("infisical: create request: %w", err)
+        }</span>
+        <span class="cov8" title="1">req.Header.Set("Authorization", "Bearer "+token)
+
+        resp, err := client.Do(req)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("infisical: validate token: %w", err)
+        }</span>
+        <span class="cov8" title="1">defer resp.Body.Close()
+
+        if resp.StatusCode != http.StatusOK </span><span class="cov8" title="1">{
+                body, _ := io.ReadAll(resp.Body)
+                return nil, fmt.Errorf("infisical: token validation failed (%d): %s", resp.StatusCode, string(body))
+        }</span>
+
+        <span class="cov8" title="1">var result struct {
+                User struct {
+                        Email string `json:"email"`
+                } `json:"user"`
+        }
+        _ = json.NewDecoder(resp.Body).Decode(&amp;result)
+
+        return &amp;Credential{
+                Method: "token",
+                Token:  token,
+                Metadata: map[string]string{
+                        "email": result.User.Email,
+                },
+        }, nil</span>
+}
+
+func (p *InfisicalProvider) Validate(_ context.Context, cred *Credential) error <span class="cov8" title="1">{
+        if cred == nil || cred.Token == "" </span><span class="cov8" title="1">{
+                return fmt.Errorf("infisical: invalid credential")
+        }</span>
+        <span class="cov8" title="1">return nil</span>
+}
+
+func (p *InfisicalProvider) Logout(_ context.Context) error <span class="cov8" title="1">{
+        return nil
+}</span>
+
+func init() <span class="cov8" title="1">{
+        Register("infisical", NewInfisicalProvider())
+}</span>
+</pre>
+
+		<pre class="file" id="file12" style="display: none">package auth
+
+import (
+        "fmt"
+        "os"
+        "strings"
+        "time"
+
+        "github.com/zalando/go-keyring"
+        "gopkg.in/yaml.v3"
+)
+
+const (
+        keyringService   = "skret"
+        keyringIndexUser = "__index__"
+)
+
+// keyringBackend stores one keyring entry per provider (value = YAML of that
+// Credential) plus an index entry listing provider names. Small per-entry
+// blobs keep within OS limits (e.g. Windows Credential Manager).
+type keyringBackend struct{ service string }
+
+func (b *keyringBackend) read() (*storeFile, error) <span class="cov8" title="1">{
+        f := &amp;storeFile{Version: "1", Providers: map[string]*Credential{}}
+        idx, err := keyring.Get(b.service, keyringIndexUser)
+        if err != nil </span><span class="cov8" title="1">{
+                if err == keyring.ErrNotFound </span><span class="cov8" title="1">{
+                        return f, nil
+                }</span>
+                <span class="cov0" title="0">return nil, fmt.Errorf("auth keyring: read index: %w", err)</span>
+        }
+        <span class="cov8" title="1">for _, name := range strings.Split(idx, ",") </span><span class="cov8" title="1">{
+                if name == "" </span><span class="cov8" title="1">{
+                        continue</span>
+                }
+                <span class="cov8" title="1">raw, err := keyring.Get(b.service, "cred:"+name)
+                if err != nil </span><span class="cov0" title="0">{
+                        if err == keyring.ErrNotFound </span><span class="cov0" title="0">{
+                                continue</span>
+                        }
+                        <span class="cov0" title="0">return nil, fmt.Errorf("auth keyring: read %q: %w", name, err)</span>
+                }
+                <span class="cov8" title="1">var c Credential
+                if err := yaml.Unmarshal([]byte(raw), &amp;c); err != nil </span><span class="cov8" title="1">{
+                        return nil, fmt.Errorf("auth keyring: parse %q: %w", name, err)
+                }</span>
+                <span class="cov8" title="1">c.Provider = name
+                f.Providers[name] = &amp;c</span>
+        }
+        <span class="cov8" title="1">return f, nil</span>
+}
+
+func (b *keyringBackend) write(f *storeFile) error <span class="cov8" title="1">{
+        names := make([]string, 0, len(f.Providers))
+        for name, c := range f.Providers </span><span class="cov8" title="1">{
+                raw, err := yaml.Marshal(c)
+                if err != nil </span><span class="cov0" title="0">{
+                        return fmt.Errorf("auth keyring: marshal %q: %w", name, err)
+                }</span>
+                <span class="cov8" title="1">if err := keyring.Set(b.service, "cred:"+name, string(raw)); err != nil </span><span class="cov0" title="0">{
+                        return fmt.Errorf("auth keyring: set %q: %w", name, err)
+                }</span>
+                <span class="cov8" title="1">names = append(names, name)</span>
+        }
+        <span class="cov8" title="1">if err := keyring.Set(b.service, keyringIndexUser, strings.Join(names, ",")); err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("auth keyring: set index: %w", err)
+        }</span>
+        <span class="cov8" title="1">return nil</span>
+}
+
+func (b *keyringBackend) delete(provider string) error <span class="cov8" title="1">{
+        f, err := b.read()
+        if err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+        <span class="cov8" title="1">delete(f.Providers, provider)
+        _ = keyring.Delete(b.service, "cred:"+provider)
+        return b.write(f)</span>
+}
+
+// keyringAvailable probes the OS keyring with a throwaway entry. Overridable
+// in tests. Returns false on headless Linux/CI without a Secret Service, AND
+// on a 3s timeout — a locked/no-GUI macOS Keychain makes the underlying
+// `security` CLI block indefinitely, so skret must never wait on it: it falls
+// back to the file store instead of hanging.
+var keyringAvailable = func() bool <span class="cov8" title="1">{
+        // #nosec G101
+        const (
+                probe = "__skret_probe__"
+                token = "skret-probe-v1"
+        )
+        done := make(chan bool, 1)
+        go func() </span><span class="cov8" title="1">{
+                if err := keyring.Set(keyringService, probe, token); err != nil </span><span class="cov0" title="0">{
+                        done &lt;- false
+                        return
+                }</span>
+                // Set succeeding is NOT enough: some backends (observed: Windows
+                // Credential Manager on this machine) accept Set but read back
+                // empty/different. Require a round-trip match, else treat the keyring
+                // as unusable and fall back to the file store.
+                <span class="cov8" title="1">got, err := keyring.Get(keyringService, probe)
+                _ = keyring.Delete(keyringService, probe)
+                done &lt;- err == nil &amp;&amp; got == token</span>
+        }()
+        <span class="cov8" title="1">select </span>{
+        case ok := &lt;-done:<span class="cov8" title="1">
+                return ok</span>
+        case &lt;-time.After(3 * time.Second):<span class="cov0" title="0">
+                return false</span>
+        }
+}
+
+// migrateFileToKeyring moves a legacy ~/.skret/credentials.yaml into the
+// keyring exactly once. It renames the file to a .migrated backup ONLY after
+// verifying the keyring reads the data back intact — never destroy the source
+// before the destination is confirmed (a Set-OK-but-read-empty keyring would
+// otherwise lose all credentials). On any failure the file is left untouched
+// so NewStore's file fallback keeps working.
+func migrateFileToKeyring(fb *fileBackend, kb backend) <span class="cov8" title="1">{
+        if _, err := os.Stat(fb.path); err != nil </span><span class="cov8" title="1">{
+                return // nothing to migrate
+        }</span>
+        <span class="cov8" title="1">f, err := fb.read()
+        if err != nil || len(f.Providers) == 0 </span><span class="cov8" title="1">{
+                return
+        }</span>
+        <span class="cov8" title="1">if err := kb.write(f); err != nil </span><span class="cov0" title="0">{
+                return
+        }</span>
+        // Read-back verification: keyring must return every provider written.
+        <span class="cov8" title="1">got, err := kb.read()
+        if err != nil || len(got.Providers) != len(f.Providers) </span><span class="cov8" title="1">{
+                return // do NOT rename — source stays intact
+        }</span>
+        <span class="cov8" title="1">for name := range f.Providers </span><span class="cov8" title="1">{
+                if got.Providers[name] == nil </span><span class="cov0" title="0">{
+                        return
+                }</span>
+        }
+        <span class="cov8" title="1">_ = os.Rename(fb.path, fb.path+".migrated")</span>
+}
+</pre>
+
+		<pre class="file" id="file13" style="display: none">package auth
+
+import (
+        "bufio"
+        "context"
+        "fmt"
+        "io"
+        "net/url"
+        "os"
+        "os/exec"
+        "runtime"
+        "strconv"
+        "strings"
+)
+
+// ctxOut extracts the writer from context or defaults to os.Stderr.
+func ctxOut(_ context.Context) io.Writer <span class="cov8" title="1">{
+        return os.Stderr
+}</span>
+
+// IsInteractiveStdin reports whether stdin is a terminal (for prompt gating).
+// Falls back to checking if TERM is set when term package is not available.
+func IsInteractiveStdin() bool <span class="cov8" title="1">{
+        fi, err := os.Stdin.Stat()
+        if err != nil </span><span class="cov0" title="0">{
+                return false
+        }</span>
+        // If stdin is a character device (terminal), ModeCharDevice is set
+        <span class="cov8" title="1">return fi.Mode()&amp;os.ModeCharDevice != 0</span>
+}
+
+// Confirm reads a line from r and returns true unless user explicitly answered "n"/"no".
+// Empty line ("\n") defaults to yes.
+func Confirm(r io.Reader, w io.Writer, prompt string) bool <span class="cov8" title="1">{
+        fmt.Fprintf(w, "%s [Y/n] ", prompt)
+        line, err := bufio.NewReader(r).ReadString('\n')
+        if err != nil &amp;&amp; line == "" </span><span class="cov8" title="1">{
+                return false
+        }</span>
+        <span class="cov8" title="1">ans := strings.ToLower(strings.TrimSpace(line))
+        return ans == "" || ans == "y" || ans == "yes"</span>
+}
+
+// SelectMethod prints methods with 1-based indexes and reads one line from r.
+func SelectMethod(r io.Reader, w io.Writer, methods []Method) (Method, error) <span class="cov8" title="1">{
+        fmt.Fprintln(w, "Authentication method:")
+        for i, m := range methods </span><span class="cov8" title="1">{
+                desc := m.Description
+                if desc == "" </span><span class="cov8" title="1">{
+                        desc = m.Name
+                }</span>
+                <span class="cov8" title="1">fmt.Fprintf(w, "  [%d] %s\n", i+1, desc)</span>
+        }
+        <span class="cov8" title="1">fmt.Fprint(w, "Choice: ")
+        line, err := bufio.NewReader(r).ReadString('\n')
+        if err != nil </span><span class="cov0" title="0">{
+                return Method{}, fmt.Errorf("auth prompt: read: %w", err)
+        }</span>
+        <span class="cov8" title="1">idx, err := strconv.Atoi(strings.TrimSpace(line))
+        if err != nil || idx &lt; 1 || idx &gt; len(methods) </span><span class="cov8" title="1">{
+                return Method{}, fmt.Errorf("auth prompt: invalid choice %q", strings.TrimSpace(line))
+        }</span>
+        <span class="cov8" title="1">return methods[idx-1], nil</span>
+}
+
+// goos is a package-level variable to allow mocking in tests for OS-specific branches.
+var goos = func() string <span class="cov0" title="0">{ return runtime.GOOS }</span>
+
+// OpenBrowser attempts to open the URL in the platform browser, best-effort.
+// Honors SKRET_NO_BROWSER=1 to skip the launch (used by tests + headless runs).
+func OpenBrowser(ctx context.Context, u string) error <span class="cov8" title="1">{
+        if os.Getenv("SKRET_NO_BROWSER") != "" </span><span class="cov8" title="1">{
+                return nil
+        }</span>
+
+        <span class="cov8" title="1">parsed, err := url.Parse(u)
+        if err != nil </span><span class="cov8" title="1">{
+                return fmt.Errorf("auth prompt: invalid url: %w", err)
+        }</span>
+        <span class="cov8" title="1">if parsed.Scheme != "http" &amp;&amp; parsed.Scheme != "https" </span><span class="cov8" title="1">{
+                return fmt.Errorf("auth prompt: invalid url scheme %q", parsed.Scheme)
+        }</span>
+
+        <span class="cov8" title="1">safeURL := parsed.String()
+        var cmd *exec.Cmd
+        switch goos() </span>{
+        case "darwin":<span class="cov8" title="1">
+                cmd = exec.CommandContext(ctx, "open", "--", safeURL)</span>
+        case "windows":<span class="cov8" title="1">
+                cmd = exec.CommandContext(ctx, "rundll32", "url.dll,FileProtocolHandler", safeURL)</span>
+        default:<span class="cov8" title="1">
+                cmd = exec.CommandContext(ctx, "xdg-open", safeURL)</span>
+        }
+        <span class="cov8" title="1">return cmd.Start()</span>
+}
+</pre>
+
+		<pre class="file" id="file14" style="display: none">package auth
+
+import (
+        "os"
+        "path/filepath"
+)
+
+// Store persists credentials via a pluggable backend (OS keyring when
+// available, 0600 file otherwise).
+type Store struct{ b backend }
+
+type storeFile struct {
+        Version   string                 `yaml:"version"`
+        Providers map[string]*Credential `yaml:"providers"`
+}
+
+func defaultFilePath() string <span class="cov8" title="1">{
+        home, err := os.UserHomeDir()
+        if err != nil </span><span class="cov0" title="0">{
+                home = "."
+        }</span>
+        <span class="cov8" title="1">return filepath.Join(home, ".skret", "credentials.yaml")</span>
+}
+
+// NewStore returns the credential store. The 0600 file store is the default
+// because it is durable and consistent on every platform. The OS keyring is
+// strictly opt-in via SKRET_KEYRING=keyring AND only when it round-trips
+// reliably — some backends (observed: Windows Credential Manager) accept a
+// write and even pass a same-process read-back, yet fail to read it again in
+// a later process, which previously destroyed credentials when the file was
+// migrated away. The file is never auto-migrated or renamed: it stays the
+// source of truth; keyring, when opted in, is just an alternative store.
+func NewStore() *Store <span class="cov8" title="1">{
+        fb := &amp;fileBackend{path: defaultFilePath()}
+        if os.Getenv("SKRET_KEYRING") != "keyring" </span><span class="cov8" title="1">{
+                return &amp;Store{b: fb}
+        }</span>
+        <span class="cov8" title="1">if !keyringAvailable() </span><span class="cov8" title="1">{
+                return &amp;Store{b: fb} // requested keyring is unreliable -&gt; safe file fallback
+        }</span>
+        <span class="cov8" title="1">return &amp;Store{b: &amp;keyringBackend{service: keyringService}}</span>
+}
+
+// NewStoreWithPath returns a file-backed store at a custom path (for testing).
+func NewStoreWithPath(path string) *Store <span class="cov8" title="1">{
+        return &amp;Store{b: &amp;fileBackend{path: path}}
+}</span>
+
+// Save persists a credential, overwriting any existing entry for the same provider.
+func (s *Store) Save(cred *Credential) error <span class="cov8" title="1">{
+        f, err := s.b.read()
+        if err != nil </span><span class="cov8" title="1">{
+                return err
+        }</span>
+        <span class="cov8" title="1">f.Providers[cred.Provider] = cred
+        return s.b.write(f)</span>
+}
+
+// Load returns the stored credential for a provider or ErrCredentialNotFound.
+func (s *Store) Load(provider string) (*Credential, error) <span class="cov8" title="1">{
+        f, err := s.b.read()
+        if err != nil </span><span class="cov8" title="1">{
+                return nil, err
+        }</span>
+        <span class="cov8" title="1">c, ok := f.Providers[provider]
+        if !ok </span><span class="cov8" title="1">{
+                return nil, ErrCredentialNotFound
+        }</span>
+        <span class="cov8" title="1">c.Provider = provider
+        return c, nil</span>
+}
+
+// Delete removes a provider entry. Missing is not an error.
+func (s *Store) Delete(provider string) error <span class="cov8" title="1">{
+        return s.b.delete(provider)
+}</span>
+
+// List returns all stored provider names.
+func (s *Store) List() ([]string, error) <span class="cov8" title="1">{
+        f, err := s.b.read()
+        if err != nil </span><span class="cov8" title="1">{
+                return nil, err
+        }</span>
+        <span class="cov8" title="1">names := make([]string, 0, len(f.Providers))
+        for k := range f.Providers </span><span class="cov8" title="1">{
+                names = append(names, k)
+        }</span>
+        <span class="cov8" title="1">return names, nil</span>
+}
+</pre>
+
+		</div>
+	</body>
+	<script>
+	(function() {
+		var files = document.getElementById('files');
+		var visible;
+		files.addEventListener('change', onChange, false);
+		function select(part) {
+			if (visible)
+				visible.style.display = 'none';
+			visible = document.getElementById(part);
+			if (!visible)
+				return;
+			files.value = part;
+			visible.style.display = 'block';
+			location.hash = part;
+		}
+		function onChange() {
+			select(files.value);
+			window.scrollTo(0, 0);
+		}
+		if (location.hash != "") {
+			select(location.hash.substr(1));
+		}
+		if (!visible) {
+			select("file0");
+		}
+	})();
+	</script>
+</html>

@@ -285,3 +285,21 @@ func TestSelectMethod_Valid(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "b", m.Name)
 }
+
+func TestInfisicalProvider_Login_BrowserDispatch(t *testing.T) {
+	p := NewInfisicalProvider()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // Cancel immediately so Login returns early
+	_, err := p.Login(ctx, "browser", nil)
+	require.Error(t, err)
+	// If it reached NewInfisicalBrowserFlow(p.baseURL).Login(ctx, opts),
+	// it should return context.Canceled because of the cancelled context.
+	assert.ErrorIs(t, err, context.Canceled)
+}
+
+func TestInfisicalProvider_LoginToken_NetworkFail(t *testing.T) {
+	p := &InfisicalProvider{baseURL: "http://127.0.0.1:1"}
+	_, err := p.Login(context.Background(), "token", map[string]string{"token": "tok"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "validate token")
+}

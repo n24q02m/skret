@@ -12,6 +12,20 @@ import (
 
 // --- Infisical Provider ---
 
+func TestNewInfisicalProvider(t *testing.T) {
+	t.Run("default", func(t *testing.T) {
+		t.Setenv("INFISICAL_API_URL", "")
+		p := NewInfisicalProvider()
+		assert.Equal(t, "https://app.infisical.com", p.baseURL)
+	})
+
+	t.Run("override", func(t *testing.T) {
+		t.Setenv("INFISICAL_API_URL", "https://custom.infisical.com")
+		p := NewInfisicalProvider()
+		assert.Equal(t, "https://custom.infisical.com", p.baseURL)
+	})
+}
+
 func TestInfisicalProvider_Methods(t *testing.T) {
 	p := NewInfisicalProvider()
 	assert.Equal(t, "infisical", p.Name())
@@ -105,4 +119,20 @@ func TestInfisicalProvider_Validate(t *testing.T) {
 func TestInfisicalProvider_Logout(t *testing.T) {
 	p := NewInfisicalProvider()
 	assert.NoError(t, p.Logout(context.Background()))
+}
+
+func TestInfisicalProvider_LoginToken_EnvFallback(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "Bearer env-token", r.Header.Get("Authorization"))
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"user":{"email":"env@example.com"}}`))
+	}))
+	defer srv.Close()
+
+	t.Setenv("INFISICAL_TOKEN", "env-token")
+	p := &InfisicalProvider{baseURL: srv.URL}
+	cred, err := p.Login(context.Background(), "token", nil)
+	require.NoError(t, err)
+	assert.Equal(t, "env-token", cred.Token)
+	assert.Equal(t, "env@example.com", cred.Metadata["email"])
 }
