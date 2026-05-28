@@ -37,7 +37,18 @@ func BuildEnv(secrets []*provider.Secret, existing []string, pathPrefix string, 
 		if _, exists := existingMap[name]; exists {
 			continue
 		}
-		secretVars[name] = s.Value
+
+		// Sanitize value:
+		// 1. Remove null bytes as they cause syscall.Exec to fail with "invalid argument".
+		// 2. Replace newlines/carriage returns with spaces to prevent environment entry corruption
+		//    and potential injection in tools that parse 'env' output line-by-line.
+		val := s.Value
+		if strings.ContainsAny(val, "\x00\n\r") {
+			val = strings.ReplaceAll(val, "\x00", "")
+			val = strings.ReplaceAll(val, "\n", " ")
+			val = strings.ReplaceAll(val, "\r", "")
+		}
+		secretVars[name] = val
 	}
 
 	// Pre-allocate the expand function to avoid dynamic allocations inside the nested loops
@@ -101,7 +112,7 @@ func KeyToEnvName(key, pathPrefix string) string {
 			needsTransform = true
 			break
 		}
-		if c == '/' || (c >= 'a' && c <= 'z') {
+		if c == '/' || (c >= 'a' && c <= 'z') || c == '=' || c == '\n' || c == '\r' || c == ' ' {
 			needsTransform = true
 		}
 	}
@@ -123,6 +134,8 @@ func KeyToEnvName(key, pathPrefix string) string {
 			b.WriteByte('_')
 		case c >= 'a' && c <= 'z':
 			b.WriteByte(c - 'a' + 'A')
+		case c == '=' || c == '\n' || c == '\r' || c == ' ':
+			b.WriteByte('_')
 		default:
 			b.WriteByte(c)
 		}
