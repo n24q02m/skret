@@ -4,6 +4,7 @@ import "fmt"
 
 // Config is the root schema for .skret.yaml.
 type Config struct {
+	ConfigDir    string                 `yaml:"-"`
 	Version      string                 `yaml:"version"`
 	DefaultEnv   string                 `yaml:"default_env"`
 	Project      string                 `yaml:"project"`

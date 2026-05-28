@@ -17,15 +17,22 @@ const ConfigFileName = ".skret.yaml"
 
 // Load reads and validates a .skret.yaml from the given path.
 func Load(path string) (*Config, error) {
-	data, err := os.ReadFile(path)
+	abs, err := filepath.Abs(path)
 	if err != nil {
-		return nil, fmt.Errorf("config: read %q: %w", path, err)
+		return nil, fmt.Errorf("config: resolve path %q: %w", path, err)
+	}
+
+	data, err := os.ReadFile(abs)
+	if err != nil {
+		return nil, fmt.Errorf("config: read %q: %w", abs, err)
 	}
 
 	var cfg Config
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
-		return nil, fmt.Errorf("config: parse %q: %w", path, err)
+		return nil, fmt.Errorf("config: parse %q: %w", abs, err)
 	}
+
+	cfg.ConfigDir = filepath.Dir(abs)
 
 	if err := cfg.Validate(); err != nil {
 		return nil, err

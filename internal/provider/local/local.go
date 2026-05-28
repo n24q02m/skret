@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 
 	"github.com/n24q02m/skret/internal/config"
@@ -27,14 +28,43 @@ type Provider struct {
 
 // New creates a local provider from a resolved config.
 func New(cfg *config.ResolvedConfig) (provider.SecretProvider, error) {
-	absPath, err := filepath.Abs(cfg.File)
-	if err != nil {
-		return nil, fmt.Errorf("local: resolve path %q: %w", cfg.File, err)
+	var finalPath string
+
+	if !cfg.FileFromFlag && cfg.ConfigDir != "" {
+		// Path comes from config file. Enforce boundary.
+		if filepath.IsAbs(cfg.File) {
+			// Special case for tests: allow absolute path ONLY IF it is within ConfigDir.
+			// This maintains security while allowing tests that use absolute paths in generated configs.
+			abs, err := filepath.Abs(cfg.File)
+			if err != nil {
+				return nil, fmt.Errorf("local: absolute path %q not allowed in configuration file", cfg.File)
+			}
+			rel, err := filepath.Rel(cfg.ConfigDir, abs)
+			if err != nil || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || rel == ".." {
+				return nil, fmt.Errorf("local: absolute path %q not allowed in configuration file", cfg.File)
+			}
+			finalPath = abs
+		} else {
+			// Use Clean to resolve any .. before joining
+			cleanRel := filepath.Clean(cfg.File)
+			if strings.HasPrefix(cleanRel, ".."+string(filepath.Separator)) || cleanRel == ".." {
+				return nil, fmt.Errorf("local: path %q escapes configuration directory", cfg.File)
+			}
+
+			finalPath = filepath.Join(cfg.ConfigDir, cleanRel)
+		}
+	} else {
+		// Path comes from flag/env (trusted user input)
+		absPath, err := filepath.Abs(cfg.File)
+		if err != nil {
+			return nil, fmt.Errorf("local: resolve path %q: %w", cfg.File, err)
+		}
+		finalPath = absPath
 	}
 
-	p := &Provider{filePath: absPath}
+	p := &Provider{filePath: finalPath}
 	if err := p.load(); err != nil {
-		return nil, fmt.Errorf("local: load %q: %w", absPath, err)
+		return nil, fmt.Errorf("local: load %q: %w", finalPath, err)
 	}
 	return p, nil
 }

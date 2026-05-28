@@ -17,15 +17,17 @@ type ResolveOpts struct {
 
 // ResolvedConfig is the final resolved configuration after precedence resolution.
 type ResolvedConfig struct {
-	EnvName  string
-	Provider string
-	Path     string
-	Region   string
-	Profile  string
-	KMSKeyID string
-	File     string
-	Required []string
-	Exclude  []string
+	EnvName      string
+	Provider     string
+	Path         string
+	Region       string
+	Profile      string
+	KMSKeyID     string
+	File         string
+	FileFromFlag bool
+	ConfigDir    string
+	Required     []string
+	Exclude      []string
 }
 
 // Resolve applies the precedence chain: CLI flags > env vars > config file > defaults.
@@ -46,15 +48,17 @@ func Resolve(cfg *Config, opts ResolveOpts) (*ResolvedConfig, error) {
 	}
 
 	return &ResolvedConfig{
-		EnvName:  envName,
-		Provider: firstNonEmpty(opts.Provider, os.Getenv("SKRET_PROVIDER"), env.Provider),
-		Path:     NormalizeSSMPath(firstNonEmpty(opts.Path, os.Getenv("SKRET_PATH"), env.Path)),
-		Region:   firstNonEmpty(opts.Region, os.Getenv("SKRET_REGION"), os.Getenv("AWS_REGION"), env.Region),
-		Profile:  firstNonEmpty(opts.Profile, os.Getenv("SKRET_PROFILE"), os.Getenv("AWS_PROFILE"), env.Profile),
-		KMSKeyID: env.KMSKeyID,
-		File:     firstNonEmpty(opts.File, env.File),
-		Required: cfg.Required,
-		Exclude:  cfg.Exclude,
+		EnvName:      envName,
+		Provider:     firstNonEmpty(opts.Provider, os.Getenv("SKRET_PROVIDER"), env.Provider),
+		Path:         NormalizeSSMPath(firstNonEmpty(opts.Path, os.Getenv("SKRET_PATH"), env.Path)),
+		Region:       firstNonEmpty(opts.Region, os.Getenv("SKRET_REGION"), os.Getenv("AWS_REGION"), env.Region),
+		Profile:      firstNonEmpty(opts.Profile, os.Getenv("SKRET_PROFILE"), os.Getenv("AWS_PROFILE"), env.Profile),
+		KMSKeyID:     env.KMSKeyID,
+		File:         firstNonEmpty(opts.File, env.File),
+		FileFromFlag: opts.File != "",
+		ConfigDir:    cfg.ConfigDir,
+		Required:     cfg.Required,
+		Exclude:      cfg.Exclude,
 	}, nil
 }
 
