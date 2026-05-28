@@ -178,6 +178,8 @@ func TestSetup(t *testing.T) {
 	logging.Setup("debug", "text")
 	logging.Setup("info", "json")
 	logging.Setup("error", "")
+	logging.Setup("warn", "")
+	logging.Setup("warning", "")
 }
 
 // TestRedactingHandler_ManyAttrs_PreservesOrder exercises the optimized
