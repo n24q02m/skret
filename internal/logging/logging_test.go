@@ -65,6 +65,27 @@ func TestRedactingHandler_Enabled(t *testing.T) {
 	assert.True(t, handler.Enabled(context.Background(), slog.LevelWarn))
 }
 
+func TestRedactingHandler_Enabled_Delegation(t *testing.T) {
+	type ctxKey string
+	key := ctxKey("test")
+	ctx := context.WithValue(context.Background(), key, "value")
+	level := slog.LevelError
+
+	called := false
+	mock := &mockHandler{
+		enabledFunc: func(c context.Context, l slog.Level) bool {
+			called = true
+			assert.Equal(t, ctx, c)
+			assert.Equal(t, level, l)
+			return true
+		},
+	}
+
+	handler := logging.NewRedactingHandler(mock)
+	assert.True(t, handler.Enabled(ctx, level))
+	assert.True(t, called)
+}
+
 func TestRedactingHandler_WithAttrs(t *testing.T) {
 	var buf bytes.Buffer
 	inner := slog.NewTextHandler(&buf, nil)
@@ -177,7 +198,10 @@ func TestRedactingHandler_RedactsNestedGroup(t *testing.T) {
 func TestSetup(t *testing.T) {
 	logging.Setup("debug", "text")
 	logging.Setup("info", "json")
+	logging.Setup("warn", "text")
+	logging.Setup("warning", "text")
 	logging.Setup("error", "")
+	logging.Setup("unknown", "text")
 }
 
 // TestRedactingHandler_ManyAttrs_PreservesOrder exercises the optimized
