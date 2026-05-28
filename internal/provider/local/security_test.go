@@ -16,7 +16,7 @@ func TestPathTraversalProtection(t *testing.T) {
 
 	// Project dir where .skret.yaml would be
 	projectDir := filepath.Join(tempDir, "project")
-	require.NoError(t, os.Mkdir(projectDir, 0700))
+	require.NoError(t, os.Mkdir(projectDir, 0o700))
 
 	t.Run("BlocksTraversalInConfig", func(t *testing.T) {
 		cfg := &config.ResolvedConfig{
@@ -44,7 +44,7 @@ func TestPathTraversalProtection(t *testing.T) {
 
 	t.Run("AllowsRelativePathInConfig", func(t *testing.T) {
 		secretsFile := filepath.Join(projectDir, "secrets.yaml")
-		require.NoError(t, os.WriteFile(secretsFile, []byte("version: \"1\"\nsecrets: {}"), 0600))
+		require.NoError(t, os.WriteFile(secretsFile, []byte("version: \"1\"\nsecrets: {}"), 0o600))
 
 		cfg := &config.ResolvedConfig{
 			File:         "secrets.yaml",
@@ -60,7 +60,7 @@ func TestPathTraversalProtection(t *testing.T) {
 
 	t.Run("AllowsTrustedFlagPath", func(t *testing.T) {
 		sensitiveFile := filepath.Join(tempDir, "sensitive.yaml")
-		require.NoError(t, os.WriteFile(sensitiveFile, []byte("version: \"1\"\nsecrets: {}"), 0600))
+		require.NoError(t, os.WriteFile(sensitiveFile, []byte("version: \"1\"\nsecrets: {}"), 0o600))
 
 		cfg := &config.ResolvedConfig{
 			File:         sensitiveFile,
