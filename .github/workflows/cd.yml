@@ -123,6 +123,11 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Pin goreleaser to the exact tag semantic-release produced.
+          # Without this, git-describe is ambiguous when a stable tag and
+          # a prerelease tag (e.g. v1.5.1 + v1.5.1-beta.1) point at the same
+          # commit, and goreleaser may pick the wrong one (duplicate-asset 422).
+          GORELEASER_CURRENT_TAG: ${{ needs.release.outputs.tag }}
           # Fine-grained PAT with `contents:write` on
           # n24q02m/homebrew-tap + n24q02m/scoop-bucket. Goreleaser
           # uses this to push formula/manifest updates on release.
