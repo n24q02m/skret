@@ -18,15 +18,19 @@ type mockErrorProvider struct {
 }
 
 func (m *mockErrorProvider) Name() string { return "mock-error" }
+
 func (m *mockErrorProvider) List(ctx context.Context, prefix string) ([]*provider.Secret, error) {
 	return nil, errors.New("list error")
 }
+
 func (m *mockErrorProvider) GetBatch(ctx context.Context, keys []string) ([]*provider.Secret, error) {
 	return nil, errors.New("getbatch error")
 }
+
 func (m *mockErrorProvider) Set(ctx context.Context, key, value string, meta provider.SecretMeta) error {
 	return nil
 }
+
 func (m *mockErrorProvider) Close() error { return nil }
 
 func TestImportOptions_Run_BulkConflictFails(t *testing.T) {
