@@ -8,6 +8,8 @@ dist/
 
 # Test
 coverage
+coverage.html
+coverage.*
 *.out
 *.test
 
