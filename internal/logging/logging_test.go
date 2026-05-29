@@ -175,9 +175,37 @@ func TestRedactingHandler_RedactsNestedGroup(t *testing.T) {
 }
 
 func TestSetup(t *testing.T) {
-	logging.Setup("debug", "text")
-	logging.Setup("info", "json")
-	logging.Setup("error", "")
+	oldDefault := slog.Default()
+	defer slog.SetDefault(oldDefault)
+
+	tests := []struct {
+		name          string
+		level         string
+		format        string
+		expectedLevel slog.Level
+	}{
+		{"Debug Text", "debug", "text", slog.LevelDebug},
+		{"Info JSON", "info", "json", slog.LevelInfo},
+		{"Warn Text", "warn", "text", slog.LevelWarn},
+		{"Warning Text", "warning", "text", slog.LevelWarn},
+		{"Error JSON", "error", "json", slog.LevelError},
+		{"Default Level and Format", "", "", slog.LevelInfo},
+		{"Case Insensitive Level", "DEBUG", "TEXT", slog.LevelDebug},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logging.Setup(tt.level, tt.format)
+			handler := slog.Default().Handler()
+
+			// Check if the expected level is enabled
+			assert.True(t, handler.Enabled(context.Background(), tt.expectedLevel))
+			// Check if a lower level is disabled (if not debug)
+			if tt.expectedLevel > slog.LevelDebug {
+				assert.False(t, handler.Enabled(context.Background(), tt.expectedLevel-1))
+			}
+		})
+	}
 }
 
 // TestRedactingHandler_ManyAttrs_PreservesOrder exercises the optimized
