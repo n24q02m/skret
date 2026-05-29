@@ -81,7 +81,21 @@ func OpenBrowser(ctx context.Context, u string) error {
 		return fmt.Errorf("auth prompt: invalid url scheme %q", parsed.Scheme)
 	}
 
+	// Prevent flag injection in various browser openers.
+	// Reject hosts starting with '-' to avoid being interpreted as a flag.
+	if strings.HasPrefix(parsed.Host, "-") {
+		return fmt.Errorf("auth prompt: invalid url host %q", parsed.Host)
+	}
+
 	safeURL := parsed.String()
+
+	// Reject unescaped shell metacharacters that url.String() might leave behind
+	// in the path or other components, which could be dangerous if the browser
+	// opener (like xdg-open) is a shell script.
+	if strings.ContainsAny(safeURL, "$;") {
+		return fmt.Errorf("auth prompt: url contains dangerous characters")
+	}
+
 	var cmd *exec.Cmd
 	switch goos() {
 	case "darwin":
