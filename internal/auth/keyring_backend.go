@@ -84,11 +84,15 @@ func (b *keyringBackend) delete(provider string) error {
 // `security` CLI block indefinitely, so skret must never wait on it: it falls
 // back to the file store instead of hanging.
 var keyringAvailable = func() bool {
-	// #nosec G101
-	const (
-		probe = "__skret_probe__"
-		token = "skret-probe-v1"
-	)
+	probe, err := randomString(16)
+	if err != nil {
+		return false
+	}
+	token, err := randomString(32)
+	if err != nil {
+		return false
+	}
+
 	done := make(chan bool, 1)
 	go func() {
 		if err := keyring.Set(keyringService, probe, token); err != nil {

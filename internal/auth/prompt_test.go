@@ -107,3 +107,26 @@ func TestOpenBrowser_ValidScheme(t *testing.T) {
 		})
 	}
 }
+
+func TestOpenBrowser_Injection(t *testing.T) {
+	t.Setenv("SKRET_NO_BROWSER", "")
+
+	tests := []struct {
+		name string
+		url  string
+		msg  string
+	}{
+		{"leading dash", "https://-V/foo", "invalid url host"},
+		{"shell metacharacter $", "https://example.com/$PATH", "dangerous characters"},
+		{"shell metacharacter ;", "https://example.com/;id", "dangerous characters"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := auth.OpenBrowser(context.Background(), tt.url)
+			if assert.Error(t, err) {
+				assert.Contains(t, err.Error(), tt.msg)
+			}
+		})
+	}
+}
