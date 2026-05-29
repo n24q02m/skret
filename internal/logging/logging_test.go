@@ -269,3 +269,37 @@ func TestRedactingHandler_NoAttrs(t *testing.T) {
 	logger.Info("no-attrs-here")
 	assert.Contains(t, buf.String(), "no-attrs-here")
 }
+
+func TestRedactingHandler_WithGroup_Type(t *testing.T) {
+	inner := slog.NewTextHandler(&bytes.Buffer{}, nil)
+	handler := logging.NewRedactingHandler(inner)
+
+	h2 := handler.WithGroup("test")
+	_, ok := h2.(*logging.RedactingHandler)
+	assert.True(t, ok, "WithGroup should return a *RedactingHandler")
+}
+
+func TestRedactingHandler_WithGroup_RedactsSensitiveName(t *testing.T) {
+	var buf bytes.Buffer
+	inner := slog.NewTextHandler(&buf, nil)
+	handler := logging.NewRedactingHandler(inner)
+
+	// Test pattern matching in group name
+	secret := "sk-" + "TEST" + "1234567890" + "1234567890"
+	h2 := handler.WithGroup(secret)
+	logger := slog.New(h2)
+	logger.Info("msg", "foo", "bar")
+
+	output := buf.String()
+	assert.NotContains(t, output, secret)
+	assert.Contains(t, output, "[REDACTED].foo=bar")
+
+	// Test sensitive key matching in group name
+	buf.Reset()
+	h3 := handler.WithGroup("password")
+	logger3 := slog.New(h3)
+	logger3.Info("msg", "foo", "bar")
+
+	output3 := buf.String()
+	assert.Contains(t, output3, "[REDACTED].foo=bar")
+}
