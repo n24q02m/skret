@@ -300,3 +300,14 @@ func TestLocal_GetBatch(t *testing.T) {
 	assert.Equal(t, "KEY1", secrets[0].Key)
 	assert.Equal(t, "KEY3", secrets[1].Key)
 }
+
+func TestLocal_GetBatch_Empty(t *testing.T) {
+	path := setupFile(t, "version: \"1\"\nsecrets: {}")
+	p := newProvider(t, path)
+	defer p.Close()
+
+	ctx := context.Background()
+	secrets, err := p.GetBatch(ctx, []string{})
+	require.NoError(t, err)
+	assert.Nil(t, secrets)
+}
