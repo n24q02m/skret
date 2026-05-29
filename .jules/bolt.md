@@ -25,3 +25,11 @@
 ## 2026-06-25 - Avoid String Function Overhead in Hot Loops
 **Learning:** Functions like `strings.Cut` and `strings.Contains` provide a convenient API, but when used extensively in hot loops (such as parsing `KEY=VALUE` environment variables or scanning for a single delimiter like `$`), they incur measurable execution time overhead compared to lower-level operations.
 **Action:** For single-byte searches in high-performance or frequently executed code paths, prefer `strings.IndexByte`. When splitting strings by a single character, use `strings.IndexByte` and manual slicing (e.g., `s[:idx]` and `s[idx+1:]`) instead of `strings.Cut`. This optimization reduces execution time and bypasses unnecessary standard library call overhead.
+
+## 2024-04-27 - Optimize Local Provider Concurrency with RWMutex
+**Learning:** For in-memory providers (like the local YAML provider), using a standard `sync.Mutex` for read operations (`Get`, `GetBatch`, `List`) causes unnecessary serialization of read requests. While it's not a remote I/O N+1 issue, it can become a bottleneck during high-concurrency read operations (e.g., multiple microservices or workers fetching secrets simultaneously).
+**Action:** Replace `sync.Mutex` with `sync.RWMutex` in in-memory providers. Use `RLock` and `RUnlock` for all read-only operations to allow concurrent reads while still ensuring safe exclusive access for write operations (`Set`, `Delete`).
+
+## 2024-04-27 - CI Patch Coverage Pitfall for Optimizations
+**Learning:** Adding early returns or "fast-path" logic (like checking for empty input) creates new branches that must be explicitly covered by unit tests. Even if the overall package coverage is high, CI tools like Codecov often enforce a minimum "patch coverage" (e.g., 80-90% of the *new* lines must be hit), and missing a single branch in a small PR can cause CI to fail.
+**Action:** When adding optimizations or early returns, immediately add a corresponding test case for that specific branch (e.g., passing an empty slice to a batch function) to ensure patch coverage requirements are met.
