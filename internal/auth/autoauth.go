@@ -18,21 +18,24 @@ func IsAuthError(err error) bool {
 	// previously called strings.ToLower on both operands every iteration);
 	// the needles are kept pre-lowercased. Behavior is identical.
 	lower := strings.ToLower(err.Error())
-	for _, substr := range []string{
-		"unauthorizedexception",
-		"invalidgrantexception",
-		"expiredtokenexception",
-		"401",
-		"403",
-		"credentials missing",
-		"could not resolve credentials",
-		"credential not found",
-	} {
+	for _, substr := range authErrorSubstrs {
 		if strings.Contains(lower, substr) {
 			return true
 		}
 	}
 	return false
+}
+
+// authErrorSubstrs is a global slice to prevent slice allocation on every IsAuthError call.
+var authErrorSubstrs = []string{
+	"unauthorizedexception",
+	"invalidgrantexception",
+	"expiredtokenexception",
+	"401",
+	"403",
+	"credentials missing",
+	"could not resolve credentials",
+	"credential not found",
 }
 
 // WithAutoAuth runs fn; on an auth-shaped error, prompts the user for inline
