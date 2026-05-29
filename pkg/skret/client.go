@@ -3,6 +3,7 @@ package skret
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 
 	"github.com/n24q02m/skret/internal/config"
@@ -69,6 +70,10 @@ func New(opts ...Options) (*Client, error) {
 		return nil, NewError(ExitProviderError, fmt.Sprintf("failed to initialize provider %q", resolved.Provider), err)
 	}
 
+	// Debug logging emits config-resolution + provider operations (keys/paths
+	// only, never secret values; the RedactingHandler scrubs any value attrs).
+	slog.Debug("skret: configuration resolved", "config_file", cfgPath, "provider", resolved.Provider, "path", resolved.Path)
+
 	return &Client{
 		provider: p,
 		config:   resolved,
@@ -85,6 +90,7 @@ func (c *Client) Close() error {
 
 // Get retrieves a single secret value by key.
 func (c *Client) Get(ctx context.Context, key string) (*provider.Secret, error) {
+	slog.Debug("skret: get secret", "key", key)
 	s, err := c.provider.Get(ctx, key)
 	if err != nil {
 		return nil, NewError(ExitNotFoundError, fmt.Sprintf("failed to get secret %q", key), err)
@@ -94,6 +100,7 @@ func (c *Client) Get(ctx context.Context, key string) (*provider.Secret, error) 
 
 // List retrieves all secrets under the defined environment path.
 func (c *Client) List(ctx context.Context) ([]*provider.Secret, error) {
+	slog.Debug("skret: list secrets", "path", c.config.Path)
 	secrets, err := c.provider.List(ctx, c.config.Path)
 	if err != nil {
 		return nil, NewError(ExitProviderError, "failed to list secrets", err)
@@ -103,6 +110,7 @@ func (c *Client) List(ctx context.Context) ([]*provider.Secret, error) {
 
 // Set creates or updates a secret.
 func (c *Client) Set(ctx context.Context, key, value string, meta provider.SecretMeta) error {
+	slog.Debug("skret: set secret", "key", key) // value intentionally omitted
 	err := c.provider.Set(ctx, key, value, meta)
 	if err != nil {
 		return NewError(ExitProviderError, fmt.Sprintf("failed to set secret %q", key), err)
@@ -112,6 +120,7 @@ func (c *Client) Set(ctx context.Context, key, value string, meta provider.Secre
 
 // Delete removes a secret.
 func (c *Client) Delete(ctx context.Context, key string) error {
+	slog.Debug("skret: delete secret", "key", key)
 	err := c.provider.Delete(ctx, key)
 	if err != nil {
 		return NewError(ExitProviderError, fmt.Sprintf("failed to delete secret %q", key), err)
@@ -121,6 +130,7 @@ func (c *Client) Delete(ctx context.Context, key string) error {
 
 // GetHistory retrieves the version history of a secret.
 func (c *Client) GetHistory(ctx context.Context, key string) ([]*provider.Secret, error) {
+	slog.Debug("skret: get history", "key", key)
 	history, err := c.provider.GetHistory(ctx, key)
 	if err != nil {
 		return nil, NewError(ExitProviderError, fmt.Sprintf("failed to get history for secret %q", key), err)
@@ -130,6 +140,7 @@ func (c *Client) GetHistory(ctx context.Context, key string) ([]*provider.Secret
 
 // Rollback restores a secret to a specific previous version.
 func (c *Client) Rollback(ctx context.Context, key string, version int64) error {
+	slog.Debug("skret: rollback secret", "key", key, "version", version)
 	err := c.provider.Rollback(ctx, key, version)
 	if err != nil {
 		return NewError(ExitProviderError, fmt.Sprintf("failed to rollback secret %q to version %d", key, version), err)

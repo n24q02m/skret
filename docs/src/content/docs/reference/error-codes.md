@@ -85,4 +85,4 @@ For any error, enable debug logging to see the full context:
 SKRET_LOG=debug skret get MY_SECRET
 ```
 
-This prints config resolution steps, API calls, and timing to stderr without exposing secret values.
+This prints configuration resolution (the selected provider and path) to stderr at the debug level. Set `SKRET_LOG_FORMAT=json` for structured output. Secret values are never written to logs — the logger redacts value attributes.

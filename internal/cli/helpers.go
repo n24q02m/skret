@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 
 	"github.com/n24q02m/skret/internal/config"
@@ -70,6 +71,9 @@ func loadProvider(opts *GlobalOpts) (*config.ResolvedConfig, provider.SecretProv
 	if err != nil {
 		return nil, nil, skret.NewError(skret.ExitProviderError, fmt.Sprintf("init provider %q failed", resolved.Provider), err)
 	}
+
+	// Config-resolution debug output (keys/paths only, never secret values).
+	slog.Debug("skret: configuration resolved", "provider", resolved.Provider, "path", resolved.Path)
 
 	return resolved, p, nil
 }

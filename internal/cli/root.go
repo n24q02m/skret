@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"os"
+
 	"github.com/n24q02m/skret/internal/logging"
 	"github.com/n24q02m/skret/internal/version"
 	"github.com/spf13/cobra"
@@ -30,7 +32,15 @@ func NewRootCmd() *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		PersistentPreRun: func(_ *cobra.Command, _ []string) {
-			logging.Setup(opts.LogLevel, "")
+			// Precedence: --log-level flag > SKRET_LOG env > "info" default.
+			level := opts.LogLevel
+			if level == "" {
+				level = os.Getenv("SKRET_LOG")
+			}
+			if level == "" {
+				level = "info"
+			}
+			logging.Setup(level, os.Getenv("SKRET_LOG_FORMAT"))
 		},
 	}
 
@@ -41,7 +51,7 @@ func NewRootCmd() *cobra.Command {
 	f.StringVar(&opts.Region, "region", "", "override cloud region")
 	f.StringVar(&opts.Profile, "profile", "", "override cloud profile")
 	f.StringVar(&opts.File, "file", "", "override local provider file path")
-	f.StringVar(&opts.LogLevel, "log-level", "info", "log level (debug, info, warn, error)")
+	f.StringVar(&opts.LogLevel, "log-level", "", "log level (debug, info, warn, error) [env: SKRET_LOG, default: info]")
 
 	// Register subcommands — pass opts explicitly
 	cmd.AddCommand(newInitCmd())

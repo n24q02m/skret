@@ -37,7 +37,7 @@ fi
 Enable verbose output with `SKRET_LOG`:
 
 ```bash
-# Debug level -- shows config resolution, API calls, timing
+# Debug level -- shows configuration resolution (provider, path)
 SKRET_LOG=debug skret list
 
 # JSON format for structured log parsing
