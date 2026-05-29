@@ -8,6 +8,19 @@ import (
 	"strings"
 )
 
+// authErrorSubstrings contains lowercase substrings indicating auth errors.
+// Hoisted to prevent dynamic slice allocation on every IsAuthError call.
+var authErrorSubstrings = []string{
+	"unauthorizedexception",
+	"invalidgrantexception",
+	"expiredtokenexception",
+	"401",
+	"403",
+	"credentials missing",
+	"could not resolve credentials",
+	"credential not found",
+}
+
 // IsAuthError classifies whether an error is auth-related and should trigger
 // the auto-relogin prompt.
 func IsAuthError(err error) bool {
@@ -18,16 +31,7 @@ func IsAuthError(err error) bool {
 	// previously called strings.ToLower on both operands every iteration);
 	// the needles are kept pre-lowercased. Behavior is identical.
 	lower := strings.ToLower(err.Error())
-	for _, substr := range []string{
-		"unauthorizedexception",
-		"invalidgrantexception",
-		"expiredtokenexception",
-		"401",
-		"403",
-		"credentials missing",
-		"could not resolve credentials",
-		"credential not found",
-	} {
+	for _, substr := range authErrorSubstrings {
 		if strings.Contains(lower, substr) {
 			return true
 		}
