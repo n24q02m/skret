@@ -62,6 +62,11 @@ func (h *RedactingHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 }
 
 func (h *RedactingHandler) WithGroup(name string) slog.Handler {
+	if isSensitiveKey(name) {
+		name = redacted
+	} else {
+		name = redactString(name)
+	}
 	return &RedactingHandler{inner: h.inner.WithGroup(name)}
 }
 
