@@ -109,6 +109,49 @@ func TestBuildEnv_ExistingNoValue(t *testing.T) {
 	assert.Contains(t, env, "NO_VALUE")
 }
 
+func TestBuildEnv_CycleDetection(t *testing.T) {
+	secrets := []*provider.Secret{
+		{Key: "A", Value: "${B}"},
+		{Key: "B", Value: "${A}"},
+	}
+	env := skexec.BuildEnv(secrets, nil, "", nil)
+
+	// Should break cycle and return some value containing the reference
+	// Map iteration is random, so it could be A=${B}, B=${B} OR B=${A}, A=${A}
+	foundA := false
+	foundB := false
+	for _, e := range env {
+		if e == "A=${B}" || e == "A=${A}" {
+			foundA = true
+		}
+		if e == "B=${A}" || e == "B=${B}" {
+			foundB = true
+		}
+	}
+	assert.True(t, foundA, "A should be present with some value")
+	assert.True(t, foundB, "B should be present with some value")
+}
+
+func TestBuildEnv_DeepDependency(t *testing.T) {
+	secrets := []*provider.Secret{
+		{Key: "V1", Value: "base"},
+		{Key: "V2", Value: "${V1}"},
+		{Key: "V3", Value: "${V2}"},
+		{Key: "V4", Value: "${V3}"},
+		{Key: "V5", Value: "${V4}"},
+		{Key: "V6", Value: "${V5}"},
+		{Key: "V7", Value: "${V6}"},
+		{Key: "V8", Value: "${V7}"},
+		{Key: "V9", Value: "${V8}"},
+		{Key: "V10", Value: "${V9}"},
+		{Key: "V11", Value: "${V10}"},
+		{Key: "V12", Value: "${V11}"},
+	}
+	env := skexec.BuildEnv(secrets, nil, "", nil)
+
+	assert.Contains(t, env, "V12=base")
+}
+
 func TestBuildEnv_Sanitization(t *testing.T) {
 	secrets := []*provider.Secret{
 		{Key: "NULL_BYTE", Value: "val\x00injected"},

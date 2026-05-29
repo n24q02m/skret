@@ -50,38 +50,45 @@ func BuildEnv(secrets []*provider.Secret, existing []string, pathPrefix string, 
 		}
 		secretVars[name] = val
 	}
+	// Resolved cache to avoid redundant expansions
+	resolved := make(map[string]string, len(secretVars))
+	// Cycle detection map
+	resolving := make(map[string]bool, len(secretVars))
 
-	// Pre-allocate the expand function to avoid dynamic allocations inside the nested loops
-	// Performance impact: Reduces Garbage Collector overhead by preventing
-	// the creation of a new closure for every secret expansion iteration.
-	expandFunc := func(ref string) string {
+	var resolve func(string) string
+	resolve = func(ref string) string {
 		// 1. check existing environment variables (highest priority)
 		if val, ok := existingMap[ref]; ok {
 			return val
 		}
-		// 2. check other secrets
-		if sv, ok := secretVars[ref]; ok {
-			return sv
+		// 2. check already resolved secrets
+		if val, ok := resolved[ref]; ok {
+			return val
 		}
-		// 3. fallback to host env
-		return os.Getenv(ref)
+		// 3. check if it is a secret that needs resolving
+		val, ok := secretVars[ref]
+		if !ok {
+			// fallback to host env
+			return os.Getenv(ref)
+		}
+
+		// Cycle detection
+		if resolving[ref] {
+			return val // Return raw value to break cycle
+		}
+
+		resolving[ref] = true
+		defer func() { resolving[ref] = false }()
+		if strings.IndexByte(val, '$') >= 0 {
+			val = os.Expand(val, resolve)
+		}
+
+		resolved[ref] = val
+		return val
 	}
 
-	for i := 0; i < 10; i++ {
-		changed := false
-		for k, v := range secretVars {
-			if strings.IndexByte(v, '$') < 0 {
-				continue
-			}
-			newVal := os.Expand(v, expandFunc)
-			if newVal != v {
-				secretVars[k] = newVal
-				changed = true
-			}
-		}
-		if !changed {
-			break
-		}
+	for k := range secretVars {
+		secretVars[k] = resolve(k)
 	}
 
 	for k, v := range secretVars {
