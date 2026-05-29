@@ -17,6 +17,8 @@ import (
 	"github.com/n24q02m/skret/internal/provider"
 )
 
+var randReader io.Reader = rand.Reader
+
 // GitHubSyncer pushes secrets to GitHub Actions repository secrets.
 type GitHubSyncer struct {
 	owner      string
@@ -193,7 +195,7 @@ func secretName(key string) string {
 // sealSecret encrypts a secret using NaCl sealed box (curve25519 + xsalsa20-poly1305).
 // This matches GitHub's required encryption format for Actions secrets.
 func sealSecret(secret string, recipientKey *[32]byte) (string, error) {
-	sealed, err := box.SealAnonymous(nil, []byte(secret), recipientKey, rand.Reader)
+	sealed, err := box.SealAnonymous(nil, []byte(secret), recipientKey, randReader)
 	if err != nil {
 		return "", fmt.Errorf("seal: %w", err)
 	}
