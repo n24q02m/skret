@@ -12,5 +12,12 @@
   "semanticCommitScope": "deps",
   "golang": {
     "postUpdateOptions": ["gomodTidy"]
-  }
+  },
+  "packageRules": [
+    {
+      "matchPackageNames": ["astro"],
+      "allowedVersions": "<6.4.0",
+      "description": "Hold astro <6.4 until @astrojs/starlight + @astrojs/mdx support it. astro 6.4.0 removed the astro/jsx/rehype.js export that @astrojs/mdx 5.0.6 (transitive via starlight) imports, breaking the Deploy Docs CD build."
+    }
+  ]
 }
