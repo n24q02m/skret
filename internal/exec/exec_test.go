@@ -151,3 +151,22 @@ func TestBuildEnv_DeepDependency(t *testing.T) {
 
 	assert.Contains(t, env, "V12=base")
 }
+
+func TestBuildEnv_Sanitization(t *testing.T) {
+	secrets := []*provider.Secret{
+		{Key: "NULL_BYTE", Value: "val\x00injected"},
+		{Key: "NEWLINE", Value: "val\ninjected"},
+		{Key: "CARRIAGE_RETURN", Value: "val\rinjected"},
+	}
+	env := skexec.BuildEnv(secrets, nil, "", nil)
+
+	assert.Contains(t, env, "NULL_BYTE=valinjected")
+	assert.Contains(t, env, "NEWLINE=val injected")
+	assert.Contains(t, env, "CARRIAGE_RETURN=valinjected")
+}
+
+func TestKeyToEnvName_Sanitization(t *testing.T) {
+	assert.Equal(t, "BAD_KEY", skexec.KeyToEnvName("BAD\nKEY", ""))
+	assert.Equal(t, "BAD_KEY", skexec.KeyToEnvName("BAD=KEY", ""))
+	assert.Equal(t, "BAD_KEY", skexec.KeyToEnvName("BAD KEY", ""))
+}
