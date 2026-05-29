@@ -97,6 +97,8 @@ func (f *InfisicalBrowserFlow) Login(ctx context.Context, _ map[string]string) (
 			_, _ = w.Write([]byte("skret authentication complete. You can close this tab."))
 			codeCh <- code
 		}),
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      10 * time.Second,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 	go func() { _ = srv.Serve(ln) }()
