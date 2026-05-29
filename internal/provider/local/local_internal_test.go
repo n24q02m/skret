@@ -31,7 +31,7 @@ func TestSave_Internal(t *testing.T) {
 		require.NoError(t, os.WriteFile(path, []byte("version: \"1\"\nsecrets:\n  K: v"), 0o600))
 		p := &Provider{filePath: path}
 		require.NoError(t, p.load())
-		// Make directory non-writable
+
 		require.NoError(t, os.RemoveAll(dir))
 		require.NoError(t, os.WriteFile(dir, []byte("blocker"), 0o600))
 		err := p.save()
@@ -44,7 +44,7 @@ func TestSave_Internal(t *testing.T) {
 		require.NoError(t, os.WriteFile(path, []byte("version: \"1\"\nsecrets:\n  K: v"), 0o600))
 		p := &Provider{filePath: path}
 		require.NoError(t, p.load())
-		// Create directory at path to block rename
+
 		require.NoError(t, os.Remove(path))
 		require.NoError(t, os.Mkdir(path, 0o700))
 		err := p.save()

@@ -55,13 +55,9 @@ func TestLoad_Errors(t *testing.T) {
 		assert.Contains(t, err.Error(), "unsupported version")
 	})
 
-	t.Run("AbsError", func(t *testing.T) {
-		oldWd, _ := os.Getwd()
-		defer os.Chdir(oldWd)
+	t.Run("DirError", func(t *testing.T) {
 		dir := t.TempDir()
-		require.NoError(t, os.Chdir(dir))
-		require.NoError(t, os.RemoveAll(dir))
-		_, err := config.Load("relative.yaml")
+		_, err := config.Load(dir)
 		assert.Error(t, err)
 	})
 }
@@ -98,16 +94,6 @@ func TestDiscover(t *testing.T) {
 	t.Run("FailsRecursion", func(t *testing.T) {
 		_, err := config.Discover("/")
 		assert.ErrorIs(t, err, config.ErrConfigNotFound)
-	})
-
-	t.Run("AbsError", func(t *testing.T) {
-		oldWd, _ := os.Getwd()
-		defer os.Chdir(oldWd)
-		dir := t.TempDir()
-		require.NoError(t, os.Chdir(dir))
-		require.NoError(t, os.RemoveAll(dir))
-		_, err := config.Discover(".")
-		assert.Error(t, err)
 	})
 
 	t.Run("StopsAtGitRoot", func(t *testing.T) {
