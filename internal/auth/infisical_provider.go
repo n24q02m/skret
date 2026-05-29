@@ -124,7 +124,9 @@ func (p *InfisicalProvider) loginToken(ctx context.Context, opts map[string]stri
 			Email string `json:"email"`
 		} `json:"user"`
 	}
-	_ = json.NewDecoder(resp.Body).Decode(&result)
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("infisical: decode: %w", err)
+	}
 
 	return &Credential{
 		Method: "token",
