@@ -16,3 +16,7 @@
 **Vulnerability:** OS-level commands (like `open`, `xdg-open`, and `rundll32`) invoked via `exec.CommandContext` could be vulnerable to argument injection or unexpected flag execution when passed raw URL strings, even if those strings started with a valid scheme like HTTP or HTTPS.
 **Learning:** Relying purely on scheme validation (`http`, `https`) is insufficient to prevent argument injection in shell-like commands if the rest of the string contains unescaped special characters or spaces.
 **Prevention:** Sanitize user input by re-encoding URLs using `url.Parse` and `parsed.String()` before passing them to OS execution contexts. This normalizes the input and safely escapes characters that might otherwise be parsed as flags.
+
+## 2026-05-28 - [SECURITY] Insecure HTTP Server Configuration
+
+Added `ReadTimeout` and `WriteTimeout` to `http.Server` in `internal/auth/infisical_browser.go` to prevent potential resource exhaustion on the local loopback listener.
