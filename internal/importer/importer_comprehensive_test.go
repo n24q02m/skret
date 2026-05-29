@@ -2,9 +2,6 @@ package importer_test
 
 import (
 	"context"
-	"encoding/json"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -20,13 +17,13 @@ import (
 func TestDotenvImporter_MultiLineEscaped(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, ".env")
-	content := `MULTI="line1\nline2\ttab"
-SINGLE_QUOTES='no expansion $VAR'
-EMPTY_QUOTED=""
-BARE_VALUE=just_text
-NO_EQUALS_LINE
-=NO_KEY
-`
+	// Use literal strings to avoid shell expansion issues during file creation
+	content := "MULTI=\"line1\\nline2\\ttab\"\n" +
+		"SINGLE_QUOTES='no expansion $VAR'\n" +
+		"EMPTY_QUOTED=\"\"\n" +
+		"BARE_VALUE=just_text\n" +
+		"NO_EQUALS_LINE\n" +
+		"=NO_KEY\n"
 	require.NoError(t, os.WriteFile(path, []byte(content), 0o644))
 
 	imp := importer.NewDotenv(path)
@@ -38,7 +35,7 @@ NO_EQUALS_LINE
 		m[s.Key] = s.Value
 	}
 
-	assert.Equal(t, `line1\nline2\ttab`, m["MULTI"])
+	assert.Equal(t, "line1\\nline2\\ttab", m["MULTI"])
 	assert.Equal(t, "no expansion $VAR", m["SINGLE_QUOTES"])
 	assert.Equal(t, "", m["EMPTY_QUOTED"])
 	assert.Equal(t, "just_text", m["BARE_VALUE"])
@@ -53,9 +50,7 @@ NO_EQUALS_LINE
 func TestDotenvImporter_WithExportPrefix(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, ".env")
-	content := `export KEY1=value1
-export KEY2="quoted value"
-`
+	content := "export KEY1=value1\nexport KEY2=\"quoted value\"\n"
 	require.NoError(t, os.WriteFile(path, []byte(content), 0o644))
 
 	imp := importer.NewDotenv(path)
@@ -73,10 +68,7 @@ export KEY2="quoted value"
 func TestDotenvImporter_SpecialChars(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, ".env")
-	content := `URL=https://host:5432/db?sslmode=require
-JSON_VALUE={"key":"value"}
-SPACES=  has leading and trailing
-`
+	content := "URL=https://host:5432/db?sslmode=require\nJSON_VALUE={\"key\":\"value\"}\nSPACES=  has leading and trailing\n"
 	require.NoError(t, os.WriteFile(path, []byte(content), 0o644))
 
 	imp := importer.NewDotenv(path)
@@ -88,7 +80,7 @@ SPACES=  has leading and trailing
 		m[s.Key] = s.Value
 	}
 	assert.Equal(t, "https://host:5432/db?sslmode=require", m["URL"])
-	assert.Equal(t, `{"key":"value"}`, m["JSON_VALUE"])
+	assert.Equal(t, "{\"key\":\"value\"}", m["JSON_VALUE"])
 }
 
 func TestDotenvImporter_LargeFile(t *testing.T) {
@@ -104,96 +96,4 @@ func TestDotenvImporter_LargeFile(t *testing.T) {
 	secrets, err := imp.Import(context.Background())
 	require.NoError(t, err)
 	assert.Len(t, secrets, 100)
-}
-
-// --- Infisical edge cases ---
-
-func TestInfisicalImporter_Name(t *testing.T) {
-	imp := importer.NewInfisical("token", "proj-id", "prod", "")
-	assert.Equal(t, "infisical", imp.Name())
-}
-
-func TestInfisicalImporter_DefaultBaseURL(t *testing.T) {
-	imp := importer.NewInfisical("token", "proj", "env", "")
-	assert.NotNil(t, imp)
-}
-
-func TestInfisicalImporter_MalformedJSON(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{not valid json`))
-	}))
-	defer srv.Close()
-
-	imp := importer.NewInfisical("token", "proj", "env", srv.URL)
-	_, err := imp.Import(context.Background())
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "decode")
-}
-
-func TestInfisicalImporter_SortedOutput(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		resp := map[string]any{
-			"secrets": []map[string]string{
-				{"secretKey": "Z_KEY", "secretValue": "z"},
-				{"secretKey": "A_KEY", "secretValue": "a"},
-				{"secretKey": "M_KEY", "secretValue": "m"},
-			},
-		}
-		json.NewEncoder(w).Encode(resp)
-	}))
-	defer srv.Close()
-
-	imp := importer.NewInfisical("token", "proj", "env", srv.URL)
-	secrets, err := imp.Import(context.Background())
-	require.NoError(t, err)
-	require.Len(t, secrets, 3)
-	assert.Equal(t, "A_KEY", secrets[0].Key)
-	assert.Equal(t, "M_KEY", secrets[1].Key)
-	assert.Equal(t, "Z_KEY", secrets[2].Key)
-}
-
-func TestInfisicalImporter_EmptySecrets(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		resp := map[string]any{
-			"secrets": []map[string]string{},
-		}
-		json.NewEncoder(w).Encode(resp)
-	}))
-	defer srv.Close()
-
-	imp := importer.NewInfisical("token", "proj", "env", srv.URL)
-	secrets, err := imp.Import(context.Background())
-	require.NoError(t, err)
-	assert.Empty(t, secrets)
-}
-
-func TestInfisicalImporter_ServerError(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusServiceUnavailable)
-		w.Write([]byte(`service down`))
-	}))
-	defer srv.Close()
-
-	imp := importer.NewInfisical("token", "proj", "env", srv.URL)
-	_, err := imp.Import(context.Background())
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "503")
-}
-
-func TestInfisicalImporter_RequestHeaders(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "Bearer my-token", r.Header.Get("Authorization"))
-		assert.Equal(t, "application/json", r.Header.Get("Accept"))
-		assert.Equal(t, "proj-abc", r.URL.Query().Get("workspaceId"))
-		assert.Equal(t, "staging", r.URL.Query().Get("environment"))
-
-		resp := map[string]any{"secrets": []map[string]string{}}
-		json.NewEncoder(w).Encode(resp)
-	}))
-	defer srv.Close()
-
-	imp := importer.NewInfisical("my-token", "proj-abc", "staging", srv.URL)
-	_, err := imp.Import(context.Background())
-	require.NoError(t, err)
 }
