@@ -20,7 +20,7 @@ type localFile struct {
 
 // Provider reads/writes secrets from a local YAML file.
 type Provider struct {
-	mu       sync.Mutex
+	mu       sync.RWMutex
 	filePath string
 	data     localFile
 }
@@ -46,8 +46,8 @@ func (p *Provider) Capabilities() provider.Capabilities {
 }
 
 func (p *Provider) Get(_ context.Context, key string) (*provider.Secret, error) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
+	p.mu.RLock()
+	defer p.mu.RUnlock()
 	val, ok := p.data.Secrets[key]
 	if !ok {
 		return nil, fmt.Errorf("local: get %q: %w", key, provider.ErrNotFound)
@@ -56,8 +56,11 @@ func (p *Provider) Get(_ context.Context, key string) (*provider.Secret, error) 
 }
 
 func (p *Provider) GetBatch(_ context.Context, keys []string) ([]*provider.Secret, error) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
+	if len(keys) == 0 {
+		return nil, nil
+	}
+	p.mu.RLock()
+	defer p.mu.RUnlock()
 	secrets := make([]*provider.Secret, 0, len(keys))
 	for _, key := range keys {
 		if val, ok := p.data.Secrets[key]; ok {
@@ -68,8 +71,8 @@ func (p *Provider) GetBatch(_ context.Context, keys []string) ([]*provider.Secre
 }
 
 func (p *Provider) List(_ context.Context, _ string) ([]*provider.Secret, error) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
+	p.mu.RLock()
+	defer p.mu.RUnlock()
 	secrets := make([]*provider.Secret, 0, len(p.data.Secrets))
 	for k, v := range p.data.Secrets {
 		secrets = append(secrets, &provider.Secret{Key: k, Value: v})
