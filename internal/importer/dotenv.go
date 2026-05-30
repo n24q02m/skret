@@ -31,15 +31,18 @@ func (d *DotenvImporter) Import(_ context.Context) ([]ImportedSecret, error) {
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
+		// ⚡ Bolt: Fast path prefix check avoids strings.HasPrefix overhead
+		if len(line) == 0 || line[0] == '#' {
 			continue
 		}
 		line = strings.TrimPrefix(line, "export ")
 
-		key, value, found := strings.Cut(line, "=")
-		if !found {
+		// ⚡ Bolt: strings.IndexByte with manual slicing is faster than strings.Cut
+		idx := strings.IndexByte(line, '=')
+		if idx < 0 {
 			continue
 		}
+		key, value := line[:idx], line[idx+1:]
 		key = strings.TrimSpace(key)
 		value = strings.TrimSpace(value)
 		value = unquote(value)
