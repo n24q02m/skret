@@ -42,6 +42,8 @@ func TestBuildEnv_PathStripping(t *testing.T) {
 func TestBuildEnv_EmptySecrets(t *testing.T) {
 	env := skexec.BuildEnv(nil, []string{"HOME=/root"}, "", nil)
 	assert.Equal(t, []string{"HOME=/root"}, env)
+	env2 := skexec.BuildEnv([]*provider.Secret{}, []string{"HOME=/root"}, "", nil)
+	assert.Equal(t, []string{"HOME=/root"}, env2)
 }
 
 func TestKeyToEnvName_NoPrefix(t *testing.T) {
