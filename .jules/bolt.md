@@ -34,6 +34,6 @@
 **Learning:** Adding early returns or "fast-path" logic (like checking for empty input) creates new branches that must be explicitly covered by unit tests. Even if the overall package coverage is high, CI tools like Codecov often enforce a minimum "patch coverage" (e.g., 80-90% of the *new* lines must be hit), and missing a single branch in a small PR can cause CI to fail.
 **Action:** When adding optimizations or early returns, immediately add a corresponding test case for that specific branch (e.g., passing an empty slice to a batch function) to ensure patch coverage requirements are met.
 
-## 2026-06-25 - Avoid strings.HasPrefix Overhead in Hot Loops
-**Learning:** Functions like `strings.HasPrefix` provide a convenient API, but when checking for a single character prefix in a hot loop (like parsing `.env` files line by line), it incurs measurable execution time overhead compared to a simple byte comparison.
-**Action:** Replace `strings.HasPrefix(line, "#")` with a direct byte check `len(line) > 0 && line[0] == '#'` to bypass the function call overhead.
+## 2026-06-25 - Skip Environment Resolution Logic on Empty Secrets
+**Learning:** Functions that parse, resolve, and merge existing environment variables and secret maps often initialize deep variable-dependency graph structures and caches (maps) before they know if there's actual work to do.
+**Action:** When a function accepts a slice or map of values to resolve (e.g., `BuildEnv(secrets ...)`), insert an early return (`if len(secrets) == 0 { return existingEnv }`) before initializing complex recursive expansion caches or looping over elements. This prevents unnecessary memory allocations in processes that invoke the code with no inputs.

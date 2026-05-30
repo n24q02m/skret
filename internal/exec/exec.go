@@ -11,9 +11,12 @@ import (
 // Existing env vars override secret values (user control).
 // Keys in exclude list are never injected.
 func BuildEnv(secrets []*provider.Secret, existing []string, pathPrefix string, exclude []string) []string {
-	excludeSet := make(map[string]bool, len(exclude))
-	for _, e := range exclude {
-		excludeSet[strings.ToUpper(e)] = true
+	var excludeSet map[string]bool
+	if len(exclude) > 0 {
+		excludeSet = make(map[string]bool, len(exclude))
+		for _, e := range exclude {
+			excludeSet[strings.ToUpper(e)] = true
+		}
 	}
 
 	existingMap := make(map[string]string, len(existing))
@@ -28,10 +31,15 @@ func BuildEnv(secrets []*provider.Secret, existing []string, pathPrefix string, 
 		env = append(env, e)
 	}
 
+	// ⚡ Bolt: Early return for empty secrets avoids expensive cache initializations
+	if len(secrets) == 0 {
+		return env
+	}
+
 	secretVars := make(map[string]string, len(secrets))
 	for _, s := range secrets {
 		name := KeyToEnvName(s.Key, pathPrefix)
-		if excludeSet[name] {
+		if excludeSet != nil && excludeSet[name] {
 			continue
 		}
 		if _, exists := existingMap[name]; exists {
