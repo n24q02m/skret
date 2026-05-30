@@ -170,3 +170,13 @@ func TestKeyToEnvName_Sanitization(t *testing.T) {
 	assert.Equal(t, "BAD_KEY", skexec.KeyToEnvName("BAD=KEY", ""))
 	assert.Equal(t, "BAD_KEY", skexec.KeyToEnvName("BAD KEY", ""))
 }
+
+func TestBuildEnv_EmptyExcludeMap(t *testing.T) {
+	secrets := []*provider.Secret{
+		{Key: "A", Value: "1"},
+	}
+	existing := []string{"B=2"}
+	env := skexec.BuildEnv(secrets, existing, "", []string{})
+	assert.Contains(t, env, "A=1")
+	assert.Contains(t, env, "B=2")
+}
