@@ -86,10 +86,10 @@ func BuildEnv(secrets []*provider.Secret, existing []string, pathPrefix string, 
 		}
 
 		resolving[ref] = true
-		defer func() { resolving[ref] = false }()
 		if strings.IndexByte(val, '$') >= 0 {
 			val = os.Expand(val, resolve)
 		}
+		resolving[ref] = false
 
 		resolved[ref] = val
 		return val
