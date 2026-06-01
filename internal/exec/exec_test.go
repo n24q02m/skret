@@ -42,6 +42,8 @@ func TestBuildEnv_PathStripping(t *testing.T) {
 func TestBuildEnv_EmptySecrets(t *testing.T) {
 	env := skexec.BuildEnv(nil, []string{"HOME=/root"}, "", nil)
 	assert.Equal(t, []string{"HOME=/root"}, env)
+	env2 := skexec.BuildEnv([]*provider.Secret{}, []string{"HOME=/root"}, "", nil)
+	assert.Equal(t, []string{"HOME=/root"}, env2)
 }
 
 func TestKeyToEnvName_NoPrefix(t *testing.T) {
@@ -169,4 +171,14 @@ func TestKeyToEnvName_Sanitization(t *testing.T) {
 	assert.Equal(t, "BAD_KEY", skexec.KeyToEnvName("BAD\nKEY", ""))
 	assert.Equal(t, "BAD_KEY", skexec.KeyToEnvName("BAD=KEY", ""))
 	assert.Equal(t, "BAD_KEY", skexec.KeyToEnvName("BAD KEY", ""))
+}
+
+func TestBuildEnv_EmptyExcludeMap(t *testing.T) {
+	secrets := []*provider.Secret{
+		{Key: "A", Value: "1"},
+	}
+	existing := []string{"B=2"}
+	env := skexec.BuildEnv(secrets, existing, "", []string{})
+	assert.Contains(t, env, "A=1")
+	assert.Contains(t, env, "B=2")
 }
