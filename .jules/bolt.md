@@ -34,6 +34,10 @@
 **Learning:** Adding early returns or "fast-path" logic (like checking for empty input) creates new branches that must be explicitly covered by unit tests. Even if the overall package coverage is high, CI tools like Codecov often enforce a minimum "patch coverage" (e.g., 80-90% of the *new* lines must be hit), and missing a single branch in a small PR can cause CI to fail.
 **Action:** When adding optimizations or early returns, immediately add a corresponding test case for that specific branch (e.g., passing an empty slice to a batch function) to ensure patch coverage requirements are met.
 
+## 2026-10-27 - Hoist Slice Initialization
+**Learning:** Initializing literal slices (e.g., `[]string{...}`) inside frequently executed functions dynamically allocates memory and initializes elements on every call, creating unnecessary overhead and GC pressure.
+**Action:** Always hoist statically-defined slice literals out of function bodies into package-level variables to ensure they are allocated and initialized only once during program startup.
+
 ## 2026-06-25 - Skip Environment Resolution Logic on Empty Secrets
 **Learning:** Functions that parse, resolve, and merge existing environment variables and secret maps often initialize deep variable-dependency graph structures and caches (maps) before they know if there's actual work to do.
 **Action:** When a function accepts a slice or map of values to resolve (e.g., `BuildEnv(secrets ...)`), insert an early return (`if len(secrets) == 0 { return existingEnv }`) before initializing complex recursive expansion caches or looping over elements. This prevents unnecessary memory allocations in processes that invoke the code with no inputs.

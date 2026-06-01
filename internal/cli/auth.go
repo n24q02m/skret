@@ -80,12 +80,12 @@ func newAuthStatusCmd() *cobra.Command {
 			for _, p := range providers {
 				cred, err := store.Load(p)
 				if err != nil {
-					cmd.Printf("  %-12s not configured\n", p)
+					fmt.Fprintf(cmd.OutOrStdout(), "  %-12s not configured\n", p)
 					continue
 				}
 
 				status := getCredentialStatus(ctx, p, cred)
-				cmd.Printf("  %-12s %s (method: %s)\n", p, status, cred.Method)
+				fmt.Fprintf(cmd.OutOrStdout(), "  %-12s %s (method: %s)\n", p, status, cred.Method)
 			}
 
 			return nil
