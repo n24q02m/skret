@@ -213,6 +213,26 @@ func TestListCmd_JSONOutput(t *testing.T) {
 	assert.Contains(t, buf.String(), "DATABASE_URL")
 }
 
+func TestListCmd_TableOutputValues(t *testing.T) {
+	dir := setupTestRepo(t)
+	origDir, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	defer os.Chdir(origDir)
+
+	var buf bytes.Buffer
+	cmd := cli.NewRootCmd()
+	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
+	cmd.SetArgs([]string{"list", "--values"})
+
+	err := cmd.Execute()
+	require.NoError(t, err)
+	out := buf.String()
+	assert.Contains(t, out, "KEY")
+	assert.Contains(t, out, "VERSION")
+	assert.Contains(t, out, "VALUE")
+}
+
 func TestListCmd_EmptyState(t *testing.T) {
 	dir := setupTestRepo(t)
 	origDir, _ := os.Getwd()
