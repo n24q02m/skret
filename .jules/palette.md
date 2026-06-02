@@ -8,3 +8,7 @@
 ## 2026-06-05 - [Empty States and Actionable Feedback for CLI Output]
 **Learning:** When a CLI command returns an empty state (e.g., no configuration found, no history present), printing an actionable call-to-action (like "Use skret setup to initialize") to stderr significantly improves UX while preserving pipeline safety.
 **Action:** Always add an actionable hint routed to stderr for empty states to help users understand their next step without polluting programmatic stdout.
+
+## 2025-05-18 - [CLI Tabular Output with Values]
+**Learning:** When users request secret values using a `--values` flag alongside a tabular output format, they expect the values to be seamlessly integrated as a new column in the table, rather than having the flag silently ignored or requiring a switch to a less readable format like JSON.
+**Action:** Always ensure that CLI formatting options (like `--values`) apply meaningfully across all compatible output formats (e.g., adding a `VALUE` column to the default `tabwriter` output in `list.go`), maintaining a consistent and expected user experience.

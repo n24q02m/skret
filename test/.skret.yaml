@@ -1,0 +1,20 @@
+version: "1"
+default_env: dev
+project: ""
+environments:
+    dev:
+        provider: local
+        path: "/foo/bar"
+        region: ""
+        profile: ""
+        kms_key_id: ""
+        file: .secrets.dev.yaml
+    prod:
+        provider: aws
+        path: "/foo/bar"
+        region: ""
+        profile: ""
+        kms_key_id: ""
+        file: ""
+required: []
+exclude: []
