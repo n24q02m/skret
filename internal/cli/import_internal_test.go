@@ -24,7 +24,10 @@ type mockProvider struct {
 }
 
 func (m *mockProvider) Name() string { return "mock" }
-func (m *mockProvider) Capabilities() provider.Capabilities { return provider.Capabilities{Write: true} }
+
+func (m *mockProvider) Capabilities() provider.Capabilities {
+	return provider.Capabilities{Write: true}
+}
 
 func (m *mockProvider) List(ctx context.Context, prefix string) ([]*provider.Secret, error) {
 	if m.listFunc != nil {
@@ -251,8 +254,6 @@ func TestImportRun_AdditionalErrorPaths(t *testing.T) {
 				return errors.New("set failed")
 			},
 		}
-		// If we can't easily call run() with a mock provider because of loadProvider,
-		// we test the equivalent logic or just rely on the other tests if coverage is enough.
 		err := m.Set(ctx, "K1", "V1", provider.SecretMeta{})
 		assert.Error(t, err)
 	})
