@@ -98,12 +98,17 @@ func (o *importOptions) run(cmd *cobra.Command) error {
 	}
 	defer p.Close()
 
+	ctx := context.Background()
+	return o.runWithProvider(ctx, cmd, p)
+}
+
+// runWithProvider executes the import logic using a provided secret provider.
+func (o *importOptions) runWithProvider(ctx context.Context, cmd *cobra.Command, p provider.SecretProvider) error {
 	imp, err := o.createImporter()
 	if err != nil {
 		return err
 	}
 
-	ctx := context.Background()
 	secrets, err := imp.Import(ctx)
 	if err != nil {
 		return skret.NewError(skret.ExitNetworkError, "import failed", err)

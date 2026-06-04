@@ -233,10 +233,10 @@ func TestImportRun_Full(t *testing.T) {
 	})
 }
 
-func TestImportRun_AdditionalErrorPaths(t *testing.T) {
+func TestImportRun_RunWithProvider(t *testing.T) {
 	ctx := context.Background()
 
-	t.Run("loadExisting error in run", func(t *testing.T) {
+	t.Run("loadExisting error in runWithProvider", func(t *testing.T) {
 		m := &mockProvider{
 			listFunc: func(ctx context.Context, prefix string) ([]*provider.Secret, error) {
 				return nil, errors.New("list failed")
@@ -246,20 +246,38 @@ func TestImportRun_AdditionalErrorPaths(t *testing.T) {
 			},
 		}
 		o := &importOptions{
+			from:       "dotenv",
 			onConflict: "skip",
 		}
-		_, err := o.loadExisting(ctx, m, "", []string{"K1"})
+		// Since createImporter depends on files, create a dummy .env
+		tmpDir := t.TempDir()
+		envPath := filepath.Join(tmpDir, ".env")
+		_ = os.WriteFile(envPath, []byte("K1=V1"), 0o600)
+		o.file = envPath
+
+		err := o.runWithProvider(ctx, &cobra.Command{}, m)
 		assert.Error(t, err)
+		assert.Equal(t, skret.ExitProviderError, skret.ExitCode(err))
 	})
 
-	t.Run("p.Set error in run", func(t *testing.T) {
+	t.Run("p.Set error in runWithProvider", func(t *testing.T) {
 		m := &mockProvider{
 			setFunc: func(ctx context.Context, key, value string, meta provider.SecretMeta) error {
 				return errors.New("set failed")
 			},
 		}
-		err := m.Set(ctx, "K1", "V1", provider.SecretMeta{})
+		o := &importOptions{
+			from:       "dotenv",
+			onConflict: "overwrite",
+		}
+		tmpDir := t.TempDir()
+		envPath := filepath.Join(tmpDir, ".env")
+		_ = os.WriteFile(envPath, []byte("K1=V1"), 0o600)
+		o.file = envPath
+
+		err := o.runWithProvider(ctx, &cobra.Command{}, m)
 		assert.Error(t, err)
+		assert.Equal(t, skret.ExitProviderError, skret.ExitCode(err))
 	})
 }
 
