@@ -119,6 +119,17 @@ func TestOpenBrowser_Injection(t *testing.T) {
 		{"leading dash", "https://-V/foo", "invalid url host"},
 		{"shell metacharacter $", "https://example.com/$PATH", "dangerous characters"},
 		{"shell metacharacter ;", "https://example.com/;id", "dangerous characters"},
+		{"shell metacharacter &", "https://example.com/&id", "dangerous characters"},
+		{"shell metacharacter |", "https://example.com/|id", "dangerous characters"},
+		{"shell metacharacter <", "https://example.com/<id", "dangerous characters"},
+		{"shell metacharacter >", "https://example.com/>id", "dangerous characters"},
+		{"shell metacharacter `", "https://example.com/`id`", "dangerous characters"},
+		{"shell metacharacter !", "https://example.com/!id", "dangerous characters"},
+		{"shell metacharacter (", "https://example.com/(id)", "dangerous characters"},
+		{"shell metacharacter )", "https://example.com/)id", "dangerous characters"},
+		{"shell metacharacter '", "https://example.com/'id", "dangerous characters"},
+		{"shell metacharacter \"", "https://example.com/\"id", "dangerous characters"},
+		{"shell metacharacter \\", "https://example.com/\\id", "dangerous characters"},
 	}
 
 	for _, tt := range tests {
@@ -127,6 +138,34 @@ func TestOpenBrowser_Injection(t *testing.T) {
 			if assert.Error(t, err) {
 				assert.Contains(t, err.Error(), tt.msg)
 			}
+		})
+	}
+}
+
+func TestOpenBrowser_SafeCharacters(t *testing.T) {
+	t.Setenv("SKRET_NO_BROWSER", "")
+
+	// These characters are safe in a URL and should not be rejected by the broad filter
+	// if they are properly escaped by url.Parse/url.String(), OR they are just safe.
+	// But our current filter is on the RAW input, so it's very strict.
+	// We need to ensure legitimate URLs still work.
+
+	tests := []struct {
+		name string
+		url  string
+	}{
+		{"standard", "https://example.com/path?query=1"},
+		{"fragment", "https://example.com/path#fragment"},
+		{"encoded ampersand", "https://example.com/path?a=1%26b=2"},
+		{"hyphens and dots", "https://my-site.example.com/foo.bar"},
+		{"underscores", "https://example.com/foo_bar"},
+		{"colons", "https://example.com:8080/"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := auth.OpenBrowser(context.Background(), tt.url)
+			assert.NoError(t, err)
 		})
 	}
 }

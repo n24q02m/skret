@@ -87,14 +87,19 @@ func OpenBrowser(ctx context.Context, u string) error {
 		return fmt.Errorf("auth prompt: invalid url host %q", parsed.Host)
 	}
 
-	safeURL := parsed.String()
-
 	// Reject unescaped shell metacharacters that url.String() might leave behind
 	// in the path or other components, which could be dangerous if the browser
 	// opener (like xdg-open) is a shell script.
-	if strings.ContainsAny(safeURL, "$;") {
+	// We check against the raw input u before url.Parse and url.String()
+	// because url.String() will escape most of these, potentially hiding
+	// the injection attempt if the opener (like xdg-open) unescapes them.
+	// Actually, if we pass the escaped URL to xdg-open, it's safer.
+	// But if some characters are NOT escaped (like & or ;), they are dangerous.
+	if strings.ContainsAny(u, "&|;<>`\\!()$\"'") {
 		return fmt.Errorf("auth prompt: url contains dangerous characters")
 	}
+
+	safeURL := parsed.String()
 
 	var cmd *exec.Cmd
 	switch goos() {
