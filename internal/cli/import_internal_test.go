@@ -54,18 +54,18 @@ func (m *mockProvider) Close() error { return nil }
 func TestLoadExisting_Coverage(t *testing.T) {
 	ctx := context.Background()
 
-	t.Run("dryRun returns empty and false", func(t *testing.T) {
+	t.Run("dryRun returns empty and nil error", func(t *testing.T) {
 		o := &importOptions{dryRun: true}
-		existing, loaded := o.loadExisting(ctx, &mockProvider{}, "", nil)
+		existing, err := o.loadExisting(ctx, &mockProvider{}, "", nil)
 		assert.Empty(t, existing)
-		assert.False(t, loaded)
+		assert.NoError(t, err)
 	})
 
-	t.Run("overwrite returns empty and false", func(t *testing.T) {
+	t.Run("overwrite returns empty and nil error", func(t *testing.T) {
 		o := &importOptions{onConflict: "overwrite"}
-		existing, loaded := o.loadExisting(ctx, &mockProvider{}, "", nil)
+		existing, err := o.loadExisting(ctx, &mockProvider{}, "", nil)
 		assert.Empty(t, existing)
-		assert.False(t, loaded)
+		assert.NoError(t, err)
 	})
 
 	t.Run("List failure, GetBatch success", func(t *testing.T) {
@@ -78,12 +78,12 @@ func TestLoadExisting_Coverage(t *testing.T) {
 				return []*provider.Secret{{Key: "K1"}}, nil
 			},
 		}
-		existing, loaded := o.loadExisting(ctx, m, "", []string{"K1"})
-		assert.True(t, loaded)
+		existing, err := o.loadExisting(ctx, m, "", []string{"K1"})
+		assert.NoError(t, err)
 		assert.Contains(t, existing, "K1")
 	})
 
-	t.Run("List failure, GetBatch failure", func(t *testing.T) {
+	t.Run("List failure, GetBatch failure returns error", func(t *testing.T) {
 		o := &importOptions{onConflict: "skip"}
 		m := &mockProvider{
 			listFunc: func(ctx context.Context, prefix string) ([]*provider.Secret, error) {
@@ -93,9 +93,10 @@ func TestLoadExisting_Coverage(t *testing.T) {
 				return nil, errors.New("batch failed")
 			},
 		}
-		existing, loaded := o.loadExisting(ctx, m, "", []string{"K1"})
-		assert.False(t, loaded)
+		existing, err := o.loadExisting(ctx, m, "", []string{"K1"})
+		assert.Error(t, err)
 		assert.Empty(t, existing)
+		assert.Contains(t, err.Error(), "batch failed")
 	})
 
 	t.Run("Prefix without slash", func(t *testing.T) {

@@ -110,7 +110,10 @@ func (o *importOptions) run(cmd *cobra.Command) error {
 	}
 
 	orderedKeys, dedupedMap, skipped := o.deduplicate(cmd, secrets)
-	existing, listLoaded := o.loadExisting(ctx, p, o.toPath, orderedKeys)
+	existing, err := o.loadExisting(ctx, p, o.toPath, orderedKeys)
+	if err != nil {
+		return skret.NewError(skret.ExitProviderError, "import: check existing", err)
+	}
 
 	var imported int
 	for _, destKey := range orderedKeys {
@@ -123,17 +126,7 @@ func (o *importOptions) run(cmd *cobra.Command) error {
 		}
 
 		if o.onConflict == "skip" || o.onConflict == "fail" {
-			hasConflict := false
-			if listLoaded {
-				_, hasConflict = existing[destKey]
-			} else {
-				// Fallback to individual Get if both List and GetBatch failed
-				if _, err := p.Get(ctx, destKey); err == nil {
-					hasConflict = true
-				}
-			}
-
-			if hasConflict {
+			if _, hasConflict := existing[destKey]; hasConflict {
 				if o.onConflict == "skip" {
 					skipped++
 					continue
@@ -186,10 +179,10 @@ func (o *importOptions) deduplicate(cmd *cobra.Command, secrets []importer.Impor
 
 // loadExisting attempts to fetch existing secrets from the provider using List
 // with a fallback to GetBatch for efficiency.
-func (o *importOptions) loadExisting(ctx context.Context, p provider.SecretProvider, prefix string, orderedKeys []string) (map[string]struct{}, bool) {
+func (o *importOptions) loadExisting(ctx context.Context, p provider.SecretProvider, prefix string, orderedKeys []string) (map[string]struct{}, error) {
 	existing := make(map[string]struct{})
 	if o.dryRun || (o.onConflict != "skip" && o.onConflict != "fail") {
-		return existing, false
+		return existing, nil
 	}
 
 	// Ensure prefix ends with a slash for List if it's meant to be a path
@@ -202,7 +195,7 @@ func (o *importOptions) loadExisting(ctx context.Context, p provider.SecretProvi
 		for _, s := range exList {
 			existing[s.Key] = struct{}{}
 		}
-		return existing, true
+		return existing, nil
 	}
 
 	if len(orderedKeys) > 0 {
@@ -212,9 +205,10 @@ func (o *importOptions) loadExisting(ctx context.Context, p provider.SecretProvi
 			for _, s := range exBatch {
 				existing[s.Key] = struct{}{}
 			}
-			return existing, true
+			return existing, nil
 		}
+		return nil, fmt.Errorf("failed to load existing secrets for conflict check: %w", bErr)
 	}
 
-	return existing, false
+	return existing, nil
 }
