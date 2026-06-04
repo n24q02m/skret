@@ -621,3 +621,13 @@ func TestAWS_SetBatch(t *testing.T) {
 	assert.Equal(t, "V1", awslib.ToString(mock.params["K1"].Value))
 	assert.Equal(t, "V2", awslib.ToString(mock.params["K2"].Value))
 }
+
+func TestAWS_SetBatch_Error(t *testing.T) {
+	mock := &mockSSMClient{
+		errPut: errors.New("put failed"),
+	}
+	p := skaws.NewWithClient(mock, "/test/")
+
+	err := p.SetBatch(context.Background(), []*provider.Secret{{Key: "K", Value: "V"}})
+	assert.Error(t, err)
+}

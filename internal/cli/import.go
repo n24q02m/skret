@@ -26,6 +26,7 @@ type importOptions struct {
 	dryRun          bool
 	onConflict      string
 	toPath          string
+	provider        provider.SecretProvider // for testing
 }
 
 // newImportCmd creates a new import command.
@@ -92,11 +93,15 @@ func (o *importOptions) createImporter() (importer.Importer, error) {
 
 // run executes the import logic.
 func (o *importOptions) run(cmd *cobra.Command) error {
-	_, p, err := loadProvider(o.global)
-	if err != nil {
-		return err
+	p := o.provider
+	if p == nil {
+		_, pp, err := loadProvider(o.global)
+		if err != nil {
+			return err
+		}
+		p = pp
+		defer p.Close()
 	}
-	defer p.Close()
 
 	imp, err := o.createImporter()
 	if err != nil {

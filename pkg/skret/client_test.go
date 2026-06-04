@@ -1,6 +1,7 @@
 package skret
 
 import (
+	"fmt"
 	"context"
 	"os"
 	"path/filepath"
@@ -209,4 +210,33 @@ func TestConfigAndProvider(t *testing.T) {
 
 	assert.Equal(t, cfg, client.Config())
 	assert.Equal(t, mock, client.Provider())
+}
+
+func TestClient_SetBatch(t *testing.T) {
+	ctx := context.Background()
+	called := false
+	mock := &mockProvider{
+		setBatchFunc: func(ctx context.Context, secrets []*provider.Secret) error {
+			called = true
+			assert.Len(t, secrets, 1)
+			return nil
+		},
+	}
+	client := &Client{provider: mock}
+	err := client.SetBatch(ctx, []*provider.Secret{{Key: "K", Value: "V"}})
+	assert.NoError(t, err)
+	assert.True(t, called)
+}
+
+func TestClient_SetBatch_Error(t *testing.T) {
+	ctx := context.Background()
+	mock := &mockProvider{
+		setBatchFunc: func(ctx context.Context, secrets []*provider.Secret) error {
+			return fmt.Errorf("fail")
+		},
+	}
+	client := &Client{provider: mock}
+	err := client.SetBatch(ctx, []*provider.Secret{{Key: "K", Value: "V"}})
+	assert.Error(t, err)
+	assert.Equal(t, ExitProviderError, ExitCode(err))
 }

@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"errors"
+	"os"
 	"testing"
 
 	"github.com/n24q02m/skret/internal/importer"
@@ -137,4 +138,85 @@ func TestImportDeduplicate_Coverage(t *testing.T) {
 	assert.Equal(t, []string{"path/K1"}, keys)
 	assert.Equal(t, "V1", m["path/K1"])
 	assert.Equal(t, 0, skipped)
+}
+
+func TestImport_Run_SetBatchError(t *testing.T) {
+	tmpFile := ".env.test"
+	os.WriteFile(tmpFile, []byte("K1=V1"), 0o644)
+	defer os.Remove(tmpFile)
+
+	m := &mockProvider{
+		setBatchFunc: func(ctx context.Context, secrets []*provider.Secret) error {
+			return errors.New("batch failed")
+		},
+	}
+
+	o := &importOptions{
+		from:     "dotenv",
+		file:     tmpFile,
+		provider: m,
+	}
+
+	err := o.run(&cobra.Command{})
+	assert.Error(t, err)
+	var skErr *skret.Error
+	require.True(t, errors.As(err, &skErr))
+	assert.Equal(t, skret.ExitProviderError, skErr.Code)
+	assert.Contains(t, err.Error(), "import: set batch failed")
+}
+
+func TestImport_Run_ConflictFail(t *testing.T) {
+	tmpFile := ".env.test"
+	os.WriteFile(tmpFile, []byte("K1=V1"), 0o644)
+	defer os.Remove(tmpFile)
+
+	m := &mockProvider{
+		listFunc: func(ctx context.Context, prefix string) ([]*provider.Secret, error) {
+			return nil, errors.New("list failed")
+		},
+		getBatchFunc: func(ctx context.Context, keys []string) ([]*provider.Secret, error) {
+			return nil, errors.New("batch failed")
+		},
+		getFunc: func(ctx context.Context, key string) (*provider.Secret, error) {
+			return &provider.Secret{Key: "K1", Value: "EX"}, nil
+		},
+	}
+
+	o := &importOptions{
+		from:       "dotenv",
+		file:       tmpFile,
+		provider:   m,
+		onConflict: "fail",
+	}
+
+	err := o.run(&cobra.Command{})
+	assert.Error(t, err)
+	var skErr *skret.Error
+	require.True(t, errors.As(err, &skErr))
+	assert.Equal(t, skret.ExitConflictError, skErr.Code)
+}
+
+func TestCreateImporter_DotenvDefault(t *testing.T) {
+	o := &importOptions{from: "dotenv"}
+	imp, err := o.createImporter()
+	assert.NoError(t, err)
+	assert.Equal(t, "dotenv", imp.Name())
+}
+
+func TestCreateImporter_Doppler(t *testing.T) {
+	os.Setenv("DOPPLER_TOKEN", "test-token")
+	defer os.Unsetenv("DOPPLER_TOKEN")
+	o := &importOptions{from: "doppler"}
+	imp, err := o.createImporter()
+	assert.NoError(t, err)
+	assert.Equal(t, "doppler", imp.Name())
+}
+
+func TestCreateImporter_Infisical(t *testing.T) {
+	os.Setenv("INFISICAL_TOKEN", "test-token")
+	defer os.Unsetenv("INFISICAL_TOKEN")
+	o := &importOptions{from: "infisical"}
+	imp, err := o.createImporter()
+	assert.NoError(t, err)
+	assert.Equal(t, "infisical", imp.Name())
 }

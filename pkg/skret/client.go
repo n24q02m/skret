@@ -118,6 +118,16 @@ func (c *Client) Set(ctx context.Context, key, value string, meta provider.Secre
 	return nil
 }
 
+// SetBatch creates or updates multiple secrets.
+func (c *Client) SetBatch(ctx context.Context, secrets []*provider.Secret) error {
+	slog.Debug("skret: set batch secrets", "count", len(secrets))
+	err := c.provider.SetBatch(ctx, secrets)
+	if err != nil {
+		return NewError(ExitProviderError, "failed to set secrets in batch", err)
+	}
+	return nil
+}
+
 // Delete removes a secret.
 func (c *Client) Delete(ctx context.Context, key string) error {
 	slog.Debug("skret: delete secret", "key", key)
