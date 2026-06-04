@@ -174,3 +174,104 @@ func TestDopplerOAuthFlow_Expired(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "expired")
 }
+
+func TestDopplerOAuthFlow_DeviceDoError(t *testing.T) {
+	// Point to a non-existent port to trigger connection error
+	flow := auth.NewDopplerOAuthFlow("http://localhost:1")
+	_, err := flow.Login(context.Background(), nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "device request")
+}
+
+func TestDopplerOAuthFlow_DeviceDecodeError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{not-json`))
+	}))
+	defer srv.Close()
+
+	flow := auth.NewDopplerOAuthFlow(srv.URL)
+	_, err := flow.Login(context.Background(), nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "decode device")
+}
+
+func TestDopplerOAuthFlow_PollDoError(t *testing.T) {
+	var srv *httptest.Server
+	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v3/auth/device":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"code": "c", "auth_url": "http://x", "polling_interval": 1, "expires_in": 60,
+			})
+		}
+	}))
+	defer srv.Close()
+
+	flow := auth.NewDopplerOAuthFlow(srv.URL)
+	flow.PollInterval = 10 * time.Millisecond
+	flow.Opener = func(context.Context, string) error {
+		// Change BaseURL to trigger Do error on next poll
+		flow.BaseURL = "http://localhost:1"
+		return nil
+	}
+	_, err := flow.Login(context.Background(), nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "doppler oauth: poll:")
+}
+
+func TestDopplerOAuthFlow_BuildPollRequestError(t *testing.T) {
+	var srv *httptest.Server
+	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v3/auth/device":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"code": "c", "auth_url": "http://x", "polling_interval": 1, "expires_in": 60,
+			})
+		}
+	}))
+	defer srv.Close()
+
+	flow := auth.NewDopplerOAuthFlow(srv.URL)
+	flow.PollInterval = 10 * time.Millisecond
+	flow.Opener = func(context.Context, string) error {
+		// Change BaseURL to trigger NewRequest error on next poll
+		flow.BaseURL = "http://bad-url\x7f"
+		return nil
+	}
+	_, err := flow.Login(context.Background(), nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "build poll request")
+}
+
+func TestDopplerOAuthFlow_IntervalOverride(t *testing.T) {
+	polls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v3/auth/device":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"code": "c", "auth_url": "http://x", "polling_interval": 1, "expires_in": 60,
+			})
+		case "/v3/auth/device/token":
+			polls++
+			if polls < 2 {
+				w.WriteHeader(http.StatusAccepted)
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"token": "t", "name": "n"})
+		}
+	}))
+	defer srv.Close()
+
+	flow := auth.NewDopplerOAuthFlow(srv.URL)
+	// Default PollInterval is 5s, server says 1s. It should override to 1s.
+	flow.Opener = func(context.Context, string) error { return nil }
+
+	start := time.Now()
+	_, err := flow.Login(context.Background(), nil)
+	require.NoError(t, err)
+	duration := time.Since(start)
+
+	// If it used 5s, it would take > 5s. If it used 1s, it would take ~1s.
+	assert.Less(t, duration, 3*time.Second)
+}
