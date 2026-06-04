@@ -1,0 +1,6 @@
+I have updated the `configNotFoundMsg` to include `skret setup` as the recommended action.
+I also updated the internal and edge tests to ensure this string is present in the error message.
+Files modified:
+- internal/cli/helpers.go
+- internal/cli/helpers_internal_test.go
+- internal/cli/cli_edge_test.go
