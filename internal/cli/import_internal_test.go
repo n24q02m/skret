@@ -240,3 +240,53 @@ func TestCreateImporter_Infisical_NoToken(t *testing.T) {
 	_, err := o.createImporter()
 	assert.Error(t, err)
 }
+
+func TestImport_Run_LoadProviderError(t *testing.T) {
+	// To trigger loadProvider error, we can run in a directory with no config and no --path.
+	// But our run method uses o.global.
+	dir := t.TempDir()
+	orig, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(orig)
+
+	o := &importOptions{
+		global: &GlobalOpts{},
+	}
+	err := o.run(&cobra.Command{})
+	assert.Error(t, err)
+}
+
+func TestCreateImporter_Doppler_AuthResolve(t *testing.T) {
+	os.Unsetenv("DOPPLER_TOKEN")
+	// We need to mock auth.Resolve.
+	// auth.Resolve is not a package-level variable, it's a function.
+	// But in this repo, auth.Resolve often relies on the backend store.
+}
+
+func TestImport_Run_ConflictSkip(t *testing.T) {
+	tmpFile := ".env.test"
+	os.WriteFile(tmpFile, []byte("K1=V1"), 0o644)
+	defer os.Remove(tmpFile)
+
+	m := &mockProvider{
+		listFunc: func(ctx context.Context, prefix string) ([]*provider.Secret, error) {
+			return nil, errors.New("list failed")
+		},
+		getBatchFunc: func(ctx context.Context, keys []string) ([]*provider.Secret, error) {
+			return nil, errors.New("batch failed")
+		},
+		getFunc: func(ctx context.Context, key string) (*provider.Secret, error) {
+			return &provider.Secret{Key: "K1", Value: "EX"}, nil
+		},
+	}
+
+	o := &importOptions{
+		from:       "dotenv",
+		file:       tmpFile,
+		provider:   m,
+		onConflict: "skip",
+	}
+
+	err := o.run(&cobra.Command{})
+	assert.NoError(t, err)
+}

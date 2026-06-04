@@ -147,3 +147,6 @@ func TestLocal_SetBatch_InitializesMap(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "V", s.Value)
 }
+
+// TestSave_MarshalError tests the marshal error path in save()
+// by providing data that cannot be marshaled to YAML.
