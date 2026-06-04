@@ -103,8 +103,44 @@ func redactString(val string) string {
 	if len(val) < 5 {
 		return val
 	}
-	for _, p := range secretPatterns {
-		val = p.re.ReplaceAllString(val, p.repl)
+
+	// Pattern 1: key=val (case-insensitive)
+	// We check for '=' as a fast path.
+	if strings.Contains(val, "=") {
+		if secretPatterns[0].re.MatchString(val) {
+			val = secretPatterns[0].re.ReplaceAllString(val, secretPatterns[0].repl)
+		}
 	}
+
+	// Patterns with fixed prefixes
+	if strings.Contains(val, "sk-") {
+		if secretPatterns[1].re.MatchString(val) {
+			val = secretPatterns[1].re.ReplaceAllString(val, secretPatterns[1].repl)
+		}
+	}
+	if strings.Contains(val, "dp.st.") {
+		if secretPatterns[2].re.MatchString(val) {
+			val = secretPatterns[2].re.ReplaceAllString(val, secretPatterns[2].repl)
+		}
+	}
+	if strings.Contains(val, "ghp_") {
+		if secretPatterns[3].re.MatchString(val) {
+			val = secretPatterns[3].re.ReplaceAllString(val, secretPatterns[3].repl)
+		}
+	}
+	if strings.Contains(val, "AKIA") {
+		if secretPatterns[4].re.MatchString(val) {
+			val = secretPatterns[4].re.ReplaceAllString(val, secretPatterns[4].repl)
+		}
+	}
+
+	// Pattern 6: Base64-like (length 40+)
+	// No fixed prefix, but must be at least 40 characters long.
+	if len(val) >= 40 {
+		if secretPatterns[5].re.MatchString(val) {
+			val = secretPatterns[5].re.ReplaceAllString(val, secretPatterns[5].repl)
+		}
+	}
+
 	return val
 }
