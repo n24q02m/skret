@@ -51,7 +51,7 @@ func TestAWSProfileFlow_HomeDirError(t *testing.T) {
 func TestAWSProfileFlow_Login_ReloadError(t *testing.T) {
 	dir := t.TempDir()
 	configFile := dir + "/config"
-	err := os.WriteFile(configFile, []byte("[default]\nregion=us-east-1\n"), 0644)
+	err := os.WriteFile(configFile, []byte("[default]\nregion=us-east-1\n"), 0o644)
 	require.NoError(t, err)
 
 	count := 0
