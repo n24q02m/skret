@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/n24q02m/skret/internal/auth"
+	"github.com/stretchr/testify/assert"
 )
 
 // Bug H: auth status must reflect a real AWS liveness probe, not just trust
@@ -30,4 +31,12 @@ func TestAuthStatusReflectsProbe(t *testing.T) {
 	if got := getCredentialStatus(context.Background(), "aws", &auth.Credential{Method: "profile"}); got != "valid" {
 		t.Fatalf("ok probe: got %q want valid", got)
 	}
+}
+
+func TestGetCredentialStatus_OtherProviderInvalid(t *testing.T) {
+	// Coverage for non-aws provider with invalid credentials
+	cred := &auth.Credential{Method: "token"}
+	got := getCredentialStatus(context.Background(), "doppler", cred)
+	// Resolution will fail because no real doppler backend is mocked here
+	assert.Equal(t, "invalid", got)
 }

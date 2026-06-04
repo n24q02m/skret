@@ -8,13 +8,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 )
 
-// loadAWSConfig creates an AWS configuration instance. When creds is non-nil
-// (a skret-stored credential resolved via resolveStoredCredentials) it is used
-// directly and profile is ignored — that is what lets `skret auth login aws`
-// authenticate without the `aws` CLI. When creds is nil the standard SDK
-// credential chain is used, applying the shared profile if specified. Region
-// is always applied when set.
-func loadAWSConfig(ctx context.Context, region, profile string, creds aws.CredentialsProvider) (aws.Config, error) {
+// loadAWSConfigFunc is overridable in tests.
+var loadAWSConfigFunc = func(ctx context.Context, region, profile string, creds aws.CredentialsProvider) (aws.Config, error) {
 	var optFns []func(*config.LoadOptions) error
 
 	if region != "" {
@@ -32,4 +27,8 @@ func loadAWSConfig(ctx context.Context, region, profile string, creds aws.Creden
 	}
 
 	return cfg, nil
+}
+
+func loadAWSConfig(ctx context.Context, region, profile string, creds aws.CredentialsProvider) (aws.Config, error) {
+	return loadAWSConfigFunc(ctx, region, profile, creds)
 }
