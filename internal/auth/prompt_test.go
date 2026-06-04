@@ -3,8 +3,11 @@ package auth_test
 import (
 	"bytes"
 	"context"
+	"errors"
+	"io"
 	"strings"
 	"testing"
+	"testing/iotest"
 
 	"github.com/n24q02m/skret/internal/auth"
 	"github.com/stretchr/testify/assert"
@@ -67,6 +70,21 @@ func TestSelectMethod_EmptyDescription(t *testing.T) {
 	assert.Equal(t, "sso", m.Name)
 	// When description is empty, should use name as fallback
 	assert.Contains(t, out.String(), "sso")
+}
+
+func TestSelectMethod_ReadError(t *testing.T) {
+	methods := []auth.Method{{Name: "test"}}
+	_, err := auth.SelectMethod(iotest.ErrReader(errors.New("read failure")), io.Discard, methods)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "read failure")
+}
+
+func TestSelectMethod_EOF(t *testing.T) {
+	methods := []auth.Method{{Name: "test"}}
+	// ReadString('\n') on "1" will return "1" and io.EOF
+	_, err := auth.SelectMethod(strings.NewReader("1"), io.Discard, methods)
+	assert.Error(t, err)
+	assert.Equal(t, io.EOF, errors.Unwrap(err))
 }
 
 func TestOpenBrowser_InvalidScheme(t *testing.T) {
