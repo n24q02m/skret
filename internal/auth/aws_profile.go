@@ -11,15 +11,23 @@ import (
 	"gopkg.in/ini.v1"
 )
 
+var userHomeDir = os.UserHomeDir
+
 // AWSProfileFlow enumerates and selects profiles from ~/.aws/config.
-type AWSProfileFlow struct{}
+type AWSProfileFlow struct {
+	configPath func() string
+}
 
 // NewAWSProfileFlow creates a profile enumeration flow.
-func NewAWSProfileFlow() *AWSProfileFlow { return &AWSProfileFlow{} }
+func NewAWSProfileFlow() *AWSProfileFlow {
+	return &AWSProfileFlow{
+		configPath: awsConfigPath,
+	}
+}
 
 // awsConfigPath returns the standard ~/.aws/config path.
 func awsConfigPath() string {
-	home, err := os.UserHomeDir()
+	home, err := userHomeDir()
 	if err != nil {
 		return ""
 	}
@@ -29,7 +37,7 @@ func awsConfigPath() string {
 // List returns the sorted set of AWS profile names declared in ~/.aws/config.
 // The section [default] becomes "default"; [profile foo] becomes "foo".
 func (f *AWSProfileFlow) List() ([]string, error) {
-	path := awsConfigPath()
+	path := f.configPath()
 	if _, err := os.Stat(path); err != nil {
 		return nil, fmt.Errorf("aws profile: %w", err)
 	}
@@ -72,7 +80,7 @@ func (f *AWSProfileFlow) Login(_ context.Context, opts map[string]string) (*Cred
 	if !found {
 		return nil, fmt.Errorf("aws profile: %q not found in ~/.aws/config (available: %s)", profile, strings.Join(names, ", "))
 	}
-	cfg, err := ini.Load(awsConfigPath())
+	cfg, err := ini.Load(f.configPath())
 	if err != nil {
 		return nil, fmt.Errorf("aws profile: reload: %w", err)
 	}
