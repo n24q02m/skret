@@ -311,3 +311,33 @@ func TestLocal_GetBatch_Empty(t *testing.T) {
 	require.NoError(t, err)
 	assert.Nil(t, secrets)
 }
+
+func TestLocal_SetBatch(t *testing.T) {
+	path := setupFile(t, "version: \"1\"\nsecrets: {}")
+	p := newProvider(t, path)
+	defer p.Close()
+
+	ctx := context.Background()
+	toSet := []*provider.Secret{
+		{Key: "BATCH1", Value: "VAL1"},
+		{Key: "BATCH2", Value: "VAL2"},
+	}
+
+	err := p.SetBatch(ctx, toSet)
+	require.NoError(t, err)
+
+	// Verify in memory
+	s1, err := p.Get(ctx, "BATCH1")
+	require.NoError(t, err)
+	assert.Equal(t, "VAL1", s1.Value)
+
+	s2, err := p.Get(ctx, "BATCH2")
+	require.NoError(t, err)
+	assert.Equal(t, "VAL2", s2.Value)
+
+	// Verify persistence
+	raw, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.Contains(t, string(raw), "BATCH1: VAL1")
+	assert.Contains(t, string(raw), "BATCH2: VAL2")
+}

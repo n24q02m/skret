@@ -32,6 +32,10 @@ func (m *mockProvider) List(_ context.Context, _ string) ([]*provider.Secret, er
 func (m *mockProvider) Set(_ context.Context, _ string, _ string, _ provider.SecretMeta) error {
 	return nil
 }
+
+func (m *mockProvider) SetBatch(_ context.Context, _ []*provider.Secret) error {
+	return nil
+}
 func (m *mockProvider) Delete(_ context.Context, _ string) error { return nil }
 func (m *mockProvider) GetHistory(_ context.Context, _ string) ([]*provider.Secret, error) {
 	return nil, nil

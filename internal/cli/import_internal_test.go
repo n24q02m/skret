@@ -19,6 +19,7 @@ type mockProvider struct {
 	getBatchFunc func(ctx context.Context, keys []string) ([]*provider.Secret, error)
 	getFunc      func(ctx context.Context, key string) (*provider.Secret, error)
 	setFunc      func(ctx context.Context, key, value string, meta provider.SecretMeta) error
+	setBatchFunc func(ctx context.Context, secrets []*provider.Secret) error
 }
 
 func (m *mockProvider) List(ctx context.Context, prefix string) ([]*provider.Secret, error) {
@@ -45,6 +46,13 @@ func (m *mockProvider) Get(ctx context.Context, key string) (*provider.Secret, e
 func (m *mockProvider) Set(ctx context.Context, key, value string, meta provider.SecretMeta) error {
 	if m.setFunc != nil {
 		return m.setFunc(ctx, key, value, meta)
+	}
+	return nil
+}
+
+func (m *mockProvider) SetBatch(ctx context.Context, secrets []*provider.Secret) error {
+	if m.setBatchFunc != nil {
+		return m.setBatchFunc(ctx, secrets)
 	}
 	return nil
 }

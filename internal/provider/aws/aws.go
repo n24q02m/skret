@@ -196,6 +196,15 @@ func (p *Provider) Set(ctx context.Context, key string, value string, meta provi
 	return nil
 }
 
+func (p *Provider) SetBatch(ctx context.Context, secrets []*provider.Secret) error {
+	for _, s := range secrets {
+		if err := p.Set(ctx, s.Key, s.Value, s.Meta); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (p *Provider) Delete(ctx context.Context, key string) error {
 	_, err := p.client.DeleteParameter(ctx, &ssm.DeleteParameterInput{
 		Name: awslib.String(key),
