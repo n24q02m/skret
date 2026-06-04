@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/n24q02m/skret/internal/auth"
 	"github.com/n24q02m/skret/internal/importer"
 	"github.com/n24q02m/skret/internal/provider"
 	"github.com/n24q02m/skret/pkg/skret"
@@ -149,7 +150,7 @@ func TestImportRun_Full(t *testing.T) {
 	defer func() { _ = os.Chdir(origWd) }()
 
 	envPath := filepath.Join(tmpDir, ".env")
-	err := os.WriteFile(envPath, []byte("K1=V1\nK2=V2"), 0o644)
+	err := os.WriteFile(envPath, []byte("K1=V1\nK2=V2"), 0644)
 	require.NoError(t, err)
 
 	secretsPath := filepath.Join(tmpDir, "secrets.yaml")
@@ -258,6 +259,10 @@ func TestImportRun_AdditionalErrorPaths(t *testing.T) {
 }
 
 func TestCreateImporter_Coverage(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+	t.Setenv("USERPROFILE", tmpDir)
+
 	t.Run("dotenv with explicit file", func(t *testing.T) {
 		o := &importOptions{from: "dotenv", file: ".env.test"}
 		imp, err := o.createImporter()
@@ -272,9 +277,19 @@ func TestCreateImporter_Coverage(t *testing.T) {
 		assert.Equal(t, "dotenv", imp.Name())
 	})
 
-	t.Run("doppler success", func(t *testing.T) {
-		os.Setenv("DOPPLER_TOKEN", "test")
-		defer os.Unsetenv("DOPPLER_TOKEN")
+	t.Run("doppler with env token", func(t *testing.T) {
+		t.Setenv("DOPPLER_TOKEN", "dp.test")
+		o := &importOptions{from: "doppler"}
+		imp, err := o.createImporter()
+		assert.NoError(t, err)
+		assert.Equal(t, "doppler", imp.Name())
+	})
+
+	t.Run("doppler with stored credential", func(t *testing.T) {
+		os.Unsetenv("DOPPLER_TOKEN")
+		s := auth.NewStoreWithPath(filepath.Join(tmpDir, ".skret", "credentials.yaml"))
+		_ = s.Save(&auth.Credential{Provider: "doppler", Token: "dp.stored"})
+
 		o := &importOptions{from: "doppler"}
 		imp, err := o.createImporter()
 		assert.NoError(t, err)
@@ -283,14 +298,25 @@ func TestCreateImporter_Coverage(t *testing.T) {
 
 	t.Run("doppler missing token", func(t *testing.T) {
 		os.Unsetenv("DOPPLER_TOKEN")
+		_ = os.Remove(filepath.Join(tmpDir, ".skret", "credentials.yaml"))
 		o := &importOptions{from: "doppler"}
 		_, err := o.createImporter()
 		assert.Error(t, err)
 	})
 
-	t.Run("infisical success", func(t *testing.T) {
-		os.Setenv("INFISICAL_TOKEN", "test")
-		defer os.Unsetenv("INFISICAL_TOKEN")
+	t.Run("infisical with env token", func(t *testing.T) {
+		t.Setenv("INFISICAL_TOKEN", "st.test")
+		o := &importOptions{from: "infisical"}
+		imp, err := o.createImporter()
+		assert.NoError(t, err)
+		assert.Equal(t, "infisical", imp.Name())
+	})
+
+	t.Run("infisical with stored credential", func(t *testing.T) {
+		os.Unsetenv("INFISICAL_TOKEN")
+		s := auth.NewStoreWithPath(filepath.Join(tmpDir, ".skret", "credentials.yaml"))
+		_ = s.Save(&auth.Credential{Provider: "infisical", Token: "st.stored"})
+
 		o := &importOptions{from: "infisical"}
 		imp, err := o.createImporter()
 		assert.NoError(t, err)
@@ -299,6 +325,7 @@ func TestCreateImporter_Coverage(t *testing.T) {
 
 	t.Run("infisical missing token", func(t *testing.T) {
 		os.Unsetenv("INFISICAL_TOKEN")
+		_ = os.Remove(filepath.Join(tmpDir, ".skret", "credentials.yaml"))
 		o := &importOptions{from: "infisical"}
 		_, err := o.createImporter()
 		assert.Error(t, err)
