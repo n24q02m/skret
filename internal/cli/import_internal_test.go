@@ -115,7 +115,7 @@ func TestLoadExisting_Coverage(t *testing.T) {
 				return nil, nil
 			},
 		}
-		o.loadExisting(ctx, m, "path", nil)
+		_, _ = o.loadExisting(ctx, m, "path", nil)
 	})
 
 	t.Run("Prefix with slash", func(t *testing.T) {
@@ -126,7 +126,7 @@ func TestLoadExisting_Coverage(t *testing.T) {
 				return nil, nil
 			},
 		}
-		o.loadExisting(ctx, m, "path/", nil)
+		_, _ = o.loadExisting(ctx, m, "path/", nil)
 	})
 
 	t.Run("Empty orderedKeys returns empty and nil error when List fails", func(t *testing.T) {
@@ -149,7 +149,7 @@ func TestImportRun_Full(t *testing.T) {
 	defer func() { _ = os.Chdir(origWd) }()
 
 	envPath := filepath.Join(tmpDir, ".env")
-	err := os.WriteFile(envPath, []byte("K1=V1\nK2=V2"), 0644)
+	err := os.WriteFile(envPath, []byte("K1=V1\nK2=V2"), 0o644)
 	require.NoError(t, err)
 
 	secretsPath := filepath.Join(tmpDir, "secrets.yaml")
@@ -228,7 +228,6 @@ func TestImportRun_Full(t *testing.T) {
 }
 
 func TestImportRun_AdditionalErrorPaths(t *testing.T) {
-	// Use mock provider to hit specific error paths in run()
 	ctx := context.Background()
 
 	t.Run("loadExisting error in run", func(t *testing.T) {
@@ -243,7 +242,6 @@ func TestImportRun_AdditionalErrorPaths(t *testing.T) {
 		o := &importOptions{
 			onConflict: "skip",
 		}
-		// Directly test the block in run using o.loadExisting
 		_, err := o.loadExisting(ctx, m, "", []string{"K1"})
 		assert.Error(t, err)
 	})
@@ -315,13 +313,13 @@ func TestCreateImporter_Coverage(t *testing.T) {
 
 func TestImportDeduplicate_Coverage(t *testing.T) {
 	t.Run("with path prefix", func(t *testing.T) {
-		o := &importOptions{toPath: "path"} // path without slash
+		o := &importOptions{toPath: "path"}
 		cmd := &cobra.Command{}
 		secrets := []importer.ImportedSecret{
 			{Key: "K1", Value: "V1"},
-			{Key: "K2", Value: ""},    // Empty value
-			{Key: "K1", Value: "V2"},  // Dedupe
-			{Key: "/K3", Value: "V3"}, // Leading slash
+			{Key: "K2", Value: ""},
+			{Key: "K1", Value: "V2"},
+			{Key: "/K3", Value: "V3"},
 		}
 		keys, m, skipped := o.deduplicate(cmd, secrets)
 		assert.Equal(t, []string{"path/K1", "path/K3"}, keys)
