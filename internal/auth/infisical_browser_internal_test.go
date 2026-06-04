@@ -8,37 +8,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-type errorReader struct {
-	err   error
-	count int
-	limit int
-}
-
-func (r *errorReader) Read(p []byte) (n int, err error) {
-	if r.limit > 0 && r.count < r.limit {
-		toRead := len(p)
-		if r.count+toRead > r.limit {
-			toRead = r.limit - r.count
-		}
-		for i := 0; i < toRead; i++ {
-			p[i] = byte(i)
-		}
-		r.count += toRead
-		return toRead, nil
-	}
-	return 0, r.err
-}
-
-func TestRandomString_Error(t *testing.T) {
-	oldReader := cryptoRandReader
-	defer func() { cryptoRandReader = oldReader }()
-	cryptoRandReader = &errorReader{err: errors.New("random error")}
-
-	s, err := randomString(32)
-	assert.Error(t, err)
-	assert.Empty(t, s)
-}
-
 func TestPkcePair_Error(t *testing.T) {
 	oldReader := cryptoRandReader
 	defer func() { cryptoRandReader = oldReader }()
