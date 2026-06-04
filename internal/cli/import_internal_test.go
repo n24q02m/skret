@@ -130,3 +130,53 @@ func TestImportDeduplicate_Coverage(t *testing.T) {
 	assert.Equal(t, "V1", m["path/K1"])
 	assert.Equal(t, 0, skipped)
 }
+
+func TestHasConflict_Coverage(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("onConflict is overwrite", func(t *testing.T) {
+		o := &importOptions{onConflict: "overwrite"}
+		conflicted, err := o.hasConflict(ctx, &mockProvider{}, "K1", nil, false)
+		assert.NoError(t, err)
+		assert.False(t, conflicted)
+	})
+
+	t.Run("skip strategy, conflict in list", func(t *testing.T) {
+		o := &importOptions{onConflict: "skip"}
+		existing := map[string]struct{}{"K1": {}}
+		conflicted, err := o.hasConflict(ctx, &mockProvider{}, "K1", existing, true)
+		assert.NoError(t, err)
+		assert.True(t, conflicted)
+	})
+
+	t.Run("skip strategy, no conflict in list", func(t *testing.T) {
+		o := &importOptions{onConflict: "skip"}
+		existing := map[string]struct{}{"K2": {}}
+		conflicted, err := o.hasConflict(ctx, &mockProvider{}, "K1", existing, true)
+		assert.NoError(t, err)
+		assert.False(t, conflicted)
+	})
+
+	t.Run("skip strategy, fallback Get success", func(t *testing.T) {
+		o := &importOptions{onConflict: "skip"}
+		m := &mockProvider{
+			getFunc: func(ctx context.Context, key string) (*provider.Secret, error) {
+				return &provider.Secret{Key: key}, nil
+			},
+		}
+		conflicted, err := o.hasConflict(ctx, m, "K1", nil, false)
+		assert.NoError(t, err)
+		assert.True(t, conflicted)
+	})
+
+	t.Run("fail strategy, conflict in list", func(t *testing.T) {
+		o := &importOptions{onConflict: "fail"}
+		existing := map[string]struct{}{"K1": {}}
+		conflicted, err := o.hasConflict(ctx, &mockProvider{}, "K1", existing, true)
+		assert.Error(t, err)
+		assert.True(t, conflicted)
+		var skErr *skret.Error
+		require.True(t, errors.As(err, &skErr))
+		assert.Equal(t, skret.ExitConflictError, skErr.Code)
+	})
+}

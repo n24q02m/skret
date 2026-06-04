@@ -122,24 +122,13 @@ func (o *importOptions) run(cmd *cobra.Command) error {
 			continue
 		}
 
-		if o.onConflict == "skip" || o.onConflict == "fail" {
-			hasConflict := false
-			if listLoaded {
-				_, hasConflict = existing[destKey]
-			} else {
-				// Fallback to individual Get if both List and GetBatch failed
-				if _, err := p.Get(ctx, destKey); err == nil {
-					hasConflict = true
-				}
-			}
-
-			if hasConflict {
-				if o.onConflict == "skip" {
-					skipped++
-					continue
-				}
-				return skret.NewError(skret.ExitConflictError, fmt.Sprintf("import: conflict on %q", destKey), nil)
-			}
+		conflicted, err := o.hasConflict(ctx, p, destKey, existing, listLoaded)
+		if err != nil {
+			return err
+		}
+		if conflicted {
+			skipped++
+			continue
 		}
 		if err := p.Set(ctx, destKey, val, provider.SecretMeta{}); err != nil {
 			return skret.NewError(skret.ExitProviderError, fmt.Sprintf("import: set %q", destKey), err)
@@ -217,4 +206,34 @@ func (o *importOptions) loadExisting(ctx context.Context, p provider.SecretProvi
 	}
 
 	return existing, false
+}
+
+// hasConflict checks if the destination key already exists in the provider.
+// It returns true if there's a conflict based on the onConflict strategy.
+// If the strategy is "fail", it returns a Conflict error.
+// If the strategy is "skip", it returns true and no error, indicating the secret should be skipped.
+func (o *importOptions) hasConflict(ctx context.Context, p provider.SecretProvider, destKey string, existing map[string]struct{}, listLoaded bool) (bool, error) {
+	if o.onConflict != "skip" && o.onConflict != "fail" {
+		return false, nil
+	}
+
+	conflict := false
+	if listLoaded {
+		_, conflict = existing[destKey]
+	} else {
+		// Fallback to individual Get if both List and GetBatch failed
+		if _, err := p.Get(ctx, destKey); err == nil {
+			conflict = true
+		}
+	}
+
+	if !conflict {
+		return false, nil
+	}
+
+	if o.onConflict == "fail" {
+		return true, skret.NewError(skret.ExitConflictError, fmt.Sprintf("import: conflict on %q", destKey), nil)
+	}
+
+	return true, nil
 }
