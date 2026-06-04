@@ -13,6 +13,9 @@ import (
 	"strings"
 )
 
+// stdin is a package-level variable to allow mocking in tests.
+var stdin = os.Stdin
+
 // ctxOut extracts the writer from context or defaults to os.Stderr.
 func ctxOut(_ context.Context) io.Writer {
 	return os.Stderr
@@ -21,7 +24,7 @@ func ctxOut(_ context.Context) io.Writer {
 // IsInteractiveStdin reports whether stdin is a terminal (for prompt gating).
 // Falls back to checking if TERM is set when term package is not available.
 func IsInteractiveStdin() bool {
-	fi, err := os.Stdin.Stat()
+	fi, err := stdin.Stat()
 	if err != nil {
 		return false
 	}

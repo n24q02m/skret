@@ -3,6 +3,7 @@ package auth_test
 import (
 	"bytes"
 	"context"
+	"os"
 	"strings"
 	"testing"
 
@@ -129,4 +130,62 @@ func TestOpenBrowser_Injection(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestIsInteractiveStdin(t *testing.T) {
+	t.Run("terminal", func(t *testing.T) {
+		nullFile := "/dev/null"
+		// SetGoos returns the cleanup function, which we call via defer.
+		// We can't easily check the return value of SetGoos because it's a function.
+		// But we know we are in a unix-like environment or windows.
+		// For the purpose of the test, /dev/null should work on most CI environments (Linux/macOS).
+		f, err := os.Open(nullFile)
+		if err != nil {
+			// Fallback for Windows if /dev/null fails
+			f, err = os.Open("NUL")
+		}
+		require.NoError(t, err)
+		defer f.Close()
+
+		restore := auth.SetStdin(f)
+		defer restore()
+
+		assert.True(t, auth.IsInteractiveStdin())
+	})
+
+	t.Run("regular file", func(t *testing.T) {
+		f, err := os.CreateTemp("", "test-stdin")
+		require.NoError(t, err)
+		defer os.Remove(f.Name())
+		defer f.Close()
+
+		restore := auth.SetStdin(f)
+		defer restore()
+
+		assert.False(t, auth.IsInteractiveStdin())
+	})
+
+	t.Run("pipe", func(t *testing.T) {
+		r, w, err := os.Pipe()
+		require.NoError(t, err)
+		defer r.Close()
+		defer w.Close()
+
+		restore := auth.SetStdin(r)
+		defer restore()
+
+		assert.False(t, auth.IsInteractiveStdin())
+	})
+
+	t.Run("error (closed file)", func(t *testing.T) {
+		f, err := os.CreateTemp("", "test-stdin-closed")
+		require.NoError(t, err)
+		os.Remove(f.Name())
+		f.Close()
+
+		restore := auth.SetStdin(f)
+		defer restore()
+
+		assert.False(t, auth.IsInteractiveStdin())
+	})
 }

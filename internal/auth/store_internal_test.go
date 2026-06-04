@@ -124,10 +124,6 @@ func TestStore_Load_ReadError(t *testing.T) {
 	assert.Error(t, err)
 }
 
-func TestIsInteractiveStdin_InTest(t *testing.T) {
-	result := IsInteractiveStdin()
-	_ = result // Just verify no panic
-}
 
 func TestResolve_ExpiredCredential(t *testing.T) {
 	home := t.TempDir()
