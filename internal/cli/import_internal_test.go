@@ -24,7 +24,9 @@ type mockProvider struct {
 	setFunc      func(ctx context.Context, key, value string, meta provider.SecretMeta) error
 }
 
-func (m *mockProvider) Name() string { return "mock" }
+func (m *mockProvider) Name() string {
+	return "mock"
+}
 
 func (m *mockProvider) Capabilities() provider.Capabilities {
 	return provider.Capabilities{Write: true}
@@ -58,7 +60,9 @@ func (m *mockProvider) Set(ctx context.Context, key, value string, meta provider
 	return nil
 }
 
-func (m *mockProvider) Close() error { return nil }
+func (m *mockProvider) Close() error {
+	return nil
+}
 
 func TestLoadExisting_Coverage(t *testing.T) {
 	ctx := context.Background()
@@ -145,13 +149,15 @@ func TestLoadExisting_Coverage(t *testing.T) {
 
 func TestImportRun_Full(t *testing.T) {
 	tmpDir := t.TempDir()
-	origWd, _ := os.Getwd()
+	origWd, err := os.Getwd()
+	require.NoError(t, err)
 	require.NoError(t, os.Chdir(tmpDir))
-	defer func() { _ = os.Chdir(origWd) }()
+	t.Cleanup(func() {
+		require.NoError(t, os.Chdir(origWd))
+	})
 
 	envPath := filepath.Join(tmpDir, ".env")
-	err := os.WriteFile(envPath, []byte("K1=V1\nK2=V2"), 0644)
-	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(envPath, []byte("K1=V1\nK2=V2"), 0o600))
 
 	secretsPath := filepath.Join(tmpDir, "secrets.yaml")
 
@@ -189,7 +195,6 @@ func TestImportRun_Full(t *testing.T) {
 	})
 
 	t.Run("Conflict Skip", func(t *testing.T) {
-		// First import to create conflict
 		o1 := setup("overwrite", false)
 		_ = o1.run(&cobra.Command{})
 
