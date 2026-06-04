@@ -220,3 +220,23 @@ func TestCreateImporter_Infisical(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, "infisical", imp.Name())
 }
+
+func TestCreateImporter_Doppler_NoToken(t *testing.T) {
+	orig := os.Getenv("DOPPLER_TOKEN")
+	os.Unsetenv("DOPPLER_TOKEN")
+	defer os.Setenv("DOPPLER_TOKEN", orig)
+
+	o := &importOptions{from: "doppler"}
+	_, err := o.createImporter()
+	assert.Error(t, err)
+}
+
+func TestCreateImporter_Infisical_NoToken(t *testing.T) {
+	orig := os.Getenv("INFISICAL_TOKEN")
+	os.Unsetenv("INFISICAL_TOKEN")
+	defer os.Setenv("INFISICAL_TOKEN", orig)
+
+	o := &importOptions{from: "infisical"}
+	_, err := o.createImporter()
+	assert.Error(t, err)
+}
