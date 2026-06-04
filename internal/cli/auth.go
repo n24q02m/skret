@@ -32,29 +32,21 @@ func newAuthLoginCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "login <provider>",
-		Short: "Authenticate with a secret provider (aws, doppler, infisical)",
-		Long: "Authenticate with a secret provider.\n\n" +
-			"Pass method-specific values via repeated --opt key=value (e.g. --opt token=dp.pt.xxx,\n" +
-			"--opt profile=dev, --opt role_arn=arn:aws:iam::..., --opt client_id=..., --opt client_secret=...).\n" +
-			"Token methods also accept DOPPLER_TOKEN / INFISICAL_TOKEN env vars as fallback.",
-		Args: cobra.ExactArgs(1),
+		Short: "Authenticate with a secret provider",
+		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			provider := args[0]
-			opts := map[string]string{}
-			if method != "" {
-				opts["method"] = method
-			}
-			for _, kv := range rawOpts {
-				k, v, ok := strings.Cut(kv, "=")
+			opts := map[string]string{"method": method}
+			for _, o := range rawOpts {
+				k, v, ok := strings.Cut(o, "=")
 				if !ok {
-					return skret.NewError(skret.ExitConfigError, fmt.Sprintf("--opt must be key=value, got %q", kv), nil)
+					return fmt.Errorf("invalid option %q (expected k=v)", o)
 				}
 				opts[k] = v
 			}
 
-			ctx := context.Background()
-			if err := auth.Login(ctx, provider, opts); err != nil {
-				return skret.NewError(skret.ExitConfigError, fmt.Sprintf("auth login %s failed", provider), err)
+			if err := auth.Login(cmd.Context(), provider, opts); err != nil {
+				return skret.NewError(skret.ExitGenericError, fmt.Sprintf("auth login %s failed", provider), err)
 			}
 
 			cmd.PrintErrf("Successfully authenticated with %s\n", provider)
@@ -62,8 +54,8 @@ func newAuthLoginCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&method, "method", "", "authentication method (e.g., sso, access-key, oauth, browser)")
-	cmd.Flags().StringArrayVar(&rawOpts, "opt", nil, "method-specific option key=value (repeatable)")
+	cmd.Flags().StringVarP(&method, "method", "m", "", "Authentication method (e.g., sso, access-key, token)")
+	cmd.Flags().StringSliceVarP(&rawOpts, "option", "o", nil, "Additional options in key=value format")
 
 	return cmd
 }
@@ -72,11 +64,12 @@ func newAuthStatusCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "status",
 		Short: "Show authentication status for all providers",
-		RunE: func(cmd *cobra.Command, _ []string) error {
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmd.Context()
 			store := auth.NewStore()
 			providers := []string{"aws", "doppler", "infisical"}
 
-			ctx := context.Background()
+			fmt.Fprintf(cmd.OutOrStdout(), "Authentication Status:\n")
 			for _, p := range providers {
 				cred, err := store.Load(p)
 				if err != nil {
@@ -126,7 +119,7 @@ func getCredentialStatus(ctx context.Context, provider string, cred *auth.Creden
 	// AWS: probe real reachability instead of trusting stored metadata —
 	// "method: profile" used to report "valid" with no working credential.
 	if provider == "aws" {
-		if err := awsLivenessProbe(ctx); err != nil {
+		if err := awsLivenessProbe(ctx, cred); err != nil {
 			if auth.IsAuthError(err) {
 				return "expired"
 			}

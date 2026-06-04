@@ -89,7 +89,7 @@ func TestAuthStatusCmd_Statuses(t *testing.T) {
 	// validates the status mapping deterministically without network/creds.
 	origProbe := awsLivenessProbe
 	defer func() { awsLivenessProbe = origProbe }()
-	awsLivenessProbe = func(context.Context) error { return nil }
+	awsLivenessProbe = func(context.Context, *auth.Credential) error { return nil }
 
 	s := auth.NewStoreWithPath(filepath.Join(dir, ".skret", "credentials.yaml"))
 

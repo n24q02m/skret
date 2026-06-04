@@ -31,6 +31,10 @@ func resolveStoredCredentials() (aws.CredentialsProvider, bool) {
 	if err != nil || cred == nil {
 		return nil, false
 	}
+	return resolveCredentials(cred)
+}
+
+func resolveCredentials(cred *auth.Credential) (aws.CredentialsProvider, bool) {
 	switch cred.Method {
 	case "access-key":
 		// Static keys: an expiry (if any) means the key is dead.
@@ -64,8 +68,17 @@ func resolveStoredCredentials() (aws.CredentialsProvider, bool) {
 // so `skret auth status` cannot disagree with what `skret list` actually does.
 // Region comes from AWS_REGION/SKRET_REGION, falling back to us-east-1 purely
 // for the region-agnostic GetCallerIdentity check. Never surfaces secrets.
-func Probe(ctx context.Context) error {
-	creds, _ := resolveStoredCredentials()
+func Probe(ctx context.Context, cred *auth.Credential) error {
+	var creds aws.CredentialsProvider
+	var profile string
+	if cred != nil {
+		if cred.Method == "profile" {
+			profile = cred.Metadata["profile"]
+		} else {
+			creds, _ = resolveCredentials(cred)
+		}
+	}
+
 	region := os.Getenv("AWS_REGION")
 	if region == "" {
 		region = os.Getenv("SKRET_REGION")
@@ -73,7 +86,7 @@ func Probe(ctx context.Context) error {
 	if region == "" {
 		region = "us-east-1"
 	}
-	cfg, err := loadAWSConfig(ctx, region, "", creds)
+	cfg, err := loadAWSConfig(ctx, region, profile, creds)
 	if err != nil {
 		return err
 	}
