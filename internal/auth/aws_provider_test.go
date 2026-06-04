@@ -76,6 +76,11 @@ func TestAWSProvider_Logout(t *testing.T) {
 	assert.NoError(t, p.Logout(context.Background()))
 }
 
+func TestAWSProvider_Logout_Interface(t *testing.T) {
+	var p Provider = NewAWSProvider()
+	assert.NoError(t, p.Logout(context.Background()))
+}
+
 func TestAWSProvider_LoginSSO_WithMock(t *testing.T) {
 	p := NewAWSProvider()
 	p.ssoFlow = NewAWSSSOFlow(&fakeOIDC{})
