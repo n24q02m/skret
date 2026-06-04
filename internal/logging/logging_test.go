@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"log/slog"
+	"strings"
 	"testing"
 
 	"github.com/n24q02m/skret/internal/logging"
@@ -16,8 +17,8 @@ func TestRedactingHandler_RedactsSecrets(t *testing.T) {
 	handler := logging.NewRedactingHandler(inner)
 	logger := slog.New(handler)
 
-	// Break prefix to bypass GitGuardian
-	token := "sk-" + "TEST" + "1234567890" + "1234567890"
+	// #nosec G101
+	token := "sk-" + strings.Repeat("0", 20)
 	logger.Info("test",
 		"api_key", token,
 		"normal", "hello world",
@@ -35,8 +36,8 @@ func TestRedactingHandler_RedactsGitHubPAT(t *testing.T) {
 	handler := logging.NewRedactingHandler(inner)
 	logger := slog.New(handler)
 
-	// Break prefix to bypass GitGuardian
-	token := "ghp_" + "TEST" + "ABCDEF" + "GHIJKLMNOPQRSTUVWXYZ" + "0123456789"
+	// #nosec G101
+	token := "ghp_" + strings.Repeat("A", 36)
 	logger.Info("test", "token", token)
 
 	output := buf.String()
@@ -91,7 +92,8 @@ func TestRedactingHandler_WithAttrs(t *testing.T) {
 	inner := slog.NewTextHandler(&buf, nil)
 	handler := logging.NewRedactingHandler(inner)
 
-	token := "sk-" + "TEST" + "1234567890" + "1234567890"
+	// #nosec G101
+	token := "sk-" + strings.Repeat("0", 20)
 	h2 := handler.WithAttrs([]slog.Attr{
 		slog.String("static_key", token),
 		slog.String("static_normal", "value"),
@@ -111,7 +113,8 @@ func TestRedactingHandler_WithGroup(t *testing.T) {
 	inner := slog.NewTextHandler(&buf, nil)
 	handler := logging.NewRedactingHandler(inner)
 
-	token := "sk-" + "TEST" + "1234567890" + "1234567890"
+	// #nosec G101
+	token := "sk-" + strings.Repeat("0", 20)
 	h2 := handler.WithGroup("mygroup")
 	logger := slog.New(h2)
 
@@ -154,8 +157,10 @@ func TestRedactingHandler_EmbeddedRedaction(t *testing.T) {
 	handler := logging.NewRedactingHandler(inner)
 	logger := slog.New(handler)
 
-	ghpToken := "ghp_" + "TEST" + "ABCDEF" + "GHIJKLMNOPQRSTUVWXYZ" + "0123456789"
-	skToken := "sk-" + "TEST" + "1234567890" + "1234567890"
+	// #nosec G101
+	ghpToken := "ghp_" + strings.Repeat("A", 36)
+	// #nosec G101
+	skToken := "sk-" + strings.Repeat("0", 20)
 	tests := []struct {
 		msg      string
 		expected string
@@ -180,7 +185,8 @@ func TestRedactingHandler_RedactsNestedGroup(t *testing.T) {
 	handler := logging.NewRedactingHandler(inner)
 	logger := slog.New(handler)
 
-	token := "ghp_" + "TEST" + "ABCDEF" + "GHIJKLMNOPQRSTUVWXYZ" + "0123456789"
+	// #nosec G101
+	token := "ghp_" + strings.Repeat("A", 36)
 	logger.Info(
 		"test",
 		slog.Group("user",
@@ -238,7 +244,8 @@ func TestRedactingHandler_ManyAttrs_PreservesOrder(t *testing.T) {
 	handler := logging.NewRedactingHandler(inner)
 	logger := slog.New(handler)
 
-	token := "ghp_" + "TEST" + "ABCDEF" + "GHIJKLMNOPQRSTUVWXYZ" + "0123456789"
+	// #nosec G101
+	token := "ghp_" + strings.Repeat("A", 36)
 	logger.Info("multi",
 		"a", "alpha",
 		"b", "beta",
@@ -285,7 +292,8 @@ func TestRedactingHandler_WithGroup_RedactsSensitiveName(t *testing.T) {
 	handler := logging.NewRedactingHandler(inner)
 
 	// Test pattern matching in group name
-	secret := "sk-" + "TEST" + "1234567890" + "1234567890"
+	// #nosec G101
+	secret := "sk-" + strings.Repeat("0", 20)
 	h2 := handler.WithGroup(secret)
 	logger := slog.New(h2)
 	logger.Info("msg", "foo", "bar")
