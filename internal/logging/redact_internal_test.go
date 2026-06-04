@@ -38,7 +38,9 @@ func TestRedactingHandler_Handle(t *testing.T) {
 		mock := &mockHandler{}
 		h := NewRedactingHandler(mock)
 
-		token := "sk-" + "TEST" + "1234567890" + "1234567890"
+		// We use clearly fake data and #nosec to avoid security scanner alerts.
+		// #nosec G101
+		token := "sk-" + "abcdefghijklmnopqrstuvwxyz"
 		r := slog.NewRecord(time.Now(), slog.LevelInfo, "failed with "+token, 0)
 		r.AddAttrs(slog.String("secret_key", token), slog.String("normal", "value"))
 
@@ -69,8 +71,8 @@ func TestRedactingHandler_Handle(t *testing.T) {
 }
 
 func TestRedactString_Coverage(t *testing.T) {
-	// We use indirect string construction and Repeat to avoid triggering
-	// security scanners like GitGuardian while maintaining coverage.
+	// We use clearly fake data and #nosec to avoid security scanner alerts.
+	// #nosec G101
 	tests := []struct {
 		name     string
 		input    string
@@ -78,17 +80,17 @@ func TestRedactString_Coverage(t *testing.T) {
 	}{
 		{"Short", "123", "123"},
 		{"NoMatch", "hello world", "hello world"},
-		{"EqMatch", "password" + "=" + "val", "password=[REDACTED]"},
+		{"EqMatch", "password" + "=fake_pass", "password=[REDACTED]"},
 		{"EqNoMatch", "other=val", "other=val"},
-		{"SkMatch", "s" + "k-" + strings.Repeat("x", 20), "[REDACTED]"},
+		{"SkMatch", "sk-" + strings.Repeat("x", 20), "[REDACTED]"},
 		{"SkNoMatch", "sk-123", "sk-123"},
-		{"DpMatch", "d" + "p.st." + "token", "[REDACTED]"},
+		{"DpMatch", "dp.st." + strings.Repeat("d", 10), "[REDACTED]"},
 		{"DpNoMatch", "dp.st.", "dp.st."},
-		{"GhpMatch", "g" + "hp_" + strings.Repeat("y", 36), "[REDACTED]"},
+		{"GhpMatch", "ghp_" + strings.Repeat("y", 36), "[REDACTED]"},
 		{"GhpNoMatch", "ghp_123", "ghp_123"},
-		{"AkiaMatch", "A" + "KIA" + strings.Repeat("Z", 16), "[REDACTED]"},
+		{"AkiaMatch", "AKIA" + "1234567890ABCDEF", "[REDACTED]"},
 		{"AkiaNoMatch", "AKIA123", "AKIA123"},
-		{"B64Match", strings.Repeat("A", 40), "[REDACTED]"},
+		{"B64Match", strings.Repeat("z", 40), "[REDACTED]"},
 		{"B64NoMatch", "short_b64", "short_b64"},
 	}
 
