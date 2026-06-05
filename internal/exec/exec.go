@@ -52,9 +52,21 @@ func BuildEnv(secrets []*provider.Secret, existing []string, pathPrefix string, 
 		//    and potential injection in tools that parse 'env' output line-by-line.
 		val := s.Value
 		if strings.ContainsAny(val, "\x00\n\r") {
-			val = strings.ReplaceAll(val, "\x00", "")
-			val = strings.ReplaceAll(val, "\n", " ")
-			val = strings.ReplaceAll(val, "\r", "")
+			// ⚡ Bolt: Use a single-pass builder to avoid multiple intermediate string allocations
+			var b strings.Builder
+			b.Grow(len(val))
+			for i := 0; i < len(val); i++ {
+				c := val[i]
+				switch c {
+				case '\x00', '\r':
+					// Remove
+				case '\n':
+					b.WriteByte(' ')
+				default:
+					b.WriteByte(c)
+				}
+			}
+			val = b.String()
 		}
 		secretVars[name] = val
 	}

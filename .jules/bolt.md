@@ -45,3 +45,7 @@
 ## 2026-06-25 - Skip Environment Resolution Logic on Empty Secrets
 **Learning:** Functions that parse, resolve, and merge existing environment variables and secret maps often initialize deep variable-dependency graph structures and caches (maps) before they know if there's actual work to do.
 **Action:** When a function accepts a slice or map of values to resolve (e.g., `BuildEnv(secrets ...)`), insert an early return (`if len(secrets) == 0 { return existingEnv }`) before initializing complex recursive expansion caches or looping over elements. This prevents unnecessary memory allocations in processes that invoke the code with no inputs.
+
+## 2026-06-05 - Avoid Multi-Pass Strings ReplaceAll for ASCII String Sanitization
+**Learning:** When sanitizing a string for a few specific ASCII characters (e.g., removing `\x00` and `\r`, replacing `\n` with space), executing multiple consecutive `strings.ReplaceAll` calls iterates over the string multiple times and creates unnecessary intermediate string allocations, slowing down performance.
+**Action:** Use a fast-path check (`strings.ContainsAny`) to verify if work is needed. If true, process predominantly ASCII strings in a single pass using a pre-sized `strings.Builder` (via `b.Grow(len(val))`) and a byte-level loop with a `switch` statement, which completes the transformation with only one final string allocation.
