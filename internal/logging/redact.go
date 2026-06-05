@@ -8,17 +8,18 @@ import (
 )
 
 type pattern struct {
-	re   *regexp.Regexp
-	repl string
+	re       *regexp.Regexp
+	repl     string
+	fastPath func(string) bool
 }
 
 var secretPatterns = []pattern{
-	{regexp.MustCompile(`(?i)((password|secret|token|key|api_key|auth)=)[^\s&]+`), "${1}[REDACTED]"},
-	{regexp.MustCompile(`sk-[a-zA-Z0-9]{20,}`), "[REDACTED]"},
-	{regexp.MustCompile(`dp\.st\.[a-zA-Z0-9]+`), "[REDACTED]"},
-	{regexp.MustCompile(`ghp_[a-zA-Z0-9]{36,}`), "[REDACTED]"},
-	{regexp.MustCompile(`AKIA[A-Z0-9]{16}`), "[REDACTED]"},
-	{regexp.MustCompile(`(?i)[a-z0-9+/]{40,}={0,2}`), "[REDACTED]"}, // Base64-like
+	{regexp.MustCompile(`(?i)((password|secret|token|key|api_key|auth)=)[^\s&]+`), "${1}[REDACTED]", func(s string) bool { return strings.Contains(s, "=") }},
+	{regexp.MustCompile(`sk-[a-zA-Z0-9]{20,}`), "[REDACTED]", func(s string) bool { return strings.Contains(s, "sk-") }},
+	{regexp.MustCompile(`dp\.st\.[a-zA-Z0-9]+`), "[REDACTED]", func(s string) bool { return strings.Contains(s, "dp.st.") }},
+	{regexp.MustCompile(`ghp_[a-zA-Z0-9]{36,}`), "[REDACTED]", func(s string) bool { return strings.Contains(s, "ghp_") }},
+	{regexp.MustCompile(`AKIA[A-Z0-9]{16}`), "[REDACTED]", func(s string) bool { return strings.Contains(s, "AKIA") }},
+	{regexp.MustCompile(`(?i)[a-z0-9+/]{40,}={0,2}`), "[REDACTED]", func(s string) bool { return len(s) >= 40 }}, // Base64-like
 }
 
 var sensitiveKeyParts = []string{
@@ -104,7 +105,9 @@ func redactString(val string) string {
 		return val
 	}
 	for _, p := range secretPatterns {
-		val = p.re.ReplaceAllString(val, p.repl)
+		if p.fastPath == nil || p.fastPath(val) {
+			val = p.re.ReplaceAllString(val, p.repl)
+		}
 	}
 	return val
 }
