@@ -20,3 +20,7 @@
 ## 2026-05-28 - [SECURITY] Insecure HTTP Server Configuration
 
 Added `ReadTimeout` and `WriteTimeout` to `http.Server` in `internal/auth/infisical_browser.go` to prevent potential resource exhaustion on the local loopback listener.
+## 2026-06-06 - Billion Laughs Attack in Variable Expansion
+**Vulnerability:** The variable expansion logic in `internal/exec/exec.go` was vulnerable to a Denial of Service (DoS) attack via resource exhaustion (a variant of the "Billion Laughs" attack), as deep recursive environment variables could cause exponential string growth and recursion depth.
+**Learning:** Even with memoization and cycle detection, recursive expansion logic can still lead to OOM or stack overflow if limits on depth and expanded string lengths are missing.
+**Prevention:** Always enforce a recursion depth limit (e.g., `maxDepth = 32`) and a maximum string length (e.g., `maxExpandedLen = 128KB`) during string template/variable expansion loops.

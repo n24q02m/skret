@@ -63,6 +63,10 @@ func BuildEnv(secrets []*provider.Secret, existing []string, pathPrefix string, 
 	// Cycle detection map
 	resolving := make(map[string]bool, len(secretVars))
 
+	const maxDepth = 32
+	const maxExpandedLen = 128 * 1024
+	evalDepth := 0
+
 	var resolve func(string) string
 	resolve = func(ref string) string {
 		// 1. check existing environment variables (highest priority)
@@ -85,10 +89,20 @@ func BuildEnv(secrets []*provider.Secret, existing []string, pathPrefix string, 
 			return val // Return raw value to break cycle
 		}
 
+		// Depth limit to prevent resource exhaustion
+		if evalDepth >= maxDepth {
+			return val
+		}
+
 		resolving[ref] = true
+		evalDepth++
 		if strings.IndexByte(val, '$') >= 0 {
 			val = os.Expand(val, resolve)
+			if len(val) > maxExpandedLen {
+				val = val[:maxExpandedLen]
+			}
 		}
+		evalDepth--
 		resolving[ref] = false
 
 		resolved[ref] = val
