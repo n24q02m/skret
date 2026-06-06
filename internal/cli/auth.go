@@ -77,6 +77,7 @@ func newAuthStatusCmd() *cobra.Command {
 			providers := []string{"aws", "doppler", "infisical"}
 
 			ctx := context.Background()
+			configuredCount := 0
 			for _, p := range providers {
 				cred, err := store.Load(p)
 				if err != nil {
@@ -84,8 +85,13 @@ func newAuthStatusCmd() *cobra.Command {
 					continue
 				}
 
+				configuredCount++
 				status := getCredentialStatus(ctx, p, cred)
 				fmt.Fprintf(cmd.OutOrStdout(), "  %-12s %s (method: %s)\n", p, status, cred.Method)
+			}
+
+			if configuredCount == 0 {
+				cmd.PrintErrln("\nNo providers configured. Use 'skret setup' to configure one.")
 			}
 
 			return nil
