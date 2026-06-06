@@ -2,10 +2,11 @@ package exec_test
 
 import (
 	"fmt"
+	"testing"
+
 	skexec "github.com/n24q02m/skret/internal/exec"
 	"github.com/n24q02m/skret/internal/provider"
 	"github.com/stretchr/testify/assert"
-	"testing"
 )
 
 func TestBuildEnv_BillionLaughs(t *testing.T) {
