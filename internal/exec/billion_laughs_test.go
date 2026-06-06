@@ -3,9 +3,10 @@ package exec_test
 import (
 	"fmt"
 	"testing"
-	"github.com/stretchr/testify/assert"
-	"github.com/n24q02m/skret/internal/provider"
+
 	skexec "github.com/n24q02m/skret/internal/exec"
+	"github.com/n24q02m/skret/internal/provider"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestBuildEnv_BillionLaughs(t *testing.T) {
@@ -29,7 +30,7 @@ func TestBuildEnv_BillionLaughs(t *testing.T) {
 		if len(e) > 4 && e[:4] == "V32=" {
 			found = true
 			val := e[4:]
-			assert.LessOrEqual(t, len(val), 128 * 1024, "Length should be limited")
+			assert.LessOrEqual(t, len(val), 128*1024, "Length should be limited")
 		}
 	}
 	assert.True(t, found, "V32 should be present in output")
