@@ -27,7 +27,11 @@ var providerDisplayNames = map[string]string{
 // for use in the root command's tagline.
 func formattedProviderList() string {
 	reg := defaultRegistry()
-	names := reg.Providers() // returns sorted names
+	return formatProviderList(reg.Providers())
+}
+
+// formatProviderList turns a slice of provider IDs into a human-readable list.
+func formatProviderList(names []string) string {
 	if len(names) == 0 {
 		return ""
 	}
