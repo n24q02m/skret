@@ -16,6 +16,15 @@ var authStoreLoad = func(provider string) (*auth.Credential, error) {
 	return auth.NewStore().Load(provider)
 }
 
+// STSClient abstracts the AWS STS API for testability.
+type STSClient interface {
+	GetCallerIdentity(ctx context.Context, params *sts.GetCallerIdentityInput, optFns ...func(*sts.Options)) (*sts.GetCallerIdentityOutput, error)
+}
+
+var newSTSClient = func(cfg aws.Config) STSClient {
+	return sts.NewFromConfig(cfg)
+}
+
 // resolveStoredCredentials builds an AWS credentials provider from a
 // skret-stored credential (written by `skret auth login aws ...`) so skret
 // authenticates on its own without the `aws` CLI. It returns (provider, profile, true)
@@ -85,6 +94,6 @@ func Probe(ctx context.Context) error {
 	}
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	_, err = sts.NewFromConfig(cfg).GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{})
+	_, err = newSTSClient(cfg).GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{})
 	return err
 }

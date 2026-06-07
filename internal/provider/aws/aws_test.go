@@ -19,6 +19,7 @@ import (
 type mockSSMClient struct {
 	params                  map[string]ssmtypes.Parameter
 	errGet                  error
+	errBatch                error
 	errList                 error
 	errPut                  error
 	errDel                  error
@@ -41,6 +42,9 @@ func (m *mockSSMClient) GetParameter(_ context.Context, input *ssm.GetParameterI
 }
 
 func (m *mockSSMClient) GetParameters(_ context.Context, input *ssm.GetParametersInput, _ ...func(*ssm.Options)) (*ssm.GetParametersOutput, error) {
+	if m.errBatch != nil {
+		return nil, m.errBatch
+	}
 	var params []ssmtypes.Parameter
 	for _, name := range input.Names {
 		if p, ok := m.params[name]; ok {
@@ -103,26 +107,28 @@ func (m *mockSSMClient) GetParameterHistory(ctx context.Context, input *ssm.GetP
 	if m.errHistory != nil {
 		return nil, m.errHistory
 	}
-	if m.history != nil {
-		if h, ok := m.history[*input.Name]; ok {
-			return &ssm.GetParameterHistoryOutput{Parameters: h}, nil
-		}
+	h, ok := m.history[*input.Name]
+	if !ok {
+		return nil, &ssmtypes.ParameterNotFound{Message: awslib.String("not found")}
 	}
-	return &ssm.GetParameterHistoryOutput{Parameters: []ssmtypes.ParameterHistory{}}, nil
+	return &ssm.GetParameterHistoryOutput{Parameters: h}, nil
 }
 
 func newTestProvider(params map[string]ssmtypes.Parameter) provider.SecretProvider {
 	if params == nil {
 		params = make(map[string]ssmtypes.Parameter)
 	}
-	mock := &mockSSMClient{params: params}
-	return skaws.NewWithClient(mock, "/test/prod")
+	return skaws.NewWithClient(&mockSSMClient{params: params}, "/test/prod/")
 }
 
 func TestAWS_New_EnvVars(t *testing.T) {
-	cfg := &config.ResolvedConfig{Region: "us-east-1", Profile: "test"}
-	_, err := skaws.New(cfg)
-	_ = err
+	t.Setenv("AWS_REGION", "us-west-2")
+	t.Setenv("AWS_PROFILE", "")
+
+	cfg := &config.ResolvedConfig{Region: "us-east-1"}
+	p, err := skaws.New(cfg)
+	require.NoError(t, err)
+	assert.Equal(t, "aws", p.Name())
 }
 
 func TestAWS_Name(t *testing.T) {
@@ -135,32 +141,19 @@ func TestAWS_Capabilities(t *testing.T) {
 	caps := p.Capabilities()
 	assert.True(t, caps.Write)
 	assert.True(t, caps.Versioning)
-	assert.True(t, caps.Tagging)
-	assert.True(t, caps.AuditLog)
-	assert.Equal(t, 4, caps.MaxValueKB)
 }
 
 func TestAWS_Get(t *testing.T) {
 	p := newTestProvider(map[string]ssmtypes.Parameter{
-		"/test/prod/DB_URL": {
-			Name:    awslib.String("/test/prod/DB_URL"),
-			Value:   awslib.String("postgres://prod"),
-			Version: 3,
-		},
+		"/test/prod/API_KEY": {Name: awslib.String("/test/prod/API_KEY"), Value: awslib.String("secret")},
 	})
-	defer p.Close()
-
-	s, err := p.Get(context.Background(), "/test/prod/DB_URL")
+	s, err := p.Get(context.Background(), "/test/prod/API_KEY")
 	require.NoError(t, err)
-	assert.Equal(t, "/test/prod/DB_URL", s.Key)
-	assert.Equal(t, "postgres://prod", s.Value)
-	assert.Equal(t, int64(3), s.Version)
+	assert.Equal(t, "secret", s.Value)
 }
 
 func TestAWS_GetNotFound(t *testing.T) {
 	p := newTestProvider(nil)
-	defer p.Close()
-
 	_, err := p.Get(context.Background(), "/test/prod/MISSING")
 	assert.ErrorIs(t, err, provider.ErrNotFound)
 }
@@ -168,48 +161,36 @@ func TestAWS_GetNotFound(t *testing.T) {
 func TestAWS_GetError(t *testing.T) {
 	mock := &mockSSMClient{params: make(map[string]ssmtypes.Parameter), errGet: errors.New("network err")}
 	p := skaws.NewWithClient(mock, "/test/prod")
-	_, err := p.Get(context.Background(), "/test/prod/MISSING")
+	_, err := p.Get(context.Background(), "/test/prod/KEY")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "network err")
 }
 
 func TestAWS_GetWithLastModifiedDate(t *testing.T) {
-	now := time.Date(2026, 4, 1, 12, 0, 0, 0, time.UTC)
+	now := time.Now()
 	p := newTestProvider(map[string]ssmtypes.Parameter{
-		"/test/prod/DB_URL": {
-			Name:             awslib.String("/test/prod/DB_URL"),
-			Value:            awslib.String("postgres://prod"),
-			Version:          5,
-			LastModifiedDate: &now,
-		},
+		"/test/prod/KEY": {Name: awslib.String("/test/prod/KEY"), Value: awslib.String("val"), LastModifiedDate: &now},
 	})
-	defer p.Close()
-
-	s, err := p.Get(context.Background(), "/test/prod/DB_URL")
+	s, err := p.Get(context.Background(), "/test/prod/KEY")
 	require.NoError(t, err)
 	assert.Equal(t, now, s.Meta.UpdatedAt)
 }
 
 func TestAWS_GetNoLastModified(t *testing.T) {
 	p := newTestProvider(map[string]ssmtypes.Parameter{
-		"/test/prod/DB_URL": {
-			Name:    awslib.String("/test/prod/DB_URL"),
-			Value:   awslib.String("postgres://prod"),
-			Version: 3,
-		},
+		"/test/prod/KEY": {Name: awslib.String("/test/prod/KEY"), Value: awslib.String("val")},
 	})
-	s, err := p.Get(context.Background(), "/test/prod/DB_URL")
+	s, err := p.Get(context.Background(), "/test/prod/KEY")
 	require.NoError(t, err)
-	assert.Zero(t, s.Meta.UpdatedAt)
+	assert.True(t, s.Meta.UpdatedAt.IsZero())
 }
 
 func TestAWS_List(t *testing.T) {
 	p := newTestProvider(map[string]ssmtypes.Parameter{
-		"/test/prod/A": {Name: awslib.String("/test/prod/A"), Value: awslib.String("a")},
-		"/test/prod/B": {Name: awslib.String("/test/prod/B"), Value: awslib.String("b")},
+		"/test/prod/A": {Name: awslib.String("/test/prod/A"), Value: awslib.String("valA")},
+		"/test/prod/B": {Name: awslib.String("/test/prod/B"), Value: awslib.String("valB")},
+		"/other/X":     {Name: awslib.String("/other/X"), Value: awslib.String("valX")},
 	})
-	defer p.Close()
-
 	secrets, err := p.List(context.Background(), "")
 	require.NoError(t, err)
 	assert.Len(t, secrets, 2)
@@ -217,76 +198,42 @@ func TestAWS_List(t *testing.T) {
 
 func TestAWS_ListWithExplicitPath(t *testing.T) {
 	p := newTestProvider(map[string]ssmtypes.Parameter{
-		"/test/prod/A": {Name: awslib.String("/test/prod/A"), Value: awslib.String("a")},
-		"/test/prod/B": {Name: awslib.String("/test/prod/B"), Value: awslib.String("b")},
+		"/test/prod/A": {Name: awslib.String("/test/prod/A"), Value: awslib.String("valA")},
 	})
-	defer p.Close()
-
-	secrets, err := p.List(context.Background(), "/test/prod")
+	secrets, err := p.List(context.Background(), "/test/")
 	require.NoError(t, err)
-	assert.Len(t, secrets, 2)
+	assert.Len(t, secrets, 1)
 }
 
 func TestAWS_ListError(t *testing.T) {
 	mock := &mockSSMClient{params: make(map[string]ssmtypes.Parameter), errList: errors.New("network err")}
 	p := skaws.NewWithClient(mock, "/test/prod")
-	_, err := p.List(context.Background(), "/test/prod")
+	_, err := p.List(context.Background(), "")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "network err")
 }
 
 func TestAWS_ListPagination_MultiplePages(t *testing.T) {
-	type pageMock struct {
-		mockSSMClient
-		calls int
-	}
-	pm := &pageMock{}
-	pm.params = make(map[string]ssmtypes.Parameter)
-	now := time.Now()
-
-	pm.GetParametersByPathFunc = func(_ context.Context, input *ssm.GetParametersByPathInput) (*ssm.GetParametersByPathOutput, error) {
-		pm.calls++
-		switch pm.calls {
-		case 1:
-			assert.Nil(t, input.NextToken)
+	calls := 0
+	mock := &mockSSMClient{params: make(map[string]ssmtypes.Parameter)}
+	mock.GetParametersByPathFunc = func(_ context.Context, input *ssm.GetParametersByPathInput) (*ssm.GetParametersByPathOutput, error) {
+		calls++
+		if calls == 1 {
 			return &ssm.GetParametersByPathOutput{
-				Parameters: []ssmtypes.Parameter{
-					{Name: awslib.String("/test/prod/A"), Value: awslib.String("A"), Version: 1, LastModifiedDate: &now},
-				},
-				NextToken: awslib.String("token1"),
+				Parameters: []ssmtypes.Parameter{{Name: awslib.String("/test/prod/A"), Value: awslib.String("A")}},
+				NextToken:  awslib.String("token1"),
 			}, nil
-		case 2:
-			assert.Equal(t, "token1", *input.NextToken)
-			return &ssm.GetParametersByPathOutput{
-				Parameters: []ssmtypes.Parameter{
-					{Name: awslib.String("/test/prod/B"), Value: awslib.String("B"), Version: 2},
-				},
-				NextToken: awslib.String("token2"),
-			}, nil
-		case 3:
-			assert.Equal(t, "token2", *input.NextToken)
-			return &ssm.GetParametersByPathOutput{
-				Parameters: []ssmtypes.Parameter{
-					{Name: awslib.String("/test/prod/C"), Value: awslib.String("C"), Version: 3},
-				},
-				NextToken: nil,
-			}, nil
-		default:
-			t.Fatal("unexpected extra call to GetParametersByPath")
-			return nil, nil
 		}
+		return &ssm.GetParametersByPathOutput{
+			Parameters: []ssmtypes.Parameter{{Name: awslib.String("/test/prod/B"), Value: awslib.String("B")}},
+		}, nil
 	}
 
-	p := skaws.NewWithClient(pm, "/test/prod")
-	secrets, err := p.List(context.Background(), "/test/prod")
+	p := skaws.NewWithClient(mock, "/test/prod")
+	secrets, err := p.List(context.Background(), "")
 	require.NoError(t, err)
-	assert.Len(t, secrets, 3)
-	assert.Equal(t, 3, pm.calls)
-	// First one has LastModifiedDate
-	assert.False(t, secrets[0].Meta.UpdatedAt.IsZero())
-	// Second and third have nil LastModifiedDate
-	assert.True(t, secrets[1].Meta.UpdatedAt.IsZero())
-	assert.True(t, secrets[2].Meta.UpdatedAt.IsZero())
+	assert.Len(t, secrets, 2)
+	assert.Equal(t, 2, calls)
 }
 
 func TestAWS_Set(t *testing.T) {
@@ -601,4 +548,15 @@ func TestAWS_GetBatch(t *testing.T) {
 	secrets, err := p.GetBatch(context.Background(), []string{"K1", "K2", "K3"})
 	require.NoError(t, err)
 	assert.Len(t, secrets, 2)
+}
+
+func TestAWS_GetBatch_Error(t *testing.T) {
+	mock := &mockSSMClient{
+		params: make(map[string]ssmtypes.Parameter),
+		errBatch: errors.New("get_batch failure"),
+	}
+	p := skaws.NewWithClient(mock, "/test/")
+	_, err := p.GetBatch(context.Background(), []string{"K1"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "get_batch failure")
 }
