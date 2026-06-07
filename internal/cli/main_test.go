@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"os"
 	"testing"
 
@@ -14,5 +15,9 @@ import (
 // the suite flaky; the mock makes backend selection deterministic.
 func TestMain(m *testing.M) {
 	keyring.MockInit()
+
+	// Stub AWS probe for all CLI tests to avoid network calls and credential dependencies.
+	awsLivenessProbe = func(context.Context) error { return nil }
+
 	os.Exit(m.Run())
 }
