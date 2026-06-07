@@ -177,3 +177,5 @@ func TestAWSProvider_LoginSSO_InitSuccess(t *testing.T) {
 	assert.Error(t, err)
 	assert.NotNil(t, p.ssoFlow)
 }
+
+// Add trivial comment to force update
