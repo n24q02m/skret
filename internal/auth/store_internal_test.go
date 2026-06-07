@@ -12,6 +12,30 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestDefaultFilePath(t *testing.T) {
+	t.Run("with HOME set", func(t *testing.T) {
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+		t.Setenv("USERPROFILE", home) // for windows compatibility if run there
+
+		path := defaultFilePath()
+		expected := filepath.Join(home, ".skret", "credentials.yaml")
+		assert.Equal(t, expected, path)
+	})
+
+	t.Run("without HOME set", func(t *testing.T) {
+		// Clearing HOME to trigger os.UserHomeDir error
+		t.Setenv("HOME", "")
+		t.Setenv("USERPROFILE", "")
+		t.Setenv("HOMEDRIVE", "")
+		t.Setenv("HOMEPATH", "")
+
+		path := defaultFilePath()
+		expected := filepath.Join(".", ".skret", "credentials.yaml")
+		assert.Equal(t, expected, path)
+	})
+}
+
 func TestStore_Write_WithNewDir(t *testing.T) {
 	dir := t.TempDir()
 	s := NewStoreWithPath(filepath.Join(dir, "deep", "nested", "creds.yaml"))
