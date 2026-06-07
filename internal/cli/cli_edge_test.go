@@ -107,6 +107,7 @@ func TestCLI_EdgeCases(t *testing.T) {
 	os.Remove(".skret.yaml")
 	_, err = executeCmd("list")
 	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "skret setup")
 	assert.Contains(t, err.Error(), "skret init")
 	assert.Contains(t, err.Error(), "--path=")
 }
