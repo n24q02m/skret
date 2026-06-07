@@ -26,6 +26,7 @@ type importOptions struct {
 	dryRun          bool
 	onConflict      string
 	toPath          string
+	provider        provider.SecretProvider // for testing
 }
 
 // newImportCmd creates a new import command.
@@ -92,11 +93,15 @@ func (o *importOptions) createImporter() (importer.Importer, error) {
 
 // run executes the import logic.
 func (o *importOptions) run(cmd *cobra.Command) error {
-	_, p, err := loadProvider(o.global)
-	if err != nil {
-		return err
+	p := o.provider
+	if p == nil {
+		_, pp, err := loadProvider(o.global)
+		if err != nil {
+			return err
+		}
+		p = pp
+		defer p.Close()
 	}
-	defer p.Close()
 
 	imp, err := o.createImporter()
 	if err != nil {
@@ -112,6 +117,7 @@ func (o *importOptions) run(cmd *cobra.Command) error {
 	orderedKeys, dedupedMap, skipped := o.deduplicate(cmd, secrets)
 	existing, listLoaded := o.loadExisting(ctx, p, o.toPath, orderedKeys)
 
+	var toImport []*provider.Secret
 	var imported int
 	for _, destKey := range orderedKeys {
 		val := dedupedMap[destKey]
@@ -141,10 +147,18 @@ func (o *importOptions) run(cmd *cobra.Command) error {
 				return skret.NewError(skret.ExitConflictError, fmt.Sprintf("import: conflict on %q", destKey), nil)
 			}
 		}
-		if err := p.Set(ctx, destKey, val, provider.SecretMeta{}); err != nil {
-			return skret.NewError(skret.ExitProviderError, fmt.Sprintf("import: set %q", destKey), err)
-		}
+
+		toImport = append(toImport, &provider.Secret{
+			Key:   destKey,
+			Value: val,
+		})
 		imported++
+	}
+
+	if len(toImport) > 0 {
+		if err := p.SetBatch(ctx, toImport); err != nil {
+			return skret.NewError(skret.ExitProviderError, "import: set batch failed", err)
+		}
 	}
 
 	cmd.PrintErrf("Imported: %d, Skipped: %d (from %s)\n", imported, skipped, imp.Name())

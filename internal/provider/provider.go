@@ -48,6 +48,7 @@ type SecretProvider interface {
 	List(ctx context.Context, pathPrefix string) ([]*Secret, error)
 
 	Set(ctx context.Context, key string, value string, meta SecretMeta) error
+	SetBatch(ctx context.Context, secrets []*Secret) error
 	Delete(ctx context.Context, key string) error
 	GetHistory(ctx context.Context, key string) ([]*Secret, error)
 	Rollback(ctx context.Context, key string, version int64) error

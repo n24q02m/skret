@@ -91,6 +91,18 @@ func (p *Provider) Set(_ context.Context, key string, value string, _ provider.S
 	return p.save()
 }
 
+func (p *Provider) SetBatch(_ context.Context, secrets []*provider.Secret) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.data.Secrets == nil {
+		p.data.Secrets = make(map[string]string)
+	}
+	for _, s := range secrets {
+		p.data.Secrets[s.Key] = s.Value
+	}
+	return p.save()
+}
+
 func (p *Provider) Delete(_ context.Context, key string) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()

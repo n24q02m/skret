@@ -602,3 +602,32 @@ func TestAWS_GetBatch(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, secrets, 2)
 }
+
+func TestAWS_SetBatch(t *testing.T) {
+	mock := &mockSSMClient{
+		params: make(map[string]ssmtypes.Parameter),
+	}
+	p := skaws.NewWithClient(mock, "/test/")
+
+	ctx := context.Background()
+	toSet := []*provider.Secret{
+		{Key: "K1", Value: "V1"},
+		{Key: "K2", Value: "V2"},
+	}
+
+	err := p.SetBatch(ctx, toSet)
+	require.NoError(t, err)
+
+	assert.Equal(t, "V1", awslib.ToString(mock.params["K1"].Value))
+	assert.Equal(t, "V2", awslib.ToString(mock.params["K2"].Value))
+}
+
+func TestAWS_SetBatch_Error(t *testing.T) {
+	mock := &mockSSMClient{
+		errPut: errors.New("put failed"),
+	}
+	p := skaws.NewWithClient(mock, "/test/")
+
+	err := p.SetBatch(context.Background(), []*provider.Secret{{Key: "K", Value: "V"}})
+	assert.Error(t, err)
+}

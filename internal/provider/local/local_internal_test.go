@@ -132,3 +132,21 @@ func TestProvider_Concurrent_Internal(t *testing.T) {
 		assert.NoError(t, err)
 	}
 }
+
+func TestLocal_SetBatch_InitializesMap(t *testing.T) {
+	p := &Provider{data: localFile{}} // Secrets map is nil
+	// No file to save to, but we can check if it initializes the map.
+	dir := t.TempDir()
+	path := filepath.Join(dir, "new.yaml")
+	p.filePath = path
+
+	err := p.SetBatch(context.Background(), []*provider.Secret{{Key: "K", Value: "V"}})
+	require.NoError(t, err)
+
+	s, err := p.Get(context.Background(), "K")
+	require.NoError(t, err)
+	assert.Equal(t, "V", s.Value)
+}
+
+// TestSave_MarshalError tests the marshal error path in save()
+// by providing data that cannot be marshaled to YAML.
