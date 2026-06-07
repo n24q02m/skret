@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -76,6 +77,12 @@ func TestFileBackend_Write_MkdirError(t *testing.T) {
 }
 
 func TestFileBackend_Write_CreateTempError(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		// Windows does not enforce the 0o500 read-only directory bit for the
+		// owner, so os.CreateTemp still succeeds and this error path cannot be
+		// triggered via directory permissions.
+		t.Skip("directory read-only permission bit is not enforced on Windows")
+	}
 	dir := t.TempDir()
 	// Make directory read-only to prevent CreateTemp
 	require.NoError(t, os.MkdirAll(filepath.Join(dir, "readonly"), 0o700))
