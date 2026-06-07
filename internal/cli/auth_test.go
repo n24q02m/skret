@@ -54,6 +54,7 @@ func TestAuthStatusCmd(t *testing.T) {
 	assert.Contains(t, out, "doppler")
 	assert.Contains(t, out, "infisical")
 	assert.Contains(t, out, "not configured")
+	assert.Contains(t, out, "No providers configured. Use 'skret setup' to initialize and authenticate.")
 }
 
 func TestAuthStatusCmd_WithCredential(t *testing.T) {
