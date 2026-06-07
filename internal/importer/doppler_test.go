@@ -176,9 +176,9 @@ func TestDopplerImporter_EmptyMap(t *testing.T) {
 }
 
 func TestDopplerImporter_Import_RequestError(t *testing.T) {
-	// Trigger http.NewRequestWithContext error by using an invalid URL character
+	// Trigger parse base url error by using an invalid URL character
 	imp := importer.NewDoppler("token", "proj", "cfg", "http://api.doppler.com\x7f")
 	_, err := imp.Import(context.Background())
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "create request")
+	assert.Contains(t, err.Error(), "parse base url")
 }

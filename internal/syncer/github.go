@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -114,9 +115,17 @@ func (g *GitHubSyncer) Sync(ctx context.Context, secrets []*provider.Secret) err
 }
 
 func (g *GitHubSyncer) getPublicKey(ctx context.Context) (string, string, error) {
-	url := fmt.Sprintf("%s/repos/%s/%s/actions/secrets/public-key", g.baseURL, g.owner, g.repo)
+	u, err := url.Parse(g.baseURL)
+	if err != nil {
+		return "", "", fmt.Errorf("github: parse base url: %w", err)
+	}
+	u.Path, err = url.JoinPath(u.Path, "repos", g.owner, g.repo, "actions", "secrets", "public-key")
+	if err != nil {
+		return "", "", fmt.Errorf("github: join path: %w", err)
+	}
+	reqURL := u.String()
 
-	req, err := http.NewRequestWithContext(ctx, "GET", url, http.NoBody)
+	req, err := http.NewRequestWithContext(ctx, "GET", reqURL, http.NoBody)
 	if err != nil {
 		return "", "", fmt.Errorf("github: create request: %w", err)
 	}
@@ -153,10 +162,18 @@ func (g *GitHubSyncer) putSecret(ctx context.Context, name, value string, recipi
 		return fmt.Errorf("github: encrypt %q: %w", name, err)
 	}
 
-	url := fmt.Sprintf("%s/repos/%s/%s/actions/secrets/%s", g.baseURL, g.owner, g.repo, name)
+	u, err := url.Parse(g.baseURL)
+	if err != nil {
+		return fmt.Errorf("github: parse base url: %w", err)
+	}
+	u.Path, err = url.JoinPath(u.Path, "repos", g.owner, g.repo, "actions", "secrets", name)
+	if err != nil {
+		return fmt.Errorf("github: join path: %w", err)
+	}
+	reqURL := u.String()
 
 	body := fmt.Sprintf(`{"encrypted_value":%q,"key_id":%q}`, encValue, keyID)
-	req, err := http.NewRequestWithContext(ctx, "PUT", url, strings.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, "PUT", reqURL, strings.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("github: create request: %w", err)
 	}
