@@ -50,7 +50,9 @@ func ExitCode(err error) int {
 	}
 	var skretErr *Error
 	if errors.As(err, &skretErr) {
-		return skretErr.Code
+		if skretErr != nil {
+			return skretErr.Code
+		}
 	}
 	return ExitGenericError
 }
