@@ -84,6 +84,11 @@ func TestExitCode(t *testing.T) {
 			err:      errors.New("generic error"),
 			expected: ExitGenericError,
 		},
+		{
+			name:     "typed nil error",
+			err:      func() error { var e *Error; return e }(),
+			expected: ExitGenericError,
+		},
 	}
 
 	for _, tt := range tests {
