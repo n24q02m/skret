@@ -34,8 +34,14 @@ func New(cfg *config.ResolvedConfig) (provider.SecretProvider, error) {
 	// Prefer a skret-stored credential (skret auth login aws ...) so skret
 	// authenticates on its own; fall back to the standard SDK credential
 	// chain (aws login / env / shared profile / OIDC) when none is stored.
-	creds, _ := resolveStoredCredentials()
-	awsCfg, err := loadAWSConfig(context.Background(), cfg.Region, cfg.Profile, creds)
+	creds, storedProfile, _ := resolveStoredCredentials()
+
+	profile := cfg.Profile
+	if profile == "" {
+		profile = storedProfile
+	}
+
+	awsCfg, err := loadAWSConfig(context.Background(), cfg.Region, profile, creds)
 	if err != nil {
 		return nil, err
 	}
