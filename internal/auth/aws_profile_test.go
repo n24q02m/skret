@@ -61,3 +61,27 @@ func TestAWSProfileFlow_UnknownProfile(t *testing.T) {
 	_, err := flow.Login(context.Background(), map[string]string{"profile": "missing"})
 	require.Error(t, err)
 }
+
+func TestAWSProfileFlow_List_ParseError(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".aws", "config"), 0o700))
+	t.Setenv("HOME", dir)
+	t.Setenv("USERPROFILE", dir)
+
+	flow := auth.NewAWSProfileFlow()
+	_, err := flow.List()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "aws profile: parse")
+}
+
+func TestAWSProfileFlow_List_HomeError(t *testing.T) {
+	t.Setenv("HOME", "")
+	t.Setenv("USERPROFILE", "")
+	t.Setenv("HOMEDRIVE", "")
+	t.Setenv("HOMEPATH", "")
+
+	flow := auth.NewAWSProfileFlow()
+	_, err := flow.List()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "aws profile: ")
+}
