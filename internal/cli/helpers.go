@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strings"
 
 	"github.com/n24q02m/skret/internal/config"
 	skexec "github.com/n24q02m/skret/internal/exec"
@@ -16,6 +17,38 @@ import (
 // configNotFoundMsg is the actionable error shown when a command needs a config
 // but neither a .skret.yaml nor --path is available.
 const configNotFoundMsg = "no .skret.yaml found here or in any parent up to the git root, and no --path given. Run 'skret setup' (recommended) or 'skret init' to create one, or pass --path=/namespace/env (e.g. --path=/myapp/prod)"
+
+var providerDisplayNames = map[string]string{
+	"aws":   "AWS SSM Parameter Store",
+	"local": "a local file provider",
+}
+
+// formattedProviderList returns a human-readable list of registered providers
+// for use in the root command's tagline.
+func formattedProviderList() string {
+	reg := defaultRegistry()
+	names := reg.Providers() // returns sorted names
+	if len(names) == 0 {
+		return ""
+	}
+
+	displayNames := make([]string, 0, len(names))
+	for _, name := range names {
+		if dn, ok := providerDisplayNames[name]; ok {
+			displayNames = append(displayNames, dn)
+		} else {
+			displayNames = append(displayNames, name)
+		}
+	}
+
+	if len(displayNames) == 1 {
+		return displayNames[0]
+	}
+
+	last := displayNames[len(displayNames)-1]
+	prefix := displayNames[:len(displayNames)-1]
+	return strings.Join(prefix, ", ") + " and " + last
+}
 
 // defaultRegistry returns the global provider registry with all built-in providers.
 func defaultRegistry() *provider.Registry {
