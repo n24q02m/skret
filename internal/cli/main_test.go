@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"os"
 	"testing"
 
@@ -14,5 +15,10 @@ import (
 // the suite flaky; the mock makes backend selection deterministic.
 func TestMain(m *testing.M) {
 	keyring.MockInit()
+
+	// Honest auth status runs a real AWS probe (Bug H); stub it so tests
+	// validate the status mapping deterministically without network/creds.
+	awsLivenessProbe = func(context.Context) error { return nil }
+
 	os.Exit(m.Run())
 }
