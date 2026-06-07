@@ -20,3 +20,9 @@
 ## 2026-05-28 - [SECURITY] Insecure HTTP Server Configuration
 
 Added `ReadTimeout` and `WriteTimeout` to `http.Server` in `internal/auth/infisical_browser.go` to prevent potential resource exhaustion on the local loopback listener.
+
+## 2026-06-07 - [Resource Exhaustion Mitigation in Variable Expansion]
+When implementing recursive string expansion or resolution logic (e.g., `os.Expand` or custom resolution), uncontrolled recursion and lack of length limits can lead to Denial of Service (DoS).
+- **Depth Limit:** Always enforce a `maxRecursionDepth` (e.g., 32) to prevent infinite loops and stack exhaustion.
+- **Length Limit:** Always enforce a `maxExpandedLen` (e.g., 128KB) to prevent exponential memory consumption (e.g., the "billion laughs" equivalent in string expansion).
+- **Cycle Detection:** Combined with depth limits, cycle detection provides robust protection against malicious or accidental circular references.

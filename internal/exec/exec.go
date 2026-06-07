@@ -7,6 +7,11 @@ import (
 	"github.com/n24q02m/skret/internal/provider"
 )
 
+const (
+	maxRecursionDepth = 32
+	maxExpandedLen    = 128 * 1024 // 128KB
+)
+
 // BuildEnv merges secrets into existing env vars.
 // Existing env vars override secret values (user control).
 // Keys in exclude list are never injected.
@@ -63,8 +68,8 @@ func BuildEnv(secrets []*provider.Secret, existing []string, pathPrefix string, 
 	// Cycle detection map
 	resolving := make(map[string]bool, len(secretVars))
 
-	var resolve func(string) string
-	resolve = func(ref string) string {
+	var resolve func(string, int) string
+	resolve = func(ref string, depth int) string {
 		// 1. check existing environment variables (highest priority)
 		if val, ok := existingMap[ref]; ok {
 			return val
@@ -80,6 +85,11 @@ func BuildEnv(secrets []*provider.Secret, existing []string, pathPrefix string, 
 			return os.Getenv(ref)
 		}
 
+		// Limit recursion depth
+		if depth >= maxRecursionDepth {
+			return val
+		}
+
 		// Cycle detection
 		if resolving[ref] {
 			return val // Return raw value to break cycle
@@ -87,16 +97,23 @@ func BuildEnv(secrets []*provider.Secret, existing []string, pathPrefix string, 
 
 		resolving[ref] = true
 		if strings.IndexByte(val, '$') >= 0 {
-			val = os.Expand(val, resolve)
+			val = os.Expand(val, func(s string) string {
+				return resolve(s, depth+1)
+			})
 		}
 		resolving[ref] = false
+
+		// Enforce length limit
+		if len(val) > maxExpandedLen {
+			val = val[:maxExpandedLen]
+		}
 
 		resolved[ref] = val
 		return val
 	}
 
 	for k := range secretVars {
-		secretVars[k] = resolve(k)
+		secretVars[k] = resolve(k, 0)
 	}
 
 	for k, v := range secretVars {
