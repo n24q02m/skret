@@ -13,13 +13,20 @@ func TestUnquote(t *testing.T) {
 	}{
 		{`"quoted"`, "quoted"},
 		{`'single'`, "single"},
+		{"`backtick`", "backtick"},
 		{`no quotes`, "no quotes"},
 		{`"mismatched'`, `"mismatched'`},
+		{`'mismatched"`, `'mismatched"`},
+		{"`mismatched\"", "`mismatched\""},
 		{`""`, ""},
 		{`''`, ""},
+		{"``", ""},
 		{`a`, "a"},
 		{``, ""},
 		{`"one char"`, "one char"},
+		{`"nested 'quotes'"`, "nested 'quotes'"},
+		{`'nested "quotes"'`, "nested \"quotes\""},
+		{"`nested 'single' and \"double\" quotes`", "nested 'single' and \"double\" quotes"},
 	}
 
 	for _, tt := range tests {
