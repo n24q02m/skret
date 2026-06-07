@@ -98,13 +98,18 @@ func (f *InfisicalBrowserFlow) Login(ctx context.Context, _ map[string]string) (
 		_ = srv.Shutdown(shutdownCtx)
 	}()
 
-	callback := fmt.Sprintf("http://127.0.0.1:%d/callback", port)
-	authURL := f.BaseURL + "/api/v1/auth/redirect?" + url.Values{
-		"callback":       {callback},
+	u, err := url.Parse(f.BaseURL)
+	if err != nil {
+		return nil, fmt.Errorf("infisical browser: invalid base url: %w", err)
+	}
+	u = u.JoinPath("api/v1/auth/redirect")
+	u.RawQuery = url.Values{
+		"callback":       {fmt.Sprintf("http://127.0.0.1:%d/callback", port)},
 		"code_challenge": {challenge},
 		"method":         {"S256"},
 		"state":          {state},
 	}.Encode()
+	authURL := u.String()
 	fmt.Fprintf(ctxOut(ctx), "Open %s in your browser to approve skret.\n", authURL)
 	_ = f.Opener(ctx, authURL)
 
@@ -123,7 +128,11 @@ func (f *InfisicalBrowserFlow) Login(ctx context.Context, _ map[string]string) (
 	if err != nil {
 		return nil, fmt.Errorf("infisical browser: marshal body: %w", err)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, f.BaseURL+"/api/v1/auth/token", bytes.NewReader(body))
+	tokenURL, err := url.JoinPath(f.BaseURL, "api/v1/auth/token")
+	if err != nil {
+		return nil, fmt.Errorf("infisical browser: build request: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, tokenURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("infisical browser: build request: %w", err)
 	}
