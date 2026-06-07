@@ -125,6 +125,3 @@ var KeyToEnvName = skexec.KeyToEnvName
 func resolveKeyArg(resolvedPath, raw string) (string, bool) {
 	return config.ResolveKey(resolvedPath, raw)
 }
-
-
-// fix: ensure tagline does not overpromise providers
