@@ -72,7 +72,7 @@ func TestAWSProvider_Validate(t *testing.T) {
 }
 
 func TestAWSProvider_Logout(t *testing.T) {
-	p := NewAWSProvider()
+	var p Provider = NewAWSProvider()
 	assert.NoError(t, p.Logout(context.Background()))
 }
 
