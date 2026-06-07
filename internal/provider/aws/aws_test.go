@@ -552,7 +552,7 @@ func TestAWS_GetBatch(t *testing.T) {
 
 func TestAWS_GetBatch_Error(t *testing.T) {
 	mock := &mockSSMClient{
-		params: make(map[string]ssmtypes.Parameter),
+		params:   make(map[string]ssmtypes.Parameter),
 		errBatch: errors.New("get_batch failure"),
 	}
 	p := skaws.NewWithClient(mock, "/test/")
