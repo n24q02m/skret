@@ -58,7 +58,7 @@ func TestMigrate_KeyringWriteOkReadEmpty_NoDataLoss(t *testing.T) {
 	}
 }
 
-func TestMigrate_VerifyReadbackOk_RenamesFile(t *testing.T) {
+func TestMigrate_VerifyReadbackOk_RetainsFile(t *testing.T) {
 	dir := t.TempDir()
 	fp := filepath.Join(dir, "credentials.yaml")
 	fb := &fileBackend{path: fp}
@@ -71,8 +71,12 @@ func TestMigrate_VerifyReadbackOk_RenamesFile(t *testing.T) {
 	gk := &goodKeyring{}
 	migrateFileToKeyring(fb, gk)
 
-	if _, err := os.Stat(fp + ".migrated"); err != nil {
-		t.Fatalf("expected .migrated backup after verified migration: %v", err)
+	// File MUST stay (no rename) — it remains the source of truth.
+	if _, err := os.Stat(fp); err != nil {
+		t.Fatalf("source file was removed after successful migration: %v", err)
+	}
+	if _, err := os.Stat(fp + ".migrated"); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal(".migrated must NOT be created; the original file stays in place")
 	}
 	if g, _ := gk.read(); g.Providers["aws"] == nil || g.Providers["aws"].Token != "t" {
 		t.Fatalf("keyring missing migrated data: %+v", g)

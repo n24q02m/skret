@@ -115,12 +115,10 @@ var keyringAvailable = func() bool {
 	}
 }
 
-// migrateFileToKeyring moves a legacy ~/.skret/credentials.yaml into the
-// keyring exactly once. It renames the file to a .migrated backup ONLY after
-// verifying the keyring reads the data back intact — never destroy the source
-// before the destination is confirmed (a Set-OK-but-read-empty keyring would
-// otherwise lose all credentials). On any failure the file is left untouched
-// so NewStore's file fallback keeps working.
+// migrateFileToKeyring copies a legacy ~/.skret/credentials.yaml into the
+// keyring. It never renames or destroys the source file — the file remains the
+// source of truth to prevent data loss if the keyring becomes unreliable later
+// (some backends pass a same-process round-trip but fail in future processes).
 func migrateFileToKeyring(fb *fileBackend, kb backend) {
 	if _, err := os.Stat(fb.path); err != nil {
 		return // nothing to migrate
@@ -135,12 +133,11 @@ func migrateFileToKeyring(fb *fileBackend, kb backend) {
 	// Read-back verification: keyring must return every provider written.
 	got, err := kb.read()
 	if err != nil || len(got.Providers) != len(f.Providers) {
-		return // do NOT rename — source stays intact
+		return
 	}
 	for name := range f.Providers {
 		if got.Providers[name] == nil {
 			return
 		}
 	}
-	_ = os.Rename(fb.path, fb.path+".migrated")
 }
