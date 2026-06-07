@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/n24q02m/skret/internal/logging"
@@ -25,9 +26,10 @@ func NewRootCmd() *cobra.Command {
 	opts := &GlobalOpts{}
 
 	cmd := &cobra.Command{
-		Use:           "skret",
-		Short:         "Cloud-provider secret manager CLI wrapper",
-		Long:          "skret wraps cloud-provider secret managers (currently AWS SSM Parameter Store\nand a local file provider) with Doppler/Infisical-grade developer experience.",
+		Use:   "skret",
+		Short: "Cloud-provider secret manager CLI wrapper",
+		Long: fmt.Sprintf("skret wraps cloud-provider secret managers (currently %s)\n"+
+			"with Doppler/Infisical-grade developer experience.", formattedProviderList()),
 		Version:       version.String(),
 		SilenceUsage:  true,
 		SilenceErrors: true,

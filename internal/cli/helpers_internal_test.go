@@ -14,3 +14,46 @@ func TestConfigNotFoundMessageActionable(t *testing.T) {
 		}
 	}
 }
+
+func TestFormatProviderList(t *testing.T) {
+	tests := []struct {
+		name  string
+		input []string
+		want  string
+	}{
+		{
+			name:  "empty",
+			input: []string{},
+			want:  "",
+		},
+		{
+			name:  "one-aws",
+			input: []string{"aws"},
+			want:  "AWS SSM Parameter Store",
+		},
+		{
+			name:  "one-unknown",
+			input: []string{"gcp"},
+			want:  "gcp",
+		},
+		{
+			name:  "two",
+			input: []string{"aws", "local"},
+			want:  "AWS SSM Parameter Store and a local file provider",
+		},
+		{
+			name:  "three",
+			input: []string{"aws", "local", "gcp"},
+			want:  "AWS SSM Parameter Store, a local file provider and gcp",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := formatProviderList(tt.input)
+			if got != tt.want {
+				t.Errorf("formatProviderList() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
