@@ -7,6 +7,7 @@ import (
 	osexec "os/exec"
 
 	skexec "github.com/n24q02m/skret/internal/exec"
+	"github.com/n24q02m/skret/internal/provider"
 	"github.com/n24q02m/skret/pkg/skret"
 	"github.com/spf13/cobra"
 )
@@ -33,18 +34,8 @@ func newRunCmd(opts *GlobalOpts) *cobra.Command {
 				return skret.NewError(skret.ExitProviderError, "run: list secrets failed", err)
 			}
 
-			// Validate required secrets
-			if len(resolved.Required) > 0 {
-				secretKeys := make(map[string]bool)
-				for _, s := range secrets {
-					name := KeyToEnvName(s.Key, resolved.Path)
-					secretKeys[name] = true
-				}
-				for _, r := range resolved.Required {
-					if !secretKeys[r] && os.Getenv(r) == "" {
-						return skret.NewError(skret.ExitValidationError, fmt.Sprintf("run: required secret %q not found", r), nil)
-					}
-				}
+			if err := validateRequired(secrets, resolved.Required, resolved.Path); err != nil {
+				return err
 			}
 
 			env := skexec.BuildEnv(secrets, os.Environ(), resolved.Path, resolved.Exclude)
@@ -55,6 +46,26 @@ func newRunCmd(opts *GlobalOpts) *cobra.Command {
 
 	cmd.Flags().SetInterspersed(false)
 	return cmd
+}
+
+func validateRequired(secrets []*provider.Secret, required []string, path string) error {
+	if len(required) == 0 {
+		return nil
+	}
+
+	secretKeys := make(map[string]bool)
+	for _, s := range secrets {
+		name := KeyToEnvName(s.Key, path)
+		secretKeys[name] = true
+	}
+
+	for _, r := range required {
+		if !secretKeys[r] && os.Getenv(r) == "" {
+			return skret.NewError(skret.ExitValidationError, fmt.Sprintf("run: required secret %q not found", r), nil)
+		}
+	}
+
+	return nil
 }
 
 func execCommand(args []string, env []string) error {
