@@ -18,7 +18,8 @@ func TestRedactingHandler_RedactsSecrets(t *testing.T) {
 
 	// Break prefix to bypass GitGuardian
 	token := "sk-" + "TEST" + "1234567890" + "1234567890"
-	logger.Info("test",
+	logger.Info(
+		"test",
 		"api_key", token,
 		"normal", "hello world",
 	)
@@ -183,7 +184,8 @@ func TestRedactingHandler_RedactsNestedGroup(t *testing.T) {
 	token := "ghp_" + "TEST" + "ABCDEF" + "GHIJKLMNOPQRSTUVWXYZ" + "0123456789"
 	logger.Info(
 		"test",
-		slog.Group("user",
+		slog.Group(
+			"user",
 			slog.String("token", token),
 			slog.String("name", "alice"),
 		),
@@ -239,7 +241,8 @@ func TestRedactingHandler_ManyAttrs_PreservesOrder(t *testing.T) {
 	logger := slog.New(handler)
 
 	token := "ghp_" + "TEST" + "ABCDEF" + "GHIJKLMNOPQRSTUVWXYZ" + "0123456789"
-	logger.Info("multi",
+	logger.Info(
+		"multi",
 		"a", "alpha",
 		"b", "beta",
 		"token", token,
