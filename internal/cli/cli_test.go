@@ -301,17 +301,18 @@ func TestEnvCmd_DotenvFormat(t *testing.T) {
 	require.NoError(t, os.Chdir(dir))
 	defer os.Chdir(origDir)
 
-	var buf bytes.Buffer
+	var stdout, stderr bytes.Buffer
 	cmd := cli.NewRootCmd()
-	cmd.SetOut(&buf)
-	cmd.SetErr(&buf)
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
 	cmd.SetArgs([]string{"env"})
 
 	err := cmd.Execute()
 	require.NoError(t, err)
-	out := buf.String()
+	out := stdout.String()
 	assert.Contains(t, out, `DATABASE_URL="postgres://dev:dev@localhost/db"`)
 	assert.Contains(t, out, `API_KEY="secret123"`)
+	assert.Empty(t, stderr.String())
 }
 
 func TestEnvCmd_ExportFormat(t *testing.T) {
@@ -320,15 +321,16 @@ func TestEnvCmd_ExportFormat(t *testing.T) {
 	require.NoError(t, os.Chdir(dir))
 	defer os.Chdir(origDir)
 
-	var buf bytes.Buffer
+	var stdout, stderr bytes.Buffer
 	cmd := cli.NewRootCmd()
-	cmd.SetOut(&buf)
-	cmd.SetErr(&buf)
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
 	cmd.SetArgs([]string{"env", "--format=export"})
 
 	err := cmd.Execute()
 	require.NoError(t, err)
-	assert.Contains(t, buf.String(), `export DATABASE_URL="postgres://dev:dev@localhost/db"`)
+	assert.Contains(t, stdout.String(), `export DATABASE_URL="postgres://dev:dev@localhost/db"`)
+	assert.Empty(t, stderr.String())
 }
 
 // TestEnvCmd_WritesToStdoutNotStderr — regression for bug where cmd.Printf
@@ -572,21 +574,24 @@ func TestEnvCmd_JsonYamlFormats(t *testing.T) {
 	require.NoError(t, os.Chdir(dir))
 	defer os.Chdir(origDir)
 
-	var buf bytes.Buffer
+	var stdout, stderr bytes.Buffer
 	cmd := cli.NewRootCmd()
-	cmd.SetOut(&buf)
-	cmd.SetErr(&buf)
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
 	cmd.SetArgs([]string{"env", "--format=json"})
 	require.NoError(t, cmd.Execute())
-	assert.Contains(t, buf.String(), `"DATABASE_URL": "postgres://`)
+	assert.Contains(t, stdout.String(), `"DATABASE_URL": "postgres://`)
+	assert.Empty(t, stderr.String())
 
-	buf.Reset()
+	stdout.Reset()
+	stderr.Reset()
 	cmd2 := cli.NewRootCmd()
-	cmd2.SetOut(&buf)
-	cmd2.SetErr(&buf)
+	cmd2.SetOut(&stdout)
+	cmd2.SetErr(&stderr)
 	cmd2.SetArgs([]string{"env", "--format=yaml"})
 	require.NoError(t, cmd2.Execute())
-	assert.Contains(t, buf.String(), "DATABASE_URL: postgres://")
+	assert.Contains(t, stdout.String(), "DATABASE_URL: postgres://")
+	assert.Empty(t, stderr.String())
 }
 
 func TestSetCmd_FromFile(t *testing.T) {

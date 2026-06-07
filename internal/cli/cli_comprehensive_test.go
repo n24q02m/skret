@@ -74,15 +74,15 @@ func TestEnvCmd_UnknownFormatFallsBackToDotenv(t *testing.T) {
 	require.NoError(t, os.Chdir(dir))
 	defer os.Chdir(origDir)
 
-	var buf bytes.Buffer
+	var stdout, stderr bytes.Buffer
 	cmd := cli.NewRootCmd()
-	cmd.SetOut(&buf)
-	cmd.SetErr(&buf)
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
 	cmd.SetArgs([]string{"env", "--format=unknown"})
 	err := cmd.Execute()
 	require.NoError(t, err)
-	// Unknown format falls through to the default (dotenv)
-	assert.Contains(t, buf.String(), "DATABASE_URL=")
+	assert.Contains(t, stdout.String(), "DATABASE_URL=")
+	assert.Empty(t, stderr.String())
 }
 
 // --- Get with --with-metadata flag ---
