@@ -220,3 +220,26 @@ func TestCtxOut_Returns(t *testing.T) {
 	w := ctxOut(context.Background())
 	assert.NotNil(t, w)
 }
+
+func TestDefaultFilePath(t *testing.T) {
+	t.Run("success", func(t *testing.T) {
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+		t.Setenv("USERPROFILE", home)
+
+		got := defaultFilePath()
+		want := filepath.Join(home, ".skret", "credentials.yaml")
+		assert.Equal(t, want, got)
+	})
+
+	t.Run("failure fallback", func(t *testing.T) {
+		t.Setenv("HOME", "")
+		t.Setenv("USERPROFILE", "")
+		t.Setenv("HOMEDRIVE", "")
+		t.Setenv("HOMEPATH", "")
+
+		got := defaultFilePath()
+		want := filepath.Join(".", ".skret", "credentials.yaml")
+		assert.Equal(t, want, got)
+	})
+}
