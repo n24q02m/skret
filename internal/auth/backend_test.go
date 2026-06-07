@@ -71,14 +71,12 @@ func TestMigrateFileToKeyring(t *testing.T) {
 	if err != nil || got.Providers["aws"] == nil || got.Providers["aws"].Token != "t" {
 		t.Fatalf("not migrated into keyring: %+v err=%v", got, err)
 	}
-	if _, err := os.Stat(fp); !os.IsNotExist(err) {
-		t.Fatal("legacy file should be renamed away")
+	if _, err := os.Stat(fp); err != nil {
+		t.Fatal("legacy file should be kept (never renamed away)")
 	}
-	if _, err := os.Stat(fp + ".migrated"); err != nil {
-		t.Fatalf("backup .migrated missing: %v", err)
+	if _, err := os.Stat(fp + ".migrated"); !os.IsNotExist(err) {
+		t.Fatal("backup .migrated should not be created")
 	}
-	// Idempotent: second call (no file) is a no-op.
-	migrateFileToKeyring(fb, kb)
 }
 
 func TestFileBackendRoundTrip(t *testing.T) {
