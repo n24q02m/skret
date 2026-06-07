@@ -2,6 +2,7 @@ package skret
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -156,12 +157,52 @@ func TestClientMethods(t *testing.T) {
 	})
 
 	t.Run("GetHistory", func(t *testing.T) {
-		mock.getHistoryFunc = func(ctx context.Context, key string) ([]*provider.Secret, error) {
-			return []*provider.Secret{{Key: "k1", Version: 1}}, nil
-		}
-		h, err := client.GetHistory(ctx, "k1")
-		require.NoError(t, err)
-		assert.Len(t, h, 1)
+		t.Run("Success", func(t *testing.T) {
+			mock.getHistoryFunc = func(ctx context.Context, key string) ([]*provider.Secret, error) {
+				return []*provider.Secret{{Key: "k1", Version: 1}}, nil
+			}
+			h, err := client.GetHistory(ctx, "k1")
+			require.NoError(t, err)
+			assert.Len(t, h, 1)
+		})
+
+		t.Run("NotFound", func(t *testing.T) {
+			mock.getHistoryFunc = func(ctx context.Context, key string) ([]*provider.Secret, error) {
+				return nil, provider.ErrNotFound
+			}
+			_, err := client.GetHistory(ctx, "missing")
+			assert.Error(t, err)
+			assert.Equal(t, ExitProviderError, ExitCode(err))
+		})
+
+		t.Run("Error", func(t *testing.T) {
+			mock.getHistoryFunc = func(ctx context.Context, key string) ([]*provider.Secret, error) {
+				return nil, fmt.Errorf("generic error")
+			}
+			_, err := client.GetHistory(ctx, "k1")
+			assert.Error(t, err)
+			assert.Equal(t, ExitProviderError, ExitCode(err))
+		})
+
+		t.Run("Empty", func(t *testing.T) {
+			mock.getHistoryFunc = func(ctx context.Context, key string) ([]*provider.Secret, error) {
+				return []*provider.Secret{}, nil
+			}
+			h, err := client.GetHistory(ctx, "k1")
+			require.NoError(t, err)
+			assert.Empty(t, h)
+		})
+
+		t.Run("CancelledContext", func(t *testing.T) {
+			cancelCtx, cancel := context.WithCancel(ctx)
+			cancel()
+			mock.getHistoryFunc = func(ctx context.Context, key string) ([]*provider.Secret, error) {
+				return nil, ctx.Err()
+			}
+			_, err := client.GetHistory(cancelCtx, "k1")
+			assert.Error(t, err)
+			assert.Equal(t, ExitProviderError, ExitCode(err))
+		})
 	})
 
 	t.Run("Rollback", func(t *testing.T) {
