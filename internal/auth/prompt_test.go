@@ -119,12 +119,18 @@ func TestOpenBrowser_Injection(t *testing.T) {
 		{"leading dash", "https://-V/foo", "invalid url host"},
 		{"shell metacharacter $", "https://example.com/$PATH", "dangerous characters"},
 		{"shell metacharacter ;", "https://example.com/;id", "dangerous characters"},
+		{"shell metacharacter `", "https://example.com/?`id`", "dangerous characters"},
+		{"shell metacharacter |", "https://example.com/?|id", "dangerous characters"},
+		{"valid query params", "https://example.com/?foo=bar&baz=qux", ""},
+		{"valid query with quotes", "https://example.com/?q='value'", ""},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := auth.OpenBrowser(context.Background(), tt.url)
-			if assert.Error(t, err) {
+			if tt.msg == "" {
+				assert.NoError(t, err)
+			} else if assert.Error(t, err) {
 				assert.Contains(t, err.Error(), tt.msg)
 			}
 		})

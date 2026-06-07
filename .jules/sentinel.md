@@ -20,3 +20,8 @@
 ## 2026-05-28 - [SECURITY] Insecure HTTP Server Configuration
 
 Added `ReadTimeout` and `WriteTimeout` to `http.Server` in `internal/auth/infisical_browser.go` to prevent potential resource exhaustion on the local loopback listener.
+
+## 2026-06-05 - Safe Shell Metacharacter Rejection
+**Vulnerability:** URL command injection checks were incomplete. `OpenBrowser` rejected `$ ` and `;`, but allowed `|`, `<`, `>`, and backticks, which are also shell metacharacters capable of command injection.
+**Learning:** When sanitizing arguments for shell-like execution (e.g., `xdg-open`), checking a narrow list of metacharacters is insufficient. However, blindly rejecting all special characters breaks legitimate URL functionality (e.g., `&` for query parameters, or `'` in query values).
+**Prevention:** Use a refined blocklist: `strings.ContainsAny(safeURL, "|;<>` + "`" + `\\()$\"")`. Explicitly allow standard URL delimiters like `&` to preserve functionality while mitigating injection risks.
