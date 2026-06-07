@@ -75,3 +75,5 @@ func TestClient_GetHistory_EdgeCases(t *testing.T) {
 		assert.Equal(t, expected[0].Meta.CreatedBy, history[0].Meta.CreatedBy)
 	})
 }
+
+// Edge case tests for GetHistory
