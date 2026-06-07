@@ -18,10 +18,13 @@ func ctxOut(_ context.Context) io.Writer {
 	return os.Stderr
 }
 
+// stdinStat is a package-level variable to allow mocking in tests.
+var stdinStat = os.Stdin.Stat
+
 // IsInteractiveStdin reports whether stdin is a terminal (for prompt gating).
 // Falls back to checking if TERM is set when term package is not available.
 func IsInteractiveStdin() bool {
-	fi, err := os.Stdin.Stat()
+	fi, err := stdinStat()
 	if err != nil {
 		return false
 	}
