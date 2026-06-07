@@ -2,7 +2,6 @@ package cli
 
 import (
 	"strings"
-	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -10,7 +9,7 @@ import (
 
 // Bug F: the tagline must not advertise providers that are not registered.
 func TestRootHelpDoesNotOverpromiseProviders(t *testing.T) {
-	long := NewRootCmd().Long; fmt.Println("LONG:", long)
+	long := NewRootCmd().Long
 	for _, banned := range []string{"GCP", "Azure", "OCI", "Cloudflare"} {
 		if strings.Contains(long, banned) {
 			t.Fatalf("root Long advertises unimplemented provider %q: %q", banned, long)
