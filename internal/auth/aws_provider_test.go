@@ -15,13 +15,22 @@ import (
 func TestAWSProvider_Methods(t *testing.T) {
 	p := NewAWSProvider()
 	assert.Equal(t, "aws", p.Name())
+
 	methods := p.Methods()
 	assert.Len(t, methods, 4)
-	names := []string{methods[0].Name, methods[1].Name, methods[2].Name, methods[3].Name}
-	assert.Contains(t, names, "sso")
-	assert.Contains(t, names, "access-key")
-	assert.Contains(t, names, "assume-role")
-	assert.Contains(t, names, "profile")
+
+	expected := []Method{
+		{Name: "sso", Description: "AWS SSO device flow (recommended)", Interactive: true},
+		{Name: "access-key", Description: "Paste AWS access key + secret", Interactive: true},
+		{Name: "assume-role", Description: "Assume IAM role (requires role_arn opt)", Interactive: false},
+		{Name: "profile", Description: "Use existing AWS CLI profile from ~/.aws/config", Interactive: false},
+	}
+
+	for i, m := range methods {
+		assert.Equal(t, expected[i].Name, m.Name)
+		assert.Equal(t, expected[i].Description, m.Description)
+		assert.Equal(t, expected[i].Interactive, m.Interactive)
+	}
 }
 
 // writeAWSConfig writes a minimal ~/.aws/config under dir with the given
