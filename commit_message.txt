@@ -1,0 +1,7 @@
+fix: prevent URL injection via fmt.Sprintf
+
+When constructing endpoints based on user-supplied base URLs, replacing
+string concatenation and direct struct field assignment with standard
+library net/url functions like url.JoinPath prevents potential path
+traversal, URL injection, or malformed URLs due to improper handling
+of trailing slashes or unescaped characters.
