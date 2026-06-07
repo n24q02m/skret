@@ -141,7 +141,3 @@ func TestOpenBrowser_Injection(t *testing.T) {
 		})
 	}
 }
-
-
-
-// Trivial change for PR title update
