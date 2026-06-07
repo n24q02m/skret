@@ -7,6 +7,11 @@ import (
 	"github.com/n24q02m/skret/internal/provider"
 )
 
+const (
+	maxExpansionDepth = 32
+	maxExpandedLen    = 128 * 1024
+)
+
 // BuildEnv merges secrets into existing env vars.
 // Existing env vars override secret values (user control).
 // Keys in exclude list are never injected.
@@ -63,6 +68,7 @@ func BuildEnv(secrets []*provider.Secret, existing []string, pathPrefix string, 
 	// Cycle detection map
 	resolving := make(map[string]bool, len(secretVars))
 
+	var depth int
 	var resolve func(string) string
 	resolve = func(ref string) string {
 		// 1. check existing environment variables (highest priority)
@@ -85,11 +91,23 @@ func BuildEnv(secrets []*provider.Secret, existing []string, pathPrefix string, 
 			return val // Return raw value to break cycle
 		}
 
+		// Depth limit
+		if depth >= maxExpansionDepth {
+			return val
+		}
+
 		resolving[ref] = true
 		if strings.IndexByte(val, '$') >= 0 {
+			depth++
 			val = os.Expand(val, resolve)
+			depth--
 		}
 		resolving[ref] = false
+
+		// Length limit
+		if len(val) > maxExpandedLen {
+			val = val[:maxExpandedLen]
+		}
 
 		resolved[ref] = val
 		return val
