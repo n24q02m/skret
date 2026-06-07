@@ -46,8 +46,10 @@ func WithAutoAuth(ctx context.Context, provider string, fn func() error) error {
 }
 
 // isNonInteractive returns true when stdin is not a terminal or SKRET_NON_INTERACTIVE=1.
+var isInteractiveStdin = IsInteractiveStdin
+
 func isNonInteractive() bool {
-	return os.Getenv("SKRET_NON_INTERACTIVE") == "1" || !IsInteractiveStdin()
+	return os.Getenv("SKRET_NON_INTERACTIVE") == "1" || !isInteractiveStdin()
 }
 
 // withAutoAuthIO is the testable core of WithAutoAuth.
