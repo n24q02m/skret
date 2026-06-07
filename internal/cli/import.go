@@ -103,6 +103,10 @@ func (o *importOptions) run(cmd *cobra.Command) error {
 		return err
 	}
 
+	return o.execute(cmd, p, imp)
+}
+
+func (o *importOptions) execute(cmd *cobra.Command, p provider.SecretProvider, imp importer.Importer) error {
 	ctx := context.Background()
 	secrets, err := imp.Import(ctx)
 	if err != nil {
@@ -111,6 +115,10 @@ func (o *importOptions) run(cmd *cobra.Command) error {
 
 	orderedKeys, dedupedMap, skipped := o.deduplicate(cmd, secrets)
 	existing, listLoaded := o.loadExisting(ctx, p, o.toPath, orderedKeys)
+
+	if !o.dryRun && (o.onConflict == "skip" || o.onConflict == "fail") && !listLoaded && len(orderedKeys) > 0 {
+		return skret.NewError(skret.ExitProviderError, "import: could not efficiently check for existing secrets (both List and GetBatch failed)", nil)
+	}
 
 	var imported int
 	for _, destKey := range orderedKeys {
@@ -123,16 +131,7 @@ func (o *importOptions) run(cmd *cobra.Command) error {
 		}
 
 		if o.onConflict == "skip" || o.onConflict == "fail" {
-			hasConflict := false
-			if listLoaded {
-				_, hasConflict = existing[destKey]
-			} else {
-				// Fallback to individual Get if both List and GetBatch failed
-				if _, err := p.Get(ctx, destKey); err == nil {
-					hasConflict = true
-				}
-			}
-
+			_, hasConflict := existing[destKey]
 			if hasConflict {
 				if o.onConflict == "skip" {
 					skipped++

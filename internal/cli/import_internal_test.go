@@ -130,3 +130,53 @@ func TestImportDeduplicate_Coverage(t *testing.T) {
 	assert.Equal(t, "V1", m["path/K1"])
 	assert.Equal(t, 0, skipped)
 }
+
+type mockImporter struct {
+	name    string
+	secrets []importer.ImportedSecret
+	err     error
+}
+
+func (m *mockImporter) Name() string { return m.name }
+func (m *mockImporter) Import(ctx context.Context) ([]importer.ImportedSecret, error) {
+	return m.secrets, m.err
+}
+
+func TestImport_NPlusOneFallback(t *testing.T) {
+	cmd := &cobra.Command{}
+
+	secrets := []importer.ImportedSecret{
+		{Key: "K1", Value: "V1"},
+		{Key: "K2", Value: "V2"},
+	}
+	imp := &mockImporter{name: "mock", secrets: secrets}
+
+	var getCalls int
+	m := &mockProvider{
+		listFunc: func(ctx context.Context, prefix string) ([]*provider.Secret, error) {
+			return nil, errors.New("list failed")
+		},
+		getBatchFunc: func(ctx context.Context, keys []string) ([]*provider.Secret, error) {
+			return nil, errors.New("batch failed")
+		},
+		getFunc: func(ctx context.Context, key string) (*provider.Secret, error) {
+			getCalls++
+			return nil, provider.ErrNotFound
+		},
+		setFunc: func(ctx context.Context, key, value string, meta provider.SecretMeta) error {
+			return nil
+		},
+	}
+
+	o := &importOptions{
+		onConflict: "skip",
+	}
+
+	err := o.execute(cmd, m, imp)
+	assert.Error(t, err)
+	var skErr *skret.Error
+	require.True(t, errors.As(err, &skErr))
+	assert.Equal(t, skret.ExitProviderError, skErr.Code)
+	assert.Contains(t, err.Error(), "could not efficiently check for existing secrets")
+	assert.Equal(t, 0, getCalls, "Expected 0 Get calls (N+1 fallback removed)")
+}
