@@ -11,15 +11,23 @@ func TestUnquote(t *testing.T) {
 		input    string
 		expected string
 	}{
-		{`"quoted"`, "quoted"},
-		{`'single'`, "single"},
-		{`no quotes`, "no quotes"},
-		{`"mismatched'`, `"mismatched'`},
-		{`""`, ""},
-		{`''`, ""},
-		{`a`, "a"},
-		{``, ""},
-		{`"one char"`, "one char"},
+		{"\"quoted\"", "quoted"},
+		{"'single'", "single"},
+		{"`backticks`", "backticks"},
+		{"no quotes", "no quotes"},
+		{"\"mismatched'", "\"mismatched'"},
+		{"'mismatched\"", "'mismatched\""},
+		{"`mismatched\"", "`mismatched\""},
+		{"\"\"", ""},
+		{"''", ""},
+		{"``", ""},
+		{"a", "a"},
+		{"\"", "\""},
+		{"'", "'"},
+		{"`", "`"},
+		{"", ""},
+		{"\"one char\"", "one char"},
+		{"\" with spaces \"", " with spaces "},
 	}
 
 	for _, tt := range tests {
