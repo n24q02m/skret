@@ -313,8 +313,8 @@ func TestEnvCmd_DotenvFormat(t *testing.T) {
 	assert.Contains(t, out, `DATABASE_URL="postgres://dev:dev@localhost/db"`)
 	assert.Contains(t, out, `API_KEY="secret123"`)
 	assert.Empty(t, stderr.String())
-
 }
+
 func TestEnvCmd_ExportFormat(t *testing.T) {
 	dir := setupTestRepo(t)
 	origDir, _ := os.Getwd()

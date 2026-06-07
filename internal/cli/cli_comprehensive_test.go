@@ -83,7 +83,6 @@ func TestEnvCmd_UnknownFormatFallsBackToDotenv(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, stdout.String(), "DATABASE_URL=")
 	assert.Empty(t, stderr.String())
-	// Unknown format falls through to the default (dotenv)
 }
 
 // --- Get with --with-metadata flag ---
