@@ -80,7 +80,3 @@ func TestBuildEnv_ExpansionFromHostEnv(t *testing.T) {
 	env := exec.BuildEnv(secrets, nil, "", nil)
 	assert.Contains(t, env, "A=ext_val")
 }
-
-// Final verification
-// Final final verification
-// Final final final verification
