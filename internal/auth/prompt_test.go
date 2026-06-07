@@ -117,8 +117,16 @@ func TestOpenBrowser_Injection(t *testing.T) {
 		msg  string
 	}{
 		{"leading dash", "https://-V/foo", "invalid url host"},
-		{"shell metacharacter $", "https://example.com/$PATH", "dangerous characters"},
-		{"shell metacharacter ;", "https://example.com/;id", "dangerous characters"},
+		{"shell metacharacter $", "https://example.com/search?q=$PATH", "dangerous characters"},
+		{"shell metacharacter ;", "https://example.com/search?q=;id", "dangerous characters"},
+		{"shell metacharacter |", "https://example.com/search?q=|id", "dangerous characters"},
+		{"shell metacharacter <", "https://example.com/search?q=<id", "dangerous characters"},
+		{"shell metacharacter >", "https://example.com/search?q=>id", "dangerous characters"},
+		{"shell metacharacter `", "https://example.com/search?q=`id", "dangerous characters"},
+		{"shell metacharacter \\", "https://example.com/search?q=\\id", "dangerous characters"},
+		{"shell metacharacter (", "https://example.com/search?q=(id", "dangerous characters"},
+		{"shell metacharacter )", "https://example.com/search?q=)id", "dangerous characters"},
+		{"shell metacharacter \"", "https://example.com/search?q=\"id", "dangerous characters"},
 	}
 
 	for _, tt := range tests {

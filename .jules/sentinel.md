@@ -20,3 +20,16 @@
 ## 2026-05-28 - [SECURITY] Insecure HTTP Server Configuration
 
 Added `ReadTimeout` and `WriteTimeout` to `http.Server` in `internal/auth/infisical_browser.go` to prevent potential resource exhaustion on the local loopback listener.
+
+## 2026-06-07 - Command Injection Risk in OpenBrowser
+
+Fixed a command injection vulnerability in `internal/auth/prompt.go:OpenBrowser`.
+The function was intended to block dangerous shell metacharacters before passing the URL to platform openers like `xdg-open`, but it only filtered `$` and `;`.
+This was insufficient because `url.URL.String()` preserves many other metacharacters (like `|`, `<`, `>`, `\`, `\"`, `(`, `)`) when they appear in the query string component of a URL.
+
+Key findings:
+- `url.URL.String()` is NOT a sufficient sanitizer for shell metacharacters in query parameters.
+- The blocklist has been expanded to include: `|`, `;`, `<`, `>`, ` ` `, `\`, `(`, `)`, `$`, and `\"`.
+- `&` and `'` are explicitly allowed as they are necessary for legitimate OAuth redirect URLs and are generally safe in this context (not being shell delimiters or command substitution triggers).
+
+Recommendation: Always use `strings.ContainsAny` with a comprehensive blocklist when passing strings derived from URLs to external commands that might be implemented as shell scripts.

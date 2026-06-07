@@ -92,7 +92,8 @@ func OpenBrowser(ctx context.Context, u string) error {
 	// Reject unescaped shell metacharacters that url.String() might leave behind
 	// in the path or other components, which could be dangerous if the browser
 	// opener (like xdg-open) is a shell script.
-	if strings.ContainsAny(safeURL, "$;") {
+	// Characters like & and ' are explicitly allowed as they are common in OAuth URLs.
+	if strings.ContainsAny(safeURL, "|;<>`\\()$\"") {
 		return fmt.Errorf("auth prompt: url contains dangerous characters")
 	}
 
