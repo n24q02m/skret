@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -65,6 +66,35 @@ func TestStore_Write_DirectCall(t *testing.T) {
 	assert.Equal(t, "aws-tok", loaded.Providers["aws"].Token)
 }
 
+func TestFileBackend_Write_MkdirError(t *testing.T) {
+	dir := t.TempDir()
+	// Create a file where a directory should be
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "file"), []byte("not a dir"), 0o600))
+	b := &fileBackend{path: filepath.Join(dir, "file", "creds.yaml")}
+	err := b.write(&storeFile{})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "mkdir")
+}
+
+func TestFileBackend_Write_CreateTempError(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		// Windows does not enforce the 0o500 read-only directory bit for the
+		// owner, so os.CreateTemp still succeeds and this error path cannot be
+		// triggered via directory permissions.
+		t.Skip("directory read-only permission bit is not enforced on Windows")
+	}
+	dir := t.TempDir()
+	// Make directory read-only to prevent CreateTemp
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "readonly"), 0o700))
+	b := &fileBackend{path: filepath.Join(dir, "readonly", "creds.yaml")}
+	require.NoError(t, os.Chmod(filepath.Join(dir, "readonly"), 0o500))
+	defer func() { _ = os.Chmod(filepath.Join(dir, "readonly"), 0o700) }()
+
+	err := b.write(&storeFile{})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "create temp")
+}
+
 func TestStore_Write_RenameError(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "target")
@@ -73,6 +103,15 @@ func TestStore_Write_RenameError(t *testing.T) {
 	f := &storeFile{Version: "1", Providers: map[string]*Credential{}}
 	err := b.write(f)
 	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "rename")
+}
+
+func TestFileBackend_Read_ReadError(t *testing.T) {
+	dir := t.TempDir()
+	b := &fileBackend{path: dir} // it's a directory
+	_, err := b.read()
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "read")
 }
 
 func TestStore_Read_NonExistent(t *testing.T) {
