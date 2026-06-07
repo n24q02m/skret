@@ -3,8 +3,10 @@ package auth_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"strings"
 	"testing"
+	"testing/iotest"
 
 	"github.com/n24q02m/skret/internal/auth"
 	"github.com/stretchr/testify/assert"
@@ -57,6 +59,15 @@ func TestSelectMethod_NotANumber(t *testing.T) {
 	_, err := auth.SelectMethod(strings.NewReader("abc\n"), &out, methods)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid choice")
+}
+
+func TestSelectMethod_ReadError(t *testing.T) {
+	var out bytes.Buffer
+	methods := []auth.Method{{Name: "sso"}}
+	expectedErr := errors.New("read error")
+	_, err := auth.SelectMethod(iotest.ErrReader(expectedErr), &out, methods)
+	assert.Error(t, err)
+	assert.True(t, errors.Is(err, expectedErr))
 }
 
 func TestSelectMethod_EmptyDescription(t *testing.T) {
