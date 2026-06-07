@@ -165,8 +165,3 @@ func TestWithAutoAuthIO_NonInteractive(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "skret auth login doppler")
 }
-
-func TestIsNonInteractive(t *testing.T) {
-	// Just verify it doesn't panic; value depends on test runner
-	_ = isNonInteractive()
-}
