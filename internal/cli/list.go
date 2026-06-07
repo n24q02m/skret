@@ -96,9 +96,16 @@ func printSecrets(cmd *cobra.Command, secrets []*provider.Secret, format string,
 		fmt.Fprintln(cmd.OutOrStdout(), string(data))
 	default:
 		w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "KEY\tVERSION")
-		for _, s := range secrets {
-			fmt.Fprintf(w, "%s\t%d\n", s.Key, s.Version)
+		if values {
+			fmt.Fprintln(w, "KEY\tVERSION\tVALUE")
+			for _, s := range secrets {
+				fmt.Fprintf(w, "%s\t%d\t%s\n", s.Key, s.Version, s.Value)
+			}
+		} else {
+			fmt.Fprintln(w, "KEY\tVERSION")
+			for _, s := range secrets {
+				fmt.Fprintf(w, "%s\t%d\n", s.Key, s.Version)
+			}
 		}
 		if err := w.Flush(); err != nil {
 			return fmt.Errorf("flush failed: %w", err)
