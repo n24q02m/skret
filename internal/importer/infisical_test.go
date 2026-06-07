@@ -121,11 +121,11 @@ func TestInfisicalImporter_ContextCancelled(t *testing.T) {
 }
 
 func TestInfisicalImporter_Import_RequestError(t *testing.T) {
-	// Trigger http.NewRequestWithContext error by using an invalid URL character
+	// Trigger parse base url error by using an invalid URL character
 	imp := importer.NewInfisical("token", "proj", "env", "http://api.infisical.com\x7f")
 	_, err := imp.Import(context.Background())
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "create request")
+	assert.Contains(t, err.Error(), "parse base url")
 }
 
 func TestInfisicalImporter_APIError(t *testing.T) {

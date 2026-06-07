@@ -59,6 +59,20 @@ func TestGitHubSyncer_Internal_GetPublicKey_Errors(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "network error")
 
+	// Test parse base URL error
+	g.baseURL = "http://api.github.com\x7f"
+	_, _, err = g.getPublicKey(context.Background())
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "parse base url")
+
+	// Test join path error
+	g.baseURL = "http://api.github.com"
+	g.owner = "%zz"
+	_, _, err = g.getPublicKey(context.Background())
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "join path")
+	g.owner = "owner"
+
 	// Test read body error
 	g.httpClient.Transport = &mockTransport{
 		roundTrip: func(req *http.Request) (*http.Response, error) {
@@ -121,6 +135,20 @@ func TestGitHubSyncer_Internal_PutSecret_Errors(t *testing.T) {
 	err = g.putSecret(context.Background(), "name", "value", &recipientKey, "key-id")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "read error")
+
+	// Test join path error
+	g.baseURL = "http://api.github.com"
+	g.owner = "%zz"
+	err = g.putSecret(context.Background(), "name", "value", &recipientKey, "key-id")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "join path")
+	g.owner = "owner"
+
+	// Test parse base URL error
+	g.baseURL = "http://api.github.com\x7f"
+	err = g.putSecret(context.Background(), "name", "value", &recipientKey, "key-id")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "parse base url")
 
 	// Test seal error
 	oldRand := randReader

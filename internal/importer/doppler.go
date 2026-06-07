@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"sort"
 	"time"
 )
@@ -29,9 +30,18 @@ func NewDoppler(token, project, config, baseURL string) Importer {
 func (d *DopplerImporter) Name() string { return "doppler" }
 
 func (d *DopplerImporter) Import(ctx context.Context) ([]ImportedSecret, error) {
-	url := fmt.Sprintf("%s/v3/configs/config/secrets?project=%s&config=%s", d.baseURL, d.project, d.config)
+	u, err := url.Parse(d.baseURL)
+	if err != nil {
+		return nil, fmt.Errorf("doppler: parse base url: %w", err)
+	}
+	u.Path = "/v3/configs/config/secrets"
+	q := u.Query()
+	q.Set("project", d.project)
+	q.Set("config", d.config)
+	u.RawQuery = q.Encode()
+	reqURL := u.String()
 
-	req, err := http.NewRequestWithContext(ctx, "GET", url, http.NoBody)
+	req, err := http.NewRequestWithContext(ctx, "GET", reqURL, http.NoBody)
 	if err != nil {
 		return nil, fmt.Errorf("doppler: create request: %w", err)
 	}

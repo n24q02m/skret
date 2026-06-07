@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"sort"
 	"time"
 )
@@ -29,9 +30,18 @@ func NewInfisical(token, projectID, env, baseURL string) Importer {
 func (i *InfisicalImporter) Name() string { return "infisical" }
 
 func (i *InfisicalImporter) Import(ctx context.Context) ([]ImportedSecret, error) {
-	url := fmt.Sprintf("%s/api/v3/secrets/raw?workspaceId=%s&environment=%s", i.baseURL, i.projectID, i.env)
+	u, err := url.Parse(i.baseURL)
+	if err != nil {
+		return nil, fmt.Errorf("infisical: parse base url: %w", err)
+	}
+	u.Path = "/api/v3/secrets/raw"
+	q := u.Query()
+	q.Set("workspaceId", i.projectID)
+	q.Set("environment", i.env)
+	u.RawQuery = q.Encode()
+	reqURL := u.String()
 
-	req, err := http.NewRequestWithContext(ctx, "GET", url, http.NoBody)
+	req, err := http.NewRequestWithContext(ctx, "GET", reqURL, http.NoBody)
 	if err != nil {
 		return nil, fmt.Errorf("infisical: create request: %w", err)
 	}
