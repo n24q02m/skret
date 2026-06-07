@@ -171,8 +171,14 @@ func TestClientMethods(t *testing.T) {
 		}
 		err := client.Rollback(ctx, "k1", 1)
 		assert.NoError(t, err)
-	})
 
+		mock.rollbackFunc = func(ctx context.Context, key string, version int64) error {
+			return assert.AnError
+		}
+		err = client.Rollback(ctx, "k1", 1)
+		assert.Error(t, err)
+		assert.Equal(t, ExitProviderError, ExitCode(err))
+	})
 	t.Run("Close", func(t *testing.T) {
 		called := false
 		mock.closeFunc = func() error {
