@@ -6,9 +6,11 @@ import (
 	"testing"
 	"time"
 
-	awslib "github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ssooidc"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/n24q02m/skret/internal/auth"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestResolveStoredCredentials_SSO(t *testing.T) {
@@ -21,13 +23,13 @@ func TestResolveStoredCredentials_SSO(t *testing.T) {
 		return ssoCred(time.Now().Add(-time.Hour)), nil
 	}
 	ref := &fakeRefresher{out: &ssooidc.CreateTokenOutput{
-		AccessToken: awslib.String("nt"), ExpiresIn: 3600,
+		AccessToken: aws.String("nt"), ExpiresIn: 3600,
 	}}
 	role := &fakeRole{out: roleOut()}
 	var saved []*auth.Credential
 	defer withFakes(t, ref, role, &saved)()
 
-	cp, ok := resolveStoredCredentials()
+	cp, _, ok := resolveStoredCredentials()
 	if !ok || cp == nil {
 		t.Fatal("sso cred with expired access token must still resolve via ssoProvider")
 	}
@@ -42,7 +44,7 @@ func TestResolveStoredCredentials_SSO(t *testing.T) {
 		delete(c.Metadata, "refresh_token")
 		return c, nil
 	}
-	if _, ok := resolveStoredCredentials(); ok {
+	if _, _, ok := resolveStoredCredentials(); ok {
 		t.Fatal("sso without refresh_token must not resolve")
 	}
 }
@@ -62,9 +64,12 @@ func TestResolveStoredCredentials(t *testing.T) {
 				},
 			}, nil
 		}
-		cp, ok := resolveStoredCredentials()
+		cp, profile, ok := resolveStoredCredentials()
 		if !ok || cp == nil {
 			t.Fatalf("expected usable provider, got ok=%v cp=%v", ok, cp)
+		}
+		if profile != "" {
+			t.Fatalf("expected empty profile for access-key, got %q", profile)
 		}
 		got, err := cp.Retrieve(context.Background())
 		if err != nil {
@@ -75,9 +80,33 @@ func TestResolveStoredCredentials(t *testing.T) {
 		}
 	})
 
+	t.Run("profile method returns profile name", func(t *testing.T) {
+		authStoreLoad = func(string) (*auth.Credential, error) {
+			return &auth.Credential{
+				Method:   "profile",
+				Metadata: map[string]string{"profile": "dev"},
+			}, nil
+		}
+		cp, profile, ok := resolveStoredCredentials()
+		if !ok || cp != nil || profile != "dev" {
+			t.Fatalf("expected ok=true cp=nil profile=dev, got ok=%v cp=%v profile=%q", ok, cp, profile)
+		}
+	})
+
+	t.Run("profile method with missing profile name", func(t *testing.T) {
+		authStoreLoad = func(string) (*auth.Credential, error) {
+			return &auth.Credential{
+				Method:   "profile",
+				Metadata: map[string]string{},
+			}, nil
+		}
+		_, _, ok := resolveStoredCredentials()
+		assert.False(t, ok)
+	})
+
 	t.Run("no credential -> default chain", func(t *testing.T) {
 		authStoreLoad = func(string) (*auth.Credential, error) { return nil, errors.New("not found") }
-		if cp, ok := resolveStoredCredentials(); ok || cp != nil {
+		if cp, _, ok := resolveStoredCredentials(); ok || cp != nil {
 			t.Fatalf("expected fallback, got ok=%v", ok)
 		}
 	})
@@ -91,17 +120,8 @@ func TestResolveStoredCredentials(t *testing.T) {
 				Metadata:  map[string]string{"access_key_id": "AKIA"},
 			}, nil
 		}
-		if _, ok := resolveStoredCredentials(); ok {
+		if _, _, ok := resolveStoredCredentials(); ok {
 			t.Fatalf("expired credential must not be used")
-		}
-	})
-
-	t.Run("profile method -> default chain (Phase 1 scope)", func(t *testing.T) {
-		authStoreLoad = func(string) (*auth.Credential, error) {
-			return &auth.Credential{Method: "profile", Metadata: map[string]string{"profile": "dev"}}, nil
-		}
-		if _, ok := resolveStoredCredentials(); ok {
-			t.Fatalf("profile must defer to shared-config/default chain in Phase 1")
 		}
 	})
 
@@ -109,9 +129,75 @@ func TestResolveStoredCredentials(t *testing.T) {
 		authStoreLoad = func(string) (*auth.Credential, error) {
 			return &auth.Credential{Method: "access-key", Token: "x"}, nil
 		}
-		if _, ok := resolveStoredCredentials(); ok {
+		if _, _, ok := resolveStoredCredentials(); ok {
 			t.Fatalf("incomplete access-key must not be used")
 		}
+	})
+
+	t.Run("unknown method -> default chain", func(t *testing.T) {
+		authStoreLoad = func(string) (*auth.Credential, error) {
+			return &auth.Credential{Method: "unknown"}, nil
+		}
+		_, _, ok := resolveStoredCredentials()
+		assert.False(t, ok)
+	})
+}
+
+type mockSTSClient struct {
+	out *sts.GetCallerIdentityOutput
+	err error
+}
+
+func (m *mockSTSClient) GetCallerIdentity(_ context.Context, _ *sts.GetCallerIdentityInput, _ ...func(*sts.Options)) (*sts.GetCallerIdentityOutput, error) {
+	return m.out, m.err
+}
+
+func TestProbe(t *testing.T) {
+	origStore := authStoreLoad
+	origSTS := newSTSClient
+	defer func() {
+		authStoreLoad = origStore
+		newSTSClient = origSTS
+	}()
+
+	t.Run("success", func(t *testing.T) {
+		authStoreLoad = func(string) (*auth.Credential, error) {
+			return &auth.Credential{
+				Method:   "access-key",
+				Token:    "secret",
+				Metadata: map[string]string{"access_key_id": "AKIA"},
+			}, nil
+		}
+		newSTSClient = func(aws.Config) STSClient {
+			return &mockSTSClient{out: &sts.GetCallerIdentityOutput{}}
+		}
+		err := Probe(context.Background())
+		assert.NoError(t, err)
+	})
+
+	t.Run("sts error", func(t *testing.T) {
+		authStoreLoad = func(string) (*auth.Credential, error) {
+			return &auth.Credential{
+				Method:   "access-key",
+				Token:    "secret",
+				Metadata: map[string]string{"access_key_id": "AKIA"},
+			}, nil
+		}
+		newSTSClient = func(aws.Config) STSClient {
+			return &mockSTSClient{err: errors.New("sts error")}
+		}
+		err := Probe(context.Background())
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "sts error")
+	})
+
+	t.Run("no credentials still probes default chain", func(t *testing.T) {
+		authStoreLoad = func(string) (*auth.Credential, error) { return nil, nil }
+		newSTSClient = func(aws.Config) STSClient {
+			return &mockSTSClient{out: &sts.GetCallerIdentityOutput{}}
+		}
+		err := Probe(context.Background())
+		assert.NoError(t, err)
 	})
 }
 
@@ -130,7 +216,7 @@ func TestLoadAWSConfigUsesStoredCredentials(t *testing.T) {
 		}, nil
 	}
 
-	creds, ok := resolveStoredCredentials()
+	creds, _, ok := resolveStoredCredentials()
 	if !ok {
 		t.Fatal("expected stored credentials")
 	}

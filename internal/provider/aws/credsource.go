@@ -16,34 +16,43 @@ var authStoreLoad = func(provider string) (*auth.Credential, error) {
 	return auth.NewStore().Load(provider)
 }
 
+// STSClient abstracts the AWS STS API for testability.
+type STSClient interface {
+	GetCallerIdentity(ctx context.Context, params *sts.GetCallerIdentityInput, optFns ...func(*sts.Options)) (*sts.GetCallerIdentityOutput, error)
+}
+
+var newSTSClient = func(cfg aws.Config) STSClient {
+	return sts.NewFromConfig(cfg)
+}
+
 // resolveStoredCredentials builds an AWS credentials provider from a
 // skret-stored credential (written by `skret auth login aws ...`) so skret
-// authenticates on its own without the `aws` CLI. It returns (provider, true)
-// only for a usable static access-key credential; for anything else — no
-// credential, expired, profile/sso, or incomplete — it returns (nil, false)
+// authenticates on its own without the `aws` CLI. It returns (provider, profile, true)
+// only for a usable static access-key credential or profile; for anything else — no
+// credential, expired, or incomplete — it returns (nil, "", false)
 // so the caller falls back to the AWS SDK default chain, leaving existing
 // `aws login` / CI-OIDC / profile users completely unaffected.
 //
-// Phase 1 handles access-key only. profile defers to shared-config (already
-// supported via --profile / .skret.yaml); sso is Phase 2.
-func resolveStoredCredentials() (aws.CredentialsProvider, bool) {
+// Phase 1 handles access-key and profile. profile resolution allows status probe
+// to verify real reachability. sso is Phase 2.
+func resolveStoredCredentials() (aws.CredentialsProvider, string, bool) {
 	cred, err := authStoreLoad("aws")
 	if err != nil || cred == nil {
-		return nil, false
+		return nil, "", false
 	}
 	switch cred.Method {
 	case "access-key":
 		// Static keys: an expiry (if any) means the key is dead.
 		if cred.IsExpired() {
-			return nil, false
+			return nil, "", false
 		}
 		id := cred.Metadata["access_key_id"]
 		if id == "" || cred.Token == "" {
-			return nil, false
+			return nil, "", false
 		}
 		return aws.NewCredentialsCache(
 			credentials.NewStaticCredentialsProvider(id, cred.Token, cred.Metadata["session_token"]),
-		), true
+		), "", true
 	case "sso":
 		// The SSO access token is short-lived by design; cred.IsExpired() must
 		// NOT reject it. Validity rests on the refresh token + registration,
@@ -51,11 +60,17 @@ func resolveStoredCredentials() (aws.CredentialsProvider, bool) {
 		m := cred.Metadata
 		if m["refresh_token"] == "" || m["account_id"] == "" ||
 			m["role_name"] == "" || m["client_id"] == "" {
-			return nil, false
+			return nil, "", false
 		}
-		return aws.NewCredentialsCache(&ssoProvider{cred: cred}), true
+		return aws.NewCredentialsCache(&ssoProvider{cred: cred}), "", true
+	case "profile":
+		p := cred.Metadata["profile"]
+		if p == "" {
+			return nil, "", false
+		}
+		return nil, p, true
 	default:
-		return nil, false
+		return nil, "", false
 	}
 }
 
@@ -65,7 +80,7 @@ func resolveStoredCredentials() (aws.CredentialsProvider, bool) {
 // Region comes from AWS_REGION/SKRET_REGION, falling back to us-east-1 purely
 // for the region-agnostic GetCallerIdentity check. Never surfaces secrets.
 func Probe(ctx context.Context) error {
-	creds, _ := resolveStoredCredentials()
+	creds, profile, _ := resolveStoredCredentials()
 	region := os.Getenv("AWS_REGION")
 	if region == "" {
 		region = os.Getenv("SKRET_REGION")
@@ -73,12 +88,12 @@ func Probe(ctx context.Context) error {
 	if region == "" {
 		region = "us-east-1"
 	}
-	cfg, err := loadAWSConfig(ctx, region, "", creds)
+	cfg, err := loadAWSConfig(ctx, region, profile, creds)
 	if err != nil {
 		return err
 	}
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	_, err = sts.NewFromConfig(cfg).GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{})
+	_, err = newSTSClient(cfg).GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{})
 	return err
 }
