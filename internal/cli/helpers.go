@@ -15,7 +15,7 @@ import (
 
 // configNotFoundMsg is the actionable error shown when a command needs a config
 // but neither a .skret.yaml nor --path is available.
-const configNotFoundMsg = "no .skret.yaml found here or in any parent up to the git root, and no --path given. Run 'skret init' to create one, or pass --path=/namespace/env (e.g. --path=/myapp/prod)"
+const configNotFoundMsg = "no .skret.yaml found here or in any parent up to the git root, and no --path given. Run 'skret setup' or 'skret init' to create one, or pass --path=/namespace/env (e.g. --path=/myapp/prod)"
 
 // defaultRegistry returns the global provider registry with all built-in providers.
 func defaultRegistry() *provider.Registry {
