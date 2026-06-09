@@ -34,7 +34,7 @@ func (d *DopplerImporter) Import(ctx context.Context) ([]ImportedSecret, error) 
 	if err != nil {
 		return nil, fmt.Errorf("doppler: parse base url: %w", err)
 	}
-	u.Path = "/v3/configs/config/secrets"
+	u = u.JoinPath("v3/configs/config/secrets")
 	q := u.Query()
 	q.Set("project", d.project)
 	q.Set("config", d.config)
