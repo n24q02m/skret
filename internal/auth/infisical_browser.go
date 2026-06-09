@@ -98,11 +98,12 @@ func (f *InfisicalBrowserFlow) Login(ctx context.Context, _ map[string]string) (
 		_ = srv.Shutdown(shutdownCtx)
 	}()
 
-	u, err := url.Parse(f.BaseURL)
+	base, err := url.Parse(f.BaseURL)
 	if err != nil {
 		return nil, fmt.Errorf("infisical browser: invalid base url: %w", err)
 	}
-	u = u.JoinPath("api/v1/auth/redirect")
+	tokenURL := base.JoinPath("api/v1/auth/token").String()
+	u := base.JoinPath("api/v1/auth/redirect")
 	u.RawQuery = url.Values{
 		"callback":       {fmt.Sprintf("http://127.0.0.1:%d/callback", port)},
 		"code_challenge": {challenge},
@@ -127,10 +128,6 @@ func (f *InfisicalBrowserFlow) Login(ctx context.Context, _ map[string]string) (
 	body, err := json.Marshal(map[string]string{"code": code, "code_verifier": verifier})
 	if err != nil {
 		return nil, fmt.Errorf("infisical browser: marshal body: %w", err)
-	}
-	tokenURL, err := url.JoinPath(f.BaseURL, "api/v1/auth/token")
-	if err != nil {
-		return nil, fmt.Errorf("infisical browser: build request: %w", err)
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, tokenURL, bytes.NewReader(body))
 	if err != nil {

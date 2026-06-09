@@ -37,10 +37,11 @@ func NewDopplerOAuthFlow(baseURL string) *DopplerOAuthFlow {
 // Login POSTs /v3/auth/device, opens the approval URL, and polls
 // /v3/auth/device/token until approval, error, or deadline.
 func (f *DopplerOAuthFlow) Login(ctx context.Context, _ map[string]string) (*Credential, error) {
-	deviceURL, err := url.JoinPath(f.BaseURL, "v3/auth/device")
+	base, err := url.Parse(f.BaseURL)
 	if err != nil {
 		return nil, fmt.Errorf("doppler oauth: build device request: %w", err)
 	}
+	deviceURL := base.JoinPath("v3/auth/device").String()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, deviceURL, http.NoBody)
 	if err != nil {
 		return nil, fmt.Errorf("doppler oauth: build device request: %w", err)
@@ -74,11 +75,8 @@ func (f *DopplerOAuthFlow) Login(ctx context.Context, _ map[string]string) (*Cre
 	deadline := time.Now().Add(time.Duration(dev.ExpiresIn) * time.Second)
 
 	form := url.Values{"code": []string{dev.Code}}
+	tokenURL := base.JoinPath("v3/auth/device/token").String()
 	for time.Now().Before(deadline) {
-		tokenURL, err := url.JoinPath(f.BaseURL, "v3/auth/device/token")
-		if err != nil {
-			return nil, fmt.Errorf("doppler oauth: build poll request: %w", err)
-		}
 		tReq, err := http.NewRequestWithContext(ctx, http.MethodPost, tokenURL, strings.NewReader(form.Encode()))
 		if err != nil {
 			return nil, fmt.Errorf("doppler oauth: build poll request: %w", err)

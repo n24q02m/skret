@@ -79,29 +79,6 @@ func TestDopplerOAuthFlow_DoErrors(t *testing.T) {
 	})
 }
 
-func TestDopplerOAuthFlow_PollBuildRequestError(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/v3/auth/device" {
-			_ = json.NewEncoder(w).Encode(map[string]any{
-				"code": "c", "auth_url": "http://x", "polling_interval": 1, "expires_in": 60,
-			})
-			return
-		}
-	}))
-	defer srv.Close()
-
-	flow := NewDopplerOAuthFlow(srv.URL)
-	// Sabotage BaseURL in Opener so the next request (poll) fails to build
-	flow.Opener = func(ctx context.Context, authURL string) error {
-		flow.BaseURL = "http://bad-url\x7f"
-		return nil
-	}
-
-	_, err := flow.Login(context.Background(), nil)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "build poll request")
-}
-
 type errorRoundTripper struct {
 	err error
 }
