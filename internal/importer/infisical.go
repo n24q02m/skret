@@ -34,7 +34,7 @@ func (i *InfisicalImporter) Import(ctx context.Context) ([]ImportedSecret, error
 	if err != nil {
 		return nil, fmt.Errorf("infisical: parse base url: %w", err)
 	}
-	u.Path = "/api/v3/secrets/raw"
+	u = u.JoinPath("api/v3/secrets/raw")
 	q := u.Query()
 	q.Set("workspaceId", i.projectID)
 	q.Set("environment", i.env)
