@@ -113,5 +113,8 @@ func printEnvPairs(cmd *cobra.Command, pairs []envPair, format string) error {
 }
 
 func escapeEnvValue(s string) string {
+	if strings.IndexByte(s, '"') == -1 {
+		return s
+	}
 	return strings.ReplaceAll(s, `"`, `\"`)
 }

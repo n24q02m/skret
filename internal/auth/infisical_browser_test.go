@@ -105,3 +105,11 @@ func TestInfisicalBrowserFlow_InvalidState(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "missing or invalid state")
 }
+
+func TestInfisicalBrowserFlow_InvalidBaseURL(t *testing.T) {
+	flow := auth.NewInfisicalBrowserFlow("http://bad-url\x7f")
+	flow.Opener = func(_ context.Context, _ string) error { return nil }
+	_, err := flow.Login(context.Background(), nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid base url")
+}
