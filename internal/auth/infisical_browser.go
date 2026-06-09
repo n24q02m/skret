@@ -104,8 +104,15 @@ func (f *InfisicalBrowserFlow) Login(ctx context.Context, _ map[string]string) (
 	}
 	tokenURL := base.JoinPath("api/v1/auth/token").String()
 	u := base.JoinPath("api/v1/auth/redirect")
+
+	callbackURL := &url.URL{
+		Scheme: "http",
+		Host:   fmt.Sprintf("127.0.0.1:%d", port),
+		Path:   "/callback",
+	}
+
 	u.RawQuery = url.Values{
-		"callback":       {fmt.Sprintf("http://127.0.0.1:%d/callback", port)},
+		"callback":       {callbackURL.String()},
 		"code_challenge": {challenge},
 		"method":         {"S256"},
 		"state":          {state},
