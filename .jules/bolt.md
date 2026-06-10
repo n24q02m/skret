@@ -53,3 +53,6 @@
 ## 2026-07-28 - Fast-path before string replacement
 **Learning:** Functions like `strings.ReplaceAll` perform allocations or iterations even when the search string might be absent.
 **Action:** Adding a fast path like `if strings.IndexByte(s, '"') == -1 { return s }` avoids this overhead when escaping values that rarely contain quotes.
+## 2025-05-15 - Move slice early returns before slice/map initializations
+**Learning:** Initializing maps or arrays in a function before checking early return conditions (e.g., `if len(input) == 0`) leads to unnecessary memory allocation and iteration overhead, especially if the function is frequently called with empty inputs or used in recursive paths.
+**Action:** Always place early return checks at the very top of the function to avoid redundant memory allocations and logic executions.
