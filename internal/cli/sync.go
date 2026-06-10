@@ -51,6 +51,10 @@ func (o *syncOptions) run(cmd *cobra.Command) error {
 		return skret.NewError(skret.ExitProviderError, "sync: list secrets failed", err)
 	}
 
+	if len(secrets) == 0 {
+		cmd.PrintErrln("No secrets found to sync. Use 'skret set' to add a secret.")
+	}
+
 	syncers, err := o.buildSyncers()
 	if err != nil {
 		return err
