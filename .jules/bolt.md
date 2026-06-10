@@ -54,6 +54,6 @@
 **Learning:** Functions like `strings.ReplaceAll` perform allocations or iterations even when the search string might be absent.
 **Action:** Adding a fast path like `if strings.IndexByte(s, '"') == -1 { return s }` avoids this overhead when escaping values that rarely contain quotes.
 
-## 2026-11-12 - Early Returns for Slice Inputs
-**Learning:** Functions that accept slices often perform early processing like creating lookup maps from related slices or pre-allocating output slices. If the primary input slice is empty, these allocations are wasted.
-**Action:** When writing a function that iterates over a slice input (like `BuildEnv`), place the check for `len(input) == 0` at the very top of the function, before any maps or slices are allocated, to ensure zero-cost execution on empty inputs.
+## 2026-11-12 - Defensive Copies and Aliasing in Go
+**Learning:** Functions that accept and return slices often return newly-allocated copies to prevent the caller from accidentally mutating the original backing array (aliasing). An optimization that replaces a copy with returning the original slice directly introduces a correctness/contract regression.
+**Action:** When optimizing slice allocations, always verify if the function contract requires returning a defensive copy. Never return the input slice directly if callers expect a new allocation, as subsequent appends could corrupt the original slice.
