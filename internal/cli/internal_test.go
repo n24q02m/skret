@@ -47,7 +47,7 @@ func TestRenderHistory_Empty(t *testing.T) {
 
 	err := renderHistory(cmd, nil, "EMPTY_KEY", false)
 	require.NoError(t, err)
-	assert.Contains(t, buf.String(), "No history found")
+	assert.Contains(t, buf.String(), "No history found for \"EMPTY_KEY\". Use 'skret set' to create a version.")
 }
 
 func TestRenderHistory_Verbose(t *testing.T) {
