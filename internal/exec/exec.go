@@ -16,6 +16,11 @@ const (
 // Existing env vars override secret values (user control).
 // Keys in exclude list are never injected.
 func BuildEnv(secrets []*provider.Secret, existing []string, pathPrefix string, exclude []string) []string {
+	// ⚡ Bolt: Early return for empty secrets avoids expensive cache initializations
+	if len(secrets) == 0 {
+		return existing
+	}
+
 	var excludeSet map[string]bool
 	if len(exclude) > 0 {
 		excludeSet = make(map[string]bool, len(exclude))
@@ -34,11 +39,6 @@ func BuildEnv(secrets []*provider.Secret, existing []string, pathPrefix string, 
 			existingMap[e] = ""
 		}
 		env = append(env, e)
-	}
-
-	// ⚡ Bolt: Early return for empty secrets avoids expensive cache initializations
-	if len(secrets) == 0 {
-		return env
 	}
 
 	secretVars := make(map[string]string, len(secrets))
