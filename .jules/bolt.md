@@ -38,6 +38,10 @@
 **Learning:** Initializing literal slices (e.g., `[]string{...}`) inside frequently executed functions dynamically allocates memory and initializes elements on every call, creating unnecessary overhead and GC pressure.
 **Action:** Always hoist statically-defined slice literals out of function bodies into package-level variables to ensure they are allocated and initialized only once during program startup.
 
+## 2026-10-28 - Hoist strings.NewReplacer Initialization
+**Learning:** The `strings.NewReplacer` constructor allocates memory and builds internal replacement tables (often using trie structures) every time it is called. When placed inside a frequently invoked function (like a sanitization helper called per-secret), it creates significant redundant initialization overhead and GC pressure.
+**Action:** Always hoist statically-defined `strings.NewReplacer` instances out of function bodies into package-level variables to ensure their internal structures are compiled exactly once during program startup.
+
 ## 2024-05-31 - Escaping Closure Allocations in Resolving Dependency Cycles
 **Learning:** In recursive dependency resolution loops, creating a `defer` closure inside the innermost loop execution path allocates memory unnecessarily on every invocation, especially if it only performs a simple boolean assignment like clearing a flag.
 **Action:** Remove `defer` anonymous functions from hot recursive logic. Instead, structure the code to immediately execute the cleanup task locally in the same scope (e.g. `resolving[ref] = false` after expansion finishes) avoiding anonymous function allocations.
