@@ -12,3 +12,6 @@
 ## 2025-05-18 - [CLI Tabular Output with Values]
 **Learning:** When users request secret values using a `--values` flag alongside a tabular output format, they expect the values to be seamlessly integrated as a new column in the table, rather than having the flag silently ignored or requiring a switch to a less readable format like JSON.
 **Action:** Always ensure that CLI formatting options (like `--values`) apply meaningfully across all compatible output formats (e.g., adding a `VALUE` column to the default `tabwriter` output in `list.go`), maintaining a consistent and expected user experience.
+## 2025-06-05 - [Sync Command Empty State]
+**Learning:** Adding an empty state check with an actionable message (e.g., "No secrets found to sync. Use 'skret set' to add a secret.") directly after retrieving the secret list improves UX without breaking normal sync flow or preventing sync targets from clearing out.
+**Action:** Always provide actionable error messages or empty state messages in CLI output before executing operations that act upon collections.
