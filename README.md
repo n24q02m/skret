@@ -75,6 +75,7 @@ If you only need a single-cloud injector and you don't care about migration or C
 - **Cross-platform**: Linux, macOS, Windows — amd64 and arm64 binaries for each.
 - **Tab-completion of secret keys**: `skret get <TAB>` completes real key names via a names-only listing — zero decryption, zero KMS cost.
 - **Watch mode**: `skret run --watch -- your-cmd` auto-restarts the command when secrets change. Change detection polls a no-decrypt fingerprint, so it issues zero KMS Decrypt requests.
+- **Leak guard**: `skret scan` checks tracked files for your real managed secret values — precise, no pattern-matching false positives — and exits `10` when one is found, so CI and pre-commit hooks fail on a leak.
 
 ## Install
 
@@ -141,6 +142,10 @@ source <(skret completion zsh)   # then: skret get <TAB> completes real key name
 
 # 9. Auto-restart a command when secrets change (no polling cost)
 skret run --watch -- make up-prod          # restart on change; --watch-interval 30s to tune the poll
+
+# 10. Guard against leaks: scan tracked files for your managed secret values
+skret scan                                 # exits 10 if any managed value is found in a tracked file
+skret scan --staged                        # staged-only, for a .git/hooks/pre-commit hook
 ```
 
 See [Getting started](https://skret.n24q02m.com/guide/getting-started/) for the 5-minute guided tour.
@@ -216,6 +221,7 @@ Full docs at **[skret.n24q02m.com](https://skret.n24q02m.com)**:
 | `skret sync --to=<target>` | Sync to GitHub Actions, dotenv |
 | `skret diff <A> <B>` | Compare two environments (or env vs dotenv / env vs github) and report drift without printing values |
 | `skret template <file>` | Render a template file, substituting `${KEY}` with secret values |
+| `skret scan` | Scan tracked files for any managed secret value and exit 10 on a leak (`--staged` for pre-commit hooks) |
 
 ## Contributing
 
