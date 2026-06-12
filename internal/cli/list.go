@@ -35,6 +35,15 @@ func newListCmd(opts *GlobalOpts) *cobra.Command {
 			listPath := resolved.Path
 
 			ctx := context.Background()
+			if !values {
+				names, err := p.ListNames(ctx, listPath)
+				if err != nil {
+					return skret.NewError(skret.ExitProviderError, "list secrets failed", err)
+				}
+				names = filterNames(names, listPath, recursive)
+				return printNames(cmd, names, format)
+			}
+
 			secrets, err := p.List(ctx, listPath)
 			if err != nil {
 				return skret.NewError(skret.ExitProviderError, "list secrets failed", err)
@@ -69,6 +78,56 @@ func filterSecrets(secrets []*provider.Secret, listPath string, recursive bool) 
 		}
 	}
 	return filtered
+}
+
+// filterNames mirrors filterSecrets for bare key names.
+func filterNames(names []string, listPath string, recursive bool) []string {
+	if recursive || listPath == "" {
+		return names
+	}
+	level := strings.Count(listPath, "/")
+	if !strings.HasSuffix(listPath, "/") {
+		level++
+	}
+	out := make([]string, 0, len(names))
+	for _, n := range names {
+		if strings.Count(n, "/") == level {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
+// printNames prints key names only (no VERSION/VALUE), table or json.
+func printNames(cmd *cobra.Command, names []string, format string) error {
+	if len(names) == 0 {
+		cmd.PrintErrln("No secrets found. Use 'skret set' to add a secret.")
+		if format != "json" {
+			return nil
+		}
+	}
+	switch format {
+	case "json":
+		items := make([]map[string]any, 0, len(names))
+		for _, n := range names {
+			items = append(items, map[string]any{"key": n})
+		}
+		data, err := json.MarshalIndent(items, "", "  ")
+		if err != nil {
+			return fmt.Errorf("failed to marshal secrets: %w", err)
+		}
+		fmt.Fprintln(cmd.OutOrStdout(), string(data))
+	default:
+		w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
+		fmt.Fprintln(w, "KEY")
+		for _, n := range names {
+			fmt.Fprintln(w, n)
+		}
+		if err := w.Flush(); err != nil {
+			return fmt.Errorf("flush failed: %w", err)
+		}
+	}
+	return nil
 }
 
 func printSecrets(cmd *cobra.Command, secrets []*provider.Secret, format string, values bool) error {
