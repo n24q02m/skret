@@ -125,6 +125,11 @@ skret sync --to=github \
 
 # 5. Re-sync, skip secrets that haven't changed since the last successful run
 skret sync --to=github --github-repo=myorg/myapp --skip-unchanged
+
+# 6. See what differs between staging and prod (values are never printed)
+skret diff staging prod
+skret diff staging prod --show-hash        # confirm which values changed via sha256[:8]
+skret diff prod --to=github --github-repo=myorg/myapp   # presence-only (github is write-only)
 ```
 
 See [Getting started](https://skret.n24q02m.com/guide/getting-started/) for the 5-minute guided tour.
@@ -198,6 +203,7 @@ Full docs at **[skret.n24q02m.com](https://skret.n24q02m.com)**:
 | `skret list` | List secrets under the current environment path |
 | `skret import --from=<source>` | Import from Doppler, Infisical, dotenv |
 | `skret sync --to=<target>` | Sync to GitHub Actions, dotenv |
+| `skret diff <A> <B>` | Compare two environments (or env vs dotenv / env vs github) and report drift without printing values |
 
 ## Contributing
 

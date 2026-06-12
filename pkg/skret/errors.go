@@ -13,6 +13,7 @@ const (
 	ExitConflictError   = 6
 	ExitNetworkError    = 7
 	ExitValidationError = 8
+	ExitDrift           = 9   // Drift detected between two secret sets (diff --exit-code)
 	ExitExecError       = 125 // Matches docker/podman exec error
 )
 
