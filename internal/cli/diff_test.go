@@ -78,4 +78,59 @@ func TestDiffCmd_JSON(t *testing.T) {
 	cmd.SetArgs([]string{"diff", "dev", "prod", "--format", "json"})
 	require.NoError(t, cmd.Execute())
 	assert.Contains(t, out.String(), `"only_a"`)
+	// Values must never appear in JSON output (only_a/changed contain keys).
+	assert.NotContains(t, out.String(), "dev-url")
+	assert.NotContains(t, out.String(), "prod-url")
+}
+
+func TestDiffCmd_EnvToDotenv(t *testing.T) {
+	dir := writeLocalDiffConfig(t)
+	origDir, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	defer os.Chdir(origDir) //nolint:errcheck
+
+	envPath := filepath.Join(dir, ".env")
+	require.NoError(t, os.WriteFile(envPath, []byte("DB_URL=dotenv-url\nEXTRA=z\n"), 0o600))
+
+	var out bytes.Buffer
+	cmd := NewRootCmd()
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"diff", "dev", "--dotenv", envPath})
+	require.NoError(t, cmd.Execute())
+
+	s := out.String()
+	assert.Contains(t, s, "DB_URL")        // changed
+	assert.Contains(t, s, "ONLY_DEV")      // only in env dev
+	assert.Contains(t, s, "EXTRA")         // only in dotenv
+	assert.NotContains(t, s, "dev-url")    // value never shown
+	assert.NotContains(t, s, "dotenv-url") // value never shown
+}
+
+func TestDiffCmd_ValidationErrors(t *testing.T) {
+	dir := writeLocalDiffConfig(t)
+	origDir, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	defer os.Chdir(origDir) //nolint:errcheck
+
+	t.Run("dotenv and to conflict", func(t *testing.T) {
+		cmd := NewRootCmd()
+		cmd.SetArgs([]string{"diff", "dev", "--dotenv", "x.env", "--to", "github"})
+		require.Error(t, cmd.Execute())
+	})
+
+	t.Run("unknown format", func(t *testing.T) {
+		cmd := NewRootCmd()
+		cmd.SetArgs([]string{"diff", "dev", "prod", "--format", "xyz"})
+		require.Error(t, cmd.Execute())
+	})
+
+	t.Run("github without repo or token", func(t *testing.T) {
+		// Unset GITHUB_TOKEN and supply no --github-repo: must fail in
+		// buildSecondSide (splitOwnerRepo) before any HTTP call.
+		t.Setenv("GITHUB_TOKEN", "")
+		cmd := NewRootCmd()
+		cmd.SetArgs([]string{"diff", "dev", "--to", "github"})
+		require.Error(t, cmd.Execute())
+	})
 }
