@@ -74,6 +74,7 @@ If you only need a single-cloud injector and you don't care about migration or C
 - **Production-grade**: 93%+ test coverage, CodeQL security scanning, SBOM + cosign-signed release artifacts.
 - **Cross-platform**: Linux, macOS, Windows — amd64 and arm64 binaries for each.
 - **Tab-completion of secret keys**: `skret get <TAB>` completes real key names via a names-only listing — zero decryption, zero KMS cost.
+- **Watch mode**: `skret run --watch -- your-cmd` auto-restarts the command when secrets change. Change detection polls a no-decrypt fingerprint, so it issues zero KMS Decrypt requests.
 
 ## Install
 
@@ -137,6 +138,9 @@ skret template nginx.conf.tpl --output nginx.conf
 
 # 8. Enable tab-completion of secret keys (bash/zsh/fish/powershell)
 source <(skret completion zsh)   # then: skret get <TAB> completes real key names — no decryption / no KMS cost
+
+# 9. Auto-restart a command when secrets change (no polling cost)
+skret run --watch -- make up-prod          # restart on change; --watch-interval 30s to tune the poll
 ```
 
 See [Getting started](https://skret.n24q02m.com/guide/getting-started/) for the 5-minute guided tour.
