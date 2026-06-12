@@ -140,3 +140,59 @@ func TestDiffCmd_ValidationErrors(t *testing.T) {
 		require.Error(t, cmd.Execute())
 	})
 }
+
+func TestDiffCmd_ShowHash(t *testing.T) {
+	dir := writeLocalDiffConfig(t)
+	origDir, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	defer os.Chdir(origDir) //nolint:errcheck
+
+	var out bytes.Buffer
+	cmd := NewRootCmd()
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"diff", "dev", "prod", "--show-hash"})
+	require.NoError(t, cmd.Execute())
+
+	s := out.String()
+	assert.Contains(t, s, "DB_URL") // changed key
+	assert.Contains(t, s, "→")      // arrow between the two side hashes
+	assert.NotContains(t, s, "dev-url")
+	assert.NotContains(t, s, "prod-url")
+}
+
+func TestDiffCmd_GitHubMissingToken(t *testing.T) {
+	dir := writeLocalDiffConfig(t)
+	origDir, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	defer os.Chdir(origDir) //nolint:errcheck
+
+	// Valid --github-repo so splitOwnerRepo succeeds; no GITHUB_TOKEN so the
+	// command fails at requireGitHubToken before any HTTP call.
+	t.Setenv("GITHUB_TOKEN", "")
+	cmd := NewRootCmd()
+	cmd.SetArgs([]string{"diff", "dev", "--to", "github", "--github-repo", "acme/app"})
+	require.Error(t, cmd.Execute())
+}
+
+func TestDiffCmd_RawPathLabels(t *testing.T) {
+	dir := writeLocalDiffConfig(t)
+	origDir, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	defer os.Chdir(origDir) //nolint:errcheck
+
+	// Positionals starting with "/" are treated as raw provider paths (ad-hoc).
+	// Against the local fixture both resolve through the default env, so the
+	// snapshots are identical and the command reports no drift.
+	var out bytes.Buffer
+	cmd := NewRootCmd()
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"diff", "/foo", "/bar"})
+	require.NoError(t, cmd.Execute())
+
+	s := out.String()
+	assert.Contains(t, s, "path:/foo")
+	assert.Contains(t, s, "path:/bar")
+	assert.Contains(t, s, "no drift")
+}
