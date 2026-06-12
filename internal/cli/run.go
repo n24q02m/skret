@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	osexec "os/exec"
+	"time"
 
 	skexec "github.com/n24q02m/skret/internal/exec"
 	"github.com/n24q02m/skret/internal/provider"
@@ -13,6 +14,8 @@ import (
 )
 
 func newRunCmd(opts *GlobalOpts) *cobra.Command {
+	var watch bool
+	var watchInterval time.Duration
 	cmd := &cobra.Command{
 		Use:                "run -- <command> [args...]",
 		Short:              "Run a command with secrets injected as environment variables",
@@ -40,10 +43,15 @@ func newRunCmd(opts *GlobalOpts) *cobra.Command {
 
 			env := skexec.BuildEnv(secrets, os.Environ(), resolved.Path, resolved.Exclude)
 
+			if watch {
+				return runWatch(cmd, p, resolved, args, secrets, env, watchInterval)
+			}
 			return execCommand(args, env)
 		},
 	}
 
+	cmd.Flags().BoolVar(&watch, "watch", false, "restart the command when secrets change")
+	cmd.Flags().DurationVar(&watchInterval, "watch-interval", 15*time.Second, "how often to check for secret changes")
 	cmd.Flags().SetInterspersed(false)
 	return cmd
 }
