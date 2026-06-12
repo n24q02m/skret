@@ -95,8 +95,15 @@ func (p *Provider) ListNames(_ context.Context, _ string) ([]string, error) {
 }
 
 func (p *Provider) Fingerprint(_ context.Context, _ string) (string, error) {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	// Re-read the file so change detection reflects on-disk edits — the provider
+	// otherwise serves the snapshot read at construction. This refresh also
+	// means a subsequent List returns the updated values, which is what
+	// `run --watch` needs to relaunch the command with the new secrets.
+	if err := p.load(); err != nil {
+		return "", err
+	}
 	lines := make([]string, 0, len(p.data.Secrets))
 	for k, v := range p.data.Secrets {
 		lines = append(lines, k+"="+v)
