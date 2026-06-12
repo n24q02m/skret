@@ -22,7 +22,13 @@ func TestRender_BracesOnly_LeavesBareDollar(t *testing.T) {
 
 func TestRender_InvalidRefsLeftLiteral(t *testing.T) {
 	out, missing := Render("a ${1BAD} b ${has space} c $${ESCAPED}", map[string]string{})
-	assert.Equal(t, "a ${1BAD} b ${has space} c $${ESCAPED}", out)
+	assert.Equal(t, "a ${1BAD} b ${has space} c ${ESCAPED}", out)
+	assert.Empty(t, missing)
+}
+
+func TestRender_EscapeDollar(t *testing.T) {
+	out, missing := Render("price=$$5 literal=$${TOKEN}", map[string]string{"TOKEN": "should-not-be-used"})
+	assert.Equal(t, "price=$5 literal=${TOKEN}", out)
 	assert.Empty(t, missing)
 }
 

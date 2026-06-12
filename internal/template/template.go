@@ -9,20 +9,20 @@ import (
 )
 
 // tokenRe matches either a $$ escape sequence or a ${KEY} reference where KEY
-// is a valid env-var identifier. $$ is passed through literally so that
-// constructs like $${ESCAPED} are never treated as substitution references.
+// is a valid env-var identifier. $$ is an escape that collapses to a single $,
+// so $${KEY} renders as the literal ${KEY} (never substituted).
 var tokenRe = regexp.MustCompile(`\$\$|\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
 
 // Render substitutes each ${KEY} whose KEY is present in secrets with its value.
 // References whose key is absent are left verbatim and their keys returned in
-// missing (deduped, sorted). The sequence $$ is treated as a literal $$ and
-// never triggers substitution. Text that is not a valid ${KEY} reference is
-// passed through unchanged.
+// missing (deduped, sorted). $$ is an escape that collapses to a single $, so
+// $${KEY} renders as the literal ${KEY} (never substituted). Text that is not a
+// valid ${KEY} reference is passed through unchanged.
 func Render(content string, secrets map[string]string) (string, []string) {
 	missingSet := map[string]bool{}
 	out := tokenRe.ReplaceAllStringFunc(content, func(match string) string {
 		if match == "$$" {
-			return match // literal pass-through
+			return "$" // escape: $$ -> $, so $${KEY} renders as the literal ${KEY}
 		}
 		key := match[2 : len(match)-1] // strip "${" and "}"
 		if v, ok := secrets[key]; ok {
