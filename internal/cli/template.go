@@ -40,7 +40,7 @@ func (o *templateOptions) run(cmd *cobra.Command, file string) error {
 	if err != nil {
 		return err
 	}
-	defer p.Close() //nolint:errcheck
+	defer p.Close()
 
 	secrets, err := p.List(context.Background(), resolved.Path)
 	if err != nil {
