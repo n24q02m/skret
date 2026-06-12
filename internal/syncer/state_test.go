@@ -267,3 +267,25 @@ func TestSaveSyncState_PathTraversal(t *testing.T) {
 	assert.True(t, strings.HasSuffix(entries[0].Name(), ".json"))
 	assert.NotContains(t, entries[0].Name(), "..")
 }
+
+func TestSanitizeID_CornerCases(t *testing.T) {
+	cases := []struct {
+		id   string
+		want string
+	}{
+		{"a..b", "a_b"},
+		{"a/b", "a-b"},
+		{"a:b", "a-b"},
+		{`a\b`, "a-b"},
+		{"a b", "a_b"},
+		{"a\x00b", "a_b"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.id, func(t *testing.T) {
+			got := sanitizeID(tc.id)
+			if got != tc.want {
+				t.Errorf("sanitizeID(%q) = %q; want %q", tc.id, got, tc.want)
+			}
+		})
+	}
+}
