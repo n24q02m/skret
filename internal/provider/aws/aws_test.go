@@ -560,3 +560,75 @@ func TestAWS_GetBatch_Error(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "get_batch failure")
 }
+
+func TestAWS_ListNames_ReturnsNamesNoDecryption(t *testing.T) {
+	var capturedInput *ssm.GetParametersByPathInput
+	mock := &mockSSMClient{params: make(map[string]ssmtypes.Parameter)}
+	mock.GetParametersByPathFunc = func(_ context.Context, input *ssm.GetParametersByPathInput) (*ssm.GetParametersByPathOutput, error) {
+		capturedInput = input
+		return &ssm.GetParametersByPathOutput{
+			Parameters: []ssmtypes.Parameter{
+				{Name: awslib.String("/test/prod/A"), Value: awslib.String("secret-a")},
+				{Name: awslib.String("/test/prod/B"), Value: awslib.String("secret-b")},
+			},
+		}, nil
+	}
+
+	p := skaws.NewWithClient(mock, "/test/prod/")
+	names, err := p.ListNames(context.Background(), "")
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []string{"/test/prod/A", "/test/prod/B"}, names)
+
+	require.NotNil(t, capturedInput)
+	assert.False(t, awslib.ToBool(capturedInput.WithDecryption), "WithDecryption must be false for ListNames")
+}
+
+func TestAWS_ListNames_ExplicitPrefix(t *testing.T) {
+	var capturedPath string
+	mock := &mockSSMClient{params: make(map[string]ssmtypes.Parameter)}
+	mock.GetParametersByPathFunc = func(_ context.Context, input *ssm.GetParametersByPathInput) (*ssm.GetParametersByPathOutput, error) {
+		capturedPath = awslib.ToString(input.Path)
+		return &ssm.GetParametersByPathOutput{
+			Parameters: []ssmtypes.Parameter{
+				{Name: awslib.String("/alt/KEY"), Value: awslib.String("val")},
+			},
+		}, nil
+	}
+
+	p := skaws.NewWithClient(mock, "/test/prod/")
+	names, err := p.ListNames(context.Background(), "/alt/")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"/alt/KEY"}, names)
+	assert.Equal(t, "/alt/", capturedPath)
+}
+
+func TestAWS_ListNames_Pagination(t *testing.T) {
+	calls := 0
+	mock := &mockSSMClient{params: make(map[string]ssmtypes.Parameter)}
+	mock.GetParametersByPathFunc = func(_ context.Context, _ *ssm.GetParametersByPathInput) (*ssm.GetParametersByPathOutput, error) {
+		calls++
+		if calls == 1 {
+			return &ssm.GetParametersByPathOutput{
+				Parameters: []ssmtypes.Parameter{{Name: awslib.String("/test/prod/A"), Value: awslib.String("A")}},
+				NextToken:  awslib.String("tok"),
+			}, nil
+		}
+		return &ssm.GetParametersByPathOutput{
+			Parameters: []ssmtypes.Parameter{{Name: awslib.String("/test/prod/B"), Value: awslib.String("B")}},
+		}, nil
+	}
+
+	p := skaws.NewWithClient(mock, "/test/prod/")
+	names, err := p.ListNames(context.Background(), "")
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []string{"/test/prod/A", "/test/prod/B"}, names)
+	assert.Equal(t, 2, calls)
+}
+
+func TestAWS_ListNames_Error(t *testing.T) {
+	mock := &mockSSMClient{params: make(map[string]ssmtypes.Parameter), errList: errors.New("list-names err")}
+	p := skaws.NewWithClient(mock, "/test/prod/")
+	_, err := p.ListNames(context.Background(), "")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "list-names err")
+}

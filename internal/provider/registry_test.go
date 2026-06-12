@@ -29,6 +29,10 @@ func (m *mockProvider) List(_ context.Context, _ string) ([]*provider.Secret, er
 	return nil, nil
 }
 
+func (m *mockProvider) ListNames(_ context.Context, _ string) ([]string, error) {
+	return nil, nil
+}
+
 func (m *mockProvider) Set(_ context.Context, _ string, _ string, _ provider.SecretMeta) error {
 	return nil
 }

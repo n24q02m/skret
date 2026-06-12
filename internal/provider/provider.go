@@ -46,6 +46,9 @@ type SecretProvider interface {
 	Get(ctx context.Context, key string) (*Secret, error)
 	GetBatch(ctx context.Context, keys []string) ([]*Secret, error)
 	List(ctx context.Context, pathPrefix string) ([]*Secret, error)
+	// ListNames returns secret key names under pathPrefix WITHOUT decrypting
+	// values (no KMS calls). Use for completion and name-only listing.
+	ListNames(ctx context.Context, pathPrefix string) ([]string, error)
 
 	Set(ctx context.Context, key string, value string, meta SecretMeta) error
 	Delete(ctx context.Context, key string) error

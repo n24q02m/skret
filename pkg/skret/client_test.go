@@ -43,6 +43,10 @@ func (m *mockProvider) List(ctx context.Context, pathPrefix string) ([]*provider
 	return m.listFunc(ctx, pathPrefix)
 }
 
+func (m *mockProvider) ListNames(_ context.Context, _ string) ([]string, error) {
+	return nil, nil
+}
+
 func (m *mockProvider) Set(ctx context.Context, key string, value string, meta provider.SecretMeta) error {
 	return m.setFunc(ctx, key, value, meta)
 }

@@ -21,6 +21,10 @@ func (s stubProvider) List(_ context.Context, _ string) ([]*provider.Secret, err
 	return s.secrets, s.listErr
 }
 
+func (s stubProvider) ListNames(_ context.Context, _ string) ([]string, error) {
+	return nil, nil
+}
+
 func TestEnvSource_NormalizesKeys(t *testing.T) {
 	p := stubProvider{secrets: []*provider.Secret{
 		{Key: "/myapp/prod/DB_URL", Value: "x"},

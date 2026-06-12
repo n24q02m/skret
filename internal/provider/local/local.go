@@ -81,6 +81,17 @@ func (p *Provider) List(_ context.Context, _ string) ([]*provider.Secret, error)
 	return secrets, nil
 }
 
+func (p *Provider) ListNames(_ context.Context, _ string) ([]string, error) {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	names := make([]string, 0, len(p.data.Secrets))
+	for k := range p.data.Secrets {
+		names = append(names, k)
+	}
+	sort.Strings(names)
+	return names, nil
+}
+
 func (p *Provider) Set(_ context.Context, key string, value string, _ provider.SecretMeta) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
