@@ -116,3 +116,25 @@ func TestTemplateCmd_NoConfig_Errors(t *testing.T) {
 	cmd.SetArgs([]string{"template", "x.tpl"})
 	require.Error(t, cmd.Execute())
 }
+
+func TestTemplateCmd_EscapeAndBareDollar(t *testing.T) {
+	dir := writeLocalTemplateConfig(t)
+	origDir, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	defer os.Chdir(origDir) //nolint:errcheck
+
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "e.tpl"),
+		[]byte("real=${TOKEN}\nbare=$PATH\nliteral=$${TOKEN}\n"), 0o600))
+
+	var out bytes.Buffer
+	cmd := NewRootCmd()
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"template", "e.tpl"})
+	require.NoError(t, cmd.Execute())
+
+	s := out.String()
+	assert.Contains(t, s, "real=tok123")      // ${TOKEN} substituted
+	assert.Contains(t, s, "bare=$PATH")       // bare $ untouched
+	assert.Contains(t, s, "literal=${TOKEN}") // $$ escape -> literal ${TOKEN}, not substituted
+}
