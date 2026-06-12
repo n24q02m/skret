@@ -2,6 +2,10 @@ package aws
 
 import (
 	"context"
+	"crypto/sha256"
+	"fmt"
+	"sort"
+	"strings"
 	"time"
 
 	awslib "github.com/aws/aws-sdk-go-v2/aws"
@@ -201,6 +205,43 @@ func (p *Provider) ListNames(ctx context.Context, pathPrefix string) ([]string, 
 		nextToken = output.NextToken
 	}
 	return names, nil
+}
+
+func (p *Provider) Fingerprint(ctx context.Context, pathPrefix string) (string, error) {
+	if pathPrefix == "" {
+		pathPrefix = p.path
+	}
+	var lines []string
+	var nextToken *string
+	for {
+		out, err := p.client.GetParametersByPath(ctx, &ssm.GetParametersByPathInput{
+			Path:           awslib.String(pathPrefix),
+			Recursive:      awslib.Bool(true),
+			WithDecryption: awslib.Bool(false),
+			NextToken:      nextToken,
+		})
+		if err != nil {
+			return "", mapError("fingerprint", pathPrefix, err)
+		}
+		for i := range out.Parameters {
+			lines = append(lines, fmt.Sprintf("%s@%d",
+				awslib.ToString(out.Parameters[i].Name), out.Parameters[i].Version))
+		}
+		if out.NextToken == nil {
+			break
+		}
+		nextToken = out.NextToken
+	}
+	return hashLines(lines), nil
+}
+
+// hashLines returns a stable sha256 hex digest of lines, independent of order.
+func hashLines(lines []string) string {
+	sorted := make([]string, len(lines))
+	copy(sorted, lines)
+	sort.Strings(sorted)
+	joined := strings.Join(sorted, "\n")
+	return fmt.Sprintf("%x", sha256.Sum256([]byte(joined)))
 }
 
 func (p *Provider) Set(ctx context.Context, key string, value string, meta provider.SecretMeta) error {

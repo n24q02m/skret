@@ -2,10 +2,12 @@ package local
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 
 	"github.com/n24q02m/skret/internal/config"
@@ -90,6 +92,25 @@ func (p *Provider) ListNames(_ context.Context, _ string) ([]string, error) {
 	}
 	sort.Strings(names)
 	return names, nil
+}
+
+func (p *Provider) Fingerprint(_ context.Context, _ string) (string, error) {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	lines := make([]string, 0, len(p.data.Secrets))
+	for k, v := range p.data.Secrets {
+		lines = append(lines, k+"="+v)
+	}
+	return hashLines(lines), nil
+}
+
+// hashLines returns a stable sha256 hex digest of lines, independent of order.
+func hashLines(lines []string) string {
+	sorted := make([]string, len(lines))
+	copy(sorted, lines)
+	sort.Strings(sorted)
+	joined := strings.Join(sorted, "\n")
+	return fmt.Sprintf("%x", sha256.Sum256([]byte(joined)))
 }
 
 func (p *Provider) Set(_ context.Context, key string, value string, _ provider.SecretMeta) error {
