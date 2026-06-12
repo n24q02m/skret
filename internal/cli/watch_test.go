@@ -294,3 +294,21 @@ func TestRunCmd_WatchFlagsRegistered(t *testing.T) {
 	require.NotNil(t, intervalFlag, "--watch-interval flag must be registered")
 	assert.Equal(t, "15s", intervalFlag.DefValue)
 }
+
+// TestRunWatch_Integration_ChildExits exercises the real runWatch wiring
+// (LookPath -> Fingerprint -> Supervise -> watchLoop -> exit mapping) against a
+// local provider, using the test binary itself as a fast-exiting child (see the
+// SKRET_RUN_CHILD branch in TestMain). It restarts nothing because the child
+// exits before the watch interval elapses.
+func TestRunWatch_Integration_ChildExits(t *testing.T) {
+	dir := writeLocalTemplateConfig(t)
+	origDir, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	defer os.Chdir(origDir) //nolint:errcheck
+
+	t.Setenv("SKRET_RUN_CHILD", "1") // the spawned test binary exits 0 immediately
+
+	cmd := NewRootCmd()
+	cmd.SetArgs([]string{"run", "--watch", "--watch-interval", "10s", "--", os.Args[0]})
+	require.NoError(t, cmd.Execute())
+}
