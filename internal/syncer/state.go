@@ -14,6 +14,15 @@ import (
 	"github.com/n24q02m/skret/internal/provider"
 )
 
+var sanitizeIDReplacer = strings.NewReplacer(
+	"..", "_",
+	"/", "-",
+	":", "-",
+	`\`, "-",
+	" ", "_",
+	"\x00", "_",
+)
+
 // SyncState tracks per-secret SHA256(value) hashes for drift detection.
 // Persisted at ~/.skret/sync-state/<target>-<sanitized-id>.json.
 type SyncState struct {
@@ -37,15 +46,7 @@ func StatePathFor(target, id string) (string, error) {
 // directory (path traversal) or break the on-disk file-name scheme.
 // "..", path separators and NULs are collapsed to inert runes.
 func sanitizeID(id string) string {
-	r := strings.NewReplacer(
-		"..", "_",
-		"/", "-",
-		":", "-",
-		`\`, "-",
-		" ", "_",
-		"\x00", "_",
-	)
-	out := r.Replace(id)
+	out := sanitizeIDReplacer.Replace(id)
 	if out == "" || out == "." {
 		return "_"
 	}

@@ -12,6 +12,8 @@ const (
 	maxExpandedLen    = 128 * 1024
 )
 
+var envNameReplacer = strings.NewReplacer("/", "_", "-", "_")
+
 // BuildEnv merges secrets into existing env vars.
 // Existing env vars override secret values (user control).
 // Keys in exclude list are never injected.
@@ -152,7 +154,7 @@ func KeyToEnvName(key, pathPrefix string) string {
 	for i := 0; i < len(name); i++ {
 		c := name[i]
 		if c >= 0x80 {
-			return strings.ToUpper(strings.NewReplacer("/", "_", "-", "_").Replace(name))
+			return strings.ToUpper(envNameReplacer.Replace(name))
 		}
 		if c == '/' || c == '-' || (c >= 'a' && c <= 'z') || c == '=' || c == '\n' || c == '\r' || c == ' ' {
 			var b strings.Builder
@@ -161,7 +163,7 @@ func KeyToEnvName(key, pathPrefix string) string {
 			for ; i < len(name); i++ {
 				c := name[i]
 				if c >= 0x80 {
-					return strings.ToUpper(strings.NewReplacer("/", "_", "-", "_").Replace(name))
+					return strings.ToUpper(envNameReplacer.Replace(name))
 				}
 				switch {
 				case c == '/' || c == '-':
