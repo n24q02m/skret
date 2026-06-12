@@ -306,9 +306,26 @@ func TestRunWatch_Integration_ChildExits(t *testing.T) {
 	require.NoError(t, os.Chdir(dir))
 	defer os.Chdir(origDir) //nolint:errcheck
 
-	t.Setenv("SKRET_RUN_CHILD", "1") // the spawned test binary exits 0 immediately
+	t.Setenv("SKRET_RUN_CHILD", "0") // the spawned test binary exits 0 immediately
 
 	cmd := NewRootCmd()
 	cmd.SetArgs([]string{"run", "--watch", "--watch-interval", "10s", "--", os.Args[0]})
 	require.NoError(t, cmd.Execute())
+}
+
+// TestRunWatch_Integration_NonZeroExit asserts the child's non-zero exit code
+// surfaces as a run error (the `code != 0` branch in runWatch).
+func TestRunWatch_Integration_NonZeroExit(t *testing.T) {
+	dir := writeLocalTemplateConfig(t)
+	origDir, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	defer os.Chdir(origDir) //nolint:errcheck
+
+	t.Setenv("SKRET_RUN_CHILD", "7") // the spawned test binary exits 7
+
+	cmd := NewRootCmd()
+	cmd.SetArgs([]string{"run", "--watch", "--watch-interval", "10s", "--", os.Args[0]})
+	err := cmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "7")
 }

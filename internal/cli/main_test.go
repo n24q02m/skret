@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"os"
+	"strconv"
 	"testing"
 
 	"github.com/zalando/go-keyring"
@@ -15,9 +16,11 @@ import (
 // the suite flaky; the mock makes backend selection deterministic.
 func TestMain(m *testing.M) {
 	// When spawned as a child by the run --watch integration test, act as a
-	// trivial fast-exiting command instead of re-running the suite.
-	if os.Getenv("SKRET_RUN_CHILD") != "" {
-		os.Exit(0)
+	// fast-exiting command instead of re-running the suite. The value is the
+	// exit code so tests can exercise both the clean and non-zero exit paths.
+	if code, ok := os.LookupEnv("SKRET_RUN_CHILD"); ok {
+		n, _ := strconv.Atoi(code)
+		os.Exit(n)
 	}
 
 	keyring.MockInit()
