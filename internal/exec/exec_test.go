@@ -51,6 +51,15 @@ func TestKeyToEnvName_NoPrefix(t *testing.T) {
 	assert.Equal(t, "API_KEY", skexec.KeyToEnvName("api_key", ""))
 }
 
+func TestKeyToEnvName_HyphenToUnderscore(t *testing.T) {
+	// Hyphens are not valid in POSIX env var names; normalize them to "_"
+	// so a key like "api-key" yields the usable env var "API_KEY".
+	assert.Equal(t, "API_KEY", skexec.KeyToEnvName("api-key", ""))
+	assert.Equal(t, "MY_APP_KEY", skexec.KeyToEnvName("my-app-key", ""))
+	assert.Equal(t, "API_KEY", skexec.KeyToEnvName("/app/prod/api-key", "/app/prod"))
+	assert.Equal(t, "A_B_C_D", skexec.KeyToEnvName("/x/a-b/c-d", "/x"))
+}
+
 func TestKeyToEnvName_WithPrefix(t *testing.T) {
 	assert.Equal(t, "DB_URL", skexec.KeyToEnvName("/app/prod/DB_URL", "/app/prod"))
 	assert.Equal(t, "DB_URL", skexec.KeyToEnvName("/app/prod/DB_URL", "/app/prod/"))
