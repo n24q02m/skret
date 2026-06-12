@@ -73,6 +73,7 @@ If you only need a single-cloud injector and you don't care about migration or C
 - **CI/CD syncers**: Push secrets to GitHub Actions repository secrets in one command.
 - **Production-grade**: 93%+ test coverage, CodeQL security scanning, SBOM + cosign-signed release artifacts.
 - **Cross-platform**: Linux, macOS, Windows — amd64 and arm64 binaries for each.
+- **Tab-completion of secret keys**: `skret get <TAB>` completes real key names via a names-only listing — zero decryption, zero KMS cost.
 
 ## Install
 
@@ -133,6 +134,9 @@ skret diff prod --to=github --github-repo=myorg/myapp   # presence-only (github 
 
 # 7. Render a config template (only ${KEY} is substituted; $vars are left intact)
 skret template nginx.conf.tpl --output nginx.conf
+
+# 8. Enable tab-completion of secret keys (bash/zsh/fish/powershell)
+source <(skret completion zsh)   # then: skret get <TAB> completes real key names — no decryption / no KMS cost
 ```
 
 See [Getting started](https://skret.n24q02m.com/guide/getting-started/) for the 5-minute guided tour.
@@ -203,7 +207,7 @@ Full docs at **[skret.n24q02m.com](https://skret.n24q02m.com)**:
 | `skret env` | Dump all secrets in dotenv / JSON / YAML / export format |
 | `skret set <KEY> <VALUE>` | Create or update a secret |
 | `skret delete <KEY>` | Delete a secret |
-| `skret list` | List secrets under the current environment path |
+| `skret list` | List secret keys under the current environment path (no decryption; use --values for KEY+VERSION+VALUE) |
 | `skret import --from=<source>` | Import from Doppler, Infisical, dotenv |
 | `skret sync --to=<target>` | Sync to GitHub Actions, dotenv |
 | `skret diff <A> <B>` | Compare two environments (or env vs dotenv / env vs github) and report drift without printing values |
