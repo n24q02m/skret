@@ -9,7 +9,6 @@ import (
 // TableOpts controls table rendering.
 type TableOpts struct {
 	ShowHash bool
-	All      bool // reserved: list identical keys (values hidden); not used yet
 }
 
 // RenderTable produces the human-readable diff. Never includes secret values.
@@ -74,6 +73,7 @@ func RenderJSON(r Result) string {
 		Changed: orEmpty(r.Changed), Unknown: orEmpty(r.Unknown),
 		SameCount: r.SameCount, Hashes: r.Hashes,
 	}
+	// jsonResult is a fixed struct of strings/ints/maps; MarshalIndent cannot fail.
 	buf, _ := json.MarshalIndent(out, "", "  ")
 	return string(buf)
 }

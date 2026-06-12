@@ -82,3 +82,34 @@ func TestDiff_ReadError_Wrapped(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "diff env:dev vs env:prod")
 }
+
+func TestDiff_ReadErrorB_Wrapped(t *testing.T) {
+	a := fakeSource{label: "env:dev", canRead: true, secrets: map[string]string{}}
+	b := fakeSource{label: "env:prod", readErr: assert.AnError}
+
+	_, err := Diff(context.Background(), a, b, Opts{})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "diff env:dev vs env:prod")
+}
+
+func TestDiff_ReadErrorA_Wrapped(t *testing.T) {
+	a := fakeSource{label: "env:dev", readErr: assert.AnError}
+	b := fakeSource{label: "env:prod", canRead: true, secrets: map[string]string{}}
+
+	_, err := Diff(context.Background(), a, b, Opts{})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "diff env:dev vs env:prod")
+}
+
+func TestDiff_Unknown_WithHashes(t *testing.T) {
+	a := fakeSource{label: "env:prod", canRead: true, secrets: map[string]string{"A": "val"}}
+	b := fakeSource{label: "github:o/r", canRead: false, secrets: map[string]string{"A": ""}}
+
+	res, err := Diff(context.Background(), a, b, Opts{Hashes: true})
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{"A"}, res.Unknown)
+	require.Contains(t, res.Hashes, "A")
+	assert.NotEqual(t, "?", res.Hashes["A"][0]) // readable side has a real hash
+	assert.Equal(t, "?", res.Hashes["A"][1])    // unreadable side returns "?"
+}

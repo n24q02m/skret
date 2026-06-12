@@ -55,6 +55,12 @@ func TestRenderJSON_KeysOnly(t *testing.T) {
 	assert.Equal(t, []any{"DB_URL"}, parsed["changed"])
 }
 
+func TestRenderTable_NoDrift(t *testing.T) {
+	out := RenderTable(Result{A: "env:dev", B: "env:prod", SameCount: 3}, TableOpts{})
+	assert.Contains(t, out, "no drift")
+	assert.Contains(t, out, "3 same")
+}
+
 // Security invariant: no plaintext value ever reaches any render path.
 func TestRender_NeverLeaksValues(t *testing.T) {
 	const sentinel = "S3CRET_VALUE_SENTINEL"

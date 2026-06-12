@@ -41,6 +41,9 @@ func newDiffCmd(opts *GlobalOpts) *cobra.Command {
 }
 
 func (o *diffOptions) run(cmd *cobra.Command, args []string) error {
+	if len(args) == 2 && o.opts.File != "" {
+		return skret.NewError(skret.ExitValidationError, "--file cannot be combined with two environments (it would apply to both sides)", nil)
+	}
 	a, err := o.buildEnvSource(args[0])
 	if err != nil {
 		return err
@@ -103,7 +106,7 @@ func (o *diffOptions) buildSecondSide(args []string) (differ.Source, error) {
 
 func (o *diffOptions) buildEnvSource(target string) (differ.Source, error) {
 	sideOpts := *o.opts
-	isPath := len(target) > 0 && target[0] == '/'
+	isPath := target != "" && target[0] == '/'
 	if isPath {
 		sideOpts.Path = target
 	} else {

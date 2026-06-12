@@ -133,4 +133,10 @@ func TestDiffCmd_ValidationErrors(t *testing.T) {
 		cmd.SetArgs([]string{"diff", "dev", "--to", "github"})
 		require.Error(t, cmd.Execute())
 	})
+
+	t.Run("--file with two env positionals", func(t *testing.T) {
+		cmd := NewRootCmd()
+		cmd.SetArgs([]string{"diff", "dev", "prod", "--file", "dev.yaml"})
+		require.Error(t, cmd.Execute())
+	})
 }
