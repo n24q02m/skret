@@ -16,9 +16,10 @@ func newHistoryCmd(opts *GlobalOpts) *cobra.Command {
 	var verbose bool
 
 	cmd := &cobra.Command{
-		Use:   "history <KEY>",
-		Short: "View the version history of a secret",
-		Args:  cobra.ExactArgs(1),
+		Use:               "history <KEY>",
+		Short:             "View the version history of a secret",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: secretKeyCompletion(opts),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if os.Getenv("SKRET_EXPERIMENTAL") != "1" {
 				return skret.NewError(skret.ExitValidationError, "history is experimental; set SKRET_EXPERIMENTAL=1 to enable", nil)
