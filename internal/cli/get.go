@@ -18,9 +18,10 @@ func newGetCmd(opts *GlobalOpts) *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:   "get <KEY>",
-		Short: "Get a single secret value",
-		Args:  cobra.ExactArgs(1),
+		Use:               "get <KEY>",
+		Short:             "Get a single secret value",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: secretKeyCompletion(opts),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			resolved, p, err := loadProvider(opts)
 			if err != nil {

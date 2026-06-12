@@ -176,6 +176,33 @@ func (p *Provider) List(ctx context.Context, pathPrefix string) ([]*provider.Sec
 	return secrets, nil
 }
 
+func (p *Provider) ListNames(ctx context.Context, pathPrefix string) ([]string, error) {
+	if pathPrefix == "" {
+		pathPrefix = p.path
+	}
+	var names []string
+	var nextToken *string
+	for {
+		output, err := p.client.GetParametersByPath(ctx, &ssm.GetParametersByPathInput{
+			Path:           awslib.String(pathPrefix),
+			Recursive:      awslib.Bool(true),
+			WithDecryption: awslib.Bool(false),
+			NextToken:      nextToken,
+		})
+		if err != nil {
+			return nil, mapError("list", pathPrefix, err)
+		}
+		for i := range output.Parameters {
+			names = append(names, awslib.ToString(output.Parameters[i].Name))
+		}
+		if output.NextToken == nil {
+			break
+		}
+		nextToken = output.NextToken
+	}
+	return names, nil
+}
+
 func (p *Provider) Set(ctx context.Context, key string, value string, meta provider.SecretMeta) error {
 	input := &ssm.PutParameterInput{
 		Name:      awslib.String(key),

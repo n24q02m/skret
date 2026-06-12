@@ -39,6 +39,10 @@ func (m *mockProvider) List(ctx context.Context, prefix string) ([]*provider.Sec
 	return nil, nil
 }
 
+func (m *mockProvider) ListNames(_ context.Context, _ string) ([]string, error) {
+	return nil, nil
+}
+
 func (m *mockProvider) GetBatch(ctx context.Context, keys []string) ([]*provider.Secret, error) {
 	if m.getBatchFunc != nil {
 		return m.getBatchFunc(ctx, keys)

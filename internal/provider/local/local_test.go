@@ -311,3 +311,34 @@ func TestLocal_GetBatch_Empty(t *testing.T) {
 	require.NoError(t, err)
 	assert.Nil(t, secrets)
 }
+
+func TestLocal_ListNames_ReturnsSortedKeys(t *testing.T) {
+	path := setupFile(t, "version: \"1\"\nsecrets:\n  Z_KEY: zval\n  A_KEY: aval\n  M_KEY: mval")
+	p := newProvider(t, path)
+	defer p.Close()
+
+	names, err := p.ListNames(context.Background(), "")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"A_KEY", "M_KEY", "Z_KEY"}, names)
+}
+
+func TestLocal_ListNames_Empty(t *testing.T) {
+	path := setupFile(t, "version: \"1\"\nsecrets: {}")
+	p := newProvider(t, path)
+	defer p.Close()
+
+	names, err := p.ListNames(context.Background(), "")
+	require.NoError(t, err)
+	assert.Empty(t, names)
+}
+
+func TestLocal_ListNames_PrefixIgnored(t *testing.T) {
+	// Local provider ignores prefix (returns all); verify it doesn't error.
+	path := setupFile(t, "version: \"1\"\nsecrets:\n  DB_URL: dbval\n  API_KEY: apikey")
+	p := newProvider(t, path)
+	defer p.Close()
+
+	names, err := p.ListNames(context.Background(), "/some/prefix/")
+	require.NoError(t, err)
+	assert.Len(t, names, 2)
+}

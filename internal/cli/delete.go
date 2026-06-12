@@ -17,9 +17,10 @@ func newDeleteCmd(opts *GlobalOpts) *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:   "delete <KEY>",
-		Short: "Delete a secret",
-		Args:  cobra.ExactArgs(1),
+		Use:               "delete <KEY>",
+		Short:             "Delete a secret",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: secretKeyCompletion(opts),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			resolved, p, err := loadProvider(opts)
 			if err != nil {

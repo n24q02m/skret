@@ -19,9 +19,10 @@ func newRollbackCmd(opts *GlobalOpts) *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:   "rollback <KEY> <VERSION>",
-		Short: "Restore a secret to a specific previous version",
-		Args:  cobra.ExactArgs(2),
+		Use:               "rollback <KEY> <VERSION>",
+		Short:             "Restore a secret to a specific previous version",
+		Args:              cobra.ExactArgs(2),
+		ValidArgsFunction: secretKeyCompletion(opts),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if os.Getenv("SKRET_EXPERIMENTAL") != "1" {
 				return skret.NewError(skret.ExitValidationError, "rollback is experimental; set SKRET_EXPERIMENTAL=1 to enable", nil)
