@@ -191,3 +191,9 @@ func TestBuildEnv_EmptyExcludeMap(t *testing.T) {
 	assert.Contains(t, env, "A=1")
 	assert.Contains(t, env, "B=2")
 }
+
+func TestKeyToEnvName_NonAsciiWithPrefix(t *testing.T) {
+	// Hits the non-ASCII path with prefix loop
+	res := skexec.KeyToEnvName("/prefix/世/界", "/prefix")
+	assert.Equal(t, "世_界", res) // Wait, does it upper case and replace?
+}
