@@ -130,6 +130,9 @@ skret sync --to=github --github-repo=myorg/myapp --skip-unchanged
 skret diff staging prod
 skret diff staging prod --show-hash        # confirm which values changed via sha256[:8]
 skret diff prod --to=github --github-repo=myorg/myapp   # presence-only (github is write-only)
+
+# 7. Render a config template (only ${KEY} is substituted; $vars are left intact)
+skret template nginx.conf.tpl --output nginx.conf
 ```
 
 See [Getting started](https://skret.n24q02m.com/guide/getting-started/) for the 5-minute guided tour.
@@ -204,6 +207,7 @@ Full docs at **[skret.n24q02m.com](https://skret.n24q02m.com)**:
 | `skret import --from=<source>` | Import from Doppler, Infisical, dotenv |
 | `skret sync --to=<target>` | Sync to GitHub Actions, dotenv |
 | `skret diff <A> <B>` | Compare two environments (or env vs dotenv / env vs github) and report drift without printing values |
+| `skret template <file>` | Render a template file, substituting `${KEY}` with secret values |
 
 ## Contributing
 

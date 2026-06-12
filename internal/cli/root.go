@@ -69,6 +69,7 @@ func NewRootCmd() *cobra.Command {
 	cmd.AddCommand(newImportCmd(opts))
 	cmd.AddCommand(newSyncCmd(opts))
 	cmd.AddCommand(newDiffCmd(opts))
+	cmd.AddCommand(newTemplateCmd(opts))
 	cmd.AddCommand(newAuthCmd())
 
 	return cmd
