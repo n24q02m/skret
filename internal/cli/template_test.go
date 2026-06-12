@@ -90,3 +90,29 @@ func TestTemplateCmd_MissingFile_Errors(t *testing.T) {
 	cmd.SetArgs([]string{"template", "nope.tpl"})
 	require.Error(t, cmd.Execute())
 }
+
+func TestTemplateCmd_OutputWriteError(t *testing.T) {
+	dir := writeLocalTemplateConfig(t)
+	origDir, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	defer os.Chdir(origDir) //nolint:errcheck
+
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "in.tpl"), []byte("X=${TOKEN}\n"), 0o600))
+	// --output points at the existing directory, so the file write must fail.
+	cmd := NewRootCmd()
+	cmd.SetArgs([]string{"template", "in.tpl", "--output", dir})
+	require.Error(t, cmd.Execute())
+}
+
+func TestTemplateCmd_NoConfig_Errors(t *testing.T) {
+	dir := t.TempDir() // no .skret.yaml here
+	origDir, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	defer os.Chdir(origDir) //nolint:errcheck
+
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "x.tpl"), []byte("${A}\n"), 0o600))
+	// Template file reads fine, then loadProvider fails: no config and no --path.
+	cmd := NewRootCmd()
+	cmd.SetArgs([]string{"template", "x.tpl"})
+	require.Error(t, cmd.Execute())
+}
