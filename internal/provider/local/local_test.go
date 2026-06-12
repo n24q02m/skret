@@ -332,6 +332,58 @@ func TestLocal_ListNames_Empty(t *testing.T) {
 	assert.Empty(t, names)
 }
 
+func TestLocal_Fingerprint_ValueSensitive_OrderInsensitive(t *testing.T) {
+	path := setupFile(t, "version: \"1\"\nsecrets:\n  A_KEY: aval\n  B_KEY: bval")
+	p := newProvider(t, path)
+	defer p.Close()
+
+	ctx := context.Background()
+	h1, err := p.Fingerprint(ctx, "")
+	require.NoError(t, err)
+	assert.NotEmpty(t, h1)
+
+	// Same key set written in a different order produces the SAME hash (sorted).
+	pathReordered := setupFile(t, "version: \"1\"\nsecrets:\n  B_KEY: bval\n  A_KEY: aval")
+	pReordered := newProvider(t, pathReordered)
+	defer pReordered.Close()
+	hReordered, err := pReordered.Fingerprint(ctx, "")
+	require.NoError(t, err)
+	assert.Equal(t, h1, hReordered)
+
+	// Editing a value changes the hash.
+	require.NoError(t, p.Set(ctx, "A_KEY", "changed", provider.SecretMeta{}))
+	h2, err := p.Fingerprint(ctx, "")
+	require.NoError(t, err)
+	assert.NotEqual(t, h1, h2)
+}
+
+// TestLocal_Fingerprint_DetectsOnDiskEdit covers the `run --watch` scenario:
+// the file is edited out-of-band (not via Set), and Fingerprint must reflect it
+// by re-reading the file rather than serving the snapshot read at construction.
+func TestLocal_Fingerprint_DetectsOnDiskEdit(t *testing.T) {
+	path := setupFile(t, "version: \"1\"\nsecrets:\n  TOKEN: before")
+	p := newProvider(t, path)
+	defer p.Close()
+
+	ctx := context.Background()
+	h1, err := p.Fingerprint(ctx, "")
+	require.NoError(t, err)
+
+	// Edit the file directly, as an external rotation would.
+	require.NoError(t, os.WriteFile(path, []byte("version: \"1\"\nsecrets:\n  TOKEN: after"), 0o600))
+
+	h2, err := p.Fingerprint(ctx, "")
+	require.NoError(t, err)
+	assert.NotEqual(t, h1, h2, "fingerprint must detect an on-disk edit")
+
+	// The refreshed read is also visible to List, so a watch restart picks up
+	// the new value.
+	secrets, err := p.List(ctx, "")
+	require.NoError(t, err)
+	require.Len(t, secrets, 1)
+	assert.Equal(t, "after", secrets[0].Value)
+}
+
 func TestLocal_ListNames_PrefixIgnored(t *testing.T) {
 	// Local provider ignores prefix (returns all); verify it doesn't error.
 	path := setupFile(t, "version: \"1\"\nsecrets:\n  DB_URL: dbval\n  API_KEY: apikey")

@@ -56,6 +56,12 @@ skret list
 skret run -- npm start
 ```
 
+Add `--watch` to auto-restart the command whenever a secret changes (see [Watch mode](/guide/watch)):
+
+```bash
+skret run --watch -- npm start  # auto-restart when a secret changes
+```
+
 ## 4. Multi-Environment
 
 Edit `.skret.yaml` to add environments:

@@ -632,3 +632,70 @@ func TestAWS_ListNames_Error(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "list-names err")
 }
+
+func TestAWS_Fingerprint_NoDecryption_VersionSensitive(t *testing.T) {
+	newMock := func(v int64) (*mockSSMClient, **ssm.GetParametersByPathInput) {
+		var captured *ssm.GetParametersByPathInput
+		mock := &mockSSMClient{params: make(map[string]ssmtypes.Parameter)}
+		mock.GetParametersByPathFunc = func(_ context.Context, input *ssm.GetParametersByPathInput) (*ssm.GetParametersByPathOutput, error) {
+			captured = input
+			return &ssm.GetParametersByPathOutput{
+				Parameters: []ssmtypes.Parameter{
+					{Name: awslib.String("/app/prod/DB_URL"), Version: 1},
+					{Name: awslib.String("/app/prod/TOKEN"), Version: v},
+				},
+			}, nil
+		}
+		return mock, &captured
+	}
+
+	mock1, captured1 := newMock(1)
+	p1 := skaws.NewWithClient(mock1, "/app/prod")
+	h1, err := p1.Fingerprint(context.Background(), "/app/prod")
+	require.NoError(t, err)
+	require.NotNil(t, *captured1)
+	assert.False(t, awslib.ToBool((*captured1).WithDecryption), "WithDecryption must be false for Fingerprint")
+
+	mock2, _ := newMock(1)
+	p2 := skaws.NewWithClient(mock2, "/app/prod")
+	h2, err := p2.Fingerprint(context.Background(), "/app/prod")
+	require.NoError(t, err)
+	assert.Equal(t, h1, h2)
+
+	mock3, _ := newMock(2)
+	p3 := skaws.NewWithClient(mock3, "/app/prod")
+	h3, err := p3.Fingerprint(context.Background(), "/app/prod")
+	require.NoError(t, err)
+	assert.NotEqual(t, h1, h3)
+}
+
+func TestAWS_Fingerprint_Pagination(t *testing.T) {
+	calls := 0
+	mock := &mockSSMClient{params: make(map[string]ssmtypes.Parameter)}
+	mock.GetParametersByPathFunc = func(_ context.Context, _ *ssm.GetParametersByPathInput) (*ssm.GetParametersByPathOutput, error) {
+		calls++
+		if calls == 1 {
+			return &ssm.GetParametersByPathOutput{
+				Parameters: []ssmtypes.Parameter{{Name: awslib.String("/test/prod/A"), Version: 1}},
+				NextToken:  awslib.String("tok"),
+			}, nil
+		}
+		return &ssm.GetParametersByPathOutput{
+			Parameters: []ssmtypes.Parameter{{Name: awslib.String("/test/prod/B"), Version: 1}},
+		}, nil
+	}
+
+	p := skaws.NewWithClient(mock, "/test/prod/")
+	h, err := p.Fingerprint(context.Background(), "")
+	require.NoError(t, err)
+	assert.NotEmpty(t, h)
+	assert.Equal(t, 2, calls)
+}
+
+func TestAWS_Fingerprint_Error(t *testing.T) {
+	mock := &mockSSMClient{params: make(map[string]ssmtypes.Parameter), errList: errors.New("fingerprint err")}
+	p := skaws.NewWithClient(mock, "/test/prod/")
+	_, err := p.Fingerprint(context.Background(), "")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "fingerprint err")
+}

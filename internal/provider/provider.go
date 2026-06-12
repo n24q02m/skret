@@ -49,6 +49,10 @@ type SecretProvider interface {
 	// ListNames returns secret key names under pathPrefix WITHOUT decrypting
 	// values (no KMS calls). Use for completion and name-only listing.
 	ListNames(ctx context.Context, pathPrefix string) ([]string, error)
+	// Fingerprint returns a stable hash of the current secret set under
+	// pathPrefix WITHOUT incurring decryption cost where it matters (aws uses
+	// parameter versions, not values). Used by `run --watch` to detect change.
+	Fingerprint(ctx context.Context, pathPrefix string) (string, error)
 
 	Set(ctx context.Context, key string, value string, meta SecretMeta) error
 	Delete(ctx context.Context, key string) error
