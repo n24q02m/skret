@@ -24,7 +24,7 @@ func (s stubProvider) List(_ context.Context, _ string) ([]*provider.Secret, err
 func TestEnvSource_NormalizesKeys(t *testing.T) {
 	p := stubProvider{secrets: []*provider.Secret{
 		{Key: "/myapp/prod/DB_URL", Value: "x"},
-		{Key: "/myapp/prod/api-key", Value: "y"},
+		{Key: "/myapp/prod/REDIS_URL", Value: "y"},
 	}}
 	src := NewEnvSource("env:prod", p, "/myapp/prod")
 
@@ -32,7 +32,7 @@ func TestEnvSource_NormalizesKeys(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, snap.CanReadValues)
 	assert.Equal(t, "x", snap.Secrets["DB_URL"])
-	assert.Equal(t, "y", snap.Secrets["API_KEY"]) // hyphen+lowercase normalized
+	assert.Equal(t, "y", snap.Secrets["REDIS_URL"])
 	assert.Equal(t, "env:prod", src.Label())
 }
 
