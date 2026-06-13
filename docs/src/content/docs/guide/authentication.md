@@ -3,6 +3,9 @@ title: Authentication
 description: "skret authenticates from its own credential store when you log in with it, and otherwise delegates to the provider SDK's default chain."
 ---
 
+To create a fresh scoped identity automatically — a dedicated IAM user and
+access key provisioned from an admin credential — see [Bootstrap](/guide/bootstrap/).
+
 skret resolves AWS credentials in two layers:
 
 1. **skret-managed credential** -- if you ran `skret auth login aws`, skret uses
