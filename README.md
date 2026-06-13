@@ -76,6 +76,7 @@ If you only need a single-cloud injector and you don't care about migration or C
 - **Tab-completion of secret keys**: `skret get <TAB>` completes real key names via a names-only listing — zero decryption, zero KMS cost.
 - **Watch mode**: `skret run --watch -- your-cmd` auto-restarts the command when secrets change. Change detection polls a no-decrypt fingerprint, so it issues zero KMS Decrypt requests.
 - **Leak guard**: `skret scan` checks tracked files for your real managed secret values — precise, no pattern-matching false positives — and exits `10` when one is found, so CI and pre-commit hooks fail on a leak.
+- **Interactive browser**: `skret browse` opens a TUI of your secret keys and reveals each value on demand. The list never decrypts, so browsing is free of KMS cost; only the secret you reveal is decrypted.
 
 ## Install
 
@@ -146,6 +147,9 @@ skret run --watch -- make up-prod          # restart on change; --watch-interval
 # 10. Guard against leaks: scan tracked files for your managed secret values
 skret scan                                 # exits 10 if any managed value is found in a tracked file
 skret scan --staged                        # staged-only, for a .git/hooks/pre-commit hook
+
+# 11. Browse secrets in an interactive TUI; reveal values on demand (no KMS cost to browse)
+skret browse                               # arrow keys to move, / to filter, enter to reveal/hide, q to quit
 ```
 
 See [Getting started](https://skret.n24q02m.com/guide/getting-started/) for the 5-minute guided tour.
@@ -222,6 +226,7 @@ Full docs at **[skret.n24q02m.com](https://skret.n24q02m.com)**:
 | `skret diff <A> <B>` | Compare two environments (or env vs dotenv / env vs github) and report drift without printing values |
 | `skret template <file>` | Render a template file, substituting `${KEY}` with secret values |
 | `skret scan` | Scan tracked files for any managed secret value and exit 10 on a leak (`--staged` for pre-commit hooks) |
+| `skret browse` | Browse secret keys in an interactive TUI, revealing values on demand (no decryption to browse) |
 
 ## Contributing
 
