@@ -109,7 +109,7 @@ func runWatch(cmd *cobra.Command, p provider.SecretProvider, resolved *config.Re
 		tick:    ticker.C,
 		signals: sigCh,
 		grace:   5 * time.Second,
-		out:     cmd.ErrOrStderr(),
+		out:     cmd.ErrOrStderr(), // UI improvement: route to stderr
 	}
 
 	code, runErr := watchLoop(ctx, deps, child, fp)
