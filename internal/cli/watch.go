@@ -111,6 +111,7 @@ func runWatch(cmd *cobra.Command, p provider.SecretProvider, resolved *config.Re
 		grace:   5 * time.Second,
 		out:     cmd.ErrOrStderr(),
 	}
+
 	code, runErr := watchLoop(ctx, deps, child, fp)
 	if runErr != nil {
 		return skret.NewError(skret.ExitExecError, "runtime error", runErr)
