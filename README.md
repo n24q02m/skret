@@ -66,6 +66,7 @@ If you only need a single-cloud injector and you don't care about migration or C
 
 ## Features
 
+- **One-command bootstrap**: `skret bootstrap` provisions a dedicated least-privilege IAM user + permanent access key scoped to your SSM path, from an admin/root identity used once and never stored.
 - **Multi-provider backend**: AWS SSM Parameter Store today; OCI Vault, Azure Key Vault, GCP Secret Manager on the roadmap. Switch backends with one config line.
 - **Zero-server architecture**: Direct cloud IAM. No self-hosted control plane, no license fees, no new billing surface.
 - **Doppler-grade CLI**: `skret run -- your-cmd` injects secrets as env vars. Identical UX to `doppler run --`.
@@ -110,6 +111,9 @@ session, or a stored access key) so you never re-run `aws login`.
 Or step by step:
 
 ```sh
+# 0. (One-time) Provision a scoped least-privilege key from an admin identity
+skret bootstrap --path=/myapp/prod --region=ap-southeast-1   # creates IAM user skret-<project> + stores the key
+
 # 1. Initialise .skret.yaml in your repo
 skret init --provider=aws --path=/myapp/prod --region=ap-southeast-1
 
@@ -213,6 +217,7 @@ Full docs at **[skret.n24q02m.com](https://skret.n24q02m.com)**:
 
 | Command | Purpose |
 |---------|---------|
+| `skret bootstrap` | Provision a dedicated least-privilege IAM user + permanent access key scoped to your SSM path, from an admin identity |
 | `skret setup` | Create `.skret.yaml` + authenticate in one step |
 | `skret init` | Create `.skret.yaml` in the current repo |
 | `skret run -- <cmd>` | Inject secrets as env vars and exec a command |
