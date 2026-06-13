@@ -1,10 +1,12 @@
 package auth
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -109,6 +111,34 @@ func (f *BootstrapFlow) Provision(ctx context.Context, o BootstrapOpts) (*Bootst
 		AccessKeyID: aws.ToString(out.AccessKey.AccessKeyId),
 		SecretKey:   aws.ToString(out.AccessKey.SecretAccessKey),
 	}, nil
+}
+
+// BootstrapCredentials is an admin/root identity entered interactively for a
+// single bootstrap run. It is used in-memory to call IAM/STS and is NEVER
+// persisted by skret.
+type BootstrapCredentials struct {
+	AccessKeyID     string
+	SecretAccessKey string
+	SessionToken    string
+}
+
+// PromptBootstrapCredentials interactively reads an admin/root AWS identity used
+// transiently to provision the scoped skret key (Case 1). Mirrors the
+// `skret auth login aws keys` paste flow, but these keys are discarded after the
+// run rather than stored. Returns an error if the required fields are blank.
+func PromptBootstrapCredentials(ctx context.Context, in io.Reader) (*BootstrapCredentials, error) {
+	r := bufio.NewReader(in)
+	fmt.Fprintln(ctxOut(ctx), "Paste an admin/root AWS identity to bootstrap from (used once, not stored):")
+	akid := promptLine(ctx, r, "AWS Access Key ID: ")
+	if akid == "" {
+		return nil, fmt.Errorf("bootstrap: access key id required")
+	}
+	sak := promptLine(ctx, r, "AWS Secret Access Key: ")
+	if sak == "" {
+		return nil, fmt.Errorf("bootstrap: secret access key required")
+	}
+	sess := promptLine(ctx, r, "AWS Session Token (optional, blank = skip): ")
+	return &BootstrapCredentials{AccessKeyID: akid, SecretAccessKey: sak, SessionToken: sess}, nil
 }
 
 // buildPolicy returns the least-privilege inline policy JSON: the exact SSM

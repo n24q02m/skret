@@ -440,3 +440,36 @@ func TestProvision_ErrorsNeverLeakSecret(t *testing.T) {
 		})
 	}
 }
+
+func TestPromptBootstrapCredentials(t *testing.T) {
+	t.Run("full input incl session token", func(t *testing.T) {
+		in := strings.NewReader("AKIAADMINEXAMPLE0001\nadmin-secret-value\nadmin-session-token\n")
+		c, err := PromptBootstrapCredentials(context.Background(), in)
+		require.NoError(t, err)
+		assert.Equal(t, "AKIAADMINEXAMPLE0001", c.AccessKeyID)
+		assert.Equal(t, "admin-secret-value", c.SecretAccessKey)
+		assert.Equal(t, "admin-session-token", c.SessionToken)
+	})
+
+	t.Run("session token optional", func(t *testing.T) {
+		in := strings.NewReader("AKIAADMINEXAMPLE0001\nadmin-secret-value\n\n")
+		c, err := PromptBootstrapCredentials(context.Background(), in)
+		require.NoError(t, err)
+		assert.Empty(t, c.SessionToken)
+	})
+
+	t.Run("missing access key id errors", func(t *testing.T) {
+		in := strings.NewReader("\n")
+		_, err := PromptBootstrapCredentials(context.Background(), in)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "access key id required")
+	})
+
+	t.Run("missing secret errors without leaking", func(t *testing.T) {
+		in := strings.NewReader("AKIAADMINEXAMPLE0001\n\n")
+		_, err := PromptBootstrapCredentials(context.Background(), in)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "secret access key required")
+		assert.NotContains(t, err.Error(), "AKIAADMINEXAMPLE0001")
+	})
+}
