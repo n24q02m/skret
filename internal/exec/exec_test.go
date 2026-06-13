@@ -191,3 +191,7 @@ func TestBuildEnv_EmptyExcludeMap(t *testing.T) {
 	assert.Contains(t, env, "A=1")
 	assert.Contains(t, env, "B=2")
 }
+
+func TestKeyToEnvName_NonAscii_FastPath(t *testing.T) {
+	assert.Equal(t, "秘_密", skexec.KeyToEnvName("秘/密", ""))
+}

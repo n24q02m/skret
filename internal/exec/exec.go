@@ -136,6 +136,8 @@ func BuildEnv(secrets []*provider.Secret, existing []string, pathPrefix string, 
 	return env
 }
 
+var keyReplacer = strings.NewReplacer("/", "_", "-", "_")
+
 // KeyToEnvName converts a secret key to an environment variable name.
 // It strips the path prefix, replaces "/" and "-" with "_", and uppercases,
 // so a key like "/app/prod/api-key" becomes the valid env var name "API_KEY".
@@ -152,7 +154,7 @@ func KeyToEnvName(key, pathPrefix string) string {
 	for i := 0; i < len(name); i++ {
 		c := name[i]
 		if c >= 0x80 {
-			return strings.ToUpper(strings.NewReplacer("/", "_", "-", "_").Replace(name))
+			return strings.ToUpper(keyReplacer.Replace(name))
 		}
 		if c == '/' || c == '-' || (c >= 'a' && c <= 'z') || c == '=' || c == '\n' || c == '\r' || c == ' ' {
 			var b strings.Builder
@@ -161,7 +163,7 @@ func KeyToEnvName(key, pathPrefix string) string {
 			for ; i < len(name); i++ {
 				c := name[i]
 				if c >= 0x80 {
-					return strings.ToUpper(strings.NewReplacer("/", "_", "-", "_").Replace(name))
+					return strings.ToUpper(keyReplacer.Replace(name))
 				}
 				switch {
 				case c == '/' || c == '-':
