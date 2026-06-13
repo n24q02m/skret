@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/n24q02m/skret/internal/auth"
@@ -17,14 +18,28 @@ import (
 )
 
 // newBootstrapClients builds the IAM/STS clients from the bootstrap (admin)
-// identity. Seam for tests.
+// identity. Seam for tests. Credential source, in order:
+//  1. --profile <name>           -> the named shared-config profile
+//  2. interactive stdin (Case 1) -> paste admin/root keys directly through skret
+//     (used in-memory only, never stored)
+//  3. non-interactive fallback   -> the default credential chain (env/instance),
+//     for CI where keys come from the environment
 var newBootstrapClients = func(ctx context.Context, profile, region string) (auth.IAMClient, auth.STSClient, error) {
 	opts := []func(*awsconfig.LoadOptions) error{}
 	if region != "" {
 		opts = append(opts, awsconfig.WithRegion(region))
 	}
-	if profile != "" {
+	switch {
+	case profile != "":
 		opts = append(opts, awsconfig.WithSharedConfigProfile(profile))
+	case isInteractiveStdin():
+		creds, err := auth.PromptBootstrapCredentials(ctx, os.Stdin)
+		if err != nil {
+			return nil, nil, err
+		}
+		opts = append(opts, awsconfig.WithCredentialsProvider(
+			credentials.NewStaticCredentialsProvider(creds.AccessKeyID, creds.SecretAccessKey, creds.SessionToken),
+		))
 	}
 	cfg, err := awsconfig.LoadDefaultConfig(ctx, opts...)
 	if err != nil {
@@ -132,7 +147,7 @@ func newBootstrapCmd(opts *GlobalOpts) *cobra.Command {
 	cmd.Flags().StringVar(&path, "path", "", "SSM path to scope to (default: env path from .skret.yaml)")
 	cmd.Flags().StringVar(&region, "region", "", "AWS region (default: config/env)")
 	cmd.Flags().StringVar(&userName, "user-name", "", "override IAM user name (default skret-<project>)")
-	cmd.Flags().StringVar(&profile, "profile", "", "AWS profile to use as the bootstrap (admin) identity")
+	cmd.Flags().StringVar(&profile, "profile", "", "AWS profile to use as the bootstrap identity (default: paste admin/root keys interactively)")
 	cmd.Flags().BoolVar(&printOnly, "print-only", false, "print the key instead of storing it (provision for another person/machine)")
 	cmd.Flags().BoolVar(&force, "force", false, "provision even if an aws credential is already stored")
 	cmd.Flags().BoolVar(&yes, "yes", false, "skip the confirmation prompt")
