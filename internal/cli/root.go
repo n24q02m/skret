@@ -71,6 +71,7 @@ func NewRootCmd() *cobra.Command {
 	cmd.AddCommand(newDiffCmd(opts))
 	cmd.AddCommand(newTemplateCmd(opts))
 	cmd.AddCommand(newScanCmd(opts))
+	cmd.AddCommand(newBrowseCmd(opts))
 	cmd.AddCommand(newAuthCmd())
 
 	return cmd
