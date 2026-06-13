@@ -1,0 +1,11 @@
+# GitGuardian remediation-as-code.
+# https://docs.gitguardian.com/ggshield-docs/configuration
+version: 2
+
+secret:
+  ignored-matches:
+    # `sup3r-s3cret-value` is a fabricated fixture used by the scanner's own
+    # tests (internal/scanner/*_test.go) to verify that skret scan finds a
+    # managed value in a file and never prints it. It is not a real credential.
+    - name: scanner test fixture (fabricated, not a real secret)
+      match: sup3r-s3cret-value
