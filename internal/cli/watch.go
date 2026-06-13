@@ -109,8 +109,9 @@ func runWatch(cmd *cobra.Command, p provider.SecretProvider, resolved *config.Re
 		tick:    ticker.C,
 		signals: sigCh,
 		grace:   5 * time.Second,
-		out:     cmd.OutOrStdout(),
+		out:     cmd.ErrOrStderr(), // UI improvement: route to stderr
 	}
+
 	code, runErr := watchLoop(ctx, deps, child, fp)
 	if runErr != nil {
 		return skret.NewError(skret.ExitExecError, "runtime error", runErr)
@@ -120,3 +121,4 @@ func runWatch(cmd *cobra.Command, p provider.SecretProvider, resolved *config.Re
 	}
 	return nil
 }
+// force new commit
