@@ -9,7 +9,10 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestBuildEnv_CrossReference(t *testing.T) {
+// TestBuildEnv_NoExpansion asserts that '${REF}' tokens in secret values are
+// NOT expanded — they are injected literally. Cross-secret reference is served
+// by the explicit `skret template` command, not by silent expansion in run.
+func TestBuildEnv_NoExpansion(t *testing.T) {
 	secrets := []*provider.Secret{
 		{Key: "DB_USER", Value: "admin"},
 		{Key: "DB_PASS", Value: "supersecret"},
@@ -28,8 +31,10 @@ func TestBuildEnv_CrossReference(t *testing.T) {
 	env := skexec.BuildEnv(secretsWithOsEnv, existing, "", nil)
 
 	assert.Contains(t, env, "DB_USER=admin")
-	assert.Contains(t, env, "DB_URL=postgres://admin:supersecret@localhost")
-	assert.Contains(t, env, "DB_CONNECTION=connected to postgres://admin:supersecret@localhost")
-	assert.Contains(t, env, "TEST_INFO=region=us-east-1")
-	assert.Contains(t, env, "EXISTING_OVERRIDE=port=8080")
+	assert.Contains(t, env, "DB_URL=postgres://${DB_USER}:${DB_PASS}@localhost")
+	assert.Contains(t, env, "DB_CONNECTION=connected to ${DB_URL}")
+	assert.Contains(t, env, "TEST_INFO=region=${TEST_REGION}")
+	assert.Contains(t, env, "EXISTING_OVERRIDE=port=${PORT}")
+	// existing PORT is preserved as-is (existing wins, untouched).
+	assert.Contains(t, env, "PORT=8080")
 }

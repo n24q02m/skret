@@ -8,7 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestBuildEnv_MultipleCycles(t *testing.T) {
+// Values that look like mutual references are kept literal (no expansion).
+func TestBuildEnv_RefLikeValuesKeptLiteral(t *testing.T) {
 	secrets := []*provider.Secret{
 		{Key: "A", Value: "${B}"},
 		{Key: "B", Value: "${A}"},
@@ -18,46 +19,27 @@ func TestBuildEnv_MultipleCycles(t *testing.T) {
 	env := skexec.BuildEnv(secrets, nil, "", nil)
 
 	assert.Len(t, env, 4)
-	// Check that both cycles are independent and present
-	foundA, foundB, foundC, foundD := false, false, false, false
-	for _, e := range env {
-		if e == "A=${B}" || e == "A=${A}" {
-			foundA = true
-		}
-		if e == "B=${A}" || e == "B=${B}" {
-			foundB = true
-		}
-		if e == "C=${D}" || e == "C=${C}" {
-			foundC = true
-		}
-		if e == "D=${C}" || e == "D=${D}" {
-			foundD = true
-		}
-	}
-	assert.True(t, foundA)
-	assert.True(t, foundB)
-	assert.True(t, foundC)
-	assert.True(t, foundD)
+	assert.Contains(t, env, "A=${B}")
+	assert.Contains(t, env, "B=${A}")
+	assert.Contains(t, env, "C=${D}")
+	assert.Contains(t, env, "D=${C}")
 }
 
-func TestBuildEnv_UndefinedExpansion(t *testing.T) {
+func TestBuildEnv_UndefinedRefKeptLiteral(t *testing.T) {
 	secrets := []*provider.Secret{
 		{Key: "A", Value: "${UNDEFINED_VAR}"},
 	}
 	env := skexec.BuildEnv(secrets, nil, "", nil)
-	assert.Contains(t, env, "A=")
+	assert.Contains(t, env, "A=${UNDEFINED_VAR}")
 }
 
-func TestBuildEnv_EscapedDollar(t *testing.T) {
+func TestBuildEnv_DoubleDollarKeptLiteral(t *testing.T) {
 	secrets := []*provider.Secret{
 		{Key: "A", Value: "$$VAL"},
 	}
 	env := skexec.BuildEnv(secrets, nil, "", nil)
-	// os.Expand("$$VAL", ...) returns "$VAL" which is what BuildEnv should produce.
-	// Verified: os.Expand("$$", mapping) returns "" if mapping returns "" for "$"
-	// Wait, TestBuildEnv_EscapedDollar actual: "A=VAL".
-	// Let's re-verify what os.Expand does with a literal mapping.
-	assert.Contains(t, env, "A=VAL")
+	// No expansion: "$$VAL" is injected byte-exact.
+	assert.Contains(t, env, "A=$$VAL")
 }
 
 func TestBuildEnv_CaseInsensitiveExclude(t *testing.T) {

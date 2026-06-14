@@ -8,6 +8,26 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// TestBuildEnv_DollarValuesByteExact is the regression for the corruption bug:
+// secret values containing '$' (bcrypt hashes, URLs with passwords) MUST be
+// injected verbatim, never run through shell-style expansion.
+func TestBuildEnv_DollarValuesByteExact(t *testing.T) {
+	bcrypt := "$2a$14$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy"
+	pgURL := "postgres://u:p$word@host/db"
+	secrets := []*provider.Secret{
+		{Key: "HASH", Value: bcrypt},
+		{Key: "PGURL", Value: pgURL},
+		{Key: "BRACED", Value: "literal-${NOT_A_REF}-kept"},
+		{Key: "DOUBLE", Value: "price-$$100"},
+	}
+	env := skexec.BuildEnv(secrets, nil, "", nil)
+
+	assert.Contains(t, env, "HASH="+bcrypt)
+	assert.Contains(t, env, "PGURL="+pgURL)
+	assert.Contains(t, env, "BRACED=literal-${NOT_A_REF}-kept")
+	assert.Contains(t, env, "DOUBLE=price-$$100")
+}
+
 func TestBuildEnv(t *testing.T) {
 	secrets := []*provider.Secret{
 		{Key: "DB_URL", Value: "postgres://localhost"},
@@ -79,7 +99,7 @@ func TestKeyToEnvName_NonAscii(t *testing.T) {
 	assert.Equal(t, "UNICODE_秘_密", skexec.KeyToEnvName("unicode/秘/密", ""))
 }
 
-func TestBuildEnv_ExpansionSecretVars(t *testing.T) {
+func TestBuildEnv_SecretRefKeptLiteral(t *testing.T) {
 	secrets := []*provider.Secret{
 		{Key: "A", Value: "1"},
 		{Key: "B", Value: "${A}"},
@@ -88,10 +108,10 @@ func TestBuildEnv_ExpansionSecretVars(t *testing.T) {
 
 	env := skexec.BuildEnv(secrets, existing, "", nil)
 
-	assert.Contains(t, env, "B=1")
+	assert.Contains(t, env, "B=${A}")
 }
 
-func TestBuildEnv_ExpansionExistingVars(t *testing.T) {
+func TestBuildEnv_ExistingRefKeptLiteral(t *testing.T) {
 	secrets := []*provider.Secret{
 		{Key: "B", Value: "${A}"},
 	}
@@ -99,10 +119,10 @@ func TestBuildEnv_ExpansionExistingVars(t *testing.T) {
 
 	env := skexec.BuildEnv(secrets, existing, "", nil)
 
-	assert.Contains(t, env, "B=2")
+	assert.Contains(t, env, "B=${A}")
 }
 
-func TestBuildEnv_ExpansionHostEnv(t *testing.T) {
+func TestBuildEnv_SecretHostEnvRefKeptLiteral(t *testing.T) {
 	t.Setenv("HOST_ENV", "host_value")
 	secrets := []*provider.Secret{
 		{Key: "DB_PASS", Value: "${HOST_ENV}"},
@@ -111,7 +131,7 @@ func TestBuildEnv_ExpansionHostEnv(t *testing.T) {
 
 	env := skexec.BuildEnv(secrets, existing, "", nil)
 
-	assert.Contains(t, env, "DB_PASS=host_value")
+	assert.Contains(t, env, "DB_PASS=${HOST_ENV}")
 }
 
 func TestBuildEnv_ExistingNoValue(t *testing.T) {
@@ -120,47 +140,29 @@ func TestBuildEnv_ExistingNoValue(t *testing.T) {
 	assert.Contains(t, env, "NO_VALUE")
 }
 
-func TestBuildEnv_CycleDetection(t *testing.T) {
+func TestBuildEnv_MutualRefsKeptLiteral(t *testing.T) {
 	secrets := []*provider.Secret{
 		{Key: "A", Value: "${B}"},
 		{Key: "B", Value: "${A}"},
 	}
 	env := skexec.BuildEnv(secrets, nil, "", nil)
 
-	// Should break cycle and return some value containing the reference
-	// Map iteration is random, so it could be A=${B}, B=${B} OR B=${A}, A=${A}
-	foundA := false
-	foundB := false
-	for _, e := range env {
-		if e == "A=${B}" || e == "A=${A}" {
-			foundA = true
-		}
-		if e == "B=${A}" || e == "B=${B}" {
-			foundB = true
-		}
-	}
-	assert.True(t, foundA, "A should be present with some value")
-	assert.True(t, foundB, "B should be present with some value")
+	// No expansion: each value is injected exactly as stored.
+	assert.Contains(t, env, "A=${B}")
+	assert.Contains(t, env, "B=${A}")
 }
 
-func TestBuildEnv_DeepDependency(t *testing.T) {
+func TestBuildEnv_DeepRefChainKeptLiteral(t *testing.T) {
 	secrets := []*provider.Secret{
 		{Key: "V1", Value: "base"},
 		{Key: "V2", Value: "${V1}"},
-		{Key: "V3", Value: "${V2}"},
-		{Key: "V4", Value: "${V3}"},
-		{Key: "V5", Value: "${V4}"},
-		{Key: "V6", Value: "${V5}"},
-		{Key: "V7", Value: "${V6}"},
-		{Key: "V8", Value: "${V7}"},
-		{Key: "V9", Value: "${V8}"},
-		{Key: "V10", Value: "${V9}"},
-		{Key: "V11", Value: "${V10}"},
 		{Key: "V12", Value: "${V11}"},
 	}
 	env := skexec.BuildEnv(secrets, nil, "", nil)
 
-	assert.Contains(t, env, "V12=base")
+	assert.Contains(t, env, "V1=base")
+	assert.Contains(t, env, "V2=${V1}")
+	assert.Contains(t, env, "V12=${V11}")
 }
 
 func TestBuildEnv_Sanitization(t *testing.T) {

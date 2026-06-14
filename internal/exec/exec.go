@@ -1,20 +1,17 @@
 package exec
 
 import (
-	"os"
 	"strings"
 
 	"github.com/n24q02m/skret/internal/provider"
 )
 
-const (
-	maxExpansionDepth = 32
-	maxExpandedLen    = 128 * 1024
-)
-
 // BuildEnv merges secrets into existing env vars.
 // Existing env vars override secret values (user control).
 // Keys in exclude list are never injected.
+// Secret values are injected byte-exact: '$' is never expanded, so values like
+// bcrypt hashes ($2a$14$...) or URLs with '$' in the password survive verbatim.
+// Cross-secret references are served by the explicit `skret template` command.
 func BuildEnv(secrets []*provider.Secret, existing []string, pathPrefix string, exclude []string) []string {
 	// ⚡ Bolt: Early return for empty secrets avoids expensive cache initializations
 	if len(secrets) == 0 {
@@ -74,59 +71,6 @@ func BuildEnv(secrets []*provider.Secret, existing []string, pathPrefix string, 
 			val = b.String()
 		}
 		secretVars[name] = val
-	}
-	// Resolved cache to avoid redundant expansions
-	resolved := make(map[string]string, len(secretVars))
-	// Cycle detection map
-	resolving := make(map[string]bool, len(secretVars))
-
-	var depth int
-	var resolve func(string) string
-	resolve = func(ref string) string {
-		// 1. check existing environment variables (highest priority)
-		if val, ok := existingMap[ref]; ok {
-			return val
-		}
-		// 2. check already resolved secrets
-		if val, ok := resolved[ref]; ok {
-			return val
-		}
-		// 3. check if it is a secret that needs resolving
-		val, ok := secretVars[ref]
-		if !ok {
-			// fallback to host env
-			return os.Getenv(ref)
-		}
-
-		// Cycle detection
-		if resolving[ref] {
-			return val // Return raw value to break cycle
-		}
-
-		// Depth limit
-		if depth >= maxExpansionDepth {
-			return val
-		}
-
-		resolving[ref] = true
-		if strings.IndexByte(val, '$') >= 0 {
-			depth++
-			val = os.Expand(val, resolve)
-			depth--
-		}
-		resolving[ref] = false
-
-		// Length limit
-		if len(val) > maxExpandedLen {
-			val = val[:maxExpandedLen]
-		}
-
-		resolved[ref] = val
-		return val
-	}
-
-	for k := range secretVars {
-		secretVars[k] = resolve(k)
 	}
 
 	for k, v := range secretVars {
