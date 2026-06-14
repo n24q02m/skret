@@ -1,6 +1,7 @@
 package exec
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/n24q02m/skret/internal/provider"
@@ -81,9 +82,11 @@ func BuildEnv(secrets []*provider.Secret, existing []string, pathPrefix string, 
 }
 
 // KeyToEnvName converts a secret key to an environment variable name.
-// It strips the path prefix, replaces "/" and "-" with "_", and uppercases,
-// so a key like "/app/prod/api-key" becomes the valid env var name "API_KEY".
-// This is the single source of truth for key-to-env-var conversion.
+// It strips the path prefix, then maps "/", "-", "=", space, newline and CR to
+// "_" and uppercases ASCII letters, so a key like "/app/prod/api-key" becomes the
+// valid env var name "API_KEY". Non-ASCII bytes are preserved (e.g. "秘=密" ->
+// "秘_密"); the sanitization is applied uniformly regardless of any non-ASCII
+// bytes. This is the single source of truth for key-to-env-var conversion.
 func KeyToEnvName(key, pathPrefix string) string {
 	name := key
 	if pathPrefix != "" && strings.HasPrefix(key, pathPrefix) {
@@ -93,34 +96,47 @@ func KeyToEnvName(key, pathPrefix string) string {
 		}
 	}
 
+	var b strings.Builder
+	b.Grow(len(name))
 	for i := 0; i < len(name); i++ {
-		c := name[i]
-		if c >= 0x80 {
-			return strings.ToUpper(strings.NewReplacer("/", "_", "-", "_").Replace(name))
+		switch c := name[i]; {
+		case c == '/' || c == '-' || c == '=' || c == ' ' || c == '\n' || c == '\r':
+			b.WriteByte('_')
+		case c >= 'a' && c <= 'z':
+			b.WriteByte(c - 'a' + 'A')
+		default:
+			// ASCII uppercase/digits/other and all non-ASCII (UTF-8 continuation)
+			// bytes are kept verbatim.
+			b.WriteByte(c)
 		}
-		if c == '/' || c == '-' || (c >= 'a' && c <= 'z') || c == '=' || c == '\n' || c == '\r' || c == ' ' {
-			var b strings.Builder
-			b.Grow(len(name))
-			b.WriteString(name[:i])
-			for ; i < len(name); i++ {
-				c := name[i]
-				if c >= 0x80 {
-					return strings.ToUpper(strings.NewReplacer("/", "_", "-", "_").Replace(name))
-				}
-				switch {
-				case c == '/' || c == '-':
-					b.WriteByte('_')
-				case c >= 'a' && c <= 'z':
-					b.WriteByte(c - 'a' + 'A')
-				case c == '=' || c == '\n' || c == '\r' || c == ' ':
-					b.WriteByte('_')
-				default:
-					b.WriteByte(c)
-				}
-			}
-			return b.String()
+	}
+	return b.String()
+}
+
+// DetectEnvNameCollisions reports an error when two DISTINCT secret keys map to
+// the same environment variable name. Without this guard one secret would
+// silently overwrite the other (or be dropped), so a process could run with the
+// wrong secret value with no indication. Excluded names are ignored. Duplicate
+// occurrences of the SAME key are not a collision (last-write-wins dedup).
+func DetectEnvNameCollisions(secrets []*provider.Secret, pathPrefix string, exclude []string) error {
+	var excludeSet map[string]bool
+	if len(exclude) > 0 {
+		excludeSet = make(map[string]bool, len(exclude))
+		for _, e := range exclude {
+			excludeSet[strings.ToUpper(e)] = true
 		}
 	}
 
-	return name
+	nameToKey := make(map[string]string, len(secrets))
+	for _, s := range secrets {
+		name := KeyToEnvName(s.Key, pathPrefix)
+		if excludeSet[name] {
+			continue
+		}
+		if prev, ok := nameToKey[name]; ok && prev != s.Key {
+			return fmt.Errorf("env var name %q is produced by two distinct keys %q and %q; rename one so secrets are not silently lost", name, prev, s.Key)
+		}
+		nameToKey[name] = s.Key
+	}
+	return nil
 }

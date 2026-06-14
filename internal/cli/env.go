@@ -7,6 +7,8 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/n24q02m/skret/internal/dotenv"
+	skexec "github.com/n24q02m/skret/internal/exec"
 	"github.com/n24q02m/skret/pkg/skret"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
@@ -48,6 +50,10 @@ func getEnvPairs(opts *GlobalOpts) ([]envPair, error) {
 	secrets, err := p.List(ctx, resolved.Path)
 	if err != nil {
 		return nil, skret.NewError(skret.ExitProviderError, "env: list secrets failed", err)
+	}
+
+	if err := skexec.DetectEnvNameCollisions(secrets, resolved.Path, resolved.Exclude); err != nil {
+		return nil, skret.NewError(skret.ExitConfigError, "env: "+err.Error(), nil)
 	}
 
 	pairs := make([]envPair, 0, len(secrets))
@@ -101,20 +107,20 @@ func printEnvPairs(cmd *cobra.Command, pairs []envPair, format string) error {
 
 	case "export":
 		for _, p := range pairs {
-			fmt.Fprintf(out, "export %s=%q\n", p.Name, p.Value)
+			fmt.Fprintf(out, "export %s=%s\n", p.Name, shellSingleQuote(p.Value))
 		}
 
 	default: // dotenv
 		for _, p := range pairs {
-			fmt.Fprintf(out, "%s=%q\n", p.Name, escapeEnvValue(p.Value))
+			fmt.Fprintln(out, dotenv.Encode(p.Name, p.Value))
 		}
 	}
 	return nil
 }
 
-func escapeEnvValue(s string) string {
-	if strings.IndexByte(s, '"') == -1 {
-		return s
-	}
-	return strings.ReplaceAll(s, `"`, `\"`)
+// shellSingleQuote wraps a value in POSIX single quotes so a shell that evaluates
+// `export NAME=<this>` reproduces the exact bytes — no parameter expansion, no
+// command substitution. An embedded single quote is emitted as '\” .
+func shellSingleQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }

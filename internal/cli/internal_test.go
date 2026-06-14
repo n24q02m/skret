@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/n24q02m/skret/internal/config"
 	"github.com/n24q02m/skret/internal/provider"
@@ -126,7 +127,7 @@ func TestPrintEnvPairs_ExportFormat(t *testing.T) {
 
 	err := printEnvPairs(cmd, pairs, "export")
 	require.NoError(t, err)
-	assert.Contains(t, buf.String(), `export DB_URL="postgres://localhost"`)
+	assert.Contains(t, buf.String(), `export DB_URL='postgres://localhost'`)
 }
 
 func TestPrintEnvPairs_DotenvDefault(t *testing.T) {
@@ -238,17 +239,30 @@ func TestDefaultRegistry(t *testing.T) {
 	_, _ = reg.New("aws", cfg2)
 }
 
-func TestEscapeEnvValue(t *testing.T) {
+func TestMaskValue(t *testing.T) {
+	// ASCII: first 4 + ... + last 4.
+	assert.Equal(t, "post...t/db", maskValue("postgres://old-host/db"))
+	// <= 8 chars -> ***.
+	assert.Equal(t, "***", maskValue("short"))
+	// Multi-byte runes: must slice on rune boundaries and stay valid UTF-8.
+	got := maskValue("秘密秘密秘密秘密秘密")
+	assert.True(t, utf8.ValidString(got), "masked output must be valid UTF-8")
+	assert.Equal(t, "秘密秘密...秘密秘密", got)
+}
+
+func TestShellSingleQuote(t *testing.T) {
 	tests := []struct {
 		input    string
 		expected string
 	}{
-		{`no quotes`, `no quotes`},
-		{`has "double" quotes`, `has \"double\" quotes`},
-		{`no special`, `no special`},
+		{`plain`, `'plain'`},
+		{`a$b`, `'a$b'`},      // $ stays literal inside single quotes
+		{"a`b", "'a`b'"},      // backtick stays literal
+		{`it's`, `'it'\''s'`}, // embedded single quote escaped
+		{`x${HOME}y`, `'x${HOME}y'`},
 	}
 	for _, tt := range tests {
-		assert.Equal(t, tt.expected, escapeEnvValue(tt.input))
+		assert.Equal(t, tt.expected, shellSingleQuote(tt.input))
 	}
 }
 

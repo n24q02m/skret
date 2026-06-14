@@ -1,8 +1,8 @@
 package scanner
 
 import (
-	"bufio"
 	"bytes"
+	"io"
 	"os"
 	"sort"
 )
@@ -33,9 +33,10 @@ const (
 	binarySniff     = 8 << 10
 )
 
-// Scan returns every place a target value appears as a substring of a line in
-// the given files. Binary and oversize files are skipped. A target whose value
-// is shorter than opts.MinLength is skipped.
+// Scan returns every place a target value appears as a substring anywhere in the
+// given files (matching is whole-file, so values spanning line boundaries are
+// detected). Binary and oversize files are skipped. A target whose value is
+// shorter than opts.MinLength is skipped.
 func Scan(targets []Target, files []string, opts Opts) ([]Finding, error) {
 	maxBytes := opts.MaxBytes
 	if maxBytes <= 0 {
@@ -87,18 +88,22 @@ func scanFile(path string, targets []Target, maxBytes int64) ([]Finding, error) 
 		return nil, err
 	}
 
+	// Read the whole file so a value spanning line boundaries (PEM/SSH keys,
+	// multi-line tokens) is still matched — a per-line scan silently misses them.
+	content, err := io.ReadAll(f)
+	if err != nil {
+		return nil, err
+	}
+
 	var out []Finding
-	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 0, 64*1024), 1<<20)
-	line := 0
-	for sc.Scan() {
-		line++
-		text := sc.Bytes()
-		for _, t := range targets {
-			if bytes.Contains(text, []byte(t.Value)) {
-				out = append(out, Finding{Key: t.Key, File: path, Line: line})
-			}
+	for _, t := range targets {
+		idx := bytes.Index(content, []byte(t.Value))
+		if idx < 0 {
+			continue
 		}
+		// Line number of the first match: 1 + newlines before it.
+		line := 1 + bytes.Count(content[:idx], []byte{'\n'})
+		out = append(out, Finding{Key: t.Key, File: path, Line: line})
 	}
 	return out, nil
 }

@@ -6,6 +6,7 @@ import (
 	skexec "github.com/n24q02m/skret/internal/exec"
 	"github.com/n24q02m/skret/internal/provider"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TestBuildEnv_DollarValuesByteExact is the regression for the corruption bug:
@@ -192,4 +193,49 @@ func TestBuildEnv_EmptyExcludeMap(t *testing.T) {
 	env := skexec.BuildEnv(secrets, existing, "", []string{})
 	assert.Contains(t, env, "A=1")
 	assert.Contains(t, env, "B=2")
+}
+
+func TestDetectEnvNameCollisions(t *testing.T) {
+	t.Run("distinct keys collide -> error", func(t *testing.T) {
+		secrets := []*provider.Secret{
+			{Key: "api-key", Value: "v1"},
+			{Key: "api_key", Value: "v2"},
+		}
+		err := skexec.DetectEnvNameCollisions(secrets, "", nil)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "API_KEY")
+	})
+
+	t.Run("no collision -> nil", func(t *testing.T) {
+		secrets := []*provider.Secret{
+			{Key: "API_KEY", Value: "v1"},
+			{Key: "DB_URL", Value: "v2"},
+		}
+		assert.NoError(t, skexec.DetectEnvNameCollisions(secrets, "", nil))
+	})
+
+	t.Run("same key repeated is not a collision", func(t *testing.T) {
+		secrets := []*provider.Secret{
+			{Key: "DUP", Value: "v1"},
+			{Key: "DUP", Value: "v2"},
+		}
+		assert.NoError(t, skexec.DetectEnvNameCollisions(secrets, "", nil))
+	})
+
+	t.Run("excluded name is ignored", func(t *testing.T) {
+		secrets := []*provider.Secret{
+			{Key: "api-key", Value: "v1"},
+			{Key: "api_key", Value: "v2"},
+		}
+		assert.NoError(t, skexec.DetectEnvNameCollisions(secrets, "", []string{"API_KEY"}))
+	})
+}
+
+func TestKeyToEnvName_NonAsciiSanitization(t *testing.T) {
+	// A non-ASCII byte must NOT bypass '=', space, CR, LF sanitization.
+	assert.Equal(t, "秘_密", skexec.KeyToEnvName("秘=密", ""))
+	assert.Equal(t, "秘_密", skexec.KeyToEnvName("秘 密", ""))
+	assert.Equal(t, "BAD_KEY秘", skexec.KeyToEnvName("BAD=KEY秘", ""))
+	// Pure-unicode key with slash still maps slash to underscore.
+	assert.Equal(t, "UNICODE_秘_密", skexec.KeyToEnvName("unicode/秘/密", ""))
 }
