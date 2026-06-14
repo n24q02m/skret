@@ -164,3 +164,5 @@ func (p *InfisicalProvider) Logout(_ context.Context) error {
 func init() {
 	Register("infisical", NewInfisicalProvider())
 }
+
+// Fix URL injection
