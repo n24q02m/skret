@@ -1,7 +1,6 @@
 package exec_test
 
 import (
-	"fmt"
 	"strings"
 	"testing"
 
@@ -10,37 +9,24 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestBuildEnv_ExpansionLimits(t *testing.T) {
-	t.Run("ExponentialGrowth", func(t *testing.T) {
-		// A=${B}${B}, B=${C}${C}, ...
-		// This would normally cause exponential growth in string length.
+// TestBuildEnv_ByteExactPreservation verifies that values are injected verbatim:
+// no shell-style expansion and no silent truncation. (The previous expansion
+// length cap is gone now that values are never expanded.)
+func TestBuildEnv_ByteExactPreservation(t *testing.T) {
+	t.Run("RefLikeValuesNotExpanded", func(t *testing.T) {
+		// Values that previously would have caused exponential expansion are now
+		// kept exactly as stored.
 		secrets := []*provider.Secret{
 			{Key: "V1", Value: "a"},
+			{Key: "V2", Value: "${V1}${V1}"},
+			{Key: "V3", Value: "${V2}${V2}"},
 		}
-		for i := 2; i <= 20; i++ {
-			secrets = append(secrets, &provider.Secret{
-				Key:   fmt.Sprintf("V%d", i),
-				Value: fmt.Sprintf("${V%d}${V%d}", i-1, i-1),
-			})
-		}
-
 		env := skexec.BuildEnv(secrets, nil, "", nil)
-
-		// Find V20
-		var v20 string
-		for _, e := range env {
-			if strings.HasPrefix(e, "V20=") {
-				v20 = e[4:]
-				break
-			}
-		}
-
-		// 2^19 * 1 = 524288, which is > 128KB (131072)
-		// It should be truncated to exactly 128KB
-		assert.Equal(t, 128*1024, len(v20))
+		assert.Contains(t, env, "V2=${V1}${V1}")
+		assert.Contains(t, env, "V3=${V2}${V2}")
 	})
 
-	t.Run("SingleLongString", func(t *testing.T) {
+	t.Run("LargeValueNotTruncated", func(t *testing.T) {
 		val := strings.Repeat("a", 200*1024)
 		secrets := []*provider.Secret{
 			{Key: "LONG", Value: val},
@@ -53,21 +39,15 @@ func TestBuildEnv_ExpansionLimits(t *testing.T) {
 				break
 			}
 		}
-		assert.Equal(t, 128*1024, len(longVal))
+		assert.Equal(t, 200*1024, len(longVal), "value must be injected without truncation")
 	})
 
-	t.Run("DeepRecursionProtection", func(t *testing.T) {
-		// Verify that a very deep chain doesn't cause a crash (stack overflow).
-		assert.NotPanics(t, func() {
-			bigSecrets := []*provider.Secret{}
-			for i := 1; i < 2000; i++ {
-				bigSecrets = append(bigSecrets, &provider.Secret{
-					Key:   fmt.Sprintf("X%d", i),
-					Value: fmt.Sprintf("${X%d}", i+1),
-				})
-			}
-			bigSecrets = append(bigSecrets, &provider.Secret{Key: "X2000", Value: "base"})
-			skexec.BuildEnv(bigSecrets, nil, "", nil)
-		})
+	t.Run("DollarHeavyValuePreserved", func(t *testing.T) {
+		val := "$$$${a}$b$c$2a$14$xyz"
+		secrets := []*provider.Secret{
+			{Key: "DOLLARS", Value: val},
+		}
+		env := skexec.BuildEnv(secrets, nil, "", nil)
+		assert.Contains(t, env, "DOLLARS="+val)
 	})
 }

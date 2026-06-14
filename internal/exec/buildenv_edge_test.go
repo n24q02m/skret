@@ -42,20 +42,20 @@ func TestBuildEnv_ExcludeCaseInsensitivity(t *testing.T) {
 	}
 }
 
-func TestBuildEnv_ExpansionMissingVar(t *testing.T) {
+func TestBuildEnv_MissingRefKeptLiteral(t *testing.T) {
 	secrets := []*provider.Secret{
 		{Key: "A", Value: "val-${MISSING}-end"},
 	}
 	env := exec.BuildEnv(secrets, nil, "", nil)
-	assert.Contains(t, env, "A=val--end")
+	assert.Contains(t, env, "A=val-${MISSING}-end")
 }
 
-func TestBuildEnv_ExpansionEscapedDollar(t *testing.T) {
+func TestBuildEnv_DollarInValueKeptLiteral(t *testing.T) {
 	secrets := []*provider.Secret{
 		{Key: "A", Value: "price-$$100"},
 	}
 	env := exec.BuildEnv(secrets, nil, "", nil)
-	assert.Contains(t, env, "A=price-100")
+	assert.Contains(t, env, "A=price-$$100")
 }
 
 func TestKeyToEnvName_EmptyAndSlashes(t *testing.T) {
@@ -72,11 +72,12 @@ func TestBuildEnv_ExistingMalformed(t *testing.T) {
 	assert.Contains(t, env, "KEY=VALUE")
 }
 
-func TestBuildEnv_ExpansionFromHostEnv(t *testing.T) {
+func TestBuildEnv_HostEnvRefKeptLiteral(t *testing.T) {
 	t.Setenv("EXTERNAL_VAR", "ext_val")
 	secrets := []*provider.Secret{
 		{Key: "A", Value: "${EXTERNAL_VAR}"},
 	}
 	env := exec.BuildEnv(secrets, nil, "", nil)
-	assert.Contains(t, env, "A=ext_val")
+	// No expansion from host env: the literal token is injected.
+	assert.Contains(t, env, "A=${EXTERNAL_VAR}")
 }
