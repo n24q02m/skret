@@ -330,8 +330,9 @@ func TestEnvCmd_DotenvFormat(t *testing.T) {
 	err := cmd.Execute()
 	require.NoError(t, err)
 	out := stdout.String()
-	assert.Contains(t, out, `DATABASE_URL="postgres://dev:dev@localhost/db"`)
-	assert.Contains(t, out, `API_KEY="secret123"`)
+	// Safe values are emitted bare (no special chars needing quotes).
+	assert.Contains(t, out, `DATABASE_URL=postgres://dev:dev@localhost/db`)
+	assert.Contains(t, out, `API_KEY=secret123`)
 	assert.Empty(t, stderr.String())
 }
 
@@ -349,7 +350,7 @@ func TestEnvCmd_ExportFormat(t *testing.T) {
 
 	err := cmd.Execute()
 	require.NoError(t, err)
-	assert.Contains(t, stdout.String(), `export DATABASE_URL="postgres://dev:dev@localhost/db"`)
+	assert.Contains(t, stdout.String(), `export DATABASE_URL='postgres://dev:dev@localhost/db'`)
 	assert.Empty(t, stderr.String())
 }
 
@@ -548,7 +549,8 @@ func TestSyncCmd_Dotenv(t *testing.T) {
 
 	data, err := os.ReadFile(filepath.Join(dir, ".env.synced"))
 	require.NoError(t, err)
-	assert.Contains(t, string(data), `API_KEY="secret123"`)
+	// secret123 is safe and emitted bare.
+	assert.Contains(t, string(data), "API_KEY=secret123")
 }
 
 func TestSyncCmd_SkipUnchanged(t *testing.T) {

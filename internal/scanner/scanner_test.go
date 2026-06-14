@@ -152,3 +152,38 @@ func TestScanSkipsUnreadableFile(t *testing.T) {
 	require.Len(t, findings, 1)
 	require.Equal(t, f, findings[0].File)
 }
+
+// TestScanFindsMultiLineValue is the regression for the leak-guard false-clean:
+// a secret value spanning newlines (PEM/SSH key) must still be detected.
+func TestScanFindsMultiLineValue(t *testing.T) {
+	dir := t.TempDir()
+	pem := "-----BEGIN KEY-----\nabcdef\nghijkl\n-----END KEY-----"
+	f := writeFile(t, dir, "leak.txt", "noise\nprefix\n"+pem+"\nsuffix\n")
+
+	findings, err := Scan(
+		[]Target{{Key: "PRIVKEY", Value: pem}},
+		[]string{f},
+		Opts{},
+	)
+	require.NoError(t, err)
+	require.Len(t, findings, 1)
+	require.Equal(t, "PRIVKEY", findings[0].Key)
+	// First match begins on line 3 (after "noise", "prefix").
+	require.Equal(t, 3, findings[0].Line)
+}
+
+// TestScanFindsCRLFValue ensures a value containing a CRLF pair is also matched.
+func TestScanFindsCRLFValue(t *testing.T) {
+	dir := t.TempDir()
+	val := "tok-part1\r\ntok-part2"
+	f := writeFile(t, dir, "crlf.txt", "head\n"+val+"\n")
+
+	findings, err := Scan(
+		[]Target{{Key: "TOK", Value: val}},
+		[]string{f},
+		Opts{},
+	)
+	require.NoError(t, err)
+	require.Len(t, findings, 1)
+	require.Equal(t, 2, findings[0].Line)
+}

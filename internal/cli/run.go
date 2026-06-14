@@ -41,6 +41,10 @@ func newRunCmd(opts *GlobalOpts) *cobra.Command {
 				return err
 			}
 
+			if err := skexec.DetectEnvNameCollisions(secrets, resolved.Path, resolved.Exclude); err != nil {
+				return skret.NewError(skret.ExitConfigError, "run: "+err.Error(), nil)
+			}
+
 			env := skexec.BuildEnv(secrets, os.Environ(), resolved.Path, resolved.Exclude)
 
 			if watch {

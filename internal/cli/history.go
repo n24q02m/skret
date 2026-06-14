@@ -64,11 +64,7 @@ func renderHistory(cmd *cobra.Command, history []*provider.Secret, key string, v
 	for _, s := range history {
 		val := s.Value
 		if !verbose {
-			if len(val) > 8 {
-				val = val[:4] + "..." + val[len(val)-4:]
-			} else {
-				val = "***"
-			}
+			val = maskValue(val)
 		}
 
 		updatedAt := s.Meta.UpdatedAt.Format(time.RFC3339)
@@ -84,4 +80,15 @@ func renderHistory(cmd *cobra.Command, history []*provider.Secret, key string, v
 		fmt.Fprintf(w, "%d\t%s\t%s\t%s\n", s.Version, val, updatedAt, author)
 	}
 	return w.Flush()
+}
+
+// maskValue shows the first and last 4 runes of a value with an ellipsis between,
+// or "***" if it is 8 runes or shorter. It slices on rune boundaries so a value
+// with multi-byte runes is never split into invalid UTF-8.
+func maskValue(val string) string {
+	r := []rune(val)
+	if len(r) > 8 {
+		return string(r[:4]) + "..." + string(r[len(r)-4:])
+	}
+	return "***"
 }

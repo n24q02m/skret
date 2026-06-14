@@ -5,7 +5,8 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"strings"
+
+	"github.com/n24q02m/skret/internal/dotenv"
 )
 
 // DotenvImporter reads secrets from a dotenv file.
@@ -30,33 +31,14 @@ func (d *DotenvImporter) Import(_ context.Context) ([]ImportedSecret, error) {
 	var secrets []ImportedSecret
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
+		key, value, ok := dotenv.Decode(scanner.Text())
+		if !ok {
 			continue
 		}
-		line = strings.TrimPrefix(line, "export ")
-
-		key, value, found := strings.Cut(line, "=")
-		if !found {
-			continue
-		}
-		key = strings.TrimSpace(key)
-		value = strings.TrimSpace(value)
-		value = unquote(value)
-
 		secrets = append(secrets, ImportedSecret{Key: key, Value: value})
 	}
 	if err := scanner.Err(); err != nil {
 		return nil, fmt.Errorf("dotenv: read: %w", err)
 	}
 	return secrets, nil
-}
-
-func unquote(s string) string {
-	if len(s) >= 2 {
-		if (s[0] == '"' && s[len(s)-1] == '"') || (s[0] == '\'' && s[len(s)-1] == '\'') || (s[0] == '`' && s[len(s)-1] == '`') {
-			return s[1 : len(s)-1]
-		}
-	}
-	return s
 }

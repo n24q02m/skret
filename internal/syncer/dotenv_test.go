@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/n24q02m/skret/internal/importer"
 	"github.com/n24q02m/skret/internal/provider"
 	"github.com/n24q02m/skret/internal/syncer"
 	"github.com/stretchr/testify/assert"
@@ -32,8 +33,37 @@ func TestDotenvSyncer(t *testing.T) {
 	data, err := os.ReadFile(path)
 	require.NoError(t, err)
 	content := string(data)
-	assert.Contains(t, content, `API_KEY="sk-123"`)
-	assert.Contains(t, content, `DB_URL="postgres://host"`)
+	// Safe values are emitted bare (no redundant quoting).
+	assert.Contains(t, content, "API_KEY=sk-123")
+	assert.Contains(t, content, "DB_URL=postgres://host")
+}
+
+// TestDotenvSyncer_RoundTrip is the regression for the sync/import asymmetry:
+// values with special chars must survive sync -> import byte-for-byte.
+func TestDotenvSyncer_RoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".env.rt")
+
+	secrets := []*provider.Secret{
+		{Key: "BCRYPT", Value: "$2a$14$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy"},
+		{Key: "PGURL", Value: "postgres://u:p$word@host/db"},
+		{Key: "BACKSLASH", Value: `a\b`},
+		{Key: "QUOTE", Value: `a"b`},
+		{Key: "MULTILINE", Value: "line1\nline2"},
+		{Key: "TABVAL", Value: "a\tb"},
+		{Key: "TRAILING", Value: "secret "},
+	}
+	require.NoError(t, syncer.NewDotenv(path).Sync(context.Background(), secrets))
+
+	got, err := importer.NewDotenv(path).Import(context.Background())
+	require.NoError(t, err)
+	m := make(map[string]string, len(got))
+	for _, s := range got {
+		m[s.Key] = s.Value
+	}
+	for _, s := range secrets {
+		assert.Equal(t, s.Value, m[s.Key], "round-trip mismatch for %s", s.Key)
+	}
 }
 
 func TestDotenvSyncer_WriteError(t *testing.T) {

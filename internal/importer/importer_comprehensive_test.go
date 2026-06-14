@@ -35,16 +35,18 @@ func TestDotenvImporter_MultiLineEscaped(t *testing.T) {
 		m[s.Key] = s.Value
 	}
 
-	assert.Equal(t, "line1\\nline2\\ttab", m["MULTI"])
+	// Double-quoted escapes are now decoded: \n and \t become real chars.
+	assert.Equal(t, "line1\nline2\ttab", m["MULTI"])
+	// Single quotes are literal: $VAR not expanded, escapes not processed.
 	assert.Equal(t, "no expansion $VAR", m["SINGLE_QUOTES"])
 	assert.Equal(t, "", m["EMPTY_QUOTED"])
 	assert.Equal(t, "just_text", m["BARE_VALUE"])
 	// "NO_EQUALS_LINE" should be skipped (no = sign)
 	_, hasNoEquals := m["NO_EQUALS_LINE"]
 	assert.False(t, hasNoEquals)
-	// "=NO_KEY" has empty key
+	// "=NO_KEY" has an empty key -> now skipped (an empty env name is invalid).
 	_, hasEmptyKey := m[""]
-	assert.True(t, hasEmptyKey)
+	assert.False(t, hasEmptyKey)
 }
 
 func TestDotenvImporter_WithExportPrefix(t *testing.T) {

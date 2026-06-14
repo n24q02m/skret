@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sort"
 
+	"github.com/n24q02m/skret/internal/dotenv"
 	"github.com/n24q02m/skret/internal/provider"
 )
 
@@ -28,7 +29,7 @@ func (d *DotenvSyncer) Sync(_ context.Context, secrets []*provider.Secret) error
 	dir := filepath.Dir(d.filePath)
 	return atomicWrite(d.filePath, dir, ".skret-sync-*.env", func(f *os.File) error {
 		for _, s := range secrets {
-			if _, err := fmt.Fprintf(f, "%s=%q\n", s.Key, s.Value); err != nil {
+			if _, err := fmt.Fprintln(f, dotenv.Encode(s.Key, s.Value)); err != nil {
 				return err
 			}
 		}
