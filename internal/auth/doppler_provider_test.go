@@ -111,6 +111,15 @@ func TestDopplerProvider_LoginToken_NetworkError(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "validate token")
 }
+func TestDopplerProvider_LoginToken_BuildRequestError(t *testing.T) {
+	// Use an invalid URL to trigger NewRequestWithContext error.
+	p := &dopplerProvider{baseURL: "http://bad-url\x7f"}
+	_, err := p.Login(context.Background(), "service-token", map[string]string{
+		"token": "tok",
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "build url")
+}
 
 func TestDopplerProvider_UnknownMethod(t *testing.T) {
 	p := NewDopplerProvider()
