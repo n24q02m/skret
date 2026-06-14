@@ -357,11 +357,11 @@ func TestInfisicalProvider_Login_BuildRequestError(t *testing.T) {
 		"client_id": "a", "client_secret": "b",
 	})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "build request")
+	assert.Contains(t, err.Error(), "build url")
 
 	_, err = p.Login(context.Background(), "token", map[string]string{"token": "tok"})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "create request")
+	assert.Contains(t, err.Error(), "build url")
 }
 
 func TestInfisicalProvider_LoginBrowser_CoverBranch(t *testing.T) {
