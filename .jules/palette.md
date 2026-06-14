@@ -15,3 +15,6 @@
 ## 2025-06-05 - [Sync Command Empty State]
 **Learning:** Adding an empty state check with an actionable message (e.g., "No secrets found to sync. Use 'skret set' to add a secret.") directly after retrieving the secret list improves UX without breaking normal sync flow or preventing sync targets from clearing out.
 **Action:** Always provide actionable error messages or empty state messages in CLI output before executing operations that act upon collections.
+## 2026-06-05 - [Routing Watch Loop Messages to Stderr]
+**Learning:** Routing informational messages such as "[skret] secrets changed - restarting" to `stderr` instead of `stdout` inside long-running supervisor loops (like `skret run --watch`) is crucial. This ensures that the primary `stdout` stream remains unpolluted, allowing consumers to cleanly pipe the actual child process output without unexpected status messages interfering.
+**Action:** Always route informational status updates, including restart/watch notifications from CLI tools, to `stderr` using methods like `cmd.ErrOrStderr()`.
