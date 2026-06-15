@@ -15,3 +15,7 @@
 ## 2025-06-05 - [Sync Command Empty State]
 **Learning:** Adding an empty state check with an actionable message (e.g., "No secrets found to sync. Use 'skret set' to add a secret.") directly after retrieving the secret list improves UX without breaking normal sync flow or preventing sync targets from clearing out.
 **Action:** Always provide actionable error messages or empty state messages in CLI output before executing operations that act upon collections.
+
+## 2026-06-15 - [TUI Visual Hierarchy and Spacing]
+**Learning:** Adding subtle styling (like bolding labels, fading footer text, and adding vertical margins) to terminal user interfaces significantly improves readability and user focus without adding complexity or new dependencies. Reducing clutter by hiding unnecessary UI elements (like the default list status bar) also contributes to a cleaner experience.
+**Action:** When building or enhancing TUI components, use `lipgloss` (or similar styling libraries) to establish a clear visual hierarchy. Bold key labels, fade secondary information (like help text or footers), and use adequate spacing (margins/padding) to separate distinct sections of the UI.

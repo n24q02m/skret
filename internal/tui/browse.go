@@ -39,6 +39,7 @@ func NewModel(names []string, reveal RevealFunc) Model {
 	}
 	l := list.New(items, list.NewDefaultDelegate(), 0, 0)
 	l.Title = "Secrets"
+	l.SetShowStatusBar(false)
 	return Model{
 		list:     l,
 		reveal:   reveal,
@@ -106,11 +107,21 @@ func (m Model) View() string {
 		if m.revealed[it.key] {
 			val = m.shown[it.key]
 		}
-		detail = lipgloss.JoinVertical(lipgloss.Left, "Key:   "+it.key, "Value: "+val)
+
+		keyLine := lipgloss.NewStyle().Bold(true).Render("Key:   ") + it.key
+		valLine := lipgloss.NewStyle().Bold(true).Render("Value: ") + val
+
+		detail = lipgloss.JoinVertical(lipgloss.Left, keyLine, valLine)
+		detail = lipgloss.NewStyle().Margin(1, 0).Render(detail)
 	}
-	footer := "up/down move - / filter - enter reveal - q quit"
+
+	footerText := "↑/↓ move • / filter • enter reveal • q quit"
+	footer := lipgloss.NewStyle().Faint(true).Render(footerText)
+
 	if m.err != "" {
-		footer = m.err + "  |  " + footer
+		errStr := lipgloss.NewStyle().Foreground(lipgloss.Color("9")).Render(m.err)
+		footer = errStr + "  |  " + footer
 	}
+
 	return lipgloss.JoinVertical(lipgloss.Left, m.list.View(), detail, footer)
 }

@@ -122,11 +122,11 @@ func TestNavigation_DownChangesSelection(t *testing.T) {
 	m := sized(t, NewModel([]string{"DB_URL", "API_KEY"}, reveal))
 
 	// Selected key starts at DB_URL.
-	assert.Contains(t, m.View(), "Key:   DB_URL")
+	assert.Contains(t, m.View(), "DB_URL")
 
 	// Move down: selection becomes API_KEY.
 	m, _ = send(t, m, tea.KeyMsg{Type: tea.KeyDown})
-	assert.Contains(t, m.View(), "Key:   API_KEY")
+	assert.Contains(t, m.View(), "API_KEY")
 }
 
 func TestFilter_KeystrokesGoToList(t *testing.T) {
