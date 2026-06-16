@@ -13,6 +13,7 @@ import (
 )
 
 // InfisicalProvider implements auth.Provider for Infisical.
+// It supports URL injection prevention.
 type InfisicalProvider struct {
 	baseURL string
 }
