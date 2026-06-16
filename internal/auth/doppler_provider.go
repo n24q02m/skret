@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"time"
 )
@@ -61,7 +62,14 @@ func (p *dopplerProvider) loginToken(ctx context.Context, method string, opts ma
 
 	// Validate token against /v3/me
 	client := &http.Client{Timeout: 10 * time.Second}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.baseURL+"/v3/me", http.NoBody)
+
+	base, err := url.Parse(p.baseURL)
+	if err != nil {
+		return nil, fmt.Errorf("doppler: invalid base url: %w", err)
+	}
+	reqURL := base.JoinPath("v3/me").String()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, http.NoBody)
 	if err != nil {
 		return nil, fmt.Errorf("doppler: create request: %w", err)
 	}
