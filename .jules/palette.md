@@ -15,3 +15,7 @@
 ## 2025-06-05 - [Sync Command Empty State]
 **Learning:** Adding an empty state check with an actionable message (e.g., "No secrets found to sync. Use 'skret set' to add a secret.") directly after retrieving the secret list improves UX without breaking normal sync flow or preventing sync targets from clearing out.
 **Action:** Always provide actionable error messages or empty state messages in CLI output before executing operations that act upon collections.
+
+## 2026-06-05 - [Dynamic Keybind Descriptions in TUI]
+**Learning:** In interactive TUIs, static keybind descriptions (like "enter reveal") can be confusing when the action they trigger acts as a toggle (e.g., revealing and then hiding a secret). Dynamically updating the description based on the current state (e.g., "enter hide" when revealed) significantly improves clarity and sets correct user expectations.
+**Action:** Always ensure that keybind descriptions in TUI footers dynamically reflect the action that will actually occur based on the currently selected item's state.
