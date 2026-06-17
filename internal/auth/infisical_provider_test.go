@@ -285,7 +285,7 @@ func hitCallback(ctx context.Context, target string) {
 	if err != nil {
 		return
 	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := (&http.Client{Timeout: 5 * time.Second}).Do(req)
 	if err != nil {
 		return
 	}

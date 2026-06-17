@@ -51,7 +51,7 @@ func TestInfisicalBrowserFlow_Success(t *testing.T) {
 				return
 			}
 			req, _ := http.NewRequestWithContext(bgctx, http.MethodGet, cb+"?code=browser-code&state="+u.Query().Get("state"), http.NoBody)
-			resp, _ := http.DefaultClient.Do(req)
+			resp, _ := (&http.Client{Timeout: 5 * time.Second}).Do(req)
 			if resp != nil {
 				_ = resp.Body.Close()
 			}
@@ -91,7 +91,7 @@ func TestInfisicalBrowserFlow_InvalidState(t *testing.T) {
 			cb := u.Query().Get("callback")
 			// Hit callback with WRONG state param.
 			req, _ := http.NewRequestWithContext(bgctx, http.MethodGet, cb+"?code=xyz&state=wrong-state", http.NoBody)
-			resp, _ := http.DefaultClient.Do(req)
+			resp, _ := (&http.Client{Timeout: 5 * time.Second}).Do(req)
 			if resp != nil {
 				_ = resp.Body.Close()
 			}

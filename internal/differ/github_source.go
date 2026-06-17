@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"time"
 )
 
 type githubSource struct {
@@ -19,7 +20,7 @@ func NewGitHubSource(owner, repo, token, baseURL string) Source {
 	if baseURL == "" {
 		baseURL = "https://api.github.com"
 	}
-	return githubSource{owner: owner, repo: repo, token: token, baseURL: baseURL, client: http.DefaultClient}
+	return githubSource{owner: owner, repo: repo, token: token, baseURL: baseURL, client: &http.Client{Timeout: 30 * time.Second}}
 }
 
 func (g githubSource) Label() string { return fmt.Sprintf("github:%s/%s", g.owner, g.repo) }
