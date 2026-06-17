@@ -20,6 +20,7 @@ func NewGitHubSource(owner, repo, token, baseURL string) Source {
 	if baseURL == "" {
 		baseURL = "https://api.github.com"
 	}
+	// Use a custom client with a timeout to prevent resource exhaustion
 	return githubSource{owner: owner, repo: repo, token: token, baseURL: baseURL, client: &http.Client{Timeout: 30 * time.Second}}
 }
 
@@ -82,3 +83,5 @@ func (g githubSource) fetchPage(ctx context.Context, page int) ([]string, bool, 
 	more := page*100 < body.TotalCount
 	return names, more, nil
 }
+
+// trigger PR title update
