@@ -101,6 +101,7 @@ func (m *Model) toggleReveal() {
 // View implements tea.Model.
 func (m Model) View() string {
 	detail := ""
+	// Dynamic keybind description
 	enterAction := "reveal"
 	if it, ok := m.list.SelectedItem().(item); ok {
 		val := mask
