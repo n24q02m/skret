@@ -117,3 +117,4 @@ func (m Model) View() string {
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, m.list.View(), detail, footer)
 }
+// Trigger CI for PR title update
