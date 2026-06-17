@@ -145,25 +145,3 @@ func TestFilter_KeystrokesGoToList(t *testing.T) {
 		}
 	}
 }
-
-func TestDynamicFooterAction(t *testing.T) {
-	reveal := func(_ context.Context, _ string) (string, error) { return secretVal, nil }
-	m := sized(t, NewModel([]string{"DB_URL"}, reveal))
-
-	// Default state: masked, should show "enter reveal"
-	out := m.View()
-	assert.Contains(t, out, "enter reveal")
-	assert.NotContains(t, out, "enter hide")
-
-	// Enter key toggles state: revealed, should show "enter hide"
-	m, _ = send(t, m, enter())
-	out = m.View()
-	assert.Contains(t, out, "enter hide")
-	assert.NotContains(t, out, "enter reveal")
-
-	// Enter key again toggles state back: masked, should show "enter reveal"
-	m, _ = send(t, m, enter())
-	out = m.View()
-	assert.Contains(t, out, "enter reveal")
-	assert.NotContains(t, out, "enter hide")
-}

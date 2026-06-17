@@ -101,7 +101,6 @@ func (m *Model) toggleReveal() {
 // View implements tea.Model.
 func (m Model) View() string {
 	detail := ""
-	// Dynamic keybind description
 	enterAction := "reveal"
 	if it, ok := m.list.SelectedItem().(item); ok {
 		val := mask
@@ -117,4 +116,5 @@ func (m Model) View() string {
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, m.list.View(), detail, footer)
 }
-// Trigger CI for PR title update
+
+// Trigger CI format
