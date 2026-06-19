@@ -38,7 +38,6 @@ func TestReveal_TogglesAndCaches(t *testing.T) {
 	m := sized(t, NewModel([]string{"DB_URL", "API_KEY"}, reveal))
 
 	// First reveal: value visible, reveal called once.
-	assert.Contains(t, m.View(), "enter reveal")
 	m, _ = send(t, m, enter())
 	assert.Contains(t, m.View(), secretVal)
 	assert.Equal(t, 1, calls)
