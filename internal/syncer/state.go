@@ -33,19 +33,31 @@ func StatePathFor(target, id string) (string, error) {
 	return filepath.Join(home, ".skret", "sync-state", fmt.Sprintf("%s-%s.json", sanitizeID(target), sanitizeID(id))), nil
 }
 
+// sanitizeIDReplacer is hoisted to a package-level variable to avoid redundant memory
+// allocations and initialization overhead on each invocation of sanitizeID.
+var sanitizeIDReplacer = strings.NewReplacer(
+	"..", "_",
+	"/", "-",
+	":", "-",
+	`\`, "-",
+	" ", "_",
+	"\x00", "_",
+)
+
 // sanitizeID neutralizes characters that could escape the sync-state
 // directory (path traversal) or break the on-disk file-name scheme.
 // "..", path separators and NULs are collapsed to inert runes.
 func sanitizeID(id string) string {
-	r := strings.NewReplacer(
-		"..", "_",
-		"/", "-",
-		":", "-",
-		`\`, "-",
-		" ", "_",
-		"\x00", "_",
-	)
-	out := r.Replace(id)
+	// Performance optimization: fast-path check using ContainsAny skips replacement logic
+	// entirely if target characters are absent, reducing allocations to 0 for clean strings.
+	if !strings.ContainsAny(id, "./:\\ \x00") {
+		if id == "" {
+			return "_"
+		}
+		return id
+	}
+
+	out := sanitizeIDReplacer.Replace(id)
 	if out == "" || out == "." {
 		return "_"
 	}
