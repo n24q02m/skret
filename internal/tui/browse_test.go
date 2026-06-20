@@ -145,3 +145,22 @@ func TestFilter_KeystrokesGoToList(t *testing.T) {
 		}
 	}
 }
+
+func TestFooter_DynamicEnterText(t *testing.T) {
+	reveal := func(_ context.Context, _ string) (string, error) { return secretVal, nil }
+	m := sized(t, NewModel([]string{"DB_URL"}, reveal))
+
+	// Initial state: masked
+	assert.Contains(t, m.View(), "enter reveal")
+	assert.NotContains(t, m.View(), "enter hide")
+
+	// Enter: reveal
+	m, _ = send(t, m, enter())
+	assert.Contains(t, m.View(), "enter hide")
+	assert.NotContains(t, m.View(), "enter reveal")
+
+	// Enter: hide
+	m, _ = send(t, m, enter())
+	assert.Contains(t, m.View(), "enter reveal")
+	assert.NotContains(t, m.View(), "enter hide")
+}
