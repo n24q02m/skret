@@ -122,5 +122,9 @@ func printEnvPairs(cmd *cobra.Command, pairs []envPair, format string) error {
 // `export NAME=<this>` reproduces the exact bytes — no parameter expansion, no
 // command substitution. An embedded single quote is emitted as '\” .
 func shellSingleQuote(s string) string {
+	// OPTIMIZATION: skip strings.ReplaceAll overhead if no single quote is present
+	if strings.IndexByte(s, '\'') == -1 {
+		return "'" + s + "'"
+	}
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
