@@ -30,3 +30,7 @@ Added `ReadTimeout` and `WriteTimeout` to `http.Server` in `internal/auth/infisi
 **Vulnerability:** URL strings constructed using `fmt.Sprintf` with user-supplied path segments or query parameters are vulnerable to URL injection and path traversal if the inputs contain unescaped characters.
 **Learning:** Constructing complex URLs via string interpolation instead of relying on parsing libraries is a common source of injection flaws. `url.URL` handles URL-encoding natively, preserving intent without creating dangerous edge cases.
 **Prevention:** Always use `net/url` to construct the URLs, utilizing functions like `url.Parse`, `url.JoinPath`, and `url.Values.Encode()` to properly escape path components and query parameters.
+## 2026-06-21 - Add timeout to HTTP clients
+**Vulnerability:** Use of http.DefaultClient without a timeout.
+**Learning:** In Go, http.DefaultClient has no timeout. If the server does not respond, the connection and goroutine can hang indefinitely, potentially leading to resource exhaustion or a Denial of Service (DoS).
+**Prevention:** Always use a custom http.Client with an explicit Timeout configured.
