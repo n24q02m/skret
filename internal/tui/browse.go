@@ -108,7 +108,11 @@ func (m Model) View() string {
 		}
 		detail = lipgloss.JoinVertical(lipgloss.Left, "Key:   "+it.key, "Value: "+val)
 	}
-	footer := "up/down move - / filter - enter reveal - q quit"
+	enterHint := "reveal"
+	if it, ok := m.list.SelectedItem().(item); ok && m.revealed[it.key] {
+		enterHint = "hide"
+	}
+	footer := "up/down move - / filter - enter " + enterHint + " - q quit"
 	if m.err != "" {
 		footer = m.err + "  |  " + footer
 	}
