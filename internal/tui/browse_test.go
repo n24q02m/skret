@@ -41,17 +41,20 @@ func TestReveal_TogglesAndCaches(t *testing.T) {
 	m, _ = send(t, m, enter())
 	assert.Contains(t, m.View(), secretVal)
 	assert.Equal(t, 1, calls)
+	assert.Contains(t, m.View(), "enter hide", "footer should update when revealed")
 
 	// Second enter: hidden again (masked), reveal NOT called again.
 	m, _ = send(t, m, enter())
 	assert.NotContains(t, m.View(), secretVal)
 	assert.Contains(t, m.View(), mask)
 	assert.Equal(t, 1, calls)
+	assert.Contains(t, m.View(), "enter reveal", "footer should update when hidden")
 
 	// Third enter: shown from cache, still only one reveal call.
 	m, _ = send(t, m, enter())
 	assert.Contains(t, m.View(), secretVal)
 	assert.Equal(t, 1, calls, "reveal must be cached, not refetched")
+	assert.Contains(t, m.View(), "enter hide")
 }
 
 func TestReveal_Error(t *testing.T) {
