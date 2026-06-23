@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
 )
 
 type githubSource struct {
@@ -44,12 +45,20 @@ func (g githubSource) Read(ctx context.Context) (Snapshot, error) {
 }
 
 func (g githubSource) fetchPage(ctx context.Context, page int) ([]string, bool, error) {
-	reqURL, err := url.JoinPath(g.baseURL, "repos", g.owner, g.repo, "actions", "secrets")
+	path, err := url.JoinPath(g.baseURL, "repos", g.owner, g.repo, "actions", "secrets")
 	if err != nil {
 		return nil, false, err
 	}
-	reqURL = fmt.Sprintf("%s?per_page=100&page=%d", reqURL, page)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, http.NoBody)
+	u, err := url.Parse(path)
+	if err != nil {
+		return nil, false, err
+	}
+	q := u.Query()
+	q.Set("per_page", "100")
+	q.Set("page", strconv.Itoa(page))
+	u.RawQuery = q.Encode()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), http.NoBody)
 	if err != nil {
 		return nil, false, err
 	}

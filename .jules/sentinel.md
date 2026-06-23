@@ -30,3 +30,8 @@ Added `ReadTimeout` and `WriteTimeout` to `http.Server` in `internal/auth/infisi
 **Vulnerability:** URL strings constructed using `fmt.Sprintf` with user-supplied path segments or query parameters are vulnerable to URL injection and path traversal if the inputs contain unescaped characters.
 **Learning:** Constructing complex URLs via string interpolation instead of relying on parsing libraries is a common source of injection flaws. `url.URL` handles URL-encoding natively, preserving intent without creating dangerous edge cases.
 **Prevention:** Always use `net/url` to construct the URLs, utilizing functions like `url.Parse`, `url.JoinPath`, and `url.Values.Encode()` to properly escape path components and query parameters.
+
+## 2026-06-23 - URL Injection via fmt.Sprintf
+**Vulnerability:** Constructing URLs by manually appending query parameters using fmt.Sprintf can lead to malformed URLs (e.g., double question marks) or injection vulnerabilities if any part of the URL is user-controlled.
+**Learning:** url.JoinPath correctly handles base URLs with query parameters by inserting path segments before the query. However, subsequently appending parameters with fmt.Sprintf and "?" bypasses this logic and creates invalid URLs.
+**Prevention:** Use the net/url package (specifically url.Parse and url.Values) to safely manage and encode query parameters, ensuring they are correctly merged with any existing parameters in the URL.
