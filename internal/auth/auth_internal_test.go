@@ -174,3 +174,5 @@ func TestRegister(t *testing.T) {
 
 	assert.Equal(t, p, registry[name])
 }
+
+// Force re-trigger CI
