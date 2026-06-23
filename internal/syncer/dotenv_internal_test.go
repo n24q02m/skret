@@ -7,6 +7,7 @@ import (
 )
 
 // TestNewDotenv verifies that the DotenvSyncer is correctly initialized.
+// This test ensures that the NewDotenv factory function correctly sets the filePath.
 func TestNewDotenv(t *testing.T) {
 	path := "/tmp/.env"
 	s := NewDotenv(path)
