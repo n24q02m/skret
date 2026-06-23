@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// TestNewDotenv verifies that the DotenvSyncer is correctly initialized.
 func TestNewDotenv(t *testing.T) {
 	path := "/tmp/.env"
 	s := NewDotenv(path)
