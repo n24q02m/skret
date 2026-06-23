@@ -85,3 +85,23 @@ func TestAWSProfileFlow_List_HomeError(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "aws profile: ")
 }
+
+func TestNewAWSProfileFlow(t *testing.T) {
+	flow := auth.NewAWSProfileFlow()
+	assert.NotNil(t, flow)
+}
+
+func TestAWSProfileFlow_Login_Default(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".aws"), 0o700))
+	cfg := "[default]\nregion = us-east-1\n"
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".aws", "config"), []byte(cfg), 0o600))
+	t.Setenv("HOME", dir)
+	t.Setenv("USERPROFILE", dir)
+
+	flow := auth.NewAWSProfileFlow()
+	cred, err := flow.Login(context.Background(), nil)
+	require.NoError(t, err)
+	assert.Equal(t, "default", cred.Metadata["profile"])
+	assert.Equal(t, "us-east-1", cred.Metadata["region"])
+}
