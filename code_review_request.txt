@@ -1,6 +1,5 @@
-I have updated the `configNotFoundMsg` to include `skret setup` as the recommended action.
-I also updated the internal and edge tests to ensure this string is present in the error message.
-Files modified:
-- internal/cli/helpers.go
-- internal/cli/helpers_internal_test.go
-- internal/cli/cli_edge_test.go
+I have added a dedicated unit test for the NewStoreWithPath function in internal/auth/store_internal_test.go.
+Existing tests were also found in internal/auth/provider_coverage_test.go but they were using hardcoded paths.
+My new test uses t.TempDir() for a cleaner and more reliable verification.
+
+File modified: internal/auth/store_internal_test.go
