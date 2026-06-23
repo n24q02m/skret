@@ -190,4 +190,5 @@ func TestNewAWSProvider(t *testing.T) {
 	assert.NotNil(t, p)
 	assert.IsType(t, &AWSProvider{}, p)
 }
+
 // Forced commit to fix CI PR title linting
