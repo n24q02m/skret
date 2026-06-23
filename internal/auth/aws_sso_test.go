@@ -62,6 +62,7 @@ func ssoOpts() map[string]string {
 }
 
 func TestNewAWSSSOFlow(t *testing.T) {
+	// Second trivial comment to trigger CI
 	// Trivial comment to trigger CI
 	fake := &fakeOIDC{}
 	flow := NewAWSSSOFlow(fake)
