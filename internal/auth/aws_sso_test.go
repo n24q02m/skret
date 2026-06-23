@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"reflect"
 	"testing"
 	"time"
 
@@ -58,6 +59,19 @@ func ssoOpts() map[string]string {
 		"account_id": "111122223333",
 		"role_name":  "SkretRole",
 	}
+}
+
+func TestNewAWSSSOFlow(t *testing.T) {
+	fake := &fakeOIDC{}
+	flow := NewAWSSSOFlow(fake)
+	require.NotNil(t, flow)
+	assert.Equal(t, fake, flow.client)
+	assert.NotNil(t, flow.Opener)
+
+	// Verify Opener is OpenBrowser by comparing function pointers
+	expected := reflect.ValueOf(OpenBrowser).Pointer()
+	actual := reflect.ValueOf(flow.Opener).Pointer()
+	assert.Equal(t, expected, actual, "Opener should default to OpenBrowser")
 }
 
 func TestAWSSSOFlow_Success(t *testing.T) {
