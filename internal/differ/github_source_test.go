@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -95,4 +96,25 @@ func TestGitHubSource_HTTPError(t *testing.T) {
 	_, err := src.Read(context.Background())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "github:acme/app")
+}
+
+func TestNewGitHubSource(t *testing.T) {
+	t.Run("default baseURL", func(t *testing.T) {
+		src := NewGitHubSource("owner", "repo", "token", "")
+		gs, ok := src.(githubSource)
+		require.True(t, ok)
+		assert.Equal(t, "owner", gs.owner)
+		assert.Equal(t, "repo", gs.repo)
+		assert.Equal(t, "token", gs.token)
+		assert.Equal(t, "https://api.github.com", gs.baseURL)
+		require.NotNil(t, gs.client)
+		assert.Equal(t, 30*time.Second, gs.client.Timeout)
+	})
+
+	t.Run("custom baseURL", func(t *testing.T) {
+		src := NewGitHubSource("o", "r", "t", "https://github.example.com")
+		gs, ok := src.(githubSource)
+		require.True(t, ok)
+		assert.Equal(t, "https://github.example.com", gs.baseURL)
+	})
 }
