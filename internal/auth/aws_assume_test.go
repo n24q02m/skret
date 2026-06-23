@@ -93,3 +93,4 @@ func TestAWSAssumeFlow_NoExpiration(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, cred.ExpiresAt.IsZero())
 }
+// Forced update for CI
