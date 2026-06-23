@@ -184,3 +184,9 @@ func TestAWSProvider_LoginSSO_InitSuccess(t *testing.T) {
 	assert.Error(t, err)
 	assert.NotNil(t, p.ssoFlow)
 }
+
+func TestNewAWSProvider(t *testing.T) {
+	p := NewAWSProvider()
+	assert.NotNil(t, p)
+	assert.IsType(t, &AWSProvider{}, p)
+}
