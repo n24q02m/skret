@@ -4,10 +4,20 @@ import (
 	"errors"
 	"testing"
 
-	ssmtypes "github.com/aws/aws-sdk-go-v2/service/ssm/types"
+	"github.com/aws/smithy-go"
 	"github.com/n24q02m/skret/internal/provider"
 	"github.com/stretchr/testify/assert"
 )
+
+type mockAPIError struct {
+	code    string
+	message string
+}
+
+func (e *mockAPIError) Error() string           { return e.message }
+func (e *mockAPIError) ErrorCode() string       { return e.code }
+func (e *mockAPIError) ErrorMessage() string    { return e.message }
+func (e *mockAPIError) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }
 
 func TestMapError(t *testing.T) {
 	tests := []struct {
@@ -22,14 +32,14 @@ func TestMapError(t *testing.T) {
 			name:    "ParameterNotFound",
 			op:      "get",
 			key:     "mykey",
-			err:     &ssmtypes.ParameterNotFound{},
+			err:     &mockAPIError{code: "ParameterNotFound"},
 			wantErr: provider.ErrNotFound,
 		},
 		{
 			name:     "ParameterAlreadyExists",
 			op:       "set",
 			key:      "mykey",
-			err:      &ssmtypes.ParameterAlreadyExists{},
+			err:      &mockAPIError{code: "ParameterAlreadyExists"},
 			contains: "parameter already exists",
 		},
 		{
