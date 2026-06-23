@@ -219,3 +219,5 @@ func sealSecret(secret string, recipientKey *[32]byte) (string, error) {
 
 	return base64.StdEncoding.EncodeToString(sealed), nil
 }
+
+// Force commit for CI
