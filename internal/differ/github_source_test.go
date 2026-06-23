@@ -96,3 +96,17 @@ func TestGitHubSource_HTTPError(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "github:acme/app")
 }
+
+func TestGitHubSource_URLParseError(t *testing.T) {
+	// url.Parse fails on control characters like \x7f
+	src := NewGitHubSource("o", "r", "t", "http://example.com/\x7f")
+	_, err := src.Read(context.Background())
+	require.Error(t, err)
+}
+
+func TestGitHubSource_ClientDoError(t *testing.T) {
+	// An unreachable address will cause client.Do to fail
+	src := NewGitHubSource("o", "r", "t", "http://localhost:1")
+	_, err := src.Read(context.Background())
+	require.Error(t, err)
+}
