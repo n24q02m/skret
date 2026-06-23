@@ -62,6 +62,7 @@ func ssoOpts() map[string]string {
 }
 
 func TestNewAWSSSOFlow(t *testing.T) {
+	// Trivial comment to trigger CI
 	fake := &fakeOIDC{}
 	flow := NewAWSSSOFlow(fake)
 	require.NotNil(t, flow)
@@ -172,4 +173,3 @@ func TestAWSSSOFlow_DeviceAuthFails(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "start device auth")
 }
-// Trivial comment to trigger CI
