@@ -152,3 +152,20 @@ func TestCredential_IsExpired(t *testing.T) {
 		assert.True(t, c.IsExpired())
 	})
 }
+
+func TestNewStore(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("SKRET_KEYRING", "file")
+
+	s := auth.NewStore()
+	require.NotNil(t, s)
+
+	cred := &auth.Credential{Provider: "test", Token: "tok"}
+	require.NoError(t, s.Save(cred))
+
+	loaded, err := s.Load("test")
+	require.NoError(t, err)
+	assert.Equal(t, "tok", loaded.Token)
+}
