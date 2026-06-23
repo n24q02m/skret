@@ -118,3 +118,10 @@ func TestSelectMethod_Valid(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "b", m.Name)
 }
+
+func TestNewAWSKeysFlow(t *testing.T) {
+	in := strings.NewReader("")
+	flow := NewAWSKeysFlow(in)
+	require.NotNil(t, flow)
+	assert.Equal(t, in, flow.in)
+}
