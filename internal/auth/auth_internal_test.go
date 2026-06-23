@@ -165,3 +165,12 @@ func TestWithAutoAuthIO_NonInteractive(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "skret auth login doppler")
 }
+
+func TestRegister(t *testing.T) {
+	name := "test-register-provider"
+	p := &fakeProvider{name: name}
+	Register(name, p)
+	defer delete(registry, name)
+
+	assert.Equal(t, p, registry[name])
+}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/n24q02m/skret/internal/auth"
 	"github.com/stretchr/testify/assert"
@@ -21,22 +22,21 @@ func TestResolve_NotFound(t *testing.T) {
 
 func TestResolve_Expired(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "creds.yaml")
 	t.Setenv("HOME", dir)
 	t.Setenv("USERPROFILE", dir)
 
 	// Pre-populate store with expired credential
 	s := auth.NewStoreWithPath(filepath.Join(dir, ".skret", "credentials.yaml"))
-	_ = path // unused
 	require.NoError(t, s.Save(&auth.Credential{
-		Provider: "doppler",
-		Token:    "expired-tok",
+		Provider:  "doppler",
+		Token:     "expired-tok",
+		ExpiresAt: time.Now().Add(-time.Hour),
 	}))
 
-	// Resolve should find it but report it as not expired (ExpiresAt is zero = never expires)
-	cred, err := auth.Resolve(context.Background(), "doppler")
-	require.NoError(t, err)
-	assert.Equal(t, "expired-tok", cred.Token)
+	// Resolve should fail
+	_, err := auth.Resolve(context.Background(), "doppler")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "credential expired")
 }
 
 func TestLogin_UnknownProvider(t *testing.T) {
