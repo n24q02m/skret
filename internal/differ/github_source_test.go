@@ -104,8 +104,15 @@ func TestGitHubSource_URLParseError(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestGitHubSource_ClientDoError(t *testing.T) {
-	// An unreachable address will cause client.Do to fail
+func TestGitHubSource_BuildRequestError(t *testing.T) {
+	// Use an invalid scheme/url to trigger NewRequestWithContext error.
+	// JoinPath will sanitize but a leading space might trigger an error in NewRequestWithContext
+	src := NewGitHubSource("o", "r", "t", " http://bad-url")
+	_, err := src.Read(context.Background())
+	require.Error(t, err)
+}
+
+func TestGitHubSource_DoError(t *testing.T) {
 	src := NewGitHubSource("o", "r", "t", "http://localhost:1")
 	_, err := src.Read(context.Background())
 	require.Error(t, err)

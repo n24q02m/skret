@@ -45,19 +45,18 @@ func (g githubSource) Read(ctx context.Context) (Snapshot, error) {
 }
 
 func (g githubSource) fetchPage(ctx context.Context, page int) ([]string, bool, error) {
-	path, err := url.JoinPath(g.baseURL, "repos", g.owner, g.repo, "actions", "secrets")
+	u, err := url.Parse(g.baseURL)
 	if err != nil {
 		return nil, false, err
 	}
-	u, err := url.Parse(path)
-	if err != nil {
-		return nil, false, err
-	}
+	u = u.JoinPath("repos", g.owner, g.repo, "actions", "secrets")
 	q := u.Query()
 	q.Set("per_page", "100")
 	q.Set("page", strconv.Itoa(page))
 	u.RawQuery = q.Encode()
 
+	// Using u.String() here should be safe, but NewRequestWithContext can still fail
+	// if the URL string is considered invalid (e.g. malformed scheme after JoinPath).
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), http.NoBody)
 	if err != nil {
 		return nil, false, err
