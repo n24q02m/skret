@@ -76,3 +76,54 @@ func runGit(t *testing.T, dir string, args ...string) {
 	out, err := cmd.CombinedOutput()
 	require.NoErrorf(t, err, "git %v: %s", args, out)
 }
+
+func TestTrackedFiles(t *testing.T) {
+	t.Run("git repository", func(t *testing.T) {
+		if _, err := osexec.LookPath("git"); err != nil {
+			t.Skip("git not available")
+		}
+		dir := t.TempDir()
+		keep := writeFile(t, dir, "keep.txt", "keep\n")
+		writeFile(t, dir, "ignored.txt", "ignored\n")
+		writeFile(t, dir, ".gitignore", "ignored.txt\n")
+
+		runGit(t, dir, "init")
+		runGit(t, dir, "add", "-A")
+
+		tracked, err := TrackedFiles(dir)
+		require.NoError(t, err)
+		require.Contains(t, tracked, keep)
+		require.NotContains(t, tracked, filepath.Join(dir, "ignored.txt"))
+	})
+
+	t.Run("non-git directory", func(t *testing.T) {
+		dir := t.TempDir()
+		f1 := writeFile(t, dir, "f1.txt", "1")
+		f2 := writeFile(t, dir, "f2.txt", "2")
+
+		files, err := TrackedFiles(dir)
+		require.NoError(t, err)
+		require.ElementsMatch(t, []string{f1, f2}, files)
+	})
+
+	t.Run("empty git repository", func(t *testing.T) {
+		if _, err := osexec.LookPath("git"); err != nil {
+			t.Skip("git not available")
+		}
+		dir := t.TempDir()
+		runGit(t, dir, "init")
+
+		tracked, err := TrackedFiles(dir)
+		require.NoError(t, err)
+		require.Empty(t, tracked)
+	})
+
+	t.Run("non-existent directory", func(t *testing.T) {
+		missing := filepath.Join(t.TempDir(), "ghost")
+		files, err := TrackedFiles(missing)
+		// walkFiles (fallback) uses filepath.WalkDir which does not error
+		// if the root doesn't exist, it just returns nil.
+		require.NoError(t, err)
+		require.Empty(t, files)
+	})
+}
