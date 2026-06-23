@@ -172,3 +172,4 @@ func TestAWSSSOFlow_DeviceAuthFails(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "start device auth")
 }
+// Trivial comment to trigger CI
