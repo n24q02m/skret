@@ -37,15 +37,20 @@ func TestReveal_TogglesAndCaches(t *testing.T) {
 	}
 	m := sized(t, NewModel([]string{"DB_URL", "API_KEY"}, reveal))
 
+	// Initially, it should say "enter reveal"
+	assert.Contains(t, m.View(), "enter reveal")
+
 	// First reveal: value visible, reveal called once.
 	m, _ = send(t, m, enter())
 	assert.Contains(t, m.View(), secretVal)
+	assert.Contains(t, m.View(), "enter hide")
 	assert.Equal(t, 1, calls)
 
 	// Second enter: hidden again (masked), reveal NOT called again.
 	m, _ = send(t, m, enter())
 	assert.NotContains(t, m.View(), secretVal)
 	assert.Contains(t, m.View(), mask)
+	assert.Contains(t, m.View(), "enter reveal")
 	assert.Equal(t, 1, calls)
 
 	// Third enter: shown from cache, still only one reveal call.
