@@ -85,6 +85,12 @@ func TestGitHubSource_ListsNames_PresenceOnly(t *testing.T) {
 	assert.Equal(t, "github:acme/app", src.Label())
 }
 
+func TestGitHubSource_URLParseError(t *testing.T) {
+	src := NewGitHubSource("acme", "app", "gh_test", "http://example.com/\x7f")
+	_, err := src.Read(context.Background())
+	require.Error(t, err)
+}
+
 func TestGitHubSource_HTTPError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
