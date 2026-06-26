@@ -145,3 +145,14 @@ func TestFilter_KeystrokesGoToList(t *testing.T) {
 		}
 	}
 }
+
+func TestFooterState(t *testing.T) {
+	reveal := func(_ context.Context, _ string) (string, error) { return secretVal, nil }
+	m := sized(t, NewModel([]string{"DB_URL"}, reveal))
+
+	assert.Contains(t, m.View(), "enter reveal")
+
+	m, _ = send(t, m, enter())
+
+	assert.Contains(t, m.View(), "enter hide")
+}
