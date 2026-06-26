@@ -1,6 +1,0 @@
-<<<<<<< SEARCH
-func (g githubSource) fetchPage(ctx context.Context, page int) ([]string, bool, error) {
-=======
-func (g githubSource) fetchPage(ctx context.Context, page int) ([]string, bool, error) {
-	// fetchPage retrieves a single page of secrets from GitHub
->>>>>>> REPLACE
