@@ -156,3 +156,5 @@ func TestFooterState(t *testing.T) {
 
 	assert.Contains(t, m.View(), "enter hide")
 }
+
+// Trigger a new commit to fix PR title
