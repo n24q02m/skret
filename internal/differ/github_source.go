@@ -54,6 +54,7 @@ func (g githubSource) Read(ctx context.Context) (Snapshot, error) {
 }
 
 func (g githubSource) fetchPage(ctx context.Context, page int) ([]string, bool, error) {
+	// fetchPage retrieves a single page of secrets from GitHub
 	joinedURL, err := url.JoinPath(g.baseURL, "repos", g.owner, g.repo, "actions", "secrets")
 	if err != nil {
 		return nil, false, err
