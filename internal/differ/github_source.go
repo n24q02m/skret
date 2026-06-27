@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
+	"time"
 )
 
 type githubSource struct {
@@ -19,7 +21,15 @@ func NewGitHubSource(owner, repo, token, baseURL string) Source {
 	if baseURL == "" {
 		baseURL = "https://api.github.com"
 	}
-	return githubSource{owner: owner, repo: repo, token: token, baseURL: baseURL, client: http.DefaultClient}
+	return githubSource{
+		owner:   owner,
+		repo:    repo,
+		token:   token,
+		baseURL: baseURL,
+		client: &http.Client{
+			Timeout: 30 * time.Second,
+		},
+	}
 }
 
 func (g githubSource) Label() string { return fmt.Sprintf("github:%s/%s", g.owner, g.repo) }
@@ -44,11 +54,18 @@ func (g githubSource) Read(ctx context.Context) (Snapshot, error) {
 }
 
 func (g githubSource) fetchPage(ctx context.Context, page int) ([]string, bool, error) {
-	reqURL, err := url.JoinPath(g.baseURL, "repos", g.owner, g.repo, "actions", "secrets")
+	u, err := url.Parse(g.baseURL)
 	if err != nil {
-		return nil, false, err
+		return nil, false, fmt.Errorf("parse base url: %w", err)
 	}
-	reqURL = fmt.Sprintf("%s?per_page=100&page=%d", reqURL, page)
+	u = u.JoinPath("repos", g.owner, g.repo, "actions", "secrets")
+
+	q := u.Query()
+	q.Set("per_page", "100")
+	q.Set("page", strconv.Itoa(page))
+	u.RawQuery = q.Encode()
+
+	reqURL := u.String()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, http.NoBody)
 	if err != nil {
 		return nil, false, err
