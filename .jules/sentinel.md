@@ -30,3 +30,7 @@ Added `ReadTimeout` and `WriteTimeout` to `http.Server` in `internal/auth/infisi
 **Vulnerability:** URL strings constructed using `fmt.Sprintf` with user-supplied path segments or query parameters are vulnerable to URL injection and path traversal if the inputs contain unescaped characters.
 **Learning:** Constructing complex URLs via string interpolation instead of relying on parsing libraries is a common source of injection flaws. `url.URL` handles URL-encoding natively, preserving intent without creating dangerous edge cases.
 **Prevention:** Always use `net/url` to construct the URLs, utilizing functions like `url.Parse`, `url.JoinPath`, and `url.Values.Encode()` to properly escape path components and query parameters.
+## 2025-02-28 - Removed http.DefaultClient from differ/github_source.go
+**Vulnerability:** Use of http.DefaultClient lacking a timeout configuration in NewGitHubSource.
+**Learning:** Relying on http.DefaultClient allows connections to hang indefinitely without a timeout, leading to Denial of Service (DoS) risks and resource exhaustion.
+**Prevention:** Always instantiate a custom http.Client with explicit timeouts instead of using http.DefaultClient.
