@@ -56,3 +56,6 @@
 ## 2025-05-15 - Move slice early returns before slice/map initializations
 **Learning:** Initializing maps or arrays in a function before checking early return conditions (e.g., `if len(input) == 0`) leads to unnecessary memory allocation and iteration overhead, especially if the function is frequently called with empty inputs or used in recursive paths.
 **Action:** Always place early return checks at the very top of the function to avoid redundant memory allocations and logic executions.
+## 2024-06-28 - Optimize sanitizeID strings.NewReplacer allocation
+**Learning:** `strings.NewReplacer` does significant internal allocation to build its replacement structure. Using it inline inside a frequently called string sanitization function (`sanitizeID`) causes massive allocation overhead on every call.
+**Action:** Always extract `strings.NewReplacer` instances to package-level variables if their targets are static, and consider adding a `strings.ContainsAny` fast path to avoid replacer logic entirely when strings don't need modification.
