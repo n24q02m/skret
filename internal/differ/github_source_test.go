@@ -96,3 +96,10 @@ func TestGitHubSource_HTTPError(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "github:acme/app")
 }
+
+func TestGitHubSource_ParseURLError(t *testing.T) {
+	src := NewGitHubSource("acme", "app", "gh_test", "http://bad-url\x7f")
+	_, err := src.Read(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "parse base url")
+}

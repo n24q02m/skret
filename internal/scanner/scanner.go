@@ -69,6 +69,14 @@ func Scan(targets []Target, files []string, opts Opts) ([]Finding, error) {
 }
 
 func scanFile(path string, targets []Target, maxBytes int64) ([]Finding, error) {
+	content, err := loadFile(path, maxBytes)
+	if err != nil || content == nil {
+		return nil, err
+	}
+	return scanContent(path, content, targets), nil
+}
+
+func loadFile(path string, maxBytes int64) ([]byte, error) {
 	info, err := os.Stat(path)
 	if err != nil || info.IsDir() || info.Size() > maxBytes {
 		return nil, err
@@ -79,22 +87,27 @@ func scanFile(path string, targets []Target, maxBytes int64) ([]Finding, error) 
 	}
 	defer f.Close()
 
+	bin, err := isBinary(f)
+	if err != nil || bin {
+		return nil, err
+	}
+
+	return io.ReadAll(f)
+}
+
+func isBinary(f *os.File) (bool, error) {
 	head := make([]byte, binarySniff)
 	n, _ := f.Read(head)
 	if bytes.IndexByte(head[:n], 0) >= 0 {
-		return nil, nil // binary
+		return true, nil
 	}
 	if _, err := f.Seek(0, 0); err != nil {
-		return nil, err
+		return false, err
 	}
+	return false, nil
+}
 
-	// Read the whole file so a value spanning line boundaries (PEM/SSH keys,
-	// multi-line tokens) is still matched — a per-line scan silently misses them.
-	content, err := io.ReadAll(f)
-	if err != nil {
-		return nil, err
-	}
-
+func scanContent(path string, content []byte, targets []Target) []Finding {
 	var out []Finding
 	for _, t := range targets {
 		idx := bytes.Index(content, []byte(t.Value))
@@ -105,5 +118,5 @@ func scanFile(path string, targets []Target, maxBytes int64) ([]Finding, error) 
 		line := 1 + bytes.Count(content[:idx], []byte{'\n'})
 		out = append(out, Finding{Key: t.Key, File: path, Line: line})
 	}
-	return out, nil
+	return out
 }
