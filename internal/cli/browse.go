@@ -27,7 +27,7 @@ func newBrowseCmd(opts *GlobalOpts) *cobra.Command {
 	return &cobra.Command{
 		Use:   "browse",
 		Short: "Browse secrets interactively (values are revealed on demand)",
-		RunE: func(_ *cobra.Command, _ []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			if !term.IsTerminal(int(os.Stdout.Fd())) {
 				return skret.NewError(skret.ExitValidationError, "browse requires an interactive terminal", nil)
 			}
@@ -40,6 +40,10 @@ func newBrowseCmd(opts *GlobalOpts) *cobra.Command {
 			names, err := p.ListNames(context.Background(), resolved.Path)
 			if err != nil {
 				return skret.NewError(skret.ExitProviderError, "browse: list secrets failed", err)
+			}
+			if len(names) == 0 {
+				cmd.PrintErrln("No secrets found to browse. Use 'skret set' to add a secret.")
+				return nil
 			}
 			model := tui.NewModel(names, browseReveal(p))
 			_, err = tea.NewProgram(model, tea.WithAltScreen()).Run()

@@ -19,3 +19,6 @@
 ## 2025-06-27 - [Dynamic TUI Keybind Descriptions]
 **Learning:** In interactive TUIs built with bubbletea, static keybind descriptions in the footer can cause confusion if the action toggles state (e.g. "enter reveal" when the secret is already revealed).
 **Action:** Ensure keybind descriptions dynamically reflect the action that will occur based on the current state (e.g. toggling between "enter reveal" and "enter hide") to set correct user expectations.
+## 2026-06-29 - [Actionable Empty States]
+**Learning:** Returning an empty state for a TUI without an actionable message causes a poor UX where the application opens a blank UI or exits silently. The check should happen before the UI is initialized and provide clear guidance.
+**Action:** When a TUI application would otherwise launch with empty data, intercept this state before UI initialization and print a clear, actionable error message to stderr.
