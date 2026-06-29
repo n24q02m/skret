@@ -101,5 +101,3 @@ func (t *toggleErrorRoundTripper) RoundTrip(req *http.Request) (*http.Response, 
 	}
 	return t.Transport.RoundTrip(req)
 }
-
-// trailing newline fix
