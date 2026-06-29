@@ -30,17 +30,7 @@ func StatePathFor(target, id string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("user home dir: %w", err)
 	}
-	base := filepath.Join(home, ".skret", "sync-state")
-	name := fmt.Sprintf("%s-%s.json", sanitizeID(target), sanitizeID(id))
-	path := filepath.Join(base, name)
-
-	// Explicit path traversal check to ensure the file stays within the sync-state directory.
-	rel, err := filepath.Rel(base, path)
-	if err != nil || rel != name || filepath.Base(rel) != rel || strings.Contains(rel, "..") || filepath.IsAbs(rel) {
-		return "", fmt.Errorf("invalid state path: %s", path)
-	}
-
-	return path, nil
+	return filepath.Join(home, ".skret", "sync-state", fmt.Sprintf("%s-%s.json", sanitizeID(target), sanitizeID(id))), nil
 }
 
 var idReplacer = strings.NewReplacer(
