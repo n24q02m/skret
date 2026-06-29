@@ -278,3 +278,13 @@ func TestCtxOut_Returns(t *testing.T) {
 	w := ctxOut(context.Background())
 	assert.NotNil(t, w)
 }
+
+func TestNewStoreWithPath(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "creds.yaml")
+	s := NewStoreWithPath(path)
+	require.NotNil(t, s)
+	fb, ok := s.b.(*fileBackend)
+	require.True(t, ok, "backend should be fileBackend")
+	assert.Equal(t, path, fb.path)
+}
