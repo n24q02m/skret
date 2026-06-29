@@ -17,9 +17,11 @@ import (
 type mockSTS struct {
 	out *sts.AssumeRoleOutput
 	err error
+	in  *sts.AssumeRoleInput
 }
 
-func (m *mockSTS) AssumeRole(_ context.Context, _ *sts.AssumeRoleInput, _ ...func(*sts.Options)) (*sts.AssumeRoleOutput, error) {
+func (m *mockSTS) AssumeRole(_ context.Context, in *sts.AssumeRoleInput, _ ...func(*sts.Options)) (*sts.AssumeRoleOutput, error) {
+	m.in = in
 	return m.out, m.err
 }
 
@@ -53,4 +55,41 @@ func TestAWSAssumeFlow_STSError(t *testing.T) {
 	flow := auth.NewAWSAssumeFlow(&mockSTS{err: errors.New("access denied")})
 	_, err := flow.Login(context.Background(), map[string]string{"role_arn": "arn:x"})
 	require.Error(t, err)
+}
+
+func TestAWSAssumeFlow_DefaultSessionName(t *testing.T) {
+	m := &mockSTS{
+		out: &sts.AssumeRoleOutput{
+			Credentials: &ststypes.Credentials{
+				AccessKeyId:     aws.String("AKIA"),
+				SecretAccessKey: aws.String("SECRET"),
+			},
+		},
+	}
+	flow := auth.NewAWSAssumeFlow(m)
+	_, err := flow.Login(context.Background(), map[string]string{"role_arn": "arn:aws:iam::111:role/skret"})
+	require.NoError(t, err)
+	assert.Equal(t, "skret-cli", aws.ToString(m.in.RoleSessionName))
+}
+
+func TestAWSAssumeFlow_NilCredentials(t *testing.T) {
+	m := &mockSTS{out: &sts.AssumeRoleOutput{Credentials: nil}}
+	flow := auth.NewAWSAssumeFlow(m)
+	_, err := flow.Login(context.Background(), map[string]string{"role_arn": "arn:x"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "sts returned nil credentials")
+}
+
+func TestAWSAssumeFlow_NoExpiration(t *testing.T) {
+	m := &mockSTS{out: &sts.AssumeRoleOutput{
+		Credentials: &ststypes.Credentials{
+			AccessKeyId:     aws.String("AKIA"),
+			SecretAccessKey: aws.String("SECRET"),
+			Expiration:      nil,
+		},
+	}}
+	flow := auth.NewAWSAssumeFlow(m)
+	cred, err := flow.Login(context.Background(), map[string]string{"role_arn": "arn:x"})
+	require.NoError(t, err)
+	assert.True(t, cred.ExpiresAt.IsZero())
 }
