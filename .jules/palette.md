@@ -19,3 +19,7 @@
 ## 2025-06-27 - [Dynamic TUI Keybind Descriptions]
 **Learning:** In interactive TUIs built with bubbletea, static keybind descriptions in the footer can cause confusion if the action toggles state (e.g. "enter reveal" when the secret is already revealed).
 **Action:** Ensure keybind descriptions dynamically reflect the action that will occur based on the current state (e.g. toggling between "enter reveal" and "enter hide") to set correct user expectations.
+
+## 2026-06-29 - Improved Error Actionability (Bug E)
+**Learning:** Error messages that only list remedies without explaining the underlying requirement can be confusing. A structured "Requirement -> Problem -> Remedy" flow is more self-explanatory.
+**Action:** Updated `configNotFoundMsg` in `internal/cli/helpers.go` to explicitly state that skret requires configuration for resolution before listing setup/init/path remedies.

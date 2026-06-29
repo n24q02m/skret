@@ -16,7 +16,7 @@ import (
 
 // configNotFoundMsg is the actionable error shown when a command needs a config
 // but neither a .skret.yaml nor --path is available.
-const configNotFoundMsg = "no .skret.yaml found here or in any parent up to the git root, and no --path given. Run 'skret setup' (recommended) or 'skret init' to create one, or pass --path=/namespace/env (e.g. --path=/myapp/prod)"
+const configNotFoundMsg = "skret requires a configuration to resolve secret providers and paths. No .skret.yaml was found here or in any parent up to the git root, and no --path was provided. To fix this, run 'skret setup' (recommended) or 'skret init' to create one, or pass --path=/namespace/env (e.g. --path=/myapp/prod)"
 
 var providerDisplayNames = map[string]string{
 	"aws":   "AWS SSM Parameter Store",

@@ -8,7 +8,7 @@ import (
 // configNotFoundMsg must point the operator at the two real remedies so the
 // failure is self-explanatory (Bug E fix).
 func TestConfigNotFoundMessageActionable(t *testing.T) {
-	for _, want := range []string{"skret setup", "skret init", "--path=", ".skret.yaml"} {
+	for _, want := range []string{"skret setup", "skret init", "--path=", ".skret.yaml", "To fix this"} {
 		if !strings.Contains(configNotFoundMsg, want) {
 			t.Fatalf("configNotFoundMsg missing %q: %q", want, configNotFoundMsg)
 		}
