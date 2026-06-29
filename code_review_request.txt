@@ -1,5 +1,0 @@
-I have added a dedicated unit test for the NewStoreWithPath function in internal/auth/store_internal_test.go.
-Existing tests were also found in internal/auth/provider_coverage_test.go but they were using hardcoded paths.
-My new test uses t.TempDir() for a cleaner and more reliable verification.
-
-File modified: internal/auth/store_internal_test.go
