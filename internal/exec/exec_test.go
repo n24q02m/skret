@@ -18,12 +18,18 @@ func TestBuildEnv_DollarValuesByteExact(t *testing.T) {
 	secrets := []*provider.Secret{
 		{Key: "HASH", Value: bcrypt},
 		{Key: "PGURL", Value: pgURL},
+		{Key: "TRAILING", Value: "val$"},
+		{Key: "LEAD_DOLLAR", Value: "$val"},
+		{Key: "ONLY_DOLLAR", Value: "$"},
 		{Key: "BRACED", Value: "literal-${NOT_A_REF}-kept"},
 		{Key: "DOUBLE", Value: "price-$$100"},
 	}
 	env := skexec.BuildEnv(secrets, nil, "", nil)
 
 	assert.Contains(t, env, "HASH="+bcrypt)
+	assert.Contains(t, env, "TRAILING=val$")
+	assert.Contains(t, env, "LEAD_DOLLAR=$val")
+	assert.Contains(t, env, "ONLY_DOLLAR=$")
 	assert.Contains(t, env, "PGURL="+pgURL)
 	assert.Contains(t, env, "BRACED=literal-${NOT_A_REF}-kept")
 	assert.Contains(t, env, "DOUBLE=price-$$100")

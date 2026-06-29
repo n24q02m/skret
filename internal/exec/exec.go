@@ -14,7 +14,7 @@ import (
 // bcrypt hashes ($2a$14$...) or URLs with '$' in the password survive verbatim.
 // Cross-secret references are served by the explicit `skret template` command.
 func BuildEnv(secrets []*provider.Secret, existing []string, pathPrefix string, exclude []string) []string {
-	// ⚡ Bolt: Early return for empty secrets avoids expensive cache initializations
+	// ⚡ Bolt: Early return for empty secrets avoids redundant processing
 	if len(secrets) == 0 {
 		return existing
 	}
