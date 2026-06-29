@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -159,6 +160,7 @@ func (p *Provider) List(ctx context.Context, pathPrefix string) ([]*provider.Sec
 			return nil, mapError("list", pathPrefix, err)
 		}
 
+		secrets = slices.Grow(secrets, len(output.Parameters))
 		for i := range output.Parameters {
 			param := output.Parameters[i]
 			s := &provider.Secret{
@@ -196,6 +198,7 @@ func (p *Provider) ListNames(ctx context.Context, pathPrefix string) ([]string, 
 		if err != nil {
 			return nil, mapError("list", pathPrefix, err)
 		}
+		names = slices.Grow(names, len(output.Parameters))
 		for i := range output.Parameters {
 			names = append(names, awslib.ToString(output.Parameters[i].Name))
 		}
@@ -223,6 +226,7 @@ func (p *Provider) Fingerprint(ctx context.Context, pathPrefix string) (string, 
 		if err != nil {
 			return "", mapError("fingerprint", pathPrefix, err)
 		}
+		lines = slices.Grow(lines, len(out.Parameters))
 		for i := range out.Parameters {
 			lines = append(lines, fmt.Sprintf("%s@%d",
 				awslib.ToString(out.Parameters[i].Name), out.Parameters[i].Version))
@@ -294,6 +298,7 @@ func (p *Provider) GetHistory(ctx context.Context, key string) ([]*provider.Secr
 			return nil, mapError("history", key, err)
 		}
 
+		secrets = slices.Grow(secrets, len(output.Parameters))
 		for i := range output.Parameters {
 			param := output.Parameters[i]
 			s := &provider.Secret{

@@ -56,3 +56,7 @@
 ## 2025-05-15 - Move slice early returns before slice/map initializations
 **Learning:** Initializing maps or arrays in a function before checking early return conditions (e.g., `if len(input) == 0`) leads to unnecessary memory allocation and iteration overhead, especially if the function is frequently called with empty inputs or used in recursive paths.
 **Action:** Always place early return checks at the very top of the function to avoid redundant memory allocations and logic executions.
+
+## 2026-06-29 - AWS Pagination Slice Capacity Optimization
+**Learning:** Paginated AWS SSM responses provide the length of the current page in 'output.Parameters', which allows pre-allocating the slice capacity before appending results. This reduces slice reallocations during iteration.
+**Action:** Used 'slices.Grow' to pre-allocate capacity in 'List', 'ListNames', 'Fingerprint', and 'GetHistory' methods of the AWS provider.
