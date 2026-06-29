@@ -68,17 +68,18 @@ func newAuthLoginCmd() *cobra.Command {
 	return cmd
 }
 
+var supportedProviders = []string{"aws", "doppler", "infisical"}
+
 func newAuthStatusCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "status",
 		Short: "Show authentication status for all providers",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			store := auth.NewStore()
-			providers := []string{"aws", "doppler", "infisical"}
 
 			ctx := context.Background()
 			hasConfigured := false
-			for _, p := range providers {
+			for _, p := range supportedProviders {
 				cred, err := store.Load(p)
 				if err != nil {
 					fmt.Fprintf(cmd.OutOrStdout(), "  %-12s not configured\n", p)
