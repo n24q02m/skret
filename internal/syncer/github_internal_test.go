@@ -318,3 +318,21 @@ func TestGitHubSyncer_Internal_Sync_ContextWait(t *testing.T) {
 	err := g.Sync(context.Background(), []*provider.Secret{{Key: "key", Value: "val"}})
 	assert.NoError(t, err)
 }
+
+func TestNewGitHub(t *testing.T) {
+	t.Run("default baseURL", func(t *testing.T) {
+		s := NewGitHub("owner", "repo", "token", "").(*GitHubSyncer)
+		assert.Equal(t, "owner", s.owner)
+		assert.Equal(t, "repo", s.repo)
+		assert.Equal(t, "token", s.token)
+		assert.Equal(t, "https://api.github.com", s.baseURL)
+		assert.NotNil(t, s.httpClient)
+		assert.Equal(t, 30*time.Second, s.httpClient.Timeout)
+	})
+
+	t.Run("custom baseURL", func(t *testing.T) {
+		customURL := "https://github.example.com/api/v3"
+		s := NewGitHub("owner", "repo", "token", customURL).(*GitHubSyncer)
+		assert.Equal(t, customURL, s.baseURL)
+	})
+}
