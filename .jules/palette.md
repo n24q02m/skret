@@ -15,6 +15,7 @@
 ## 2025-06-05 - [Sync Command Empty State]
 **Learning:** Adding an empty state check with an actionable message (e.g., "No secrets found to sync. Use 'skret set' to add a secret.") directly after retrieving the secret list improves UX without breaking normal sync flow or preventing sync targets from clearing out.
 **Action:** Always provide actionable error messages or empty state messages in CLI output before executing operations that act upon collections.
-## 2026-06-25 - [Empty States and Actionable Feedback for Scan Command]
-**Learning:** When a CLI command returns an empty state (e.g., no leaks found in a scan), printing an actionable or affirmative message (like "No leaks found.") to stderr significantly improves UX by providing explicit confirmation, preventing users from staring at a blank output or empty table headers, while still preserving pipeline safety by not polluting stdout.
-**Action:** Always add an affirmative empty state message routed to stderr for successful scans or searches that return zero items, ensuring explicit user feedback without breaking programmatic consumption (e.g. JSON format still outputs `[]`).
+
+## 2025-06-27 - [Dynamic TUI Keybind Descriptions]
+**Learning:** In interactive TUIs built with bubbletea, static keybind descriptions in the footer can cause confusion if the action toggles state (e.g. "enter reveal" when the secret is already revealed).
+**Action:** Ensure keybind descriptions dynamically reflect the action that will occur based on the current state (e.g. toggling between "enter reveal" and "enter hide") to set correct user expectations.
