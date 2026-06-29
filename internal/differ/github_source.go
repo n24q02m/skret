@@ -57,10 +57,7 @@ func (g githubSource) fetchPage(ctx context.Context, page int) ([]string, bool, 
 	if err != nil {
 		return nil, false, fmt.Errorf("github source: parse base url: %w", err)
 	}
-	u.Path, err = url.JoinPath(u.Path, "repos", g.owner, g.repo, "actions", "secrets")
-	if err != nil {
-		return nil, false, err
-	}
+	u = u.JoinPath("repos", g.owner, g.repo, "actions", "secrets")
 	q := u.Query()
 	q.Set("per_page", "100")
 	q.Set("page", fmt.Sprintf("%d", page))
