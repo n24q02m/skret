@@ -336,6 +336,3 @@ func TestNewGitHub(t *testing.T) {
 		assert.Equal(t, customURL, s.baseURL)
 	})
 }
-
-// Force commit for CI title fix
-// Another force commit for CI title check
