@@ -12,6 +12,12 @@ import (
 	"golang.org/x/term"
 )
 
+// isTerminal returns true if stdout is an interactive terminal.
+// It is var-assigned to allow overriding in tests.
+var isTerminal = func() bool {
+	return term.IsTerminal(int(os.Stdout.Fd()))
+}
+
 // browseReveal fetches and decrypts a single secret value on demand for the TUI.
 func browseReveal(p provider.SecretProvider) tui.RevealFunc {
 	return func(ctx context.Context, key string) (string, error) {
@@ -28,7 +34,7 @@ func newBrowseCmd(opts *GlobalOpts) *cobra.Command {
 		Use:   "browse",
 		Short: "Browse secrets interactively (values are revealed on demand)",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if !term.IsTerminal(int(os.Stdout.Fd())) {
+			if !isTerminal() {
 				return skret.NewError(skret.ExitValidationError, "browse requires an interactive terminal", nil)
 			}
 			resolved, p, err := loadProvider(opts)
@@ -51,3 +57,4 @@ func newBrowseCmd(opts *GlobalOpts) *cobra.Command {
 		},
 	}
 }
+// dummy comment to trigger CI rebuild
