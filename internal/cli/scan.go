@@ -54,6 +54,13 @@ func newScanCmd(opts *GlobalOpts) *cobra.Command {
 				return skret.NewError(skret.ExitGenericError, "scan failed", err)
 			}
 
+			if len(findings) == 0 {
+				cmd.PrintErrln("No leaks found.")
+				if format != "json" {
+					return nil
+				}
+			}
+
 			if format == "json" {
 				if err := scanner.RenderJSON(cmd.OutOrStdout(), findings); err != nil {
 					return err
