@@ -50,3 +50,42 @@ func TestBrowseReveal(t *testing.T) {
 	_, err = reveal(context.Background(), "NOPE")
 	require.Error(t, err)
 }
+
+func TestBrowseCmd_EmptyState(t *testing.T) {
+	dir := writeEmptyLocalConfig(t)
+	origDir, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	defer os.Chdir(origDir) //nolint:errcheck
+
+	// Mock the TTY check so it doesn't fail early.
+	origIsTerminal := isTerminal
+	isTerminal = func() bool { return true }
+	defer func() { isTerminal = origIsTerminal }()
+
+	cmd := NewRootCmd()
+	cmd.SetArgs([]string{"browse"})
+
+	// Capture stderr
+	var out string
+	oldStderr := cmd.ErrOrStderr()
+	defer cmd.SetErr(oldStderr)
+
+	var buf []byte
+	writer := &mockWriter{buf: &buf}
+	cmd.SetErr(writer)
+
+	err := cmd.Execute()
+	require.NoError(t, err)
+
+	out = string(buf)
+	assert.Contains(t, out, "No secrets found to browse. Use 'skret set' to add a secret.")
+}
+
+type mockWriter struct {
+	buf *[]byte
+}
+
+func (m *mockWriter) Write(p []byte) (n int, err error) {
+	*m.buf = append(*m.buf, p...)
+	return len(p), nil
+}
