@@ -533,8 +533,9 @@ func TestAWS_PaginationFallback(t *testing.T) {
 
 func TestAWS_New_EmptyRegionProfile(t *testing.T) {
 	cfg := &config.ResolvedConfig{Region: "", Profile: ""}
-	_, err := skaws.New(cfg)
-	_ = err
+	p, err := skaws.New(cfg)
+	assert.NoError(t, err)
+	assert.NotNil(t, p)
 }
 
 func TestAWS_GetBatch(t *testing.T) {
