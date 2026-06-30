@@ -245,6 +245,18 @@ func TestStatePathFor_BlocksPathTraversal(t *testing.T) {
 	}
 }
 
+func TestStatePathFor_PathTraversalError(t *testing.T) {
+	withFakeHome(t)
+	// Force sanitizeID to return an un-sanitized string to hit the path traversal check
+	origReplacer := idReplacer
+	idReplacer = strings.NewReplacer()
+	defer func() { idReplacer = origReplacer }()
+
+	_, err := StatePathFor("target", "../../../etc/passwd")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "sync state path traversal attempt detected")
+}
+
 // TestSaveSyncState_PathTraversal verifies that even with a malicious id the
 // file is written inside the sync-state directory and the attacker cannot land
 // a file in a sibling directory.
