@@ -57,4 +57,3 @@ func newBrowseCmd(opts *GlobalOpts) *cobra.Command {
 		},
 	}
 }
-// dummy comment to trigger CI rebuild
