@@ -119,10 +119,7 @@ func (g *GitHubSyncer) getPublicKey(ctx context.Context) (string, string, error)
 	if err != nil {
 		return "", "", fmt.Errorf("github: parse base url: %w", err)
 	}
-	u.Path, err = url.JoinPath(u.Path, "repos", g.owner, g.repo, "actions", "secrets", "public-key")
-	if err != nil {
-		return "", "", fmt.Errorf("github: join path: %w", err)
-	}
+	u = u.JoinPath("repos", g.owner, g.repo, "actions", "secrets", "public-key")
 	reqURL := u.String()
 
 	req, err := http.NewRequestWithContext(ctx, "GET", reqURL, http.NoBody)
@@ -166,10 +163,7 @@ func (g *GitHubSyncer) putSecret(ctx context.Context, name, value string, recipi
 	if err != nil {
 		return fmt.Errorf("github: parse base url: %w", err)
 	}
-	u.Path, err = url.JoinPath(u.Path, "repos", g.owner, g.repo, "actions", "secrets", name)
-	if err != nil {
-		return fmt.Errorf("github: join path: %w", err)
-	}
+	u = u.JoinPath("repos", g.owner, g.repo, "actions", "secrets", name)
 	reqURL := u.String()
 
 	body := fmt.Sprintf(`{"encrypted_value":%q,"key_id":%q}`, encValue, keyID)

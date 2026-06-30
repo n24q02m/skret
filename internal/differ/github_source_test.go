@@ -103,3 +103,20 @@ func TestGitHubSource_ParseURLError(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "parse base url")
 }
+
+func TestGitHubSource_URLEscaping(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// We expect "/repos/my%20owner/my%20repo/actions/secrets"
+		// If double-escaped, it would be "/repos/my%2520owner/my%2520repo/actions/secrets"
+		assert.Equal(t, "/repos/my%20owner/my%20repo/actions/secrets", r.URL.EscapedPath())
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"total_count":0,"secrets":[]}`)
+	}))
+	defer srv.Close()
+
+	// NewGitHubSource uses baseURL, owner, repo.
+	// Space in owner and repo should be escaped once.
+	src := NewGitHubSource("my owner", "my repo", "token", srv.URL)
+	_, err := src.Read(context.Background())
+	require.NoError(t, err)
+}
