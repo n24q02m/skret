@@ -30,7 +30,17 @@ func StatePathFor(target, id string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("user home dir: %w", err)
 	}
-	return filepath.Join(home, ".skret", "sync-state", fmt.Sprintf("%s-%s.json", sanitizeID(target), sanitizeID(id))), nil
+
+	baseDir := filepath.Join(home, ".skret", "sync-state")
+	expectedName := fmt.Sprintf("%s-%s.json", sanitizeID(target), sanitizeID(id))
+	constructedPath := filepath.Join(baseDir, expectedName)
+
+	rel, err := filepath.Rel(baseDir, constructedPath)
+	if err != nil || rel != expectedName || filepath.Base(rel) != rel {
+		return "", fmt.Errorf("sync state path traversal attempt detected")
+	}
+
+	return constructedPath, nil
 }
 
 var idReplacer = strings.NewReplacer(
