@@ -11,7 +11,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sso v1.31.4
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.36.7
 	github.com/aws/aws-sdk-go-v2/service/sts v1.43.4
-	github.com/aws/smithy-go v1.27.1
+	github.com/aws/smithy-go v1.27.3
 	github.com/charmbracelet/bubbles v1.0.0
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0
