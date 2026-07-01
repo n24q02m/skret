@@ -101,16 +101,17 @@ func (m *Model) toggleReveal() {
 // View implements tea.Model.
 func (m Model) View() string {
 	detail := ""
-	enterAction := "reveal"
+	footer := "up/down move - / filter - q quit"
 	if it, ok := m.list.SelectedItem().(item); ok {
 		val := mask
+		enterAction := "reveal"
 		if m.revealed[it.key] {
 			val = m.shown[it.key]
 			enterAction = "hide"
 		}
 		detail = lipgloss.JoinVertical(lipgloss.Left, "Key:   "+it.key, "Value: "+val)
+		footer = "up/down move - / filter - enter " + enterAction + " - q quit"
 	}
-	footer := "up/down move - / filter - enter " + enterAction + " - q quit"
 	if m.err != "" {
 		footer = m.err + "  |  " + footer
 	}

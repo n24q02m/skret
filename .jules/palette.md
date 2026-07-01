@@ -22,3 +22,7 @@
 ## 2026-06-29 - [Actionable Empty States]
 **Learning:** Returning an empty state for a TUI without an actionable message causes a poor UX where the application opens a blank UI or exits silently. The check should happen before the UI is initialized and provide clear guidance.
 **Action:** When a TUI application would otherwise launch with empty data, intercept this state before UI initialization and print a clear, actionable error message to stderr.
+
+## 2026-06-30 - [Contextual Keybind Hiding in Empty States]
+**Learning:** When a list filter returns zero results, displaying contextual keybinds (e.g., "enter reveal") that depend on a selected item is confusing and sets false expectations, as pressing the key does nothing.
+**Action:** Always conditionally render contextual keybind hints so they only appear when an item is actually selected, leaving only global actions (like navigation or quitting) visible during empty states.
