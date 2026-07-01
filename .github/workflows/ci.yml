@@ -181,3 +181,35 @@ jobs:
         with:
           fail-on-severity: moderate
           comment-summary-in-pr: always
+
+  docs-build:
+    name: Docs Astro build
+    # PR gate mirroring the cd.yml "Deploy Docs" build (minus the deploy step) so a
+    # breaking docs dependency bump (e.g. @astrojs/starlight major needing a new
+    # astro) fails at PR time instead of only on push-to-main. Keeps the docs build
+    # green on main. cd.yml owns the actual build+deploy on push to main.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
+        with:
+          version: 10
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: "24"
+          cache: pnpm
+          cache-dependency-path: docs/pnpm-lock.yaml
+      - name: Install dependencies
+        working-directory: docs
+        run: pnpm install --frozen-lockfile
+      - name: Sync install scripts into docs/public
+        run: |
+          cp install.sh docs/public/install.sh
+          cp install.ps1 docs/public/install.ps1
+      - name: Build Astro Starlight site
+        working-directory: docs
+        run: pnpm astro build
