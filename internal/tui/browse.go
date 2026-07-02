@@ -101,7 +101,8 @@ func (m *Model) toggleReveal() {
 // View implements tea.Model.
 func (m Model) View() string {
 	detail := ""
-	footer := "up/down move - / filter - q quit"
+	// Conditionally render contextual keybind hints: hide "up/down move" during empty states.
+	footer := "/ filter - q quit"
 	if it, ok := m.list.SelectedItem().(item); ok {
 		val := mask
 		enterAction := "reveal"
