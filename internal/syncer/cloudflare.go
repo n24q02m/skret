@@ -110,7 +110,86 @@ func (c *CloudflareSyncer) putWorkerSecret(ctx context.Context, name, value stri
 	return nil
 }
 
-// syncPages is a stub for Task 4.
+type cfEnvVar struct {
+	Type  string `json:"type"`
+	Value string `json:"value"`
+}
+
 func (c *CloudflareSyncer) syncPages(ctx context.Context, secrets []*provider.Secret) error {
-	return fmt.Errorf("cloudflare: pages mode not yet implemented")
+	existing, err := c.getPagesEnv(ctx)
+	if err != nil {
+		return err
+	}
+	for _, s := range secrets {
+		existing[secretName(s.Key)] = cfEnvVar{Type: "secret_text", Value: s.Value}
+	}
+	payload := map[string]any{
+		"deployment_configs": map[string]any{
+			"production": map[string]any{"env_vars": existing},
+		},
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("cloudflare: marshal pages env: %w", err)
+	}
+	u, err := url.Parse(c.baseURL)
+	if err != nil {
+		return fmt.Errorf("cloudflare: parse base url: %w", err)
+	}
+	u = u.JoinPath("accounts", c.accountID, "pages", "projects", c.pages)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, u.String(), strings.NewReader(string(body)))
+	if err != nil {
+		return fmt.Errorf("cloudflare: create request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+c.token)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("cloudflare: patch pages: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("cloudflare: patch pages: API returned %d: %s", resp.StatusCode, string(b))
+	}
+	return nil
+}
+
+func (c *CloudflareSyncer) getPagesEnv(ctx context.Context) (map[string]cfEnvVar, error) {
+	u, err := url.Parse(c.baseURL)
+	if err != nil {
+		return nil, fmt.Errorf("cloudflare: parse base url: %w", err)
+	}
+	u = u.JoinPath("accounts", c.accountID, "pages", "projects", c.pages)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), http.NoBody)
+	if err != nil {
+		return nil, fmt.Errorf("cloudflare: create request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+c.token)
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("cloudflare: get pages: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("cloudflare: get pages: API returned %d: %s", resp.StatusCode, string(b))
+	}
+	var out struct {
+		Result struct {
+			DeploymentConfigs struct {
+				Production struct {
+					EnvVars map[string]cfEnvVar `json:"env_vars"`
+				} `json:"production"`
+			} `json:"deployment_configs"`
+		} `json:"result"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, fmt.Errorf("cloudflare: decode pages: %w", err)
+	}
+	env := out.Result.DeploymentConfigs.Production.EnvVars
+	if env == nil {
+		env = map[string]cfEnvVar{}
+	}
+	return env, nil
 }

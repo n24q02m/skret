@@ -143,3 +143,64 @@ func TestCloudflareSyncer_Internal_PutWorkerSecret_Errors(t *testing.T) {
 	require.ErrorContains(t, err, "read error")
 	require.ErrorContains(t, err, "body unreadable")
 }
+
+func TestCloudflareSyncer_Pages_GetMergePatch(t *testing.T) {
+	var patchBody map[string]any
+	cf := &CloudflareSyncer{
+		accountID: "acc", pages: "klprism-web", token: "t",
+		baseURL: "https://api.cloudflare.com/client/v4",
+		httpClient: &http.Client{Transport: &mockTransport{
+			roundTrip: func(req *http.Request) (*http.Response, error) {
+				if req.Method == http.MethodGet {
+					// existing has an unrelated var that MUST be preserved
+					return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(
+						`{"success":true,"result":{"deployment_configs":{"production":{"env_vars":{"KEEP":{"type":"secret_text","value":"x"}}}}}}`))}, nil
+				}
+				b, _ := io.ReadAll(req.Body)
+				_ = json.Unmarshal(b, &patchBody)
+				return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"success":true}`))}, nil
+			},
+		}},
+	}
+	err := cf.Sync(context.Background(), []*provider.Secret{{Key: "/a/prod/NEW", Value: "$val=1"}})
+	require.NoError(t, err)
+	prod := patchBody["deployment_configs"].(map[string]any)["production"].(map[string]any)["env_vars"].(map[string]any)
+	assert.Contains(t, prod, "KEEP") // merged, not clobbered
+	newVar := prod["NEW"].(map[string]any)
+	assert.Equal(t, "$val=1", newVar["value"]) // byte-exact
+	assert.Equal(t, "secret_text", newVar["type"])
+}
+
+func TestCloudflareSyncer_Pages_GetError(t *testing.T) {
+	cf := &CloudflareSyncer{
+		accountID: "acc", pages: "proj", token: "t",
+		baseURL: "https://api.cloudflare.com/client/v4",
+		httpClient: &http.Client{Transport: &mockTransport{
+			roundTrip: func(req *http.Request) (*http.Response, error) {
+				return &http.Response{StatusCode: 403, Body: io.NopCloser(strings.NewReader(`{"errors":[{"message":"forbidden"}]}`))}, nil
+			},
+		}},
+	}
+	err := cf.Sync(context.Background(), []*provider.Secret{{Key: "K", Value: "v"}})
+	require.ErrorContains(t, err, "cloudflare")
+	require.ErrorContains(t, err, "403")
+}
+
+func TestCloudflareSyncer_Pages_PatchError(t *testing.T) {
+	cf := &CloudflareSyncer{
+		accountID: "acc", pages: "proj", token: "t",
+		baseURL: "https://api.cloudflare.com/client/v4",
+		httpClient: &http.Client{Transport: &mockTransport{
+			roundTrip: func(req *http.Request) (*http.Response, error) {
+				if req.Method == http.MethodGet {
+					return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(
+						`{"success":true,"result":{"deployment_configs":{"production":{"env_vars":{}}}}}`))}, nil
+				}
+				return &http.Response{StatusCode: 500, Body: io.NopCloser(strings.NewReader(`{"errors":[{"message":"server error"}]}`))}, nil
+			},
+		}},
+	}
+	err := cf.Sync(context.Background(), []*provider.Secret{{Key: "K", Value: "v"}})
+	require.ErrorContains(t, err, "cloudflare")
+	require.ErrorContains(t, err, "500")
+}
