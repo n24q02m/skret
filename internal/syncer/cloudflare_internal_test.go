@@ -144,18 +144,15 @@ func TestCloudflareSyncer_Internal_PutWorkerSecret_Errors(t *testing.T) {
 	require.ErrorContains(t, err, "body unreadable")
 }
 
-func TestCloudflareSyncer_Pages_GetMergePatch(t *testing.T) {
+func TestCloudflareSyncer_Pages_PatchOnlySyncedKeys(t *testing.T) {
 	var patchBody map[string]any
+	var methods []string
 	cf := &CloudflareSyncer{
 		accountID: "acc", pages: "klprism-web", token: "t",
 		baseURL: "https://api.cloudflare.com/client/v4",
 		httpClient: &http.Client{Transport: &mockTransport{
 			roundTrip: func(req *http.Request) (*http.Response, error) {
-				if req.Method == http.MethodGet {
-					// existing has an unrelated var that MUST be preserved
-					return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(
-						`{"success":true,"result":{"deployment_configs":{"production":{"env_vars":{"KEEP":{"type":"secret_text","value":"x"}}}}}}`))}, nil
-				}
+				methods = append(methods, req.Method)
 				b, _ := io.ReadAll(req.Body)
 				_ = json.Unmarshal(b, &patchBody)
 				return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"success":true}`))}, nil
@@ -164,14 +161,15 @@ func TestCloudflareSyncer_Pages_GetMergePatch(t *testing.T) {
 	}
 	err := cf.Sync(context.Background(), []*provider.Secret{{Key: "/a/prod/NEW", Value: "$val=1"}})
 	require.NoError(t, err)
+	assert.Equal(t, []string{http.MethodPatch}, methods) // exactly one PATCH, no GET
 	prod := patchBody["deployment_configs"].(map[string]any)["production"].(map[string]any)["env_vars"].(map[string]any)
-	assert.Contains(t, prod, "KEEP") // merged, not clobbered
+	assert.Len(t, prod, 1) // only the synced key; others preserved server-side by merge
 	newVar := prod["NEW"].(map[string]any)
 	assert.Equal(t, "$val=1", newVar["value"]) // byte-exact
 	assert.Equal(t, "secret_text", newVar["type"])
 }
 
-func TestCloudflareSyncer_Pages_GetError(t *testing.T) {
+func TestCloudflareSyncer_Pages_PatchError(t *testing.T) {
 	cf := &CloudflareSyncer{
 		accountID: "acc", pages: "proj", token: "t",
 		baseURL: "https://api.cloudflare.com/client/v4",
@@ -186,21 +184,38 @@ func TestCloudflareSyncer_Pages_GetError(t *testing.T) {
 	require.ErrorContains(t, err, "403")
 }
 
-func TestCloudflareSyncer_Pages_PatchError(t *testing.T) {
+func TestCloudflareSyncer_Pages_Errors(t *testing.T) {
 	cf := &CloudflareSyncer{
 		accountID: "acc", pages: "proj", token: "t",
 		baseURL: "https://api.cloudflare.com/client/v4",
 		httpClient: &http.Client{Transport: &mockTransport{
 			roundTrip: func(req *http.Request) (*http.Response, error) {
-				if req.Method == http.MethodGet {
-					return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(
-						`{"success":true,"result":{"deployment_configs":{"production":{"env_vars":{}}}}}`))}, nil
-				}
-				return &http.Response{StatusCode: 500, Body: io.NopCloser(strings.NewReader(`{"errors":[{"message":"server error"}]}`))}, nil
+				return nil, errors.New("network error")
 			},
 		}},
 	}
-	err := cf.Sync(context.Background(), []*provider.Secret{{Key: "K", Value: "v"}})
-	require.ErrorContains(t, err, "cloudflare")
-	require.ErrorContains(t, err, "500")
+
+	err := cf.syncPages(context.Background(), []*provider.Secret{{Key: "K", Value: "v"}})
+	require.Error(t, err)
+	require.ErrorContains(t, err, "network error")
+
+	cf.baseURL = "https://api.cloudflare.com/client/v4\x7f"
+	err = cf.syncPages(context.Background(), []*provider.Secret{{Key: "K", Value: "v"}})
+	require.Error(t, err)
+	require.ErrorContains(t, err, "parse base url")
+
+	// Non-200 response whose body cannot be read.
+	cf.baseURL = "https://api.cloudflare.com/client/v4"
+	cf.httpClient.Transport = &mockTransport{
+		roundTrip: func(req *http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusInternalServerError,
+				Body:       &errorReader{err: errors.New("read error")},
+			}, nil
+		},
+	}
+	err = cf.syncPages(context.Background(), []*provider.Secret{{Key: "K", Value: "v"}})
+	require.Error(t, err)
+	require.ErrorContains(t, err, "read error")
+	require.ErrorContains(t, err, "body unreadable")
 }
