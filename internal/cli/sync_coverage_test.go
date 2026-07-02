@@ -301,6 +301,33 @@ func TestSyncOptions_ResolveTargets_FlagsOverrideConfig(t *testing.T) {
 	assert.Equal(t, "flag.env", targets[0].Fields["file"])
 }
 
+// TestSyncOptions_ResolveTargets_MixedToPerTypeFallback is the regression
+// guard for the Task 8 review finding: the old fallback was all-or-nothing
+// (it only ran when NO requested --to type matched sync.targets), so
+// --to=github,dotenv with only a github target declared would silently drop
+// dotenv (github matched config -> out non-empty -> flags fallback never
+// ran). Each requested type must now be resolved independently: github
+// comes from the declared sync.targets entry, dotenv (undeclared) must
+// still be built from flags instead of vanishing.
+func TestSyncOptions_ResolveTargets_MixedToPerTypeFallback(t *testing.T) {
+	t.Setenv("GITHUB_TOKEN", "ghp_test")
+	sc := &config.SyncConfig{Targets: []config.SyncTarget{
+		{Type: "github", Repo: "o/r"},
+	}}
+	o := &syncOptions{to: "github,dotenv", githubRepo: "o/r", file: "out.env"}
+	targets, err := o.resolveTargets(sc)
+	require.NoError(t, err)
+	require.Len(t, targets, 2)
+
+	// --to order preserved: github (from config) first, then dotenv (from flags).
+	assert.Equal(t, "github", targets[0].Type)
+	assert.Equal(t, "o/r", targets[0].Fields["repo"])
+	assert.Equal(t, "ghp_test", targets[0].Token)
+
+	assert.Equal(t, "dotenv", targets[1].Type)
+	assert.Equal(t, "out.env", targets[1].Fields["file"])
+}
+
 func TestSyncOptions_TargetFromFlags_CloudflareRequiresConfig(t *testing.T) {
 	o := &syncOptions{}
 	_, err := o.targetFromFlags("cloudflare")

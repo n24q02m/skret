@@ -44,8 +44,7 @@ skret sync
 skret sync --to=github,dotenv
 ```
 
-- With a `sync.targets` block declared, `--to` **filters** it — only the declared targets whose `type` appears in the list run; the rest are skipped.
-- A type named in `--to` with no matching `sync.targets` entry falls back to flags-only mode, preserving the pre-sync-fabric behavior: `skret sync --to=github --github-repo=owner/repo` and `skret sync --to=dotenv --file=.env` both work with no `.skret.yaml` sync block at all.
+- Each type named in `--to` is resolved **independently**: if `sync.targets` declares one or more entries of that type, those run; otherwise that type is built from flags instead, preserving the pre-sync-fabric behavior (`skret sync --to=github --github-repo=owner/repo` and `skret sync --to=dotenv --file=.env` both still work with no `.skret.yaml` sync block at all). So with a `sync.targets` block that declares only `github`, `skret sync --to=github,dotenv --file=.env` uses the declared `github` target **and** writes `.env` from the flag — a type named in `--to` is never silently dropped just because a different type happened to match `sync.targets`.
 - With no `--to` and no declared targets, `skret sync` defaults to writing `.env` (or `--file`).
 
 ## Target types

@@ -125,10 +125,14 @@ func loadSyncConfig() (*config.SyncConfig, error) {
 }
 
 // resolveTargets merges declared .skret.yaml sync.targets with CLI overrides.
-// If --to is set, only those types are built (flags provide a type declared
-// in --to but absent from sync.targets — one-off overrides). If --to is
-// empty, every declared sync.targets entry is built. With no declared
-// targets and no --to, sync falls back to the legacy dotenv default.
+// If --to is set, each requested type is resolved independently, in --to
+// order: a type with one or more matching sync.targets entries uses those;
+// a type with no matching entry falls back to flags (one-off overrides, and
+// backwards compat: --to=github --github-repo=o/r, --to=dotenv). This keeps
+// a mixed --to=github,dotenv from silently dropping dotenv just because
+// github matched a declared target. If --to is empty, every declared
+// sync.targets entry is built. With no declared targets and no --to, sync
+// falls back to the legacy dotenv default.
 func (o *syncOptions) resolveTargets(sc *config.SyncConfig) ([]syncer.TargetConfig, error) {
 	var wantOrder []string
 	want := map[string]bool{}
@@ -142,24 +146,31 @@ func (o *syncOptions) resolveTargets(sc *config.SyncConfig) ([]syncer.TargetConf
 	}
 
 	var out []syncer.TargetConfig
-	if sc != nil {
-		for _, t := range sc.Targets {
-			if len(want) > 0 && !want[t.Type] {
+	if len(want) > 0 {
+		for _, typ := range wantOrder {
+			var declared []config.SyncTarget
+			if sc != nil {
+				for _, t := range sc.Targets {
+					if t.Type == typ {
+						declared = append(declared, t)
+					}
+				}
+			}
+			if len(declared) > 0 {
+				for _, t := range declared {
+					out = append(out, targetFromConfig(t))
+				}
 				continue
 			}
-			out = append(out, targetFromConfig(t))
-		}
-	}
-
-	// Flags-only fallback: a --to type with no matching sync.targets entry
-	// (backwards compat: --to=github --github-repo=o/r, --to=dotenv).
-	if len(out) == 0 && o.to != "" {
-		for _, typ := range wantOrder {
 			tcs, err := o.targetFromFlags(typ)
 			if err != nil {
 				return nil, err
 			}
 			out = append(out, tcs...)
+		}
+	} else if sc != nil {
+		for _, t := range sc.Targets {
+			out = append(out, targetFromConfig(t))
 		}
 	}
 
