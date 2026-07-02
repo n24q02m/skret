@@ -36,8 +36,5 @@ func Build(targets []TargetConfig) ([]Syncer, error) {
 }
 
 func field(tc TargetConfig, k string) string {
-	if tc.Fields == nil {
-		return ""
-	}
 	return tc.Fields[k]
 }

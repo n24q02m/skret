@@ -30,4 +30,8 @@ func TestRegistry_Build(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, s, 2)
 	})
+	t.Run("github malformed repo", func(t *testing.T) {
+		_, err := Build([]TargetConfig{{Type: "github", Token: "t", Fields: map[string]string{"repo": "invalidrepo"}}})
+		require.ErrorContains(t, err, "must be owner/repo")
+	})
 }
