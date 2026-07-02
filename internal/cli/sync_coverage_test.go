@@ -220,6 +220,24 @@ environments:
 
 // --- Task 5: comma-list --to + .skret.yaml sync.targets wiring ---
 
+// TestNewSyncCmd_ToFlagDefaultsToEmpty is the root-cause regression guard for
+// the review finding: a "dotenv" flag default meant a bare `skret sync`
+// NEVER had an empty o.to, so resolveTargets' `if o.to != ""` filter always
+// dropped every declared sync.targets entry whose type wasn't dotenv. This
+// test goes through REAL cobra flag registration/parsing (not a zero-value
+// &syncOptions{} struct), which is what the earlier tests missed.
+func TestNewSyncCmd_ToFlagDefaultsToEmpty(t *testing.T) {
+	cmd := newSyncCmd(&GlobalOpts{})
+
+	assert.Equal(t, "", cmd.Flags().Lookup("to").DefValue,
+		"--to default must be empty so config sync.targets are honored on a bare `skret sync`")
+
+	require.NoError(t, cmd.ParseFlags([]string{}))
+	got, err := cmd.Flags().GetString("to")
+	require.NoError(t, err)
+	assert.Equal(t, "", got, "parsed --to value must be empty with no flag passed")
+}
+
 func TestSyncOptions_ResolveTargets_NoFlagsNoConfig_DefaultsDotenv(t *testing.T) {
 	o := &syncOptions{}
 	targets, err := o.resolveTargets(nil)

@@ -32,7 +32,7 @@ func newSyncCmd(opts *GlobalOpts) *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&o.to, "to", "dotenv", "sync target(s), comma-separated (dotenv, github, cloudflare); filters .skret.yaml sync.targets, or selects the flags-only target when none are declared")
+	cmd.Flags().StringVar(&o.to, "to", "", "sync target(s), comma-separated (dotenv, github, cloudflare); default: .skret.yaml sync.targets, else dotenv")
 	cmd.Flags().StringVar(&o.file, "file", "", "output file path (for dotenv)")
 	cmd.Flags().StringVar(&o.githubRepo, "github-repo", "", "GitHub repository (owner/repo, comma separated)")
 	cmd.Flags().BoolVar(&o.skipUnchanged, "skip-unchanged", false, "skip secrets whose value is unchanged since the previous successful sync (drift detection)")

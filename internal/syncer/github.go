@@ -225,5 +225,8 @@ func newGitHubFromConfig(tc TargetConfig) (Syncer, error) {
 	if len(parts) != 2 {
 		return nil, fmt.Errorf("github: invalid repo %q, must be owner/repo", repo)
 	}
+	if tc.Token == "" {
+		return nil, fmt.Errorf("github: GITHUB_TOKEN is required")
+	}
 	return NewGitHub(parts[0], parts[1], tc.Token, field(tc, "base_url")), nil
 }
