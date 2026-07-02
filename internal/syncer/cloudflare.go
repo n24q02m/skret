@@ -101,7 +101,10 @@ func (c *CloudflareSyncer) putWorkerSecret(ctx context.Context, name, value stri
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		b, _ := io.ReadAll(resp.Body)
+		b, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			return fmt.Errorf("cloudflare: set %q: API returned %d (body unreadable: %w)", name, resp.StatusCode, readErr)
+		}
 		return fmt.Errorf("cloudflare: set %q: API returned %d: %s", name, resp.StatusCode, string(b))
 	}
 	return nil
@@ -110,10 +113,4 @@ func (c *CloudflareSyncer) putWorkerSecret(ctx context.Context, name, value stri
 // syncPages is a stub for Task 4.
 func (c *CloudflareSyncer) syncPages(ctx context.Context, secrets []*provider.Secret) error {
 	return fmt.Errorf("cloudflare: pages mode not yet implemented")
-}
-
-// ListNames returns the list of secret names currently set on the Worker.
-func (c *CloudflareSyncer) ListNames(ctx context.Context) ([]string, error) {
-	// TODO: Implement ListNames for Cloudflare
-	return nil, fmt.Errorf("cloudflare: ListNames not yet implemented")
 }

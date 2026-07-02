@@ -3,10 +3,12 @@ package syncer
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/n24q02m/skret/internal/provider"
 	"github.com/stretchr/testify/assert"
@@ -52,4 +54,92 @@ func TestCloudflareSyncer_Worker_APIError(t *testing.T) {
 	err := cf.Sync(context.Background(), []*provider.Secret{{Key: "K", Value: "v"}})
 	require.ErrorContains(t, err, "cloudflare")
 	require.ErrorContains(t, err, "403")
+}
+
+func TestNewCloudflare(t *testing.T) {
+	t.Run("default baseURL", func(t *testing.T) {
+		s := NewCloudflare("acc", "worker", "", "token", "").(*CloudflareSyncer)
+		assert.Equal(t, "acc", s.accountID)
+		assert.Equal(t, "worker", s.worker)
+		assert.Equal(t, "", s.pages)
+		assert.Equal(t, "token", s.token)
+		assert.Equal(t, "https://api.cloudflare.com/client/v4", s.baseURL)
+		assert.NotNil(t, s.httpClient)
+		assert.Equal(t, 30*time.Second, s.httpClient.Timeout)
+		assert.Equal(t, "cloudflare", s.Name())
+	})
+
+	t.Run("custom baseURL", func(t *testing.T) {
+		customURL := "https://cf.example.com/client/v4"
+		s := NewCloudflare("acc", "worker", "pages-proj", "token", customURL).(*CloudflareSyncer)
+		assert.Equal(t, customURL, s.baseURL)
+		assert.Equal(t, "pages-proj", s.pages)
+	})
+}
+
+func TestCloudflareSyncer_Internal_Sync_EmptySecrets(t *testing.T) {
+	cf := &CloudflareSyncer{
+		accountID: "acc", worker: "w", token: "t",
+		baseURL: "https://api.cloudflare.com/client/v4",
+		httpClient: &http.Client{Transport: &mockTransport{
+			roundTrip: func(req *http.Request) (*http.Response, error) {
+				return nil, errors.New("should not be called")
+			},
+		}},
+	}
+	err := cf.Sync(context.Background(), nil)
+	require.NoError(t, err)
+}
+
+func TestCloudflareSyncer_Internal_Sync_ContextCancelled(t *testing.T) {
+	cf := &CloudflareSyncer{
+		accountID: "acc", worker: "w", token: "t",
+		baseURL: "https://api.cloudflare.com/client/v4",
+		httpClient: &http.Client{Transport: &mockTransport{
+			roundTrip: func(req *http.Request) (*http.Response, error) {
+				return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"success":true}`))}, nil
+			},
+		}},
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	err := cf.Sync(ctx, []*provider.Secret{{Key: "K", Value: "v"}})
+	require.Error(t, err)
+	require.True(t, errors.Is(err, context.Canceled) || strings.Contains(err.Error(), "context canceled"))
+}
+
+func TestCloudflareSyncer_Internal_PutWorkerSecret_Errors(t *testing.T) {
+	cf := &CloudflareSyncer{
+		accountID: "acc", worker: "w", token: "t",
+		baseURL: "https://api.cloudflare.com/client/v4",
+		httpClient: &http.Client{Transport: &mockTransport{
+			roundTrip: func(req *http.Request) (*http.Response, error) {
+				return nil, errors.New("network error")
+			},
+		}},
+	}
+
+	err := cf.putWorkerSecret(context.Background(), "name", "value")
+	require.Error(t, err)
+	require.ErrorContains(t, err, "network error")
+
+	cf.baseURL = "https://api.cloudflare.com/client/v4\x7f"
+	err = cf.putWorkerSecret(context.Background(), "name", "value")
+	require.Error(t, err)
+	require.ErrorContains(t, err, "parse base url")
+
+	// Non-200 response whose body cannot be read.
+	cf.baseURL = "https://api.cloudflare.com/client/v4"
+	cf.httpClient.Transport = &mockTransport{
+		roundTrip: func(req *http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusInternalServerError,
+				Body:       &errorReader{err: errors.New("read error")},
+			}, nil
+		},
+	}
+	err = cf.putWorkerSecret(context.Background(), "name", "value")
+	require.Error(t, err)
+	require.ErrorContains(t, err, "read error")
+	require.ErrorContains(t, err, "body unreadable")
 }
