@@ -80,6 +80,33 @@ func TestPostManifest_ConnectionRefused(t *testing.T) {
 	assert.Contains(t, err.Error(), "post:")
 }
 
+// TestPostManifest_RefusesTokenOverNonLoopbackHTTP is the hard requirement
+// for the http-token-leak fix: a bearer token must never be sent in the
+// clear to a non-loopback host.
+func TestPostManifest_RefusesTokenOverNonLoopbackHTTP(t *testing.T) {
+	err := postManifest("http://example.com", "secret-token", &syncer.Manifest{})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "https")
+	assert.NotContains(t, err.Error(), "secret-token")
+}
+
+// TestPostManifest_AllowsTokenOverLoopbackHTTP keeps the local-hub dev
+// workflow (and TestHubPush_PostsManifestNoValues, which posts a token to an
+// httptest server at http://127.0.0.1:PORT) working: loopback is exempt from
+// the https requirement.
+func TestPostManifest_AllowsTokenOverLoopbackHTTP(t *testing.T) {
+	var gotAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	err := postManifest(srv.URL, "loopback-token", &syncer.Manifest{})
+	require.NoError(t, err)
+	assert.Equal(t, "Bearer loopback-token", gotAuth)
+}
+
 // --- newHubCmd wiring ---
 
 func TestNewHubCmd_Structure(t *testing.T) {
@@ -330,7 +357,7 @@ environments:
 // --- loadHubStates ---
 
 func TestLoadHubStates_NilConfig(t *testing.T) {
-	assert.Empty(t, loadHubStates(nil))
+	assert.Empty(t, loadHubStates(NewRootCmd(), nil))
 }
 
 func TestLoadHubStates_AllTargetTypes(t *testing.T) {
@@ -341,13 +368,19 @@ func TestLoadHubStates_AllTargetTypes(t *testing.T) {
 		{Type: "github", Repo: "o/r"},
 		{Type: "cloudflare", Worker: "w"},
 	}}
-	states := loadHubStates(sc)
+	states := loadHubStates(NewRootCmd(), sc)
 	assert.Contains(t, states, "dotenv:out.env")
 	assert.Contains(t, states, "github:o/r")
 	assert.Contains(t, states, "cloudflare:worker/w")
 }
 
-func TestLoadHubStates_CorruptStateFile_Skipped(t *testing.T) {
+// TestLoadHubStates_CorruptStateFile_WarnsAndMarksMissing covers the fix for
+// a corrupt/unreadable sync-state cache: unlike the never-synced case (which
+// LoadSyncState reports as an empty, non-error state), a genuine read/parse
+// failure must not make the target vanish from the manifest silently. It
+// should still contribute an (empty) entry -- so BuildManifest marks it
+// "missing" -- and loadHubStates must warn on cmd's stderr.
+func TestLoadHubStates_CorruptStateFile_WarnsAndMarksMissing(t *testing.T) {
 	setFakeHome(t)
 
 	sc := &config.SyncConfig{Targets: []config.SyncTarget{
@@ -359,6 +392,12 @@ func TestLoadHubStates_CorruptStateFile_Skipped(t *testing.T) {
 	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o700))
 	require.NoError(t, os.WriteFile(path, []byte("not json"), 0o600))
 
-	states := loadHubStates(sc)
-	assert.NotContains(t, states, "dotenv:out.env")
+	cmd := NewRootCmd()
+	var buf bytes.Buffer
+	cmd.SetErr(&buf)
+
+	states := loadHubStates(cmd, sc)
+	require.Contains(t, states, "dotenv:out.env")
+	assert.Empty(t, states["dotenv:out.env"].Hashes)
+	assert.Contains(t, buf.String(), "warning: skipping drift for dotenv:out.env")
 }

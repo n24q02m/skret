@@ -32,7 +32,6 @@ type SyncConfig struct {
 // SyncTarget is one declared sync destination.
 type SyncTarget struct {
 	Type    string `yaml:"type"`              // github | cloudflare | dotenv
-	Env     string `yaml:"env,omitempty"`     // source environment (default: default_env)
 	Repo    string `yaml:"repo,omitempty"`    // github
 	Worker  string `yaml:"worker,omitempty"`  // cloudflare worker script
 	Pages   string `yaml:"pages,omitempty"`   // cloudflare pages project

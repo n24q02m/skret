@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"time"
 
@@ -67,7 +68,7 @@ func (o *hubOptions) runPush(cmd *cobra.Command) error {
 		return skret.NewError(skret.ExitGenericError, "hub push: load deploy salt failed", err)
 	}
 
-	states := loadHubStates(sc)
+	states := loadHubStates(cmd, sc)
 	m := syncer.BuildManifest(resolved.Path, resolved.EnvName, salt, secrets, states)
 	m.GeneratedAt = time.Now().UTC()
 
@@ -84,7 +85,12 @@ func (o *hubOptions) runPush(cmd *cobra.Command) error {
 // naming. A target with no prior sync (LoadSyncState returns an empty state
 // on first run, never an error) still contributes an entry — BuildManifest
 // then marks every key "missing" for it, which is the correct drift signal.
-func loadHubStates(sc *config.SyncConfig) map[string]*syncer.SyncState {
+//
+// A target whose cache file exists but fails to read/parse is a genuine
+// error (as opposed to the never-synced case above): loadHubStates warns on
+// cmd's stderr and still inserts an empty state, so the target surfaces as
+// "missing" in the manifest instead of disappearing from it silently.
+func loadHubStates(cmd *cobra.Command, sc *config.SyncConfig) map[string]*syncer.SyncState {
 	states := map[string]*syncer.SyncState{}
 	if sc == nil {
 		return states
@@ -92,11 +98,14 @@ func loadHubStates(sc *config.SyncConfig) map[string]*syncer.SyncState {
 	for _, t := range sc.Targets {
 		tc := targetFromConfig(t) // Task 5 helper: resolves Fields/Token from env
 		id := targetStateID(hubSyncerStub(t.Type), tc)
+		key := t.Type + ":" + id
 		st, err := syncer.LoadSyncState(t.Type, id)
 		if err != nil {
-			continue // corrupt/unreadable state file -> target absent from manifest
+			cmd.PrintErrf("warning: skipping drift for %s: %v\n", key, err)
+			states[key] = &syncer.SyncState{Hashes: map[string]string{}}
+			continue
 		}
-		states[t.Type+":"+id] = st
+		states[key] = st
 	}
 	return states
 }
@@ -121,7 +130,22 @@ func hubSyncerStub(typ string) syncer.Syncer {
 // The request body is the JSON-encoded Manifest, which by construction
 // (syncer.BuildManifest) never carries secret values — only names,
 // fingerprints, and per-target drift status.
+//
+// If a bearer token is set, the hub URL is checked first: plain http to any
+// host other than loopback would put SKRET_HUB_TOKEN on the wire in the
+// clear, so that combination is refused before the request is built. A
+// malformed hubURL is not rejected here — it falls through to
+// http.NewRequestWithContext below, which reports it as a "create request"
+// error the same way it always has.
 func postManifest(hubURL, token string, m *syncer.Manifest) error {
+	if token != "" {
+		if u, err := url.Parse(hubURL); err == nil {
+			host := u.Hostname()
+			if u.Scheme == "http" && host != "127.0.0.1" && host != "localhost" && host != "::1" {
+				return fmt.Errorf("refusing to send SKRET_HUB_TOKEN over insecure http to %q; use https", host)
+			}
+		}
+	}
 	body, err := json.Marshal(m)
 	if err != nil {
 		return fmt.Errorf("marshal manifest: %w", err)

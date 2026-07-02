@@ -76,9 +76,11 @@ func LoadDeploySalt() ([]byte, error) {
 }
 
 // BuildManifest computes per-key fingerprint + per-target drift from the
-// current SSM secrets and each target's last-synced SyncState.
+// current SSM secrets and each target's last-synced SyncState. GeneratedAt
+// is left zero here — the caller (hub push) stamps it once, so the manifest
+// timestamp is set exactly one place.
 func BuildManifest(ns, env string, salt []byte, secrets []*provider.Secret, states map[string]*SyncState) *Manifest {
-	m := &Manifest{Namespace: ns, Env: env, Keys: make([]ManifestKey, 0, len(secrets)), GeneratedAt: time.Now().UTC()}
+	m := &Manifest{Namespace: ns, Env: env, Keys: make([]ManifestKey, 0, len(secrets))}
 	for _, s := range secrets {
 		cur := hashSecret(s.Value)
 		targets := map[string]ManifestTarget{}
