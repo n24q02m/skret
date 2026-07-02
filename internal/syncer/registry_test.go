@@ -35,3 +35,28 @@ func TestRegistry_Build(t *testing.T) {
 		require.ErrorContains(t, err, "must be owner/repo")
 	})
 }
+
+func TestRegistry_Cloudflare(t *testing.T) {
+	t.Run("worker needs account+token", func(t *testing.T) {
+		_, err := Build([]TargetConfig{{Type: "cloudflare", Fields: map[string]string{"worker": "w"}}})
+		require.ErrorContains(t, err, "account")
+	})
+	t.Run("valid worker", func(t *testing.T) {
+		s, err := Build([]TargetConfig{{Type: "cloudflare", Token: "t", Fields: map[string]string{"worker": "w", "account": "a"}}})
+		require.NoError(t, err)
+		assert.Equal(t, "cloudflare", s[0].Name())
+	})
+	t.Run("missing worker and pages", func(t *testing.T) {
+		_, err := Build([]TargetConfig{{Type: "cloudflare", Token: "t", Fields: map[string]string{"account": "a"}}})
+		require.ErrorContains(t, err, "worker or pages")
+	})
+	t.Run("missing token", func(t *testing.T) {
+		_, err := Build([]TargetConfig{{Type: "cloudflare", Fields: map[string]string{"worker": "w", "account": "a"}}})
+		require.ErrorContains(t, err, "CLOUDFLARE_API_TOKEN")
+	})
+	t.Run("valid pages", func(t *testing.T) {
+		s, err := Build([]TargetConfig{{Type: "cloudflare", Token: "t", Fields: map[string]string{"pages": "p", "account": "a"}}})
+		require.NoError(t, err)
+		assert.Equal(t, "cloudflare", s[0].Name())
+	})
+}

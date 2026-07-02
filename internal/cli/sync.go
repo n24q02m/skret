@@ -2,10 +2,12 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
 
+	"github.com/n24q02m/skret/internal/config"
 	"github.com/n24q02m/skret/internal/syncer"
 	"github.com/n24q02m/skret/pkg/skret"
 	"github.com/spf13/cobra"
@@ -24,13 +26,13 @@ func newSyncCmd(opts *GlobalOpts) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "sync",
-		Short: "Sync secrets to external targets (dotenv, github)",
+		Short: "Sync secrets to external targets (dotenv, github, cloudflare)",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return o.run(cmd)
 		},
 	}
 
-	cmd.Flags().StringVar(&o.to, "to", "dotenv", "sync target (dotenv, github)")
+	cmd.Flags().StringVar(&o.to, "to", "dotenv", "sync target(s), comma-separated (dotenv, github, cloudflare); filters .skret.yaml sync.targets, or selects the flags-only target when none are declared")
 	cmd.Flags().StringVar(&o.file, "file", "", "output file path (for dotenv)")
 	cmd.Flags().StringVar(&o.githubRepo, "github-repo", "", "GitHub repository (owner/repo, comma separated)")
 	cmd.Flags().BoolVar(&o.skipUnchanged, "skip-unchanged", false, "skip secrets whose value is unchanged since the previous successful sync (drift detection)")
@@ -55,16 +57,26 @@ func (o *syncOptions) run(cmd *cobra.Command) error {
 		cmd.PrintErrln("No secrets found to sync. Use 'skret set' to add a secret.")
 	}
 
-	syncers, err := o.buildSyncers()
+	sc, err := loadSyncConfig()
+	if err != nil {
+		return skret.NewError(skret.ExitConfigError, "sync: load config failed", err)
+	}
+
+	targets, err := o.resolveTargets(sc)
 	if err != nil {
 		return err
 	}
+	syncers, err := syncer.Build(targets)
+	if err != nil {
+		return skret.NewError(skret.ExitConfigError, "sync: build targets", err)
+	}
 
-	for _, s := range syncers {
+	for i, s := range syncers {
+		tc := targets[i]
 		toSync := secrets
 		var state *syncer.SyncState
 		if o.skipUnchanged {
-			stateID := o.stateID(s)
+			stateID := targetStateID(s, tc)
 			state, err = syncer.LoadSyncState(s.Name(), stateID)
 			if err != nil {
 				return skret.NewError(skret.ExitGenericError, "sync: load state failed", err)
@@ -91,32 +103,100 @@ func (o *syncOptions) run(cmd *cobra.Command) error {
 	return nil
 }
 
-func (o *syncOptions) stateID(s syncer.Syncer) string {
-	if s.Name() == "dotenv" {
-		if o.file == "" {
-			return ".env"
-		}
-		return o.file
+// loadSyncConfig returns the .skret.yaml sync block, or nil when there is no
+// config file (flags-only mode) — never errors on a missing config.
+func loadSyncConfig() (*config.SyncConfig, error) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return nil, err
 	}
-	return o.githubRepo
+	cfgPath, derr := config.Discover(cwd)
+	if errors.Is(derr, config.ErrConfigNotFound) {
+		return nil, nil // no config -> declared targets absent; flags-only
+	}
+	if derr != nil {
+		return nil, derr
+	}
+	cfg, lerr := config.Load(cfgPath)
+	if lerr != nil {
+		return nil, lerr
+	}
+	return cfg.Sync, nil
 }
 
-func (o *syncOptions) buildSyncers() ([]syncer.Syncer, error) {
-	var syncers []syncer.Syncer
-	switch o.to {
-	case "dotenv":
-		file := o.file
-		if file == "" {
-			file = ".env"
+// resolveTargets merges declared .skret.yaml sync.targets with CLI overrides.
+// If --to is set, only those types are built (flags provide a type declared
+// in --to but absent from sync.targets — one-off overrides). If --to is
+// empty, every declared sync.targets entry is built. With no declared
+// targets and no --to, sync falls back to the legacy dotenv default.
+func (o *syncOptions) resolveTargets(sc *config.SyncConfig) ([]syncer.TargetConfig, error) {
+	var wantOrder []string
+	want := map[string]bool{}
+	if o.to != "" {
+		for _, t := range strings.Split(o.to, ",") {
+			if t = strings.TrimSpace(t); t != "" && !want[t] {
+				want[t] = true
+				wantOrder = append(wantOrder, t)
+			}
 		}
-		syncers = append(syncers, syncer.NewDotenv(file))
+	}
+
+	var out []syncer.TargetConfig
+	if sc != nil {
+		for _, t := range sc.Targets {
+			if len(want) > 0 && !want[t.Type] {
+				continue
+			}
+			out = append(out, targetFromConfig(t))
+		}
+	}
+
+	// Flags-only fallback: a --to type with no matching sync.targets entry
+	// (backwards compat: --to=github --github-repo=o/r, --to=dotenv).
+	if len(out) == 0 && o.to != "" {
+		for _, typ := range wantOrder {
+			tcs, err := o.targetFromFlags(typ)
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, tcs...)
+		}
+	}
+
+	if len(out) == 0 {
+		// Legacy default: dotenv.
+		out = append(out, syncer.TargetConfig{Type: "dotenv", Fields: map[string]string{"file": o.file}})
+	}
+	return out, nil
+}
+
+// targetFromConfig converts a declared .skret.yaml sync target into a
+// syncer.TargetConfig, resolving its token from the environment and
+// expanding ${VAR} references in account (e.g. cloudflare's account id).
+func targetFromConfig(t config.SyncTarget) syncer.TargetConfig {
+	fields := map[string]string{
+		"repo":    t.Repo,
+		"worker":  t.Worker,
+		"pages":   t.Pages,
+		"account": os.ExpandEnv(t.Account),
+		"file":    t.File,
+	}
+	return syncer.TargetConfig{Type: t.Type, Fields: fields, Token: tokenForType(t.Type)}
+}
+
+// targetFromFlags builds TargetConfigs for a --to type that has no
+// sync.targets declaration, preserving the original flags-only CLI behavior.
+func (o *syncOptions) targetFromFlags(typ string) ([]syncer.TargetConfig, error) {
+	switch typ {
+	case "dotenv":
+		return []syncer.TargetConfig{{Type: "dotenv", Fields: map[string]string{"file": o.file}}}, nil
 	case "github":
 		token := os.Getenv("GITHUB_TOKEN")
 		if token == "" {
 			return nil, skret.NewError(skret.ExitConfigError, "sync: GITHUB_TOKEN env var required", nil)
 		}
-		repos := strings.Split(o.githubRepo, ",")
-		for _, r := range repos {
+		var tcs []syncer.TargetConfig
+		for _, r := range strings.Split(o.githubRepo, ",") {
 			r = strings.TrimSpace(r)
 			if r == "" {
 				continue
@@ -125,26 +205,76 @@ func (o *syncOptions) buildSyncers() ([]syncer.Syncer, error) {
 			if len(parts) != 2 {
 				return nil, skret.NewError(skret.ExitConfigError, fmt.Sprintf("sync: invalid repo format %q, must be owner/repo", r), nil)
 			}
-			syncers = append(syncers, syncer.NewGitHub(parts[0], parts[1], token, ""))
+			tcs = append(tcs, syncer.TargetConfig{Type: "github", Fields: map[string]string{"repo": r}, Token: token})
 		}
-		if len(syncers) == 0 {
+		if len(tcs) == 0 {
 			return nil, skret.NewError(skret.ExitConfigError, "sync: --github-repo requires at least one repository", nil)
 		}
+		return tcs, nil
+	case "cloudflare":
+		return nil, skret.NewError(skret.ExitConfigError, "sync: cloudflare target requires a sync.targets entry in .skret.yaml", nil)
 	default:
-		return nil, skret.NewError(skret.ExitConfigError, fmt.Sprintf("sync: unknown target %q", o.to), nil)
+		return nil, skret.NewError(skret.ExitConfigError, fmt.Sprintf("sync: unknown target %q", typ), nil)
 	}
-	return syncers, nil
+}
+
+// tokenForType resolves a target type's auth token from the environment.
+// Never logged; dotenv has no token.
+func tokenForType(typ string) string {
+	switch typ {
+	case "github":
+		return os.Getenv("GITHUB_TOKEN")
+	case "cloudflare":
+		return os.Getenv("CLOUDFLARE_API_TOKEN")
+	}
+	return ""
+}
+
+// targetStateID returns the per-target identifier used to scope the sync
+// state file, derived from the resolved TargetConfig. Dotenv uses the
+// output file path; GitHub uses the repo string; Cloudflare uses
+// "worker/<name>" or "pages/<name>".
+func targetStateID(s syncer.Syncer, tc syncer.TargetConfig) string {
+	switch s.Name() {
+	case "dotenv":
+		if file := tc.Fields["file"]; file != "" {
+			return file
+		}
+		return ".env"
+	case "github":
+		return tc.Fields["repo"]
+	case "cloudflare":
+		if w := tc.Fields["worker"]; w != "" {
+			return "worker/" + w
+		}
+		return "pages/" + tc.Fields["pages"]
+	}
+	return ""
 }
 
 // syncerStateID returns the per-target identifier used to scope the sync
-// state file. Dotenv uses the output file path; GitHub uses the repo string.
+// state file for the legacy flags-only dotenv/github path.
 func syncerStateID(s syncer.Syncer, file, githubRepo string) string {
-	o := &syncOptions{file: file, githubRepo: githubRepo}
-	return o.stateID(s)
+	if s.Name() == "dotenv" {
+		if file == "" {
+			return ".env"
+		}
+		return file
+	}
+	return githubRepo
 }
 
-// buildSyncers initializes the requested sync targets.
+// buildSyncers initializes the requested sync targets from flags only
+// (legacy helper; retained for callers/tests exercising the flags-only path).
 func buildSyncers(to, file, githubRepo string) ([]syncer.Syncer, error) {
 	o := &syncOptions{to: to, file: file, githubRepo: githubRepo}
-	return o.buildSyncers()
+	targets, err := o.resolveTargets(nil)
+	if err != nil {
+		return nil, err
+	}
+	syncers, err := syncer.Build(targets)
+	if err != nil {
+		return nil, skret.NewError(skret.ExitConfigError, "sync: build targets", err)
+	}
+	return syncers, nil
 }

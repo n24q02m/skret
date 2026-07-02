@@ -154,3 +154,20 @@ func (c *CloudflareSyncer) syncPages(ctx context.Context, secrets []*provider.Se
 	}
 	return nil
 }
+
+func init() { Register("cloudflare", newCloudflareFromConfig) }
+
+func newCloudflareFromConfig(tc TargetConfig) (Syncer, error) {
+	worker, pages := field(tc, "worker"), field(tc, "pages")
+	if worker == "" && pages == "" {
+		return nil, fmt.Errorf("cloudflare: worker or pages is required")
+	}
+	account := field(tc, "account")
+	if account == "" {
+		return nil, fmt.Errorf("cloudflare: account is required")
+	}
+	if tc.Token == "" {
+		return nil, fmt.Errorf("cloudflare: CLOUDFLARE_API_TOKEN is required")
+	}
+	return NewCloudflare(account, worker, pages, tc.Token, field(tc, "base_url")), nil
+}
