@@ -56,7 +56,7 @@ func LoadDeploySalt() ([]byte, error) {
 		return data, nil
 	}
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return nil, fmt.Errorf("read hub salt: %w", err)
+		return nil, fmt.Errorf("read hub salt %q: %w", path, err)
 	}
 	salt := make([]byte, 16)
 	if _, err := rand.Read(salt); err != nil {
@@ -65,8 +65,12 @@ func LoadDeploySalt() ([]byte, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return nil, fmt.Errorf("create skret dir: %w", err)
 	}
-	if err := os.WriteFile(path, salt, 0o600); err != nil {
-		return nil, fmt.Errorf("write hub salt: %w", err)
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, salt, 0o600); err != nil {
+		return nil, fmt.Errorf("write hub salt %q: %w", tmp, err)
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		return nil, fmt.Errorf("rename hub salt %q -> %q: %w", tmp, path, err)
 	}
 	return salt, nil
 }
@@ -79,6 +83,10 @@ func BuildManifest(ns, env string, salt []byte, secrets []*provider.Secret, stat
 		cur := hashSecret(s.Value)
 		targets := map[string]ManifestTarget{}
 		for tname, st := range states {
+			if st == nil {
+				targets[tname] = ManifestTarget{Present: false, Status: "missing"}
+				continue
+			}
 			last, ok := st.Hashes[s.Key]
 			switch {
 			case !ok:
