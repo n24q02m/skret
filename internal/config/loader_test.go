@@ -101,3 +101,27 @@ func TestDiscover_NotFound(t *testing.T) {
 	_, err := config.Discover(dir)
 	assert.ErrorIs(t, err, config.ErrConfigNotFound)
 }
+
+// TestLoad_V1ConfigWithoutSyncStillValid is a backwards-compat regression
+// guard for the B1 sync-fabric feature: a pre-existing .skret.yaml with no
+// sync: block must still load and validate exactly as before, with Sync left
+// nil (no behavior change for callers that never touch the sync fabric).
+func TestLoad_V1ConfigWithoutSyncStillValid(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, ".skret.yaml")
+	err := os.WriteFile(cfgPath, []byte(`
+version: "1"
+default_env: prod
+environments:
+  prod:
+    provider: aws
+    path: /a/prod
+    region: ap-southeast-1
+`), 0o644)
+	require.NoError(t, err)
+
+	cfg, err := config.Load(cfgPath)
+	require.NoError(t, err)
+	require.NoError(t, cfg.Validate())
+	assert.Nil(t, cfg.Sync)
+}

@@ -213,3 +213,20 @@ func sealSecret(secret string, recipientKey *[32]byte) (string, error) {
 
 	return base64.StdEncoding.EncodeToString(sealed), nil
 }
+
+func init() { Register("github", newGitHubFromConfig) }
+
+func newGitHubFromConfig(tc TargetConfig) (Syncer, error) {
+	repo := field(tc, "repo")
+	if repo == "" {
+		return nil, fmt.Errorf("github: repo is required")
+	}
+	parts := strings.SplitN(repo, "/", 2)
+	if len(parts) != 2 {
+		return nil, fmt.Errorf("github: invalid repo %q, must be owner/repo", repo)
+	}
+	if tc.Token == "" {
+		return nil, fmt.Errorf("github: GITHUB_TOKEN is required")
+	}
+	return NewGitHub(parts[0], parts[1], tc.Token, field(tc, "base_url")), nil
+}

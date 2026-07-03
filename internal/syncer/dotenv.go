@@ -36,3 +36,13 @@ func (d *DotenvSyncer) Sync(_ context.Context, secrets []*provider.Secret) error
 		return nil
 	})
 }
+
+func init() { Register("dotenv", newDotenvFromConfig) }
+
+func newDotenvFromConfig(tc TargetConfig) (Syncer, error) {
+	file := field(tc, "file")
+	if file == "" {
+		file = ".env"
+	}
+	return NewDotenv(file), nil
+}

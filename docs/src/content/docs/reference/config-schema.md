@@ -32,6 +32,18 @@ required:                   # Optional. List of secret keys that must exist.
 exclude:                    # Optional. Keys excluded from injection by run/env.
   - GITHUB_TOKEN
   - DEBUG_TOKEN
+
+sync:                       # Optional. Declared targets for `skret sync` / `skret hub push`.
+  targets:
+    - type: github          # "github" | "cloudflare" | "dotenv"
+      repo: myorg/myapp     # Required for github. owner/repo.
+    - type: cloudflare
+      worker: my-worker     # One of worker/pages required for cloudflare.
+      account: ${CLOUDFLARE_ACCOUNT_ID}  # Required for cloudflare. Supports ${VAR} expansion.
+    - type: dotenv
+      file: .env.sync       # Optional for dotenv. Defaults to ".env".
+  hub:
+    url: https://vault.example.com  # Optional. Base URL for `skret hub push`.
 ```
 
 ## Field Reference
@@ -46,6 +58,7 @@ exclude:                    # Optional. Keys excluded from injection by run/env.
 | `environments` | map | Yes | -- | Map of environment name to environment config. At least one entry required. |
 | `required` | list | No | `[]` | Secret keys that must be present. Commands fail with exit code 2 if any are missing. |
 | `exclude` | list | No | `[]` | Secret keys excluded from `run` and `env` output. |
+| `sync` | map | No | -- | Declared sync targets and hub endpoint for `skret sync` / `skret hub push`. See [Sync Fields](#sync-fields). |
 
 ### Environment Fields
 
@@ -58,6 +71,29 @@ exclude:                    # Optional. Keys excluded from injection by run/env.
 | `kms_key_id` | string | No | `aws` | KMS key ID or alias for SecureString encryption. Defaults to the AWS-managed SSM key (`alias/aws/ssm`). |
 | `file` | string | Yes | `local` | Path to the local secrets YAML file. Relative paths are resolved from the `.skret.yaml` location. |
 
+### Sync Fields
+
+`sync` declares reusable routes for [`skret sync`](/guide/sync/) and the vault dashboard endpoint for [`skret hub push`](/guide/hub/). Both fields are optional — omitting `sync` entirely preserves the pre-sync-fabric, flags-only behavior of `sync`.
+
+| Field | Type | Required | Description |
+|-------|------|----------|--------------|
+| `sync.targets` | list | No | Declared sync destinations. A bare `skret sync` pushes to every entry; `--to` filters by `type`. |
+| `sync.hub` | map | No | Vault dashboard config for `skret hub push`. |
+| `sync.hub.url` | string | No | Hub base URL. Overridden by `--hub-url`. |
+
+### Sync Target Fields (`sync.targets[]`)
+
+| Field | Type | Required | Target | Description |
+|-------|------|----------|--------|-------------|
+| `type` | string | Yes | All | `"github"`, `"cloudflare"`, or `"dotenv"`. |
+| `repo` | string | Yes | `github` | `owner/repo`. Pushed as a GitHub Actions repository secret (sealed-box encrypted). Auth via `GITHUB_TOKEN`. |
+| `worker` | string | One of `worker`/`pages` | `cloudflare` | Cloudflare Worker script name. Secrets pushed via the Workers secrets API. |
+| `pages` | string | One of `worker`/`pages` | `cloudflare` | Cloudflare Pages project name. Secrets pushed as production environment variables via a partial-merge PATCH — only the synced keys are sent; existing variables outside that set are untouched. |
+| `account` | string | Yes | `cloudflare` | Cloudflare account ID. Supports `${VAR}` expansion (e.g. `${CLOUDFLARE_ACCOUNT_ID}`) so the ID need not be committed literally. Auth via `CLOUDFLARE_API_TOKEN`. |
+| `file` | string | No | `dotenv` | Output file path. Defaults to `.env`. |
+
+Exactly one of `worker`/`pages` must be set per `cloudflare` target — setting both, or neither, fails validation. `GITHUB_TOKEN` and `CLOUDFLARE_API_TOKEN` are read from the environment at sync time and are never stored in `.skret.yaml`.
+
 ## Validation Rules
 
 skret validates the config at load time and fails fast on errors:
@@ -69,6 +105,9 @@ skret validates the config at load time and fails fast on errors:
 5. AWS environments must have a `path` field
 6. Local environments must have a `file` field
 7. Unknown provider names are rejected
+8. Each `sync.targets` entry must have a known `type` (`github`, `cloudflare`, or `dotenv`)
+9. `github` sync targets must have a `repo` field
+10. `cloudflare` sync targets must set exactly one of `worker`/`pages`
 
 ## Config Discovery
 

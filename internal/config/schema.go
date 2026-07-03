@@ -10,6 +10,7 @@ type Config struct {
 	Environments map[string]Environment `yaml:"environments"`
 	Required     []string               `yaml:"required"`
 	Exclude      []string               `yaml:"exclude"`
+	Sync         *SyncConfig            `yaml:"sync,omitempty"`
 }
 
 // Environment defines provider configuration for one environment.
@@ -20,6 +21,27 @@ type Environment struct {
 	Profile  string `yaml:"profile"`
 	KMSKeyID string `yaml:"kms_key_id"`
 	File     string `yaml:"file"`
+}
+
+// SyncConfig declares reusable sync routes (targets) + optional hub endpoint.
+type SyncConfig struct {
+	Targets []SyncTarget `yaml:"targets"`
+	Hub     *HubConfig   `yaml:"hub,omitempty"`
+}
+
+// SyncTarget is one declared sync destination.
+type SyncTarget struct {
+	Type    string `yaml:"type"`              // github | cloudflare | dotenv
+	Repo    string `yaml:"repo,omitempty"`    // github
+	Worker  string `yaml:"worker,omitempty"`  // cloudflare worker script
+	Pages   string `yaml:"pages,omitempty"`   // cloudflare pages project
+	Account string `yaml:"account,omitempty"` // cloudflare account id
+	File    string `yaml:"file,omitempty"`    // dotenv
+}
+
+// HubConfig points at the vault dashboard manifest endpoint.
+type HubConfig struct {
+	URL string `yaml:"url"`
 }
 
 // Validate checks all required fields and cross-references.
@@ -43,6 +65,13 @@ func (c *Config) Validate() error {
 			return err
 		}
 	}
+	if c.Sync != nil {
+		for i := range c.Sync.Targets {
+			if err := c.Sync.Targets[i].validate(); err != nil {
+				return err
+			}
+		}
+	}
 	return nil
 }
 
@@ -61,6 +90,27 @@ func (e *Environment) validate(name string) error {
 		}
 	default:
 		return fmt.Errorf("config: environment %q: unknown provider %q", name, e.Provider)
+	}
+	return nil
+}
+
+func (s *SyncTarget) validate() error {
+	switch s.Type {
+	case "github":
+		if s.Repo == "" {
+			return fmt.Errorf("config: github sync target: repo is required")
+		}
+	case "cloudflare":
+		if s.Worker == "" && s.Pages == "" {
+			return fmt.Errorf("config: cloudflare sync target: worker or pages is required")
+		}
+		if s.Worker != "" && s.Pages != "" {
+			return fmt.Errorf("config: cloudflare sync target: set exactly one of worker/pages")
+		}
+	case "dotenv":
+		// file optional (defaults to .env at build time)
+	default:
+		return fmt.Errorf("config: unknown sync target type %q", s.Type)
 	}
 	return nil
 }

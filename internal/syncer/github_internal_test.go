@@ -306,6 +306,16 @@ func TestGitHubSyncer_Internal_Sync_ContextWait(t *testing.T) {
 	assert.NoError(t, err)
 }
 
+// TestNewGitHubFromConfig_MissingToken is a review regression guard: the
+// config-path factory used to build successfully with an empty token and
+// only fail later at the API with a 401, diverging from the flags path
+// ("GITHUB_TOKEN env var required") and from newCloudflareFromConfig (which
+// already checks tc.Token == ""). It must now fail fast, before any request.
+func TestNewGitHubFromConfig_MissingToken(t *testing.T) {
+	_, err := newGitHubFromConfig(TargetConfig{Fields: map[string]string{"repo": "o/r"}})
+	assert.ErrorContains(t, err, "GITHUB_TOKEN is required")
+}
+
 func TestNewGitHub(t *testing.T) {
 	t.Run("default baseURL", func(t *testing.T) {
 		s := NewGitHub("owner", "repo", "token", "").(*GitHubSyncer)

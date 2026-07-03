@@ -158,3 +158,37 @@ func TestConfig_Validate_NoDefaultEnv(t *testing.T) {
 	err := cfg.Validate()
 	assert.NoError(t, err)
 }
+
+func TestConfig_SyncValidation(t *testing.T) {
+	base := func(sync *config.SyncConfig) *config.Config {
+		return &config.Config{
+			Version:      "1",
+			Environments: map[string]config.Environment{"prod": {Provider: "aws", Path: "/a/prod"}},
+			Sync:         sync,
+		}
+	}
+	t.Run("nil sync is valid (backwards compat)", func(t *testing.T) {
+		require.NoError(t, base(nil).Validate())
+	})
+	t.Run("github target needs repo", func(t *testing.T) {
+		err := base(&config.SyncConfig{Targets: []config.SyncTarget{{Type: "github"}}}).Validate()
+		require.ErrorContains(t, err, "repo is required")
+	})
+	t.Run("cloudflare needs exactly one of worker/pages", func(t *testing.T) {
+		err := base(&config.SyncConfig{Targets: []config.SyncTarget{{Type: "cloudflare"}}}).Validate()
+		require.ErrorContains(t, err, "worker or pages")
+		err = base(&config.SyncConfig{Targets: []config.SyncTarget{{Type: "cloudflare", Worker: "w", Pages: "p"}}}).Validate()
+		require.ErrorContains(t, err, "exactly one")
+	})
+	t.Run("unknown target type", func(t *testing.T) {
+		err := base(&config.SyncConfig{Targets: []config.SyncTarget{{Type: "vault"}}}).Validate()
+		require.ErrorContains(t, err, "unknown sync target type")
+	})
+	t.Run("valid multi-target", func(t *testing.T) {
+		require.NoError(t, base(&config.SyncConfig{Targets: []config.SyncTarget{
+			{Type: "github", Repo: "o/r"},
+			{Type: "cloudflare", Worker: "api", Account: "acc"},
+			{Type: "dotenv", File: ".env"},
+		}}).Validate())
+	})
+}
