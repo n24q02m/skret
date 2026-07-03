@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// fidelityCorpus mirrors internal/dotenv/fidelity_test.go (data, kept in sync).
+// fidelityCorpus is an 18-value subset of the adversarial classes (see internal/dotenv/fidelity_test.go for the fuller codec corpus).
 func fidelityCorpus() []struct{ Name, Value string } {
 	c := []struct{ Name, Value string }{
 		{"bcrypt", `$2a$14$abcdefghijklmnopqrstuv`}, {"shell_var", `$HOME`},
@@ -35,12 +35,13 @@ func seedLocal(t *testing.T, value string) string {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, ".skret.yaml"), []byte(
 		"version: \"1\"\ndefault_env: dev\nenvironments:\n  dev:\n    provider: local\n    file: ./.secrets.dev.yaml\n"), 0o644))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, ".secrets.dev.yaml"), []byte("version: \"1\"\nsecrets: {}\n"), 0o600))
-	orig, _ := os.Getwd()
+	orig, err := os.Getwd()
+	require.NoError(t, err)
 	require.NoError(t, os.Chdir(dir))
 	t.Cleanup(func() { _ = os.Chdir(orig) })
 
 	cmd := cli.NewRootCmd()
-	cmd.SetArgs([]string{"set", "K", value})
+	cmd.SetArgs([]string{"set", "--", "K", value})
 	cmd.SetOut(&bytes.Buffer{})
 	cmd.SetErr(&bytes.Buffer{})
 	require.NoError(t, cmd.Execute(), "set must accept value verbatim")
