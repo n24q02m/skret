@@ -2,13 +2,17 @@ package cli_test
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/n24q02m/skret/internal/cli"
+	"github.com/n24q02m/skret/internal/dotenv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v3"
 )
 
 // fidelityCorpus is an 18-value subset of the adversarial classes (see internal/dotenv/fidelity_test.go for the fuller codec corpus).
@@ -67,5 +71,134 @@ func TestFidelity_SetGet_ByteExact(t *testing.T) {
 			require.NoError(t, err)
 			assert.Equal(t, tc.Value, out, "get --plain must return the exact stored value")
 		})
+	}
+}
+
+// TestFidelity_Env_AllFormats_RoundTrip proves `skret env --format=<f>` round-trips
+// every corpus value for all 4 dump formats (dotenv, json, yaml, export): the dump
+// is parsed BACK by that format's own decoder and compared to the original value.
+//
+// Two of the four formats can carry a value's embedded newline as a literal
+// physical line break in the dump (see parseExportValue doc comment for why
+// dotenv does not, despite carrying the same corpus). Both parser helpers below
+// are written to be immune to that regardless: parseDotenvValue only needs
+// per-line splitting because dotenv.Encode always escapes control bytes (\n,
+// \r, \t) rather than emitting them raw, so every entry is exactly one physical
+// line; parseExportValue does not split into lines at all -- it walks the raw
+// dump byte-by-byte tracking POSIX single-quote state, so an embedded literal
+// newline inside the quoted value is just more content, never a delimiter.
+func TestFidelity_Env_AllFormats_RoundTrip(t *testing.T) {
+	for _, tc := range fidelityCorpus() {
+		t.Run(tc.Name, func(t *testing.T) {
+			seedLocal(t, tc.Value)
+
+			// dotenv: parse each line back through the codec.
+			out, err := runCLI(t, "env", "--format=dotenv")
+			require.NoError(t, err)
+			gotDot := parseDotenvValue(t, out, "K")
+			assert.Equal(t, tc.Value, gotDot, "dotenv format must round-trip")
+
+			// json: whole-document unmarshal.
+			out, err = runCLI(t, "env", "--format=json")
+			require.NoError(t, err)
+			var m map[string]string
+			require.NoError(t, json.Unmarshal([]byte(out), &m))
+			assert.Equal(t, tc.Value, m["K"], "json format must round-trip")
+
+			// yaml: whole-document unmarshal.
+			out, err = runCLI(t, "env", "--format=yaml")
+			require.NoError(t, err)
+			var my map[string]string
+			require.NoError(t, yaml.Unmarshal([]byte(out), &my))
+			assert.Equal(t, tc.Value, my["K"], "yaml format must round-trip")
+
+			// export: locate `export K=` then POSIX-single-quote-decode the remainder.
+			out, err = runCLI(t, "env", "--format=export")
+			require.NoError(t, err)
+			assert.Equal(t, tc.Value, parseExportValue(t, out, "K"), "export format must round-trip")
+		})
+	}
+}
+
+// splitLines splits a dump on "\n" and drops a single trailing empty element
+// produced by the dump's final newline (fmt.Fprintln/Fprintf always terminate
+// the last entry with "\n"). It must NOT be used on the export dump when a
+// value may contain a literal embedded newline -- see parseExportValue.
+func splitLines(s string) []string {
+	lines := strings.Split(s, "\n")
+	if n := len(lines); n > 0 && lines[n-1] == "" {
+		lines = lines[:n-1]
+	}
+	return lines
+}
+
+// parseDotenvValue finds `key` in a dotenv-format dump and decodes its value
+// via the same dotenv.Decode used by `skret import`. Splitting on physical
+// lines is safe here: dotenv.Encode (internal/dotenv/dotenv.go) escapes \n,
+// \r and \t to their two-byte C-style forms instead of emitting the raw
+// control byte, so a value containing a real newline still renders as a
+// single physical output line.
+func parseDotenvValue(t *testing.T, dump, key string) string {
+	t.Helper()
+	for _, line := range splitLines(dump) {
+		if k, v, ok := dotenv.Decode(line); ok && k == key {
+			return v
+		}
+	}
+	t.Fatalf("key %q not found in dotenv dump: %q", key, dump)
+	return ""
+}
+
+// parseExportValue finds the `export <key>=` entry in an export-format dump
+// and decodes the POSIX single-quoted value that follows it. Unlike dotenv,
+// shellSingleQuote (internal/cli/env.go) does NOT escape control bytes -- it
+// only rewrites embedded `'` into the close/escape/reopen sequence --
+// so a value containing a real newline or CR is written as a literal control
+// byte inside the quotes and spans multiple physical lines in the dump. This
+// helper therefore never splits the dump into lines; it scans raw bytes and
+// tracks single-quote-segment state exactly the way a POSIX shell would, so
+// embedded newlines are just ordinary content bytes rather than delimiters.
+func parseExportValue(t *testing.T, dump, key string) string {
+	t.Helper()
+	prefix := "export " + key + "="
+	idx := strings.Index(dump, prefix)
+	if idx == -1 {
+		t.Fatalf("key %q not found in export dump: %q", key, dump)
+	}
+	return decodeShellSingleQuoted(t, dump[idx+len(prefix):])
+}
+
+// decodeShellSingleQuoted decodes a POSIX single-quoted value starting at the
+// head of s (s[0] must be the opening quote, as shellSingleQuote always emits
+// one, even for the empty string). It reverses shellSingleQuote's
+// close/escape/reopen encoding for an embedded quote and treats every other
+// byte -- including a literal newline or CR -- as literal value content. It
+// stops at the first closing quote that is not immediately followed by the
+// `\'` reopen-escape, which is always the true end of the value: content
+// bytes between quote delimiters can never themselves contain a raw `'`,
+// because shellSingleQuote already replaced every such byte in the source
+// value with the 4-byte escape sequence before wrapping in the outer quotes.
+func decodeShellSingleQuoted(t *testing.T, s string) string {
+	t.Helper()
+	var b strings.Builder
+	i := 0
+	for {
+		if i >= len(s) || s[i] != '\'' {
+			t.Fatalf("export value: expected opening quote at byte %d in %q", i, s)
+		}
+		i++ // consume the opening quote
+		j := strings.IndexByte(s[i:], '\'')
+		if j == -1 {
+			t.Fatalf("export value: unterminated quote in %q", s)
+		}
+		b.WriteString(s[i : i+j])
+		i += j + 1 // consume through the closing quote
+		if i+1 < len(s) && s[i] == '\\' && s[i+1] == '\'' {
+			// close/escape/reopen: an embedded literal quote in the source value.
+			b.WriteByte('\'')
+			i += 2
+			continue
+		}
+		return b.String()
 	}
 }
