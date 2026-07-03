@@ -1,9 +1,9 @@
 package cli
 
 import (
-	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -72,18 +72,16 @@ func (o *setOptions) getValue(args []string) (string, error) {
 	case len(args) == 2:
 		return args[1], nil
 	case o.fromStdin:
-		scanner := bufio.NewScanner(os.Stdin)
-		if scanner.Scan() {
-			value := scanner.Text()
-			if err := scanner.Err(); err != nil {
-				return "", skret.NewError(skret.ExitGenericError, "set: read stdin failed", err)
-			}
-			return value, nil
-		}
-		if err := scanner.Err(); err != nil {
+		// Read the entire stream (not line-by-line: bufio.Scanner.Scan()
+		// only returns the first line, silently truncating any multi-line
+		// value such as a PEM key). Strip trailing "\n" bytes to match
+		// --from-file's convention below and POSIX `$(...)` command
+		// substitution ergonomics -- see docs/guide/value-fidelity.md.
+		data, err := io.ReadAll(os.Stdin)
+		if err != nil {
 			return "", skret.NewError(skret.ExitGenericError, "set: read stdin failed", err)
 		}
-		return "", nil
+		return strings.TrimRight(string(data), "\n"), nil
 	case o.fromFile != "":
 		data, err := os.ReadFile(o.fromFile)
 		if err != nil {
