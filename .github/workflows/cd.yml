@@ -15,9 +15,8 @@ name: CD
 #   CLOUDFLARE_API_TOKEN     - CF Pages deploy
 #   CLOUDFLARE_ACCOUNT_ID    - CF account ID (also used by the vault hub deploy)
 #   TAP_GITHUB_TOKEN         - fine-grained PAT for tap repo updates
-#   HUB_CF_DEPLOY_TOKEN      - project-scoped CF token for the vault hub Worker (Workers Scripts + KV edit + zone DNS)
+#   HUB_CF_DEPLOY_TOKEN      - project-scoped CF token for the vault hub Worker (account Workers Scripts + KV write only; custom domain attached out-of-band, no zone perm)
 #   VAULT_KV_ID              - KV namespace id for the vault hub (from `wrangler kv namespace create VAULT_KV`)
-#   HUB_PUBLIC_HOST          - vault hub custom domain (e.g. vault.n24q02m.com)
 #
 # Repo Variables required:
 #   CI_APP_ID                - n24q02m-ci GitHub App ID (3200052)
@@ -276,9 +275,8 @@ jobs:
         working-directory: hub
         env:
           VAULT_KV_ID: ${{ secrets.VAULT_KV_ID }}
-          PUBLIC_HOST: ${{ secrets.HUB_PUBLIC_HOST }}
         run: |
-          envsubst '${VAULT_KV_ID} ${PUBLIC_HOST}' \
+          envsubst '${VAULT_KV_ID}' \
             < wrangler.deploy.template.jsonc > wrangler.deploy.jsonc
       - name: Deploy Worker
         uses: cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0 # v4
