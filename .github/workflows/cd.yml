@@ -4,6 +4,7 @@ name: CD
 #  - Release on workflow_dispatch (semantic-release -> tag -> goreleaser -> publish)
 #  - Tag push -> goreleaser publish (still works for manual `git tag v*` && `git push --tags` flow)
 #  - Docs deploy on push to main when docs/** changes (Cloudflare Pages)
+#  - Vault hub Worker deploy on push to main when hub/** changes (Cloudflare Workers)
 #  - Optional sync-secrets job that pulls /skret/ci/* from AWS SSM and pushes
 #    them to GitHub Actions repository secrets (opt-in via vars.SYNC_SECRETS_ENABLED)
 #
@@ -12,8 +13,10 @@ name: CD
 #   AWS_ROLE_ARN             - OIDC role with read on /skret/ci/* in SSM
 #   CI_APP_KEY               - n24q02m-ci GitHub App private key (for skret sync to push GH Actions secrets)
 #   CLOUDFLARE_API_TOKEN     - CF Pages deploy
-#   CLOUDFLARE_ACCOUNT_ID    - CF account ID
+#   CLOUDFLARE_ACCOUNT_ID    - CF account ID (also used by the vault hub deploy)
 #   TAP_GITHUB_TOKEN         - fine-grained PAT for tap repo updates
+#   HUB_CF_DEPLOY_TOKEN      - project-scoped CF token for the vault hub Worker (account Workers Scripts + KV write only; custom domain attached out-of-band, no zone perm)
+#   VAULT_KV_ID              - KV namespace id for the vault hub (from `wrangler kv namespace create VAULT_KV`)
 #
 # Repo Variables required:
 #   CI_APP_ID                - n24q02m-ci GitHub App ID (3200052)
@@ -24,6 +27,7 @@ on:
     branches: [main]
     paths:
       - "docs/**"
+      - "hub/**"
       - ".github/workflows/cd.yml"
     tags:
       - "v*"
@@ -229,3 +233,55 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: pages deploy docs/dist --project-name=skret --branch=main
+
+  # ==================== Vault Hub Deploy ====================
+  deploy-hub:
+    name: Deploy Vault Hub Worker
+    # workflow_dispatch (any release_type) also redeploys the hub even when
+    # only CLI code changed -- intentional: the hub isn't versioned with the
+    # CLI, and a redeploy of the same Worker source is idempotent/harmless.
+    if: |
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+      !startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
+        with:
+          version: 10
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: "24"
+          cache: pnpm
+          cache-dependency-path: hub/pnpm-lock.yaml
+      - name: Install
+        working-directory: hub
+        run: pnpm install --frozen-lockfile
+      # Fail-safe deploy gate: never publish a build that fails tests or types.
+      # cd.yml and ci.yml are independent workflows with no cross-ordering, so
+      # the gate is repeated here rather than relying on the CI hub job landing.
+      - name: Test
+        working-directory: hub
+        run: pnpm test
+      - name: Typecheck
+        working-directory: hub
+        run: pnpm typecheck
+      - name: Render deploy config from secrets
+        working-directory: hub
+        env:
+          VAULT_KV_ID: ${{ secrets.VAULT_KV_ID }}
+        run: |
+          envsubst '${VAULT_KV_ID}' \
+            < wrangler.deploy.template.jsonc > wrangler.deploy.jsonc
+      - name: Deploy Worker
+        uses: cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0 # v4
+        with:
+          apiToken: ${{ secrets.HUB_CF_DEPLOY_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: hub
+          command: deploy --config wrangler.deploy.jsonc

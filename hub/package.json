@@ -1,0 +1,19 @@
+{
+  "name": "skret-hub",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "dryrun": "wrangler deploy --dry-run",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.8.19",
+    "@cloudflare/workers-types": "^4.20260101.0",
+    "typescript": "^5.7.3",
+    "vitest": "3.2.6",
+    "wrangler": "^4.106.0"
+  }
+}

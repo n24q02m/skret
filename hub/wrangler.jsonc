@@ -1,0 +1,11 @@
+// wrangler.jsonc — skret vault-dashboard Worker (B3). Read-only, 0-value.
+// Resource IDs are placeholders; real IDs are filled at deploy time from GH
+// secrets into the gitignored wrangler.deploy.jsonc (see README). NO routes /
+// custom domain here — fully-BYO from commit one.
+{
+  "name": "skret-hub",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-06-14",
+  "kv_namespaces": [{ "binding": "VAULT_KV", "id": "<vault-kv-id>" }],
+  "observability": { "enabled": true }
+}

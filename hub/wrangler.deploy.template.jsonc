@@ -1,0 +1,17 @@
+// Rendered at deploy time: envsubst fills ${VAULT_KV_ID} from a GH secret into
+// wrangler.deploy.jsonc (gitignored). 0 real IDs here.
+//
+// The custom domain (vault.n24q02m.com) is attached ONCE, out-of-band, to the
+// Worker via `PUT /accounts/<acc>/workers/domains` (or the dashboard) — NOT via
+// a `routes` block here. That keeps the CD deploy token least-privilege
+// (account Workers Scripts + KV write only, no zone Workers-Routes permission):
+// asserting a custom-domain route needs a zone-scoped policy, which the deploy
+// token deliberately does not carry. The attached domain persists across script
+// re-deploys, so CD never needs to touch it. See README "Hardening / deploy".
+{
+  "name": "skret-hub",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-06-14",
+  "kv_namespaces": [{ "binding": "VAULT_KV", "id": "${VAULT_KV_ID}" }],
+  "observability": { "enabled": true }
+}
