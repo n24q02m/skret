@@ -100,3 +100,30 @@ func TestFidelity_SetStdin_TrailingNewlinePolicy(t *testing.T) {
 		})
 	}
 }
+
+// TestSetCmd_StdinReadError verifies that when os.Stdin is closed,
+// getValue's error path (set.go:81-83) is exercised: io.ReadAll fails
+// and the command returns an error. This test manipulates the global os.Stdin
+// and therefore does NOT use t.Parallel().
+func TestSetCmd_StdinReadError(t *testing.T) {
+	dir := setupTestRepo(t)
+	orig, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(dir))
+	t.Cleanup(func() { _ = os.Chdir(orig) })
+
+	// Close stdin so io.ReadAll returns an error.
+	r, w, err := os.Pipe()
+	require.NoError(t, err)
+	_ = w.Close()
+	_ = r.Close()
+	oldStdin := os.Stdin
+	os.Stdin = r
+	t.Cleanup(func() { os.Stdin = oldStdin })
+
+	// Run set --from-stdin; it should fail with a read error.
+	cmd := cli.NewRootCmd()
+	cmd.SetArgs([]string{"set", "K", "--from-stdin"})
+	err = cmd.Execute()
+	require.Error(t, err, "set --from-stdin with closed stdin must return an error")
+}
