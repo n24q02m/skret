@@ -49,6 +49,21 @@ describe("validateManifest", () => {
     bad.keys[0].targets["github:n24q02m/skret"].secret = "leak";
     expect(validateManifest(bad).ok).toBe(false);
   });
+  it("rejects a value-like field at the manifest top level", () => {
+    const bad = { ...good, value: "super-secret" };
+    expect(validateManifest(bad).ok).toBe(false);
+  });
+  it("rejects a case-varied value-like field (Value)", () => {
+    const bad = structuredClone(good) as Record<string, any>;
+    bad.keys[0].Value = "super-secret";
+    expect(validateManifest(bad).ok).toBe(false);
+  });
+  it("reconstruction drops unknown non-forbidden fields", () => {
+    const withExtra = { ...good, extra: "keep-out" } as Record<string, any>;
+    const res = validateManifest(withExtra);
+    expect(res.ok).toBe(true);
+    if (res.ok) expect("extra" in res.manifest).toBe(false);
+  });
 });
 
 describe("ingest route", () => {
@@ -71,5 +86,11 @@ describe("ingest route", () => {
     const res = await post(bad, "Bearer test-hub-token");
     expect(res.status).toBe(400);
     expect(await env.VAULT_KV.get("manifest:/leaky/prod:prod")).toBeNull();
+  });
+  it("400 with a top-level value-like field, does NOT store", async () => {
+    const bad = { ...good, namespace: "/toplevel/prod", value: "leak" };
+    const res = await post(bad, "Bearer test-hub-token");
+    expect(res.status).toBe(400);
+    expect(await env.VAULT_KV.get("manifest:/toplevel/prod:prod")).toBeNull();
   });
 });
