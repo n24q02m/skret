@@ -1,6 +1,7 @@
 package cli_test
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 
@@ -42,5 +43,39 @@ func TestHelp_EveryLeafCommandHasLongAndExample(t *testing.T) {
 			assert.NotEmpty(t, c.Long, "%s must have a Long description", name)
 			assert.NotEmpty(t, c.Example, "%s must have an Example", name)
 		})
+	}
+}
+
+// badSecretSubstrings are fixed real-world credential prefixes that no
+// placeholder in this codebase legitimately needs — any match is a real leak.
+var badSecretSubstrings = []string{
+	"AKIA",               // real AWS access key ID prefix
+	"sk-live",            // real Stripe/OpenAI-style live secret key prefix
+	"sk-proj",            // real OpenAI project-scoped secret key prefix
+	"-----BEGIN RSA",     // real PEM header (placeholder is "-----BEGIN KEY-----")
+	"-----BEGIN OPENSSH", // real PEM header
+	"-----BEGIN EC",      // real PEM header
+	"-----BEGIN DSA",     // real PEM header
+	"-----BEGIN PRIVATE", // real PEM header
+}
+
+// badSecretPatterns catch the "short fixed prefix + long random token" shape
+// of real credentials, without false-flagging the short xxx-style
+// placeholders used in the examples (ghp_xxx, dp.pt.xxx).
+var badSecretPatterns = []*regexp.Regexp{
+	regexp.MustCompile(`ghp_[A-Za-z0-9]{20,}`),     // real GitHub PAT shape
+	regexp.MustCompile(`dp\.pt\.[A-Za-z0-9]{20,}`), // real Doppler token shape
+}
+
+func TestHelp_ExamplesUsePlaceholdersNotSecrets(t *testing.T) {
+	// Examples must not contain anything shaped like a real credential.
+	for _, c := range leafCommands(cli.NewRootCmd()) {
+		text := c.Long + "\n" + c.Example
+		for _, b := range badSecretSubstrings {
+			assert.NotContains(t, text, b, "%s help must use placeholders, not a real-looking secret (%q)", c.CommandPath(), b)
+		}
+		for _, re := range badSecretPatterns {
+			assert.False(t, re.MatchString(text), "%s help must use placeholders, not a real-looking secret (matches %s)", c.CommandPath(), re.String())
+		}
 	}
 }
