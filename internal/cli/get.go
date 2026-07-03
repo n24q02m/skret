@@ -18,8 +18,17 @@ func newGetCmd(opts *GlobalOpts) *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:               "get <KEY>",
-		Short:             "Get a single secret value",
+		Use:   "get <KEY>",
+		Short: "Get a single secret value",
+		Long: `Print a single secret value to stdout.
+
+By default a trailing newline is added for readability; use --plain for the
+exact bytes (e.g. when capturing in a script) and --json for a parseable
+object. To read ALL secrets use 'skret env'; to inject them into a command use
+'skret run'.`,
+		Example: `  skret get DATABASE_URL
+  skret get DATABASE_URL --plain
+  skret get DATABASE_URL --json`,
 		Args:              cobra.ExactArgs(1),
 		ValidArgsFunction: secretKeyCompletion(opts),
 		RunE: func(cmd *cobra.Command, args []string) error {

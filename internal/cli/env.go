@@ -25,6 +25,15 @@ func newEnvCmd(opts *GlobalOpts) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "env",
 		Short: "Dump all secrets in dotenv/JSON/YAML/export format",
+		Long: `Dump ALL secrets under the current environment in one of four formats.
+
+Formats: dotenv (default), json, yaml, export. All four round-trip byte-exact.
+Use 'export' with a shell (eval "$(skret env --format=export)"); use 'json' to
+parse programmatically. For a single value use 'skret get'; to run a command
+with secrets injected use 'skret run'.`,
+		Example: `  skret env --format=dotenv > .env
+  skret env --format=json | jq .
+  eval "$(skret env --format=export)"`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			pairs, err := getEnvPairs(opts)
 			if err != nil {

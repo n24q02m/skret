@@ -26,7 +26,17 @@ func newSetCmd(opts *GlobalOpts) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "set <KEY> [VALUE]",
 		Short: "Create or update a secret",
-		Args:  cobra.RangeArgs(1, 2),
+		Long: `Create or update a secret's value.
+
+Provide the value as an argument, piped via --from-stdin, or from a file with
+--from-file. For a value that begins with '-' (a PEM key, a flag-like token),
+put '--' before the key so it is not parsed as a flag. --from-stdin and
+--from-file strip trailing newlines; use them for multi-line values.`,
+		Example: `  skret set API_KEY ghp_xxx
+  skret set -- PRIVATE_KEY "-----BEGIN KEY-----..."
+  cat key.pem | skret set TLS_KEY --from-stdin
+  skret set TLS_KEY --from-file key.pem`,
+		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return o.run(cmd, args)
 		},

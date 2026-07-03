@@ -35,6 +35,14 @@ func newImportCmd(opts *GlobalOpts) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "import",
 		Short: "Import secrets from external sources (dotenv, doppler, infisical)",
+		Long: `Import secrets from an external source into the current environment.
+
+Sources: dotenv (a .env file), doppler, infisical. Tokens for the SaaS sources
+come from DOPPLER_TOKEN / INFISICAL_TOKEN. This is a one-time migration into the
+skret backend; day-to-day propagation flows outward via 'skret sync'.`,
+		Example: `  skret import --from=dotenv --file=.env
+  skret import --from=doppler --doppler-project=app --doppler-config=prd
+  skret import --from=infisical`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return o.run(cmd)
 		},

@@ -21,7 +21,13 @@ func newTemplateCmd(opts *GlobalOpts) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "template <file>",
 		Short: "Render a template file, substituting ${KEY} with secret values",
-		Args:  cobra.ExactArgs(1),
+		Long: `Render a template file, substituting ${KEY} with the secret's value.
+
+The substituted value is inserted literally and never re-scanned, so a value
+containing ${OTHER} stays as-is. Write $${KEY} for a literal ${KEY}.`,
+		Example: `  skret template nginx.conf.tpl
+  skret template nginx.conf.tpl > nginx.conf`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return o.run(cmd, args[0])
 		},

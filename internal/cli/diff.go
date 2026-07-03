@@ -26,7 +26,16 @@ func newDiffCmd(opts *GlobalOpts) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "diff <A> [B]",
 		Short: "Compare two secret sets (env vs env, env vs dotenv, env vs github)",
-		Args:  cobra.RangeArgs(1, 2),
+		Long: `Compare two secret sets and report which keys differ, without printing
+values.
+
+Compares env vs env, env vs a dotenv file, or env vs a GitHub repo's secret
+names. Use --show-hash to compare via sha256[:8] and --exit-code to return
+non-zero when they differ (useful as a pre-deploy gate).`,
+		Example: `  skret diff staging prod
+  skret diff staging prod --show-hash
+  skret diff prod --to=github --github-repo=owner/repo`,
+		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return o.run(cmd, args)
 		},

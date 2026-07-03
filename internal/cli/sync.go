@@ -27,6 +27,15 @@ func newSyncCmd(opts *GlobalOpts) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "sync",
 		Short: "Sync secrets to external targets (dotenv, github, cloudflare)",
+		Long: `Sync secrets to one or more external targets.
+
+Targets are declared in .skret.yaml under sync.targets (github, cloudflare
+worker/pages, dotenv); running 'skret sync' with no --to pushes to all of them.
+--to accepts a comma-list to pick specific target types. Tokens come from
+GITHUB_TOKEN / CLOUDFLARE_API_TOKEN. Use --skip-unchanged for hash-based drift.`,
+		Example: `  skret sync
+  skret sync --to=github,cloudflare
+  skret sync --to=github --github-repo=owner/repo --skip-unchanged`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return o.run(cmd)
 		},

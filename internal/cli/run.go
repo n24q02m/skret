@@ -17,8 +17,17 @@ func newRunCmd(opts *GlobalOpts) *cobra.Command {
 	var watch bool
 	var watchInterval time.Duration
 	cmd := &cobra.Command{
-		Use:                "run -- <command> [args...]",
-		Short:              "Run a command with secrets injected as environment variables",
+		Use:   "run -- <command> [args...]",
+		Short: "Run a command with secrets injected as environment variables",
+		Long: `Run a command with all secrets injected as environment variables.
+
+Values are injected verbatim, except three bytes that an OS environment cannot
+carry: NUL and CR are dropped and LF is replaced with a space (see the
+value-fidelity guide). Use --watch to auto-restart the command when a secret
+changes.`,
+		Example: `  skret run -- make deploy
+  skret run -- ./server
+  skret run --watch -- make up-prod`,
 		DisableFlagParsing: false,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
