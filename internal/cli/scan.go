@@ -19,6 +19,14 @@ func newScanCmd(opts *GlobalOpts) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "scan",
 		Short: "Scan tracked files for any of your managed secret values (leak guard)",
+		Long: `Scan tracked files for any of your managed secret values (leak guard).
+
+Matches values literally (not as patterns), so a value containing regex
+metacharacters is still found. Exits 10 when a leak is found — wire it into CI
+or a pre-commit hook. Use --staged to scan only staged files.`,
+		Example: `  skret scan
+  skret scan --staged
+  skret scan --min-length=8`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			resolved, p, err := loadProvider(opts)
 			if err != nil {

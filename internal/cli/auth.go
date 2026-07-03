@@ -15,6 +15,10 @@ func newAuthCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "auth",
 		Short: "Manage authentication for secret providers",
+		Long: "Manage authentication for secret providers (aws, doppler, infisical).\n\n" +
+			"Groups login/status/logout: 'auth login' authenticates with a provider, " +
+			"'auth status' shows the current state for all configured providers, and " +
+			"'auth logout' removes stored local credentials.",
 	}
 
 	cmd.AddCommand(newAuthLoginCmd())
@@ -37,6 +41,8 @@ func newAuthLoginCmd() *cobra.Command {
 			"Pass method-specific values via repeated --opt key=value (e.g. --opt token=dp.pt.xxx,\n" +
 			"--opt profile=dev, --opt role_arn=arn:aws:iam::..., --opt client_id=..., --opt client_secret=...).\n" +
 			"Token methods also accept DOPPLER_TOKEN / INFISICAL_TOKEN env vars as fallback.",
+		Example: `  skret auth login aws
+  skret auth login doppler --method oauth`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			provider := args[0]
@@ -72,6 +78,10 @@ func newAuthStatusCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "status",
 		Short: "Show authentication status for all providers",
+		Long: "Displays the authentication status and method for all configured providers " +
+			"(aws, doppler, infisical). Shows whether each provider's credentials are valid, " +
+			"expired, or unconfigured.",
+		Example: "  skret auth status",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			store := auth.NewStore()
 			providers := []string{"aws", "doppler", "infisical"}
@@ -103,7 +113,11 @@ func newAuthLogoutCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "logout <provider>",
 		Short: "Remove stored credentials for a provider",
-		Args:  cobra.ExactArgs(1),
+		Long: "Removes the stored authentication credentials for a provider from the local " +
+			"credential cache. This does not affect the provider's remote configuration or " +
+			"resources—only the local credential reference.",
+		Example: "  skret auth logout doppler",
+		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			provider := args[0]
 			store := auth.NewStore()

@@ -24,10 +24,24 @@ type hubOptions struct {
 
 func newHubCmd(opts *GlobalOpts) *cobra.Command {
 	o := &hubOptions{global: opts}
-	cmd := &cobra.Command{Use: "hub", Short: "Publish secret inventory to the vault dashboard"}
+	cmd := &cobra.Command{
+		Use:   "hub",
+		Short: "Publish secret inventory to the vault dashboard",
+		Long: "Groups subcommands that publish secret inventory to the vault dashboard.\n\n" +
+			"'hub push' sends a names-only manifest (no values) so the dashboard can show " +
+			"drift status per sync target.",
+	}
 	push := &cobra.Command{
 		Use:   "push",
 		Short: "Push a names-only manifest (no values) to the hub",
+		Long: `Publish a names-only inventory (manifest) to the vault dashboard.
+
+The manifest contains key names, a salted sha256[:8] fingerprint, and per-target
+drift status (in-sync/drift/missing) — never secret values. Auth via
+SKRET_HUB_TOKEN; the endpoint comes from sync.hub.url in .skret.yaml or
+--hub-url.`,
+		Example: `  skret hub push
+  skret hub push --hub-url https://vault.example.com`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return o.runPush(cmd)
 		},

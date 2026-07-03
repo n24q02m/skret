@@ -62,6 +62,10 @@ func newBootstrapCmd(opts *GlobalOpts) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "bootstrap",
 		Short: "Provision a dedicated least-privilege skret key from an admin/root identity",
+		Long: "Provisions a dedicated least-privilege IAM user and access key from an admin/root " +
+			"AWS identity. The admin credentials are used only during bootstrap (never stored locally). " +
+			"The created skret user key is stored in the credential cache for future use.",
+		Example: "  skret bootstrap --path=/myapp/prod --region=ap-southeast-1",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			// Resolve path/region/profile/project: explicit flags win, else fall
 			// back to the resolved config. A provider is deliberately NOT built —

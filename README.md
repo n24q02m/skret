@@ -40,6 +40,7 @@ skret sync --to=github           # Push secrets to GitHub Actions
 
 ## Table of contents
 
+- [Usage](#usage)
 - [Why skret?](#why-skret)
 - [Features](#features)
 - [Install](#install)
@@ -52,6 +53,18 @@ skret sync --to=github           # Push secrets to GitHub Actions
 - [Sponsors](#sponsors)
 - [Acknowledgments](#acknowledgments)
 - [License](#license)
+
+## Usage
+
+```sh
+skret setup                       # pick provider + path, authenticate once
+skret run -- make deploy          # run a command with secrets injected
+skret get DATABASE_URL --plain    # print one value (exact bytes)
+skret sync --to=github,cloudflare # push secrets to CI/edge targets
+skret scan --staged               # leak-guard: exits 10 if a value leaked
+```
+
+Using skret from a script or AI agent? See the [agent guide](https://skret.n24q02m.com/guide/agents/).
 
 ## Why skret?
 
@@ -128,8 +141,8 @@ skret run -- make up-prod
 
 # 4. Sync to GitHub Actions for CI/CD
 export GITHUB_TOKEN=ghp_xxx
-skret sync --to=github \
-  --github-repo=myorg/myapp --from-env=prod
+skret --env=prod sync --to=github \
+  --github-repo=myorg/myapp
 
 # 5. Re-sync, skip secrets that haven't changed since the last successful run
 skret sync --to=github --github-repo=myorg/myapp --skip-unchanged

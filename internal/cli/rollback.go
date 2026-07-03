@@ -19,8 +19,13 @@ func newRollbackCmd(opts *GlobalOpts) *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:               "rollback <KEY> <VERSION>",
-		Short:             "Restore a secret to a specific previous version",
+		Use:   "rollback <KEY> <VERSION>",
+		Short: "Restore a secret to a specific previous version",
+		Long: "Restores a secret to a previous version number. The version number must be a valid " +
+			"historical version as shown by the 'skret history' command. Requires confirmation unless " +
+			"--confirm or --force is passed. This command is experimental — set SKRET_EXPERIMENTAL=1 " +
+			"to enable it.",
+		Example:           "  SKRET_EXPERIMENTAL=1 skret rollback DATABASE_URL 3",
 		Args:              cobra.ExactArgs(2),
 		ValidArgsFunction: secretKeyCompletion(opts),
 		RunE: func(cmd *cobra.Command, args []string) error {
