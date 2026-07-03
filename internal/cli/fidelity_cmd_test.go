@@ -178,6 +178,82 @@ func parseExportValue(t *testing.T, dump, key string) string {
 // bytes between quote delimiters can never themselves contain a raw `'`,
 // because shellSingleQuote already replaced every such byte in the source
 // value with the 4-byte escape sequence before wrapping in the outer quotes.
+// TestFidelity_Template_ByteExact proves `skret template` substitutes each
+// corpus value into a `${K}` reference byte-exact, straight to stdout (no
+// `--output` flag: template.go writes rendered content to cmd.OutOrStdout()
+// by default). template.Render uses regexp.ReplaceAllStringFunc with the raw
+// value as the replacement, so a value containing `$`, backslashes or a
+// literal embedded newline is never re-interpreted or escaped.
+func TestFidelity_Template_ByteExact(t *testing.T) {
+	for _, tc := range fidelityCorpus() {
+		t.Run(tc.Name, func(t *testing.T) {
+			dir := seedLocal(t, tc.Value)
+			tpl := filepath.Join(dir, "tpl.txt")
+			require.NoError(t, os.WriteFile(tpl, []byte("V=${K}"), 0o644))
+			out, err := runCLI(t, "template", tpl)
+			require.NoError(t, err)
+			assert.Equal(t, "V="+tc.Value, out, "template must substitute the value literally")
+		})
+	}
+}
+
+// TestFidelity_SyncImport_Dotenv_RoundTrip proves `skret sync --to=dotenv`
+// writes a byte-exact, import-decodable value: the on-disk dump is decoded
+// with the same dotenv.Decode used by `skret import` and compared to the
+// original value. DotenvSyncer.Sync (internal/syncer/dotenv.go) writes the
+// secret's raw, unqualified key straight through dotenv.Encode -- seedLocal's
+// .skret.yaml declares no `path:` for the local provider, so the stored key
+// is exactly "K" with no prefix to strip, matching parseDotenvValue's lookup.
+func TestFidelity_SyncImport_Dotenv_RoundTrip(t *testing.T) {
+	for _, tc := range fidelityCorpus() {
+		t.Run(tc.Name, func(t *testing.T) {
+			dir := seedLocal(t, tc.Value)
+			envFile := filepath.Join(dir, "out.env")
+			_, err := runCLI(t, "sync", "--to=dotenv", "--file="+envFile)
+			require.NoError(t, err)
+			// import into a fresh secret name would need a second env; instead assert
+			// the on-disk dotenv decodes back to the exact value.
+			data, err := os.ReadFile(envFile)
+			require.NoError(t, err)
+			assert.Equal(t, tc.Value, parseDotenvValue(t, string(data), "K"),
+				"sync --to=dotenv must write a byte-exact, import-decodable value")
+		})
+	}
+}
+
+// TestFidelity_Scan_FindsLiteralValue proves `skret scan` detects a managed
+// secret value leaked verbatim into a file, including values built from
+// regex metacharacters (scanner.scanContent matches via bytes.Index, a plain
+// substring search -- never compiled as a pattern).
+//
+// seedLocal's ".git" is only a placeholder directory (os.MkdirAll), not a
+// real repository, so `git ls-files -z` fails inside it (verified: git exits
+// 128, "not a git repository") and scanner.TrackedFiles silently falls back
+// to walking every file under the working directory (internal/scanner/files.go).
+// That fallback already picks up leak.txt with no `git add` needed, so this
+// test exercises the real default (non-staged) leak-detection path.
+//
+// --min-length=0 disables the noise-guard length filter (default 5 bytes):
+// several corpus values are shorter than that on purpose (e.g. "it's" is 4
+// bytes) and the filter is an intentional, separate feature -- not part of
+// the value-fidelity surface under test here.
+func TestFidelity_Scan_FindsLiteralValue(t *testing.T) {
+	for _, tc := range fidelityCorpus() {
+		if tc.Value == "" {
+			continue // empty value is not a meaningful leak to scan for
+		}
+		t.Run(tc.Name, func(t *testing.T) {
+			dir := seedLocal(t, tc.Value)
+			leak := filepath.Join(dir, "leak.txt")
+			require.NoError(t, os.WriteFile(leak, []byte("prefix "+tc.Value+" suffix"), 0o644))
+			_, err := runCLI(t, "scan", "--min-length=0")
+			// scan exits non-zero (code 10, skret.ExitLeakFound) when a managed
+			// value is found in a scanned file.
+			require.Error(t, err, "scan must detect the leaked value (even regex-special)")
+		})
+	}
+}
+
 func decodeShellSingleQuoted(t *testing.T, s string) string {
 	t.Helper()
 	var b strings.Builder
