@@ -45,6 +45,13 @@ wrangler secret put RELAY_PASSWORD      # the dashboard login password
 CD (`.github/workflows/cd.yml` `deploy-hub` job) renders the template from
 GH secrets and runs `wrangler deploy` on push to main.
 
+## Hardening (owner-side)
+
+`/login` has no in-code rate limit (the Worker is stateless, so there is
+nowhere to hold a counter across requests). The owner should add a
+Cloudflare WAF rate-limiting rule on `POST /login` (by IP or by path) to
+blunt password brute-force attempts.
+
 Point `skret hub push` at it via `.skret.yaml`:
 
 ```yaml

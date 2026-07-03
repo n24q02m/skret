@@ -25,8 +25,13 @@ export async function handleRequest(req: Request, env: Env): Promise<Response> {
 }
 
 async function handleLogin(req: Request, env: Env): Promise<Response> {
-  const form = await req.formData();
-  const password = String(form.get("password") ?? "");
+  let password: string;
+  try {
+    const form = await req.formData();
+    password = String(form.get("password") ?? "");
+  } catch {
+    return html(renderLogin("bad request"), 400);
+  }
   if (!checkPassword(password, env.RELAY_PASSWORD)) {
     return html(renderLogin("wrong password"), 401);
   }
@@ -70,6 +75,11 @@ function json(obj: unknown, status = 200): Response {
 function html(body: string, status: number): Response {
   return new Response(body, {
     status,
-    headers: { "Content-Type": "text/html; charset=utf-8" },
+    headers: {
+      "Content-Type": "text/html; charset=utf-8",
+      "Cache-Control": "no-store",
+      "X-Content-Type-Options": "nosniff",
+      "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'",
+    },
   });
 }

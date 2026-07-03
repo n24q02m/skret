@@ -73,4 +73,14 @@ describe("dashboard flow", () => {
     expect(res.status).toBe(200);
     expect(await res.text()).toContain('name="password"');
   });
+
+  it("POST /login with a malformed body returns 400, not 500", async () => {
+    const res = await SELF.fetch("https://hub.test/login", {
+      method: "POST",
+      headers: { "Content-Type": "multipart/form-data; boundary=x" },
+      body: "not-a-valid-multipart-body",
+    });
+    expect(res.status).toBe(400);
+    expect(await res.text()).toContain('name="password"');
+  });
 });

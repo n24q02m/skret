@@ -238,6 +238,9 @@ jobs:
   # ==================== Vault Hub Deploy ====================
   deploy-hub:
     name: Deploy Vault Hub Worker
+    # workflow_dispatch (any release_type) also redeploys the hub even when
+    # only CLI code changed -- intentional: the hub isn't versioned with the
+    # CLI, and a redeploy of the same Worker source is idempotent/harmless.
     if: |
       (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
       !startsWith(github.ref, 'refs/tags/v')

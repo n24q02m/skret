@@ -37,6 +37,12 @@ describe("renderDashboard", () => {
     expect(html).not.toContain("<script>");
     expect(html).toContain("&lt;script&gt;");
   });
+  it("escapes single quotes in names", () => {
+    const q: Manifest = { ...m, namespace: "a'b", keys: [] };
+    const html = renderDashboard([q]);
+    expect(html).toContain("a&#39;b");
+    expect(html).not.toContain("a'b");
+  });
 });
 
 describe("renderLogin", () => {
