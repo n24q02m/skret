@@ -33,6 +33,10 @@ func newBrowseCmd(opts *GlobalOpts) *cobra.Command {
 	return &cobra.Command{
 		Use:   "browse",
 		Short: "Browse secrets interactively (values are revealed on demand)",
+		Long: "Opens an interactive terminal UI to browse secret key names. Secret values are " +
+			"decrypted and displayed only when selected, and are not cached or stored. Requires an " +
+			"interactive terminal.",
+		Example: "  skret browse",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if !isTerminal() {
 				return skret.NewError(skret.ExitValidationError, "browse requires an interactive terminal", nil)

@@ -11,12 +11,7 @@ import (
 
 // knownIncomplete lists leaf commands whose Long/Example are filled in a LATER
 // task. It must be empty by end of Task 2. Use the full "skret <path>" name.
-var knownIncomplete = map[string]bool{
-	"skret bootstrap": true, "skret init": true, "skret setup": true,
-	"skret delete": true, "skret list": true, "skret browse": true,
-	"skret history": true, "skret rollback": true, "skret completion": true,
-	"skret auth login": true, "skret auth status": true, "skret auth logout": true,
-}
+var knownIncomplete = map[string]bool{}
 
 // leafCommands returns every runnable (non-parent) command in the tree.
 func leafCommands(root *cobra.Command) []*cobra.Command {

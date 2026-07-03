@@ -22,6 +22,9 @@ func newListCmd(opts *GlobalOpts) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List secrets under the current environment path",
+		Long: "Lists secret key names under the configured environment path. Secrets are listed without " +
+			"decryption. Use --values to include the secret values and their version numbers in the output.",
+		Example: "  skret list\n  skret list --values",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			resolved, p, err := loadProvider(opts)
 			if err != nil {

@@ -17,8 +17,11 @@ func newDeleteCmd(opts *GlobalOpts) *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:               "delete <KEY>",
-		Short:             "Delete a secret",
+		Use:   "delete <KEY>",
+		Short: "Delete a secret",
+		Long: "Deletes a secret by its key. Requires confirmation unless --confirm or --force is passed. " +
+			"The secret is permanently removed from the provider.",
+		Example:           "  skret delete OLD_TOKEN",
 		Args:              cobra.ExactArgs(1),
 		ValidArgsFunction: secretKeyCompletion(opts),
 		RunE: func(cmd *cobra.Command, args []string) error {

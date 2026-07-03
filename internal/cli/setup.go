@@ -34,6 +34,7 @@ func newSetupCmd() *cobra.Command {
 		Long: "Creates .skret.yaml (like 'skret init') then authenticates the " +
 			"provider (like 'skret auth login'), matching the Doppler/Infisical " +
 			"setup -> run loop.",
+		Example: "  skret setup",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			io.force = true // setup is idempotent; overwriting is expected
 			if err := io.run(cmd); err != nil {
