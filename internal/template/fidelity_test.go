@@ -9,8 +9,11 @@ import (
 
 func TestRender_ValueByteExact_NoReExpand(t *testing.T) {
 	cases := []struct{ name, value string }{
-		{"bcrypt", `$2a$14$x`}, {"brace_ref_in_value", `${OTHER}`},
-		{"dollar", `a$b`}, {"newline", "l1\nl2"}, {"quotes", `"'`},
+		{"bcrypt", `$2a$14$x`},
+		{"brace_ref_in_value", `${OTHER}`},
+		{"dollar", `a$b`},
+		{"newline", "l1\nl2"},
+		{"quotes", `"'`},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

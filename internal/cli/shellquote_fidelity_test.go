@@ -21,7 +21,7 @@ func TestShellSingleQuote_RoundTripViaSh(t *testing.T) {
 		t.Skip("sh not found")
 	}
 	for _, v := range []string{`$HOME`, `it's`, "a\nb", `"'` + "`", `a\b`, `${X}`, ``, `  sp  `} {
-		out, err := exec.Command(sh, "-c", "printf %s "+shellSingleQuote(v)).Output()
+		out, err := exec.CommandContext(t.Context(), sh, "-c", "printf %s "+shellSingleQuote(v)).Output()
 		require.NoError(t, err)
 		assert.Equal(t, v, string(out), "shell must reproduce exact bytes")
 	}

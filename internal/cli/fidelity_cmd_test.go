@@ -18,13 +18,24 @@ import (
 // fidelityCorpus is an 18-value subset of the adversarial classes (see internal/dotenv/fidelity_test.go for the fuller codec corpus).
 func fidelityCorpus() []struct{ Name, Value string } {
 	c := []struct{ Name, Value string }{
-		{"bcrypt", `$2a$14$abcdefghijklmnopqrstuv`}, {"shell_var", `$HOME`},
-		{"brace_ref", `${REF}`}, {"double_dollar", `$$literal`}, {"assignment", `key=value`},
-		{"newline", "line1\nline2"}, {"crlf", "crlf\r\nend"}, {"double_quote", `he said "hi"`},
-		{"single_quote", `it's`}, {"backtick", "`bt`"}, {"backslash", `a\b\c`},
-		{"leading_ws", `  leading`}, {"trailing_ws", `trailing  `}, {"tab", "a\tb"},
-		{"unicode", `café 日本語 🔐`}, {"pem", "-----BEGIN-----\nabc\n-----END-----"},
-		{"pg_url", `postgres://u:p$w@h:5432/db`}, {"regex_special", `a.*b[c]$d`},
+		{"bcrypt", `$2a$14$abcdefghijklmnopqrstuv`},
+		{"shell_var", `$HOME`},
+		{"brace_ref", `${REF}`},
+		{"double_dollar", `$$literal`},
+		{"assignment", `key=value`},
+		{"newline", "line1\nline2"},
+		{"crlf", "crlf\r\nend"},
+		{"double_quote", `he said "hi"`},
+		{"single_quote", `it's`},
+		{"backtick", "`bt`"},
+		{"backslash", `a\b\c`},
+		{"leading_ws", `  leading`},
+		{"trailing_ws", `trailing  `},
+		{"tab", "a\tb"},
+		{"unicode", `café 日本語 🔐`},
+		{"pem", "-----BEGIN-----\nabc\n-----END-----"},
+		{"pg_url", `postgres://u:p$w@h:5432/db`},
+		{"regex_special", `a.*b[c]$d`},
 	}
 	return c
 }
@@ -37,7 +48,8 @@ func seedLocal(t *testing.T, value string) string {
 	dir := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".git"), 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, ".skret.yaml"), []byte(
-		"version: \"1\"\ndefault_env: dev\nenvironments:\n  dev:\n    provider: local\n    file: ./.secrets.dev.yaml\n"), 0o644))
+		"version: \"1\"\ndefault_env: dev\nenvironments:\n  dev:\n    provider: local\n    file: ./.secrets.dev.yaml\n",
+	), 0o644))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, ".secrets.dev.yaml"), []byte("version: \"1\"\nsecrets: {}\n"), 0o600))
 	orig, err := os.Getwd()
 	require.NoError(t, err)
