@@ -69,6 +69,11 @@ its first line — so a multi-line value (a PEM key, a multi-line JSON blob)
 survives with every embedded newline intact. `skret set KEY --from-file
 path` reads the entire file the same way.
 
+`--from-stdin` reads until end-of-input, so it is designed for a pipe or
+redirect (`< key.pem`). At an interactive terminal with no pipe, type the
+value and then send EOF — **Ctrl-D** on macOS/Linux, **Ctrl-Z** then Enter
+on Windows — to finish.
+
 Both flags apply one deliberate, documented convenience: **all trailing
 `\n` bytes are stripped** from the value before it's stored. This mirrors
 POSIX `$(...)` command substitution, so `echo "value" | skret set KEY
