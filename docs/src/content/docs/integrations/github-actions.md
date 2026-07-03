@@ -156,9 +156,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          skret sync --to=github \
-            --github-repo=${{ github.repository }} \
-            --from-env=prod
+          skret --env=prod sync --to=github \
+            --github-repo=${{ github.repository }}
 ```
 
 ### Multi-repo sync
@@ -168,9 +167,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GH_PAT }}  # PAT with repo scope
         run: |
-          skret sync --to=github \
-            --github-repo=your-org/app-frontend,your-org/app-backend \
-            --from-env=prod
+          skret --env=prod sync --to=github \
+            --github-repo=your-org/app-frontend,your-org/app-backend
 ```
 
 ## Security Considerations

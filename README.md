@@ -141,8 +141,8 @@ skret run -- make up-prod
 
 # 4. Sync to GitHub Actions for CI/CD
 export GITHUB_TOKEN=ghp_xxx
-skret sync --to=github \
-  --github-repo=myorg/myapp --from-env=prod
+skret --env=prod sync --to=github \
+  --github-repo=myorg/myapp
 
 # 5. Re-sync, skip secrets that haven't changed since the last successful run
 skret sync --to=github --github-repo=myorg/myapp --skip-unchanged

@@ -15,6 +15,10 @@ func newAuthCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "auth",
 		Short: "Manage authentication for secret providers",
+		Long: "Manage authentication for secret providers (aws, doppler, infisical).\n\n" +
+			"Groups login/status/logout: 'auth login' authenticates with a provider, " +
+			"'auth status' shows the current state for all configured providers, and " +
+			"'auth logout' removes stored local credentials.",
 	}
 
 	cmd.AddCommand(newAuthLoginCmd())

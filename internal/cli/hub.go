@@ -24,7 +24,13 @@ type hubOptions struct {
 
 func newHubCmd(opts *GlobalOpts) *cobra.Command {
 	o := &hubOptions{global: opts}
-	cmd := &cobra.Command{Use: "hub", Short: "Publish secret inventory to the vault dashboard"}
+	cmd := &cobra.Command{
+		Use:   "hub",
+		Short: "Publish secret inventory to the vault dashboard",
+		Long: "Groups subcommands that publish secret inventory to the vault dashboard.\n\n" +
+			"'hub push' sends a names-only manifest (no values) so the dashboard can show " +
+			"drift status per sync target.",
+	}
 	push := &cobra.Command{
 		Use:   "push",
 		Short: "Push a names-only manifest (no values) to the hub",

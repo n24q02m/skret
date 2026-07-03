@@ -67,6 +67,33 @@ var badSecretPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`dp\.pt\.[A-Za-z0-9]{20,}`), // real Doppler token shape
 }
 
+// parentCommands returns every command in the tree that has subcommands
+// (i.e. is not runnable as a leaf), excluding the root "skret" command itself.
+func parentCommands(root *cobra.Command) []*cobra.Command {
+	var out []*cobra.Command
+	var walk func(c *cobra.Command)
+	walk = func(c *cobra.Command) {
+		if c.HasSubCommands() && c != root {
+			out = append(out, c)
+		}
+		for _, sub := range c.Commands() {
+			walk(sub)
+		}
+	}
+	walk(root)
+	return out
+}
+
+func TestHelp_ParentCommandsHaveLong(t *testing.T) {
+	for _, c := range parentCommands(cli.NewRootCmd()) {
+		name := c.CommandPath()
+		t.Run(name, func(t *testing.T) {
+			assert.NotEmpty(t, c.Short, "%s must have a Short description", name)
+			assert.NotEmpty(t, c.Long, "%s must have a Long description", name)
+		})
+	}
+}
+
 func TestHelp_ExamplesUsePlaceholdersNotSecrets(t *testing.T) {
 	// Examples must not contain anything shaped like a real credential.
 	for _, c := range leafCommands(cli.NewRootCmd()) {
