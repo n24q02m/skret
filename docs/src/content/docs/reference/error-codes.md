@@ -18,6 +18,8 @@ skret uses structured exit codes to communicate failure types. Every error inclu
 | 6 | `ExitConflictError` | Resource conflict | Key already exists when using `--on-conflict=fail`. Use `--on-conflict=overwrite` or `--on-conflict=skip`. |
 | 7 | `ExitNetworkError` | Network/connectivity failure | Check internet connection, DNS resolution, and firewall rules. For AWS: verify VPC endpoints if in a private subnet. |
 | 8 | `ExitValidationError` | Input validation failed | Check value size (4 KB limit for SSM Standard), key format, and required fields. |
+| 9 | `ExitDrift` | Drift detected between two secret sets | `skret diff <A> <B> --exit-code` found a difference. Review the diff output and re-sync with `skret sync` or `skret import` as needed. |
+| 10 | `ExitLeakFound` | A managed secret value was found in a scanned file | `skret scan` (or `skret scan --staged`) found a real secret value in a tracked file. Remove the value from the file, rotate the secret if it was committed, and re-run the scan. |
 | 125 | `ExitExecError` | Process execution error | The command passed to `skret run --` could not be executed. Verify the command exists in `$PATH`. |
 
 ## Error Structure

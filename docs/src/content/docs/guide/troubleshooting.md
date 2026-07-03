@@ -18,6 +18,8 @@ skret uses structured exit codes to indicate the type of failure:
 | 6 | Conflict error | Resource conflict | Key already exists (with `--on-conflict=fail`) |
 | 7 | Network error | Connectivity issue | No internet, DNS failure, timeout |
 | 8 | Validation error | Invalid input | Value exceeds 4 KB limit, bad key format |
+| 9 | Drift detected | Sets differ | `skret diff <A> <B> --exit-code` found a difference between the two sets |
+| 10 | Leak found | Secret value in a tracked file | `skret scan` (or `--staged`) found a real secret value committed to a tracked file |
 | 125 | Exec error | Process execution failed | Command not found in `skret run --` |
 
 Check exit codes in scripts:
