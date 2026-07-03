@@ -1,0 +1,10 @@
+// Rendered at deploy time: envsubst fills ${VAULT_KV_ID} and ${PUBLIC_HOST}
+// from GH secrets into wrangler.deploy.jsonc (gitignored). 0 real IDs here.
+{
+  "name": "skret-hub",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-06-14",
+  "kv_namespaces": [{ "binding": "VAULT_KV", "id": "${VAULT_KV_ID}" }],
+  "routes": [{ "pattern": "${PUBLIC_HOST}", "custom_domain": true }],
+  "observability": { "enabled": true }
+}

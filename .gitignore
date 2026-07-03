@@ -54,6 +54,9 @@ __pycache__/
 .claude-plugin/
 .wrangler/
 
+# Vault-dashboard hub: rendered deploy config with real account/KV IDs (never commit)
+hub/wrangler.deploy.jsonc
+
 # AI Assistant / Rules
 .jules/
 .jules
