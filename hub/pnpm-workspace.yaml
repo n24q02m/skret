@@ -2,3 +2,13 @@ allowBuilds:
   esbuild: true
   sharp: true
   workerd: true
+# Force @cloudflare/vitest-pool-workers' pinned transitive wrangler (4.35.0)
+# up to a patched version — 4.35.0 is flagged by the dependency-review CI gate
+# for GHSA-36p8-mvp6-cv38 (OS command injection in `wrangler pages deploy`,
+# which the hub does not use). pnpm 11 reads overrides here, not in package.json.
+overrides:
+  wrangler: "^4.106.0"
+  # miniflare@4.20250906.0 (pinned by @cloudflare/vitest-pool-workers) pulls a
+  # vulnerable ws@8.18.0 — GHSA-96hv-2xvq-fx4p (high, DoS) + GHSA-58qx-3vcg-4xpx
+  # (moderate). 8.21.0 is the patched latest 8.x; a minor bump, API-compatible.
+  ws: "^8.21.0"
