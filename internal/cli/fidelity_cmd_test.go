@@ -63,6 +63,21 @@ func runCLI(t *testing.T, args ...string) (string, error) {
 	return out.String(), err
 }
 
+// runCLICombined is like runCLI but merges stdout and stderr into a single
+// buffer, so assertions can check for output regardless of which stream a
+// command writes to (e.g. scan's findings table goes to stdout, but this
+// keeps the test robust to that detail).
+func runCLICombined(t *testing.T, args ...string) (string, error) {
+	t.Helper()
+	cmd := cli.NewRootCmd()
+	cmd.SetArgs(args)
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	err := cmd.Execute()
+	return out.String(), err
+}
+
 func TestFidelity_SetGet_ByteExact(t *testing.T) {
 	for _, tc := range fidelityCorpus() {
 		t.Run(tc.Name, func(t *testing.T) {
@@ -168,16 +183,6 @@ func parseExportValue(t *testing.T, dump, key string) string {
 	return decodeShellSingleQuoted(t, dump[idx+len(prefix):])
 }
 
-// decodeShellSingleQuoted decodes a POSIX single-quoted value starting at the
-// head of s (s[0] must be the opening quote, as shellSingleQuote always emits
-// one, even for the empty string). It reverses shellSingleQuote's
-// close/escape/reopen encoding for an embedded quote and treats every other
-// byte -- including a literal newline or CR -- as literal value content. It
-// stops at the first closing quote that is not immediately followed by the
-// `\'` reopen-escape, which is always the true end of the value: content
-// bytes between quote delimiters can never themselves contain a raw `'`,
-// because shellSingleQuote already replaced every such byte in the source
-// value with the 4-byte escape sequence before wrapping in the outer quotes.
 // TestFidelity_Template_ByteExact proves `skret template` substitutes each
 // corpus value into a `${K}` reference byte-exact, straight to stdout (no
 // `--output` flag: template.go writes rendered content to cmd.OutOrStdout()
@@ -222,9 +227,17 @@ func TestFidelity_SyncImport_Dotenv_RoundTrip(t *testing.T) {
 }
 
 // TestFidelity_Scan_FindsLiteralValue proves `skret scan` detects a managed
-// secret value leaked verbatim into a file, including values built from
-// regex metacharacters (scanner.scanContent matches via bytes.Index, a plain
-// substring search -- never compiled as a pattern).
+// secret value leaked verbatim into leak.txt specifically, including values
+// built from regex metacharacters (scanner.scanContent matches via
+// bytes.Index, a plain substring search -- never compiled as a pattern).
+//
+// Asserting only a non-zero exit is not enough: for most of this corpus the
+// same value also sits in seedLocal's own .secrets.dev.yaml plaintext store
+// (the local provider's on-disk file), which the walk-all fallback below
+// sweeps up too, so a non-zero exit would pass even if leak.txt detection
+// were broken. Instead this asserts the findings table -- rendered by
+// scanner.RenderTable straight to cmd.OutOrStdout() (internal/scanner/result.go)
+// -- names leak.txt, proving the newly written file itself was matched.
 //
 // seedLocal's ".git" is only a placeholder directory (os.MkdirAll), not a
 // real repository, so `git ls-files -z` fails inside it (verified: git exits
@@ -239,21 +252,30 @@ func TestFidelity_SyncImport_Dotenv_RoundTrip(t *testing.T) {
 // the value-fidelity surface under test here.
 func TestFidelity_Scan_FindsLiteralValue(t *testing.T) {
 	for _, tc := range fidelityCorpus() {
-		if tc.Value == "" {
-			continue // empty value is not a meaningful leak to scan for
-		}
 		t.Run(tc.Name, func(t *testing.T) {
 			dir := seedLocal(t, tc.Value)
 			leak := filepath.Join(dir, "leak.txt")
 			require.NoError(t, os.WriteFile(leak, []byte("prefix "+tc.Value+" suffix"), 0o644))
-			_, err := runCLI(t, "scan", "--min-length=0")
+			out, err := runCLICombined(t, "scan", "--min-length=0")
 			// scan exits non-zero (code 10, skret.ExitLeakFound) when a managed
 			// value is found in a scanned file.
 			require.Error(t, err, "scan must detect the leaked value (even regex-special)")
+			assert.Contains(t, out, "leak.txt",
+				"scan output must reference leak.txt specifically, not just any managed value it happens to find elsewhere (e.g. the local provider's own secrets store)")
 		})
 	}
 }
 
+// decodeShellSingleQuoted decodes a POSIX single-quoted value starting at the
+// head of s (s[0] must be the opening quote, as shellSingleQuote always emits
+// one, even for the empty string). It reverses shellSingleQuote's
+// close/escape/reopen encoding for an embedded quote and treats every other
+// byte -- including a literal newline or CR -- as literal value content. It
+// stops at the first closing quote that is not immediately followed by the
+// `\'` reopen-escape, which is always the true end of the value: content
+// bytes between quote delimiters can never themselves contain a raw `'`,
+// because shellSingleQuote already replaced every such byte in the source
+// value with the 4-byte escape sequence before wrapping in the outer quotes.
 func decodeShellSingleQuoted(t *testing.T, s string) string {
 	t.Helper()
 	var b strings.Builder
