@@ -37,8 +37,9 @@ func newAuthLoginCmd() *cobra.Command {
 			"Pass method-specific values via repeated --opt key=value (e.g. --opt token=dp.pt.xxx,\n" +
 			"--opt profile=dev, --opt role_arn=arn:aws:iam::..., --opt client_id=..., --opt client_secret=...).\n" +
 			"Token methods also accept DOPPLER_TOKEN / INFISICAL_TOKEN env vars as fallback.",
-		Example: "  skret auth login aws\n  skret auth login doppler",
-		Args:    cobra.ExactArgs(1),
+		Example: `  skret auth login aws
+  skret auth login doppler --method oauth`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			provider := args[0]
 			opts := map[string]string{}

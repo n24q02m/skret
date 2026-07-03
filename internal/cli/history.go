@@ -19,8 +19,9 @@ func newHistoryCmd(opts *GlobalOpts) *cobra.Command {
 		Use:   "history <KEY>",
 		Short: "View the version history of a secret",
 		Long: "Shows the version history of a secret, including version number, timestamp, and author. " +
-			"Values are masked by default for security; use --verbose to display full unmasked values.",
-		Example:           "  skret history DATABASE_URL",
+			"Values are masked by default for security; use --verbose to display full unmasked values. " +
+			"This command is experimental — set SKRET_EXPERIMENTAL=1 to enable it.",
+		Example:           "  SKRET_EXPERIMENTAL=1 skret history DATABASE_URL",
 		Args:              cobra.ExactArgs(1),
 		ValidArgsFunction: secretKeyCompletion(opts),
 		RunE: func(cmd *cobra.Command, args []string) error {

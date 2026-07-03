@@ -29,8 +29,10 @@ func newInitCmd() *cobra.Command {
 		Use:   "init",
 		Short: "Initialize .skret.yaml in the current directory",
 		Long: "Creates a .skret.yaml configuration file in the current directory with the specified " +
-			"provider settings. Automatically updates .gitignore to exclude secret files (.secrets.*.yaml).",
-		Example: "  skret init --provider=aws --path=/myapp/prod --region=ap-southeast-1\n  skret init --provider=local --file=./.secrets.dev.yaml",
+			"provider settings. Automatically updates .gitignore to exclude secret files " +
+			"(.secrets.*.yaml and .secrets.*.yml).",
+		Example: `  skret init --provider=aws --path=/myapp/prod --region=ap-southeast-1
+  skret init --provider=local --file=./.secrets.dev.yaml`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return opts.run(cmd)
 		},
