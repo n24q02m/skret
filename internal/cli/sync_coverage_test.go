@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/n24q02m/skret/internal/config"
+	"github.com/n24q02m/skret/internal/provider"
 	"github.com/n24q02m/skret/internal/syncer"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -509,6 +510,63 @@ sync:
 	err := o.run(cmd)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "build targets")
+}
+
+func TestSyncOptions_Run_RespectsTopLevelExclude(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(dir+"/.git", 0o755))
+	require.NoError(t, os.WriteFile(dir+"/.skret.yaml", []byte(`
+version: "1"
+default_env: dev
+environments:
+  dev:
+    provider: local
+    file: secrets.yaml
+exclude:
+  - EXCLUDED_KEY
+sync:
+  targets:
+    - type: dotenv
+      file: out.env
+`), 0o644))
+	require.NoError(t, os.WriteFile(dir+"/secrets.yaml", []byte("version: \"1\"\nsecrets:\n  K: V\n  EXCLUDED_KEY: skip_me"), 0o600))
+
+	origDir, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	defer os.Chdir(origDir)
+
+	o := &syncOptions{global: &GlobalOpts{}}
+	cmd := NewRootCmd()
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
+	require.NoError(t, o.run(cmd))
+
+	data, err := os.ReadFile(filepath.Join(dir, "out.env"))
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "K=V")
+	assert.NotContains(t, string(data), "EXCLUDED_KEY")
+	assert.NotContains(t, string(data), "skip_me")
+}
+
+func TestFilterExcluded(t *testing.T) {
+	secrets := []*provider.Secret{
+		{Key: "DB_URL", Value: "postgres://localhost"},
+		{Key: "api-key", Value: "secret"},
+		{Key: "DEBUG_TOKEN", Value: "tok"},
+	}
+
+	out := filterExcluded(secrets, "", []string{"debug_token"})
+
+	require.Len(t, out, 2)
+	assert.Equal(t, "DB_URL", out[0].Key)
+	assert.Equal(t, "api-key", out[1].Key)
+}
+
+func TestFilterExcluded_NoExclude_ReturnsSameSlice(t *testing.T) {
+	secrets := []*provider.Secret{{Key: "K", Value: "V"}}
+	out := filterExcluded(secrets, "", nil)
+	assert.Equal(t, secrets, out)
 }
 
 func TestLoadSyncConfig_LoadError(t *testing.T) {

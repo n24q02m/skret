@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/n24q02m/skret/internal/config"
+	"github.com/n24q02m/skret/internal/provider"
 	"github.com/n24q02m/skret/internal/syncer"
 	"github.com/n24q02m/skret/pkg/skret"
 	"github.com/spf13/cobra"
@@ -61,6 +62,7 @@ func (o *syncOptions) run(cmd *cobra.Command) error {
 	if err != nil {
 		return skret.NewError(skret.ExitProviderError, "sync: list secrets failed", err)
 	}
+	secrets = filterExcluded(secrets, resolved.Path, resolved.Exclude)
 
 	if len(secrets) == 0 {
 		cmd.PrintErrln("No secrets found to sync. Use 'skret set' to add a secret.")
@@ -110,6 +112,31 @@ func (o *syncOptions) run(cmd *cobra.Command) error {
 	}
 
 	return nil
+}
+
+// filterExcluded drops secrets whose resolved env-var name is in the
+// top-level .skret.yaml exclude list, so `sync` never pushes an excluded
+// secret to an external target. Mirrors exec.BuildEnv's matching semantics
+// exactly (uppercased exclude entries matched against the final
+// KeyToEnvName output) so exclude behaves consistently across run/env/sync.
+func filterExcluded(secrets []*provider.Secret, pathPrefix string, exclude []string) []*provider.Secret {
+	if len(exclude) == 0 {
+		return secrets
+	}
+
+	excludeSet := make(map[string]bool, len(exclude))
+	for _, e := range exclude {
+		excludeSet[strings.ToUpper(e)] = true
+	}
+
+	out := make([]*provider.Secret, 0, len(secrets))
+	for _, s := range secrets {
+		if excludeSet[KeyToEnvName(s.Key, pathPrefix)] {
+			continue
+		}
+		out = append(out, s)
+	}
+	return out
 }
 
 // loadSyncConfig returns the .skret.yaml sync block, or nil when there is no
