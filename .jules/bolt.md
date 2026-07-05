@@ -56,3 +56,7 @@
 ## 2025-05-15 - Move slice early returns before slice/map initializations
 **Learning:** Initializing maps or arrays in a function before checking early return conditions (e.g., `if len(input) == 0`) leads to unnecessary memory allocation and iteration overhead, especially if the function is frequently called with empty inputs or used in recursive paths.
 **Action:** Always place early return checks at the very top of the function to avoid redundant memory allocations and logic executions.
+
+## 2024-05-18 - Avoid Builder Allocation When String Complies
+**Learning:** Functions that sanitize or build standardized strings (like `KeyToEnvName` generating uppercase keys with underscores) often eagerly allocate a `strings.Builder` and iterate to write the result. For inputs that are already compliant, this allocates memory and loops unnecessarily, generating garbage collection pressure.
+**Action:** When writing string transformation functions, iterate byte-by-byte first to check if any non-compliant character exists. If the string is already fully compliant, immediately return the original string to bypass all allocation and writing overhead.
