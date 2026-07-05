@@ -10,7 +10,22 @@ import (
 func TestRegistry_Build(t *testing.T) {
 	t.Run("unknown type", func(t *testing.T) {
 		_, err := Build([]TargetConfig{{Type: "vault"}})
-		require.ErrorContains(t, err, `unknown sync target "vault"`)
+		require.ErrorContains(t, err, `sync target 0: unknown type "vault"`)
+	})
+	t.Run("unknown type at non-zero index", func(t *testing.T) {
+		_, err := Build([]TargetConfig{
+			{Type: "dotenv", Fields: map[string]string{}},
+			{Type: "vault"},
+		})
+		require.ErrorContains(t, err, `sync target 1: unknown type "vault"`)
+	})
+	t.Run("factory error reports index", func(t *testing.T) {
+		_, err := Build([]TargetConfig{
+			{Type: "dotenv", Fields: map[string]string{}},
+			{Type: "github", Token: "t", Fields: map[string]string{}},
+		})
+		require.ErrorContains(t, err, "sync target 1 (github)")
+		require.ErrorContains(t, err, "repo")
 	})
 	t.Run("dotenv default file", func(t *testing.T) {
 		s, err := Build([]TargetConfig{{Type: "dotenv", Fields: map[string]string{}}})
