@@ -296,6 +296,97 @@ sync:
 	assert.Equal(t, "missing", target.Status)
 }
 
+// TestHubOptions_RunPush_HubURLFromEnv verifies the SKRET_HUB_URL env var is
+// used as the hub endpoint when --hub-url is not set and no sync.hub.url is
+// declared. This is what lets the cron sync container point `skret hub push`
+// at the vault Worker via a forwarded env var (no flag, no baked config).
+func TestHubOptions_RunPush_HubURLFromEnv(t *testing.T) {
+	var gotBody []byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotBody, _ = io.ReadAll(r.Body)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(dir+"/.git", 0o755))
+	require.NoError(t, os.WriteFile(dir+"/.skret.yaml", []byte(`
+version: "1"
+default_env: dev
+environments:
+  dev:
+    provider: local
+    file: secrets.yaml
+`), 0o644))
+	require.NoError(t, os.WriteFile(dir+"/secrets.yaml", []byte("version: \"1\"\nsecrets:\n  K: V"), 0o600))
+
+	setFakeHome(t)
+	t.Setenv("SKRET_HUB_URL", srv.URL)
+
+	origDir, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	defer os.Chdir(origDir)
+
+	// --hub-url left empty: must fall back to the SKRET_HUB_URL env var.
+	o := &hubOptions{global: &GlobalOpts{}}
+	cmd := NewRootCmd()
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
+	require.NoError(t, o.runPush(cmd))
+
+	var decoded syncer.Manifest
+	require.NoError(t, json.Unmarshal(gotBody, &decoded))
+	require.Len(t, decoded.Keys, 1)
+	assert.Equal(t, "K", decoded.Keys[0].Name)
+}
+
+// TestHubOptions_RunPush_FlagBeatsEnv locks the resolution precedence: an
+// explicit --hub-url wins over the SKRET_HUB_URL env var.
+func TestHubOptions_RunPush_FlagBeatsEnv(t *testing.T) {
+	envHit := false
+	envSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		envHit = true
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer envSrv.Close()
+	flagHit := false
+	flagSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		flagHit = true
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer flagSrv.Close()
+
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(dir+"/.git", 0o755))
+	require.NoError(t, os.WriteFile(dir+"/.skret.yaml", []byte(`
+version: "1"
+default_env: dev
+environments:
+  dev:
+    provider: local
+    file: secrets.yaml
+`), 0o644))
+	require.NoError(t, os.WriteFile(dir+"/secrets.yaml", []byte("version: \"1\"\nsecrets:\n  K: V"), 0o600))
+
+	setFakeHome(t)
+	t.Setenv("SKRET_HUB_URL", envSrv.URL)
+
+	origDir, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	defer os.Chdir(origDir)
+
+	o := &hubOptions{global: &GlobalOpts{}, hubURL: flagSrv.URL}
+	cmd := NewRootCmd()
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
+	require.NoError(t, o.runPush(cmd))
+
+	assert.True(t, flagHit, "--hub-url flag endpoint must receive the manifest")
+	assert.False(t, envHit, "SKRET_HUB_URL env must not be used when --hub-url is set")
+}
+
 func TestHubOptions_RunPush_PostManifestError(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.MkdirAll(dir+"/.git", 0o755))
