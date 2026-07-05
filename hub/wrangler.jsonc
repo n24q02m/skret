@@ -1,11 +1,31 @@
-// wrangler.jsonc — skret vault-dashboard Worker (B3). Read-only, 0-value.
-// Resource IDs are placeholders; real IDs are filled at deploy time from GH
-// secrets into the gitignored wrangler.deploy.jsonc (see README). NO routes /
-// custom domain here — fully-BYO from commit one.
+// wrangler.jsonc — skret vault-dashboard Worker (B3) + B2 cron sync container.
+// Read-only, 0-value dashboard; on the cron trigger the SyncContainer runs
+// `skret sync` + `skret hub push` and exits. Resource IDs are placeholders;
+// real IDs are filled at deploy time from GH secrets into the gitignored
+// wrangler.deploy.jsonc (see README). NO routes / custom domain here —
+// fully-BYO from commit one.
 {
   "name": "skret-hub",
   "main": "src/index.ts",
   "compatibility_date": "2026-06-14",
   "kv_namespaces": [{ "binding": "VAULT_KV", "id": "<vault-kv-id>" }],
+  "containers": [
+    {
+      "name": "skret-sync",
+      "class_name": "SyncContainer",
+      // CF Containers pull only from the Cloudflare managed registry (an
+      // external ghcr.io ref fails). Push the pre-built image first
+      // (`wrangler containers push`), then fill <YOUR_ACCOUNT_ID>. Re-pushing
+      // the SAME tag does NOT roll a running instance — bump the tag.
+      "image": "registry.cloudflare.com/<YOUR_ACCOUNT_ID>/skret-sync:latest",
+      "instance_type": "lite",
+      "max_instances": 1
+    }
+  ],
+  "durable_objects": {
+    "bindings": [{ "name": "SYNC", "class_name": "SyncContainer" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["SyncContainer"] }],
+  "triggers": { "crons": ["0 3 * * *"] },
   "observability": { "enabled": true }
 }
