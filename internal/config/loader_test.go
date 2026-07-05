@@ -47,6 +47,23 @@ func TestLoad_InvalidYAML(t *testing.T) {
 	assert.Error(t, err)
 }
 
+func TestLoad_UnknownField(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, ".skret.yaml")
+	err := os.WriteFile(cfgPath, []byte(`
+version: "1"
+bogus_field: x
+environments:
+  prod:
+    provider: local
+    file: ./.secrets.prod.yaml
+`), 0o644)
+	require.NoError(t, err)
+
+	_, err = config.Load(cfgPath)
+	assert.ErrorContains(t, err, "bogus_field")
+}
+
 func TestLoad_ValidationError(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, ".skret.yaml")

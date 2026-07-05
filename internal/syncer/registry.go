@@ -21,14 +21,14 @@ func Register(typ string, f Factory) { registry[typ] = f }
 // types or missing required fields.
 func Build(targets []TargetConfig) ([]Syncer, error) {
 	out := make([]Syncer, 0, len(targets))
-	for _, tc := range targets {
+	for i, tc := range targets {
 		f, ok := registry[tc.Type]
 		if !ok {
-			return nil, fmt.Errorf("unknown sync target %q", tc.Type)
+			return nil, fmt.Errorf("sync target %d: unknown type %q", i, tc.Type)
 		}
 		s, err := f(tc)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("sync target %d (%s): %w", i, tc.Type, err)
 		}
 		out = append(out, s)
 	}
