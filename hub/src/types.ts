@@ -11,6 +11,7 @@ export interface Env {
   SYNC: DurableObjectNamespace<SyncContainer>;
   GITHUB_TOKEN?: string;
   CLOUDFLARE_API_TOKEN?: string;
+  CLOUDFLARE_ACCOUNT_ID?: string;
   AWS_ACCESS_KEY_ID?: string;
   AWS_SECRET_ACCESS_KEY?: string;
   AWS_REGION?: string;

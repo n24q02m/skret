@@ -11,6 +11,7 @@ export { SyncContainer } from "./container";
 const SYNC_ENV_KEYS = [
   "GITHUB_TOKEN",
   "CLOUDFLARE_API_TOKEN",
+  "CLOUDFLARE_ACCOUNT_ID",
   "AWS_ACCESS_KEY_ID",
   "AWS_SECRET_ACCESS_KEY",
   "AWS_REGION",
