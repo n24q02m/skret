@@ -27,5 +27,9 @@
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["SyncContainer"] }],
   "triggers": { "crons": ["0 3 * * *"] },
+  // Non-secret var forwarded into the sync container (via index.ts SYNC_ENV_KEYS)
+  // so the cloudflare sync target's account id resolves from env, keeping both
+  // the committed config and the baked .skret.yaml free of the real account id.
+  "vars": { "CLOUDFLARE_ACCOUNT_ID": "${CLOUDFLARE_ACCOUNT_ID}" },
   "observability": { "enabled": true }
 }
