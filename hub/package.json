@@ -9,6 +9,9 @@
     "dryrun": "wrangler deploy --dry-run",
     "deploy": "wrangler deploy"
   },
+  "dependencies": {
+    "@cloudflare/containers": "^0.3.7"
+  },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.8.19",
     "@cloudflare/workers-types": "^4.20260101.0",
