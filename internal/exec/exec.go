@@ -96,22 +96,6 @@ func KeyToEnvName(key, pathPrefix string) string {
 		}
 	}
 
-	// ⚡ Bolt: Fast path to bypass allocations when string is already conformant.
-	// We check for any characters that would trigger a replacement or uppercase conversion.
-	needsChange := false
-	for i := 0; i < len(name); i++ {
-		c := name[i]
-		if c == '/' || c == '-' || c == '=' || c == ' ' || c == '\n' || c == '\r' || (c >= 'a' && c <= 'z') {
-			needsChange = true
-			break
-		}
-	}
-
-	// ⚡ Bolt: Return the original string immediately to avoid strings.Builder allocation.
-	if !needsChange {
-		return name
-	}
-
 	var b strings.Builder
 	b.Grow(len(name))
 	for i := 0; i < len(name); i++ {

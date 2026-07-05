@@ -56,3 +56,7 @@
 ## 2025-05-15 - Move slice early returns before slice/map initializations
 **Learning:** Initializing maps or arrays in a function before checking early return conditions (e.g., `if len(input) == 0`) leads to unnecessary memory allocation and iteration overhead, especially if the function is frequently called with empty inputs or used in recursive paths.
 **Action:** Always place early return checks at the very top of the function to avoid redundant memory allocations and logic executions.
+
+## 2025-05-16 - KeyToEnvName Fast Path Rejected
+**Learning:** `KeyToEnvName` is not a hot path; it runs only once per env var at process startup (tens to a few hundred calls per run, taking tens of microseconds total). Adding a fast-path optimization doubles the function length for an imperceptible gain and violates the repository's surgical-diff / no-premature-optimization standards.
+**Action:** Do not optimize startup-only functions (like env var parsing) that run relatively few times per process. Focus optimizations exclusively on hot paths (e.g., loops per-secret during syncing or high-concurrency operations).
