@@ -28,6 +28,8 @@ on:
     paths:
       - "docs/**"
       - "hub/**"
+      - "Dockerfile.sync"
+      - "deploy/**"
       - ".github/workflows/cd.yml"
     tags:
       - "v*"
