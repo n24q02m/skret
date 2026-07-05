@@ -1,0 +1,17 @@
+version: "1"
+default_env: prod
+project: skret-hub-sync
+environments:
+  prod:
+    provider: aws
+    path: /skret-hub/prod
+    region: ap-southeast-1
+exclude:
+  - HUB_CF_DEPLOY_TOKEN
+sync:
+  targets:
+    - type: cloudflare
+      worker: skret-hub
+      account: ${CLOUDFLARE_ACCOUNT_ID}
+  hub:
+    url: https://vault.n24q02m.com

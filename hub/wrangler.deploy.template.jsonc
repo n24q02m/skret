@@ -1,5 +1,5 @@
-// Rendered at deploy time: envsubst fills ${VAULT_KV_ID} from a GH secret into
-// wrangler.deploy.jsonc (gitignored). 0 real IDs here.
+// Rendered at deploy time: envsubst fills ${VAULT_KV_ID} and ${SKRET_SYNC_IMAGE}
+// from GH secrets into wrangler.deploy.jsonc (gitignored). 0 real IDs here.
 //
 // The custom domain (vault.n24q02m.com) is attached ONCE, out-of-band, to the
 // Worker via `PUT /accounts/<acc>/workers/domains` (or the dashboard) — NOT via
@@ -13,5 +13,23 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-06-14",
   "kv_namespaces": [{ "binding": "VAULT_KV", "id": "${VAULT_KV_ID}" }],
+  "containers": [
+    {
+      "name": "skret-sync",
+      "class_name": "SyncContainer",
+      "image": "${SKRET_SYNC_IMAGE}",
+      "instance_type": "lite",
+      "max_instances": 1
+    }
+  ],
+  "durable_objects": {
+    "bindings": [{ "name": "SYNC", "class_name": "SyncContainer" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["SyncContainer"] }],
+  "triggers": { "crons": ["0 3 * * *"] },
+  // Non-secret var forwarded into the sync container (via index.ts SYNC_ENV_KEYS)
+  // so the cloudflare sync target's account id resolves from env, keeping both
+  // the committed config and the baked .skret.yaml free of the real account id.
+  "vars": { "CLOUDFLARE_ACCOUNT_ID": "${CLOUDFLARE_ACCOUNT_ID}" },
   "observability": { "enabled": true }
 }

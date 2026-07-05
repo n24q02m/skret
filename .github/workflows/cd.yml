@@ -15,7 +15,7 @@ name: CD
 #   CLOUDFLARE_API_TOKEN     - CF Pages deploy
 #   CLOUDFLARE_ACCOUNT_ID    - CF account ID (also used by the vault hub deploy)
 #   TAP_GITHUB_TOKEN         - fine-grained PAT for tap repo updates
-#   HUB_CF_DEPLOY_TOKEN      - project-scoped CF token for the vault hub Worker (account Workers Scripts + KV write only; custom domain attached out-of-band, no zone perm)
+#   HUB_CF_DEPLOY_TOKEN      - project-scoped CF token for the vault hub Worker (account Workers Scripts + KV write only; custom domain attached out-of-band, no zone perm); also used to push the sync container image to the Cloudflare managed registry -- verify it covers that scope, may need a Containers/Images permission added
 #   VAULT_KV_ID              - KV namespace id for the vault hub (from `wrangler kv namespace create VAULT_KV`)
 #
 # Repo Variables required:
@@ -28,6 +28,8 @@ on:
     paths:
       - "docs/**"
       - "hub/**"
+      - "Dockerfile.sync"
+      - "deploy/**"
       - ".github/workflows/cd.yml"
     tags:
       - "v*"
@@ -271,12 +273,37 @@ jobs:
       - name: Typecheck
         working-directory: hub
         run: pnpm typecheck
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+      - name: Compute sync container image tag
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          echo "SKRET_SYNC_IMAGE=registry.cloudflare.com/${CLOUDFLARE_ACCOUNT_ID}/skret-sync:${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+      - name: Build sync container image
+        run: |
+          docker buildx build \
+            --platform linux/amd64 \
+            --load \
+            --file Dockerfile.sync \
+            --tag "$SKRET_SYNC_IMAGE" \
+            .
+      # Pushes to the Cloudflare managed registry (registry.cloudflare.com),
+      # not a standard docker registry -- auth is via CLOUDFLARE_API_TOKEN /
+      # CLOUDFLARE_ACCOUNT_ID env vars, which Wrangler reads directly.
+      - name: Push sync container image
+        working-directory: hub
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.HUB_CF_DEPLOY_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          npx wrangler containers push "$SKRET_SYNC_IMAGE"
       - name: Render deploy config from secrets
         working-directory: hub
         env:
           VAULT_KV_ID: ${{ secrets.VAULT_KV_ID }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
-          envsubst '${VAULT_KV_ID}' \
+          envsubst '${VAULT_KV_ID} ${SKRET_SYNC_IMAGE} ${CLOUDFLARE_ACCOUNT_ID}' \
             < wrangler.deploy.template.jsonc > wrangler.deploy.jsonc
       - name: Deploy Worker
         uses: cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0 # v4

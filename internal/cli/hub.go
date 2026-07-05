@@ -38,8 +38,8 @@ func newHubCmd(opts *GlobalOpts) *cobra.Command {
 
 The manifest contains key names, a salted sha256[:8] fingerprint, and per-target
 drift status (in-sync/drift/missing) — never secret values. Auth via
-SKRET_HUB_TOKEN; the endpoint comes from sync.hub.url in .skret.yaml or
---hub-url.`,
+SKRET_HUB_TOKEN; the endpoint comes from --hub-url, the SKRET_HUB_URL env var,
+or sync.hub.url in .skret.yaml (in that order).`,
 		Example: `  skret hub push
   skret hub push --hub-url https://vault.example.com`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -63,12 +63,19 @@ func (o *hubOptions) runPush(cmd *cobra.Command) error {
 		return skret.NewError(skret.ExitConfigError, "hub push: load config failed", err)
 	}
 
+	// Resolve the hub endpoint with flag > env > config precedence. The env
+	// fallback (SKRET_HUB_URL) is what lets the cron sync container point
+	// `skret hub push` at the vault Worker via a forwarded env var, with no
+	// flag and no baked config.
 	hubURL := o.hubURL
+	if hubURL == "" {
+		hubURL = os.Getenv("SKRET_HUB_URL")
+	}
 	if hubURL == "" && sc != nil && sc.Hub != nil {
 		hubURL = sc.Hub.URL
 	}
 	if hubURL == "" {
-		return skret.NewError(skret.ExitConfigError, "hub push: no hub URL (set --hub-url or sync.hub.url in .skret.yaml)", nil)
+		return skret.NewError(skret.ExitConfigError, "hub push: no hub URL (set --hub-url, SKRET_HUB_URL, or sync.hub.url in .skret.yaml)", nil)
 	}
 
 	ctx := context.Background()
