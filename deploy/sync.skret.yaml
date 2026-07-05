@@ -1,0 +1,14 @@
+version: "1"
+default_env: prod
+project: skret-sync
+environments:
+  prod:
+    provider: aws
+    path: /skret-sync-test/prod
+    region: ap-southeast-1
+sync:
+  targets:
+    - type: dotenv
+      file: /tmp/skret-sync.env
+  hub:
+    url: https://vault.n24q02m.com
