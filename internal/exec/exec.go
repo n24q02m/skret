@@ -96,11 +96,12 @@ func KeyToEnvName(key, pathPrefix string) string {
 		}
 	}
 
-	// ⚡ Bolt: Fast-path check to avoid strings.Builder allocation for already valid keys
+	// ⚡ Bolt: Fast-path check using a strict whitelist to safely avoid allocation.
 	needsTransform := false
 	for i := 0; i < len(name); i++ {
 		c := name[i]
-		if c == '/' || c == '-' || c == '=' || c == ' ' || c == '\n' || c == '\r' || (c >= 'a' && c <= 'z') {
+		isValid := (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_'
+		if !isValid {
 			needsTransform = true
 			break
 		}
