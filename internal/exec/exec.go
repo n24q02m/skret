@@ -96,7 +96,7 @@ func KeyToEnvName(key, pathPrefix string) string {
 		}
 	}
 
-	// ⚡ Bolt: Fast-path check using a strict whitelist to safely avoid allocation.
+	// ⚡ Bolt: Fast-path check using a strict whitelist to safely avoid allocation..
 	needsTransform := false
 	for i := 0; i < len(name); i++ {
 		c := name[i]
