@@ -96,6 +96,18 @@ func KeyToEnvName(key, pathPrefix string) string {
 		}
 	}
 
+	needsTransform := false
+	for i := 0; i < len(name); i++ {
+		c := name[i]
+		if c == '/' || c == '-' || c == '=' || c == ' ' || c == '\n' || c == '\r' || (c >= 'a' && c <= 'z') {
+			needsTransform = true
+			break
+		}
+	}
+	if !needsTransform {
+		return name
+	}
+
 	var b strings.Builder
 	b.Grow(len(name))
 	for i := 0; i < len(name); i++ {

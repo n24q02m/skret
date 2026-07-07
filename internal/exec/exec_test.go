@@ -185,6 +185,12 @@ func TestKeyToEnvName_Sanitization(t *testing.T) {
 	assert.Equal(t, "BAD_KEY", skexec.KeyToEnvName("BAD KEY", ""))
 }
 
+func TestKeyToEnvName_FastPath(t *testing.T) {
+	assert.Equal(t, "ALREADY_CLEAN_KEY", skexec.KeyToEnvName("ALREADY_CLEAN_KEY", ""))
+	assert.Equal(t, "CLEAN123", skexec.KeyToEnvName("CLEAN123", ""))
+	assert.Equal(t, "NO_PREFIX", skexec.KeyToEnvName("NO_PREFIX", "/prefix"))
+}
+
 func TestBuildEnv_EmptyExcludeMap(t *testing.T) {
 	secrets := []*provider.Secret{
 		{Key: "A", Value: "1"},
