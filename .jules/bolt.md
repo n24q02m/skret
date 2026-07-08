@@ -56,3 +56,7 @@
 ## 2025-05-15 - Move slice early returns before slice/map initializations
 **Learning:** Initializing maps or arrays in a function before checking early return conditions (e.g., `if len(input) == 0`) leads to unnecessary memory allocation and iteration overhead, especially if the function is frequently called with empty inputs or used in recursive paths.
 **Action:** Always place early return checks at the very top of the function to avoid redundant memory allocations and logic executions.
+
+## 2026-07-08 - Whitelist-based Fast-paths for String Optimization
+**Learning:** When implementing a 'fast-path' string transformation check to avoid strings.Builder allocations, using a strict whitelist of known-valid characters (e.g., A-Z, 0-9, _) rather than a blacklist prevents logic errors where unhandled or special characters are prematurely returned without being processed by the underlying routine.
+**Action:** Always implement fast-path checks using strict whitelists when sanitizing strings to avoid missing edge cases while still gaining the 0-allocation performance benefits for compliant inputs.

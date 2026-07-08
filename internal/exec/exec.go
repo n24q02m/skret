@@ -96,6 +96,21 @@ func KeyToEnvName(key, pathPrefix string) string {
 		}
 	}
 
+	// Fast-path: check if any modifications are needed using a strict whitelist.
+	// If the string only contains uppercase letters, digits, or underscores,
+	// we can safely return it without allocating a strings.Builder.
+	needsMod := false
+	for i := 0; i < len(name); i++ {
+		c := name[i]
+		if !((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_') {
+			needsMod = true
+			break
+		}
+	}
+	if !needsMod {
+		return name
+	}
+
 	var b strings.Builder
 	b.Grow(len(name))
 	for i := 0; i < len(name); i++ {
