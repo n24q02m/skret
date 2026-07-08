@@ -102,10 +102,11 @@ func KeyToEnvName(key, pathPrefix string) string {
 	needsMod := false
 	for i := 0; i < len(name); i++ {
 		c := name[i]
-		if !(c >= 'A' && c <= 'Z') && !(c >= '0' && c <= '9') && c != '_' {
-			needsMod = true
-			break
+		if (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' {
+			continue
 		}
+		needsMod = true
+		break
 	}
 	if !needsMod {
 		return name
