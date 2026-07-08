@@ -45,9 +45,6 @@ changes.`,
 			if err != nil {
 				return skret.NewError(skret.ExitProviderError, "run: list secrets failed", err)
 			}
-			if len(secrets) == 0 {
-				cmd.PrintErrln("No secrets found to inject. Use 'skret set' to add a secret.")
-			}
 
 			if err := validateRequired(secrets, resolved.Required, resolved.Path); err != nil {
 				return err
