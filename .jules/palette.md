@@ -26,3 +26,6 @@
 ## 2026-06-30 - [Contextual Keybind Hiding in Empty States]
 **Learning:** When a list filter returns zero results, displaying contextual keybinds (e.g., "enter reveal") that depend on a selected item is confusing and sets false expectations, as pressing the key does nothing.
 **Action:** Always conditionally render contextual keybind hints so they only appear when an item is actually selected, leaving only global actions (like navigation or quitting) visible during empty states.
+## 2026-07-09 - [CLI Actionable Feedback for Missing Secrets]
+**Learning:** When a command like `skret get <KEY>` fails because the secret does not exist, simply returning a standard error obscures the solution. Providing an actionable hint on standard error (e.g., `Secret not found. Use 'skret set <KEY> <value>' to create it.`) dramatically improves user experience and matches behavior in other parts of the system.
+**Action:** Always intercept `ErrNotFound` states when retrieving individual items and print an actionable call-to-action to stderr before exiting.
