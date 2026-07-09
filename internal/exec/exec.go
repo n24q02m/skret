@@ -96,6 +96,19 @@ func KeyToEnvName(key, pathPrefix string) string {
 		}
 	}
 
+	// ⚡ Bolt: Fast-path to avoid strings.Builder allocation for already-compliant keys.
+	needsTransform := false
+	for i := 0; i < len(name); i++ {
+		c := name[i]
+		if !((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_') {
+			needsTransform = true
+			break
+		}
+	}
+	if !needsTransform {
+		return name
+	}
+
 	var b strings.Builder
 	b.Grow(len(name))
 	for i := 0; i < len(name); i++ {
