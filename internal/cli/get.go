@@ -46,6 +46,7 @@ object. To read ALL secrets use 'skret env'; to inject them into a command use
 			}
 			secret, err := p.Get(ctx, key)
 			if err != nil {
+				// Actionable empty state hint for UX
 				if errors.Is(err, provider.ErrNotFound) {
 					cmd.PrintErrf("Secret not found. Use 'skret set %s <value>' to create it.\n", key)
 				}
