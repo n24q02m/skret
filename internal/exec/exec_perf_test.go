@@ -66,3 +66,23 @@ func BenchmarkBuildEnv_WideDependency(b *testing.B) {
 		_ = exec.BuildEnv(secrets, nil, "", nil)
 	}
 }
+
+func BenchmarkKeyToEnvName(b *testing.B) {
+	keys := []string{
+		"ALREADY_CLEAN_KEY_1",
+		"ALREADY_CLEAN_KEY_2",
+		"ALREADY_CLEAN_KEY_3",
+		"/app/prod/api-key",
+		"/app/prod/db-password",
+		"my-secret-key",
+		"lowercase_key",
+		"KEY_WITH_SPACES ",
+	}
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		for _, k := range keys {
+			_ = exec.KeyToEnvName(k, "")
+		}
+	}
+}
