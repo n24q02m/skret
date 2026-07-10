@@ -39,7 +39,8 @@ worker/pages, dotenv); running 'skret sync' with no --to pushes to all of them.
 GITHUB_TOKEN / CLOUDFLARE_API_TOKEN. Use --skip-unchanged for hash-based drift.
 --no-overwrite (or no_overwrite: true per target) only writes keys absent at
 the target, so existing values are never overwritten; rotate by deleting the
-key at the target and re-running sync.`,
+key at the target and re-running sync. --dry-run prints what each target
+would write and exits without writing anything or saving sync state.`,
 		Example: `  skret sync
   skret sync --to=github,cloudflare
   skret sync --to=github --github-repo=owner/repo --skip-unchanged
@@ -95,8 +96,19 @@ func (o *syncOptions) run(cmd *cobra.Command) error {
 	for i, s := range syncers {
 		tc := targets[i]
 		toSync := secrets
+		noOv := tc.NoOverwrite || o.noOverwrite
+
+		// Under no-overwrite, "write only absent keys" already subsumes
+		// drift-skipping (FilterAbsent queries the target directly, so it is
+		// stateless), and a warm value-hash cache can mask a target-side
+		// deletion -- exactly the restore path no-overwrite relies on
+		// (docs/src/content/docs/guide/sync.md: delete the key at the
+		// target, the next sync repopulates it). So --skip-unchanged's
+		// state load/filter/save is skipped entirely for a no-overwrite
+		// target; a rotated-then-deleted key must reach FilterAbsent to be
+		// seen as absent and rewritten.
 		var state *syncer.SyncState
-		if o.skipUnchanged {
+		if o.skipUnchanged && !noOv {
 			stateID := targetStateID(s, tc)
 			state, err = syncer.LoadSyncState(s.Name(), stateID)
 			if err != nil {
@@ -108,7 +120,7 @@ func (o *syncOptions) run(cmd *cobra.Command) error {
 			}
 		}
 
-		if tc.NoOverwrite || o.noOverwrite {
+		if noOv {
 			kept, skippedExisting, ferr := syncer.FilterAbsent(ctx, s, toSync)
 			if ferr != nil {
 				return skret.NewError(skret.ExitConfigError, fmt.Sprintf("sync: %s", s.Name()), ferr)
@@ -138,7 +150,7 @@ func (o *syncOptions) run(cmd *cobra.Command) error {
 		}
 		cmd.PrintErrf("Synced %d secrets to %s\n", len(toSync), s.Name())
 
-		if o.skipUnchanged && state != nil {
+		if o.skipUnchanged && !noOv && state != nil {
 			state.Update(toSync)
 			if err := syncer.SaveSyncState(state); err != nil {
 				return skret.NewError(skret.ExitGenericError, "sync: save state failed", err)

@@ -125,6 +125,10 @@ Rotation under no-overwrite is deliberate: delete the key at the target
 from the provider. Deleting is recoverable (the provider still holds the
 value); overwriting is not (GitHub and Cloudflare secrets are write-only).
 
+`--skip-unchanged` is ignored for a no-overwrite target: the target listing
+already determines the write set, and a warm value cache could otherwise
+mask a deletion you made at the target on purpose.
+
 Supported targets: `github` (repository Actions secrets) and `cloudflare`
 worker scripts. A `dotenv` target rejects no-overwrite: it rewrites the whole
 file atomically, so "only new keys" would drop every existing line. A

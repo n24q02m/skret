@@ -719,6 +719,7 @@ func testPublicKeyB64(t *testing.T) string {
 
 func TestSyncOptions_Run_NoOverwrite_GithubFiltersExisting(t *testing.T) {
 	var putCount int
+	var putPaths []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/actions/secrets/public-key"):
@@ -727,6 +728,7 @@ func TestSyncOptions_Run_NoOverwrite_GithubFiltersExisting(t *testing.T) {
 			_, _ = w.Write([]byte(`{"total_count":1,"secrets":[{"name":"ALPHA"}]}`))
 		case r.Method == http.MethodPut:
 			putCount++
+			putPaths = append(putPaths, r.URL.Path)
 			w.WriteHeader(http.StatusNoContent)
 		default:
 			t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
@@ -740,7 +742,8 @@ func TestSyncOptions_Run_NoOverwrite_GithubFiltersExisting(t *testing.T) {
 
 	out := runSyncCmd(t, dir, nil)
 	assert.Contains(t, out, "Skipped 1 existing secret(s) for github (no-overwrite)")
-	assert.Equal(t, 1, putCount) // only BETA gets written
+	require.Equal(t, 1, putCount) // only BETA gets written
+	assert.True(t, strings.HasSuffix(putPaths[0], "/BETA"), "expected PUT to /BETA, got %q", putPaths[0])
 }
 
 func TestSyncOptions_Run_NoOverwriteFlag_ForcesAllTargets(t *testing.T) {
@@ -748,6 +751,7 @@ func TestSyncOptions_Run_NoOverwriteFlag_ForcesAllTargets(t *testing.T) {
 	// the CLI flag must force it anyway. Same harness/expectations as
 	// TestSyncOptions_Run_NoOverwrite_GithubFiltersExisting.
 	var putCount int
+	var putPaths []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/actions/secrets/public-key"):
@@ -756,6 +760,7 @@ func TestSyncOptions_Run_NoOverwriteFlag_ForcesAllTargets(t *testing.T) {
 			_, _ = w.Write([]byte(`{"total_count":1,"secrets":[{"name":"ALPHA"}]}`))
 		case r.Method == http.MethodPut:
 			putCount++
+			putPaths = append(putPaths, r.URL.Path)
 			w.WriteHeader(http.StatusNoContent)
 		default:
 			t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
@@ -769,7 +774,8 @@ func TestSyncOptions_Run_NoOverwriteFlag_ForcesAllTargets(t *testing.T) {
 
 	out := runSyncCmd(t, dir, []string{"--no-overwrite"})
 	assert.Contains(t, out, "Skipped 1 existing secret(s) for github (no-overwrite)")
-	assert.Equal(t, 1, putCount) // only BETA gets written
+	require.Equal(t, 1, putCount) // only BETA gets written
+	assert.True(t, strings.HasSuffix(putPaths[0], "/BETA"), "expected PUT to /BETA, got %q", putPaths[0])
 }
 
 func TestSyncOptions_Run_NoOverwrite_DotenvErrorsNoWrite(t *testing.T) {
@@ -849,6 +855,68 @@ func TestSyncOptions_Run_DryRun_WithoutNoOverwrite_ZeroHTTP(t *testing.T) {
 	out := runSyncCmd(t, dir, []string{"--dry-run"})
 	assert.Contains(t, out, "would write 1 secret(s): ALPHA")
 	assert.Equal(t, 0, hits, "plain dry-run must not touch the network at all")
+}
+
+// --- Finding 1 (final review): no-overwrite exempts --skip-unchanged ---
+
+// TestSyncOptions_Run_NoOverwrite_RestoreAfterDeleteBypassesSkipUnchanged is
+// the regression guard for the documented no-overwrite rotation flow
+// (docs/src/content/docs/guide/sync.md: delete the key at the target, the
+// next sync repopulates it). It fabricates a warm sync-state cache (as if a
+// prior --skip-unchanged run had already recorded ALPHA and BETA's current
+// hashes), then has the target report ALPHA as deleted. Without the
+// no-overwrite exemption, FilterUnchanged would drop ALPHA before
+// FilterAbsent ever saw it was absent at the target, and the restore would
+// never happen.
+func TestSyncOptions_Run_NoOverwrite_RestoreAfterDeleteBypassesSkipUnchanged(t *testing.T) {
+	home := t.TempDir()
+	if runtime.GOOS == "windows" {
+		t.Setenv("USERPROFILE", home)
+	} else {
+		t.Setenv("HOME", home)
+	}
+
+	var putCount int
+	var putPaths []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/actions/secrets/public-key"):
+			_, _ = w.Write([]byte(`{"key_id":"1","key":"` + testPublicKeyB64(t) + `"}`))
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/actions/secrets"):
+			// ALPHA was deleted at the target -- the documented no-overwrite
+			// rotation/restore flow. Only BETA is still present.
+			_, _ = w.Write([]byte(`{"total_count":1,"secrets":[{"name":"BETA"}]}`))
+		case r.Method == http.MethodPut:
+			putCount++
+			putPaths = append(putPaths, r.URL.Path)
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	dir := setupSyncRepoWithSecrets(t, map[string]string{"ALPHA": "1", "BETA": "2"})
+	withGithubTarget(t, dir, "o/r", srv.URL, true /* no_overwrite */)
+	t.Setenv("GITHUB_TOKEN", "tok")
+
+	// Fabricate a warm sync-state cache for this target (stateID == "o/r",
+	// per targetStateID's github case) so that, absent the no-overwrite
+	// exemption, FilterUnchanged would drop both ALPHA and BETA -- the SSM
+	// values here are unchanged, only the target-side copy was deleted.
+	state, err := syncer.LoadSyncState("github", "o/r")
+	require.NoError(t, err)
+	state.Update([]*provider.Secret{
+		{Key: "ALPHA", Value: "1"},
+		{Key: "BETA", Value: "2"},
+	})
+	require.NoError(t, syncer.SaveSyncState(state))
+
+	out := runSyncCmd(t, dir, []string{"--skip-unchanged"})
+
+	require.Equal(t, 1, putCount, "only the restored ALPHA should be written")
+	assert.True(t, strings.HasSuffix(putPaths[0], "/ALPHA"), "expected the restore PUT to target ALPHA, got %q", putPaths[0])
+	assert.NotContains(t, out, "unchanged", "skip-unchanged filtering must not apply to a no-overwrite target")
 }
 
 func TestSyncOptions_Run_DryRun_DotenvWritesNoFile(t *testing.T) {
