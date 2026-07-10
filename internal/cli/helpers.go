@@ -62,14 +62,26 @@ func defaultRegistry() *provider.Registry {
 	return reg
 }
 
+// resolveConfigFile returns the config path to load: the explicit --config
+// path when set (erroring if it does not exist -- never silently falling
+// back to discovery), otherwise the discovered .skret.yaml from cwd upward.
+func resolveConfigFile(opts *GlobalOpts) (string, error) {
+	if opts.Config != "" {
+		if _, err := os.Stat(opts.Config); err != nil {
+			return "", fmt.Errorf("config file %q: %w", opts.Config, err)
+		}
+		return opts.Config, nil
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	return config.Discover(cwd)
+}
+
 // loadProvider resolves config (from .skret.yaml, or synthesized from --path)
 // and creates the appropriate provider.
 func loadProvider(opts *GlobalOpts) (*config.ResolvedConfig, provider.SecretProvider, error) {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return nil, nil, skret.NewError(skret.ExitConfigError, "get working directory failed", err)
-	}
-
 	resolveOpts := config.ResolveOpts{
 		Env:      opts.Env,
 		Provider: opts.Provider,
@@ -84,7 +96,7 @@ func loadProvider(opts *GlobalOpts) (*config.ResolvedConfig, provider.SecretProv
 	// Only synthesize an ephemeral config when no .skret.yaml exists and --path
 	// was supplied — that is what makes ad-hoc `skret ... --path=/ns/env` work.
 	var cfg *config.Config
-	cfgPath, derr := config.Discover(cwd)
+	cfgPath, derr := resolveConfigFile(opts)
 	switch {
 	case derr == nil:
 		loaded, lerr := config.Load(cfgPath)
@@ -92,6 +104,9 @@ func loadProvider(opts *GlobalOpts) (*config.ResolvedConfig, provider.SecretProv
 			return nil, nil, skret.NewError(skret.ExitConfigError, "load config failed", lerr)
 		}
 		cfg = loaded
+	case opts.Config != "":
+		// Explicit --config that failed to stat: never fall back.
+		return nil, nil, skret.NewError(skret.ExitConfigError, "load config failed", derr)
 	case opts.Path != "":
 		cfg = config.EphemeralConfig(resolveOpts)
 	default:

@@ -18,6 +18,7 @@ type GlobalOpts struct {
 	Region   string
 	Profile  string
 	File     string
+	Config   string
 	LogLevel string
 }
 
@@ -53,6 +54,7 @@ func NewRootCmd() *cobra.Command {
 	f.StringVar(&opts.Region, "region", "", "override cloud region")
 	f.StringVar(&opts.Profile, "profile", "", "override cloud profile")
 	f.StringVar(&opts.File, "file", "", "override local provider file path")
+	f.StringVar(&opts.Config, "config", "", "path to a .skret.yaml config file (bypasses directory discovery)")
 	f.StringVar(&opts.LogLevel, "log-level", "", "log level (debug, info, warn, error) [env: SKRET_LOG, default: info]")
 
 	// Register subcommands — pass opts explicitly

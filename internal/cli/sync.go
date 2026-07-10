@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/n24q02m/skret/internal/config"
@@ -20,6 +21,8 @@ type syncOptions struct {
 	file          string
 	githubRepo    string
 	skipUnchanged bool
+	noOverwrite   bool
+	dryRun        bool
 }
 
 func newSyncCmd(opts *GlobalOpts) *cobra.Command {
@@ -33,10 +36,16 @@ func newSyncCmd(opts *GlobalOpts) *cobra.Command {
 Targets are declared in .skret.yaml under sync.targets (github, cloudflare
 worker/pages, dotenv); running 'skret sync' with no --to pushes to all of them.
 --to accepts a comma-list to pick specific target types. Tokens come from
-GITHUB_TOKEN / CLOUDFLARE_API_TOKEN. Use --skip-unchanged for hash-based drift.`,
+GITHUB_TOKEN / CLOUDFLARE_API_TOKEN. Use --skip-unchanged for hash-based drift.
+--no-overwrite (or no_overwrite: true per target) only writes keys absent at
+the target, so existing values are never overwritten; rotate by deleting the
+key at the target and re-running sync. --dry-run prints what each target
+would write and exits without writing anything or saving sync state.`,
 		Example: `  skret sync
   skret sync --to=github,cloudflare
-  skret sync --to=github --github-repo=owner/repo --skip-unchanged`,
+  skret sync --to=github --github-repo=owner/repo --skip-unchanged
+  skret sync --no-overwrite
+  skret sync --config deploy/sync/knowledgeprism.skret.yaml --dry-run`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return o.run(cmd)
 		},
@@ -46,6 +55,8 @@ GITHUB_TOKEN / CLOUDFLARE_API_TOKEN. Use --skip-unchanged for hash-based drift.`
 	cmd.Flags().StringVar(&o.file, "file", "", "output file path (for dotenv)")
 	cmd.Flags().StringVar(&o.githubRepo, "github-repo", "", "GitHub repository (owner/repo, comma separated)")
 	cmd.Flags().BoolVar(&o.skipUnchanged, "skip-unchanged", false, "skip secrets whose value is unchanged since the previous successful sync (drift detection)")
+	cmd.Flags().BoolVar(&o.noOverwrite, "no-overwrite", false, "only write secrets absent at the target; never overwrite an existing one (forces no_overwrite for every target)")
+	cmd.Flags().BoolVar(&o.dryRun, "dry-run", false, "print what each target would write and exit; issues no write request and saves no state")
 
 	return cmd
 }
@@ -68,7 +79,7 @@ func (o *syncOptions) run(cmd *cobra.Command) error {
 		cmd.PrintErrln("No secrets found to sync. Use 'skret set' to add a secret.")
 	}
 
-	sc, err := loadSyncConfig()
+	sc, err := loadSyncConfig(o.global)
 	if err != nil {
 		return skret.NewError(skret.ExitConfigError, "sync: load config failed", err)
 	}
@@ -85,8 +96,19 @@ func (o *syncOptions) run(cmd *cobra.Command) error {
 	for i, s := range syncers {
 		tc := targets[i]
 		toSync := secrets
+		noOv := tc.NoOverwrite || o.noOverwrite
+
+		// Under no-overwrite, "write only absent keys" already subsumes
+		// drift-skipping (FilterAbsent queries the target directly, so it is
+		// stateless), and a warm value-hash cache can mask a target-side
+		// deletion -- exactly the restore path no-overwrite relies on
+		// (docs/src/content/docs/guide/sync.md: delete the key at the
+		// target, the next sync repopulates it). So --skip-unchanged's
+		// state load/filter/save is skipped entirely for a no-overwrite
+		// target; a rotated-then-deleted key must reach FilterAbsent to be
+		// seen as absent and rewritten.
 		var state *syncer.SyncState
-		if o.skipUnchanged {
+		if o.skipUnchanged && !noOv {
 			stateID := targetStateID(s, tc)
 			state, err = syncer.LoadSyncState(s.Name(), stateID)
 			if err != nil {
@@ -98,12 +120,37 @@ func (o *syncOptions) run(cmd *cobra.Command) error {
 			}
 		}
 
+		if noOv {
+			kept, skippedExisting, ferr := syncer.FilterAbsent(ctx, s, toSync)
+			if ferr != nil {
+				return skret.NewError(skret.ExitConfigError, fmt.Sprintf("sync: %s", s.Name()), ferr)
+			}
+			toSync = kept
+			if skippedExisting > 0 {
+				cmd.PrintErrf("Skipped %d existing secret(s) for %s (no-overwrite)\n", skippedExisting, s.Name())
+			}
+		}
+
+		if o.dryRun {
+			names := make([]string, 0, len(toSync))
+			for _, sec := range toSync {
+				names = append(names, syncer.SecretName(sec.Key))
+			}
+			sort.Strings(names)
+			if len(names) == 0 {
+				cmd.PrintErrf("[dry-run] %s: would write 0 secret(s)\n", s.Name())
+			} else {
+				cmd.PrintErrf("[dry-run] %s: would write %d secret(s): %s\n", s.Name(), len(names), strings.Join(names, ", "))
+			}
+			continue
+		}
+
 		if err := s.Sync(ctx, toSync); err != nil {
 			return skret.NewError(skret.ExitNetworkError, fmt.Sprintf("sync failed for %s", s.Name()), err)
 		}
 		cmd.PrintErrf("Synced %d secrets to %s\n", len(toSync), s.Name())
 
-		if o.skipUnchanged && state != nil {
+		if o.skipUnchanged && !noOv && state != nil {
 			state.Update(toSync)
 			if err := syncer.SaveSyncState(state); err != nil {
 				return skret.NewError(skret.ExitGenericError, "sync: save state failed", err)
@@ -139,14 +186,10 @@ func filterExcluded(secrets []*provider.Secret, pathPrefix string, exclude []str
 	return out
 }
 
-// loadSyncConfig returns the .skret.yaml sync block, or nil when there is no
-// config file (flags-only mode) — never errors on a missing config.
-func loadSyncConfig() (*config.SyncConfig, error) {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return nil, err
-	}
-	cfgPath, derr := config.Discover(cwd)
+// loadSyncConfig returns the .skret.yaml sync block, honoring --config, or
+// nil when there is no config file (flags-only mode).
+func loadSyncConfig(opts *GlobalOpts) (*config.SyncConfig, error) {
+	cfgPath, derr := resolveConfigFile(opts)
 	if errors.Is(derr, config.ErrConfigNotFound) {
 		return nil, nil // no config -> declared targets absent; flags-only
 	}
@@ -222,13 +265,14 @@ func (o *syncOptions) resolveTargets(sc *config.SyncConfig) ([]syncer.TargetConf
 // expanding ${VAR} references in account (e.g. cloudflare's account id).
 func targetFromConfig(t config.SyncTarget) syncer.TargetConfig {
 	fields := map[string]string{
-		"repo":    t.Repo,
-		"worker":  t.Worker,
-		"pages":   t.Pages,
-		"account": os.ExpandEnv(t.Account),
-		"file":    t.File,
+		"repo":     t.Repo,
+		"worker":   t.Worker,
+		"pages":    t.Pages,
+		"account":  os.ExpandEnv(t.Account),
+		"file":     t.File,
+		"base_url": t.BaseURL,
 	}
-	return syncer.TargetConfig{Type: t.Type, Fields: fields, Token: tokenForType(t.Type)}
+	return syncer.TargetConfig{Type: t.Type, Fields: fields, Token: tokenForType(t.Type), NoOverwrite: t.NoOverwrite}
 }
 
 // targetFromFlags builds TargetConfigs for a --to type that has no

@@ -58,7 +58,7 @@ func (o *hubOptions) runPush(cmd *cobra.Command) error {
 	}
 	defer p.Close()
 
-	sc, err := loadSyncConfig()
+	sc, err := loadSyncConfig(o.global)
 	if err != nil {
 		return skret.NewError(skret.ExitConfigError, "hub push: load config failed", err)
 	}

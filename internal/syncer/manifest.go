@@ -100,7 +100,7 @@ func BuildManifest(ns, env string, salt []byte, secrets []*provider.Secret, stat
 			}
 		}
 		m.Keys = append(m.Keys, ManifestKey{
-			Name:        secretName(s.Key),
+			Name:        SecretName(s.Key),
 			Fingerprint: Fingerprint(salt, s.Value),
 			UpdatedAt:   s.Meta.UpdatedAt,
 			Targets:     targets,

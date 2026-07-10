@@ -9,7 +9,7 @@ FROM alpine:3.20
 RUN apk add --no-cache ca-certificates && adduser -D -u 10001 skret
 COPY --from=build /out/skret /usr/local/bin/skret
 COPY deploy/sync-entrypoint.sh /usr/local/bin/sync-entrypoint.sh
-COPY deploy/sync.skret.yaml /app/.skret.yaml
+COPY deploy/sync/ /app/configs/
 RUN chmod +x /usr/local/bin/sync-entrypoint.sh
 WORKDIR /app
 USER skret
