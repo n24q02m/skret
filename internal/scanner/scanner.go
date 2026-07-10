@@ -95,7 +95,7 @@ func loadFile(path string, maxBytes int64) ([]byte, error) {
 	return io.ReadAll(f)
 }
 
-var newline = []byte{'\n'}
+var newline = []byte{'\n'} // hoisted for performance
 
 func isBinary(f *os.File) (bool, error) {
 	head := make([]byte, binarySniff)
