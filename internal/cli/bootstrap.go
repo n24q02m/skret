@@ -71,7 +71,14 @@ func newBootstrapCmd(opts *GlobalOpts) *cobra.Command {
 			// back to the resolved config. A provider is deliberately NOT built —
 			// the skret user may not exist yet, so we only need the config values.
 			if path == "" || region == "" || profile == "" {
-				if resolved, err := resolveBootstrapConfig(opts); err == nil {
+				resolved, err := resolveBootstrapConfig(opts)
+				if err != nil {
+					// If --config was explicitly set, the error is hard (file missing).
+					if opts.Config != "" {
+						return skret.NewError(skret.ExitConfigError, "bootstrap: load config failed", err)
+					}
+					// Otherwise, discovery just failed; proceed with command flags (soft error).
+				} else if resolved != nil {
 					if path == "" {
 						path = resolved.Path
 					}
@@ -162,10 +169,13 @@ func newBootstrapCmd(opts *GlobalOpts) *cobra.Command {
 // stops before building a provider: bootstrap only needs the env's path/region/
 // profile, and the skret user it provisions may not exist yet.
 func resolveBootstrapConfig(opts *GlobalOpts) (*config.ResolvedConfig, error) {
-	cwd, err := os.Getwd()
+	cfgPath, err := resolveConfigFile(opts)
 	if err != nil {
+		// If --config was explicitly set and the file is missing, propagate the error.
+		// Otherwise (discovery just failed), return the error for soft fallback.
 		return nil, err
 	}
+
 	resolveOpts := config.ResolveOpts{
 		Env:      opts.Env,
 		Provider: opts.Provider,
@@ -174,12 +184,7 @@ func resolveBootstrapConfig(opts *GlobalOpts) (*config.ResolvedConfig, error) {
 		Profile:  opts.Profile,
 		File:     opts.File,
 	}
-	cfgPath, derr := config.Discover(cwd)
-	if derr != nil {
-		// No .skret.yaml: nothing to resolve. The command's own --path/--region
-		// flags are the input in that case.
-		return nil, derr
-	}
+
 	cfg, lerr := config.Load(cfgPath)
 	if lerr != nil {
 		return nil, lerr

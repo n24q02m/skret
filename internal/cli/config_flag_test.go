@@ -137,3 +137,36 @@ func TestRootCmd_HasConfigFlag(t *testing.T) {
 	f := cmd.PersistentFlags().Lookup("config")
 	require.NotNil(t, f)
 }
+
+func TestResolveBootstrapConfig_WithConfigFlag_ExistingFile(t *testing.T) {
+	cfgPath := writeConfigAt(t, t.TempDir())
+	origDir, _ := os.Getwd()
+	require.NoError(t, os.Chdir(t.TempDir())) // cwd different from config file
+	defer os.Chdir(origDir)
+
+	resolved, err := resolveBootstrapConfig(&GlobalOpts{Config: cfgPath})
+	require.NoError(t, err)
+	assert.NotNil(t, resolved)
+	assert.Equal(t, "dev", resolved.EnvName)
+}
+
+func TestResolveBootstrapConfig_WithConfigFlag_MissingFails(t *testing.T) {
+	origDir, _ := os.Getwd()
+	require.NoError(t, os.Chdir(t.TempDir())) // cwd has no .skret.yaml
+	defer os.Chdir(origDir)
+
+	_, err := resolveBootstrapConfig(&GlobalOpts{Config: "missing.skret.yaml"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "missing.skret.yaml")
+}
+
+func TestLoadSyncConfig_WithConfigFlag_MissingFails(t *testing.T) {
+	origDir, _ := os.Getwd()
+	require.NoError(t, os.Chdir(t.TempDir())) // cwd has no .skret.yaml
+	defer os.Chdir(origDir)
+
+	_, err := loadSyncConfig(&GlobalOpts{Config: "missing.skret.yaml"})
+	require.Error(t, err)
+	// Must NOT return nil, nil (the "never silent fallback" invariant)
+	assert.Contains(t, err.Error(), "missing.skret.yaml")
+}
