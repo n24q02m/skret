@@ -95,6 +95,8 @@ func loadFile(path string, maxBytes int64) ([]byte, error) {
 	return io.ReadAll(f)
 }
 
+var newline = []byte{'\n'}
+
 func isBinary(f *os.File) (bool, error) {
 	head := make([]byte, binarySniff)
 	n, _ := f.Read(head)
@@ -115,7 +117,7 @@ func scanContent(path string, content []byte, targets []Target) []Finding {
 			continue
 		}
 		// Line number of the first match: 1 + newlines before it.
-		line := 1 + bytes.Count(content[:idx], []byte{'\n'})
+		line := 1 + bytes.Count(content[:idx], newline)
 		out = append(out, Finding{Key: t.Key, File: path, Line: line})
 	}
 	return out

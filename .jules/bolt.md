@@ -60,3 +60,7 @@
 ## 2025-05-15 - Move slice early returns before slice/map initializations
 **Learning:** Initializing maps or arrays in a function before checking early return conditions (e.g., `if len(input) == 0`) leads to unnecessary memory allocation and iteration overhead, especially if the function is frequently called with empty inputs or used in recursive paths.
 **Action:** Always place early return checks at the very top of the function to avoid redundant memory allocations and logic executions.
+
+## 2026-07-10 - Avoid Byte Slice Allocation in Hot Loop
+**Learning:** `bytes.Count` requires a `[]byte` slice argument. Initializing a literal like `[]byte{'\n'}` in a loop allocates a new slice on every single iteration, which puts unnecessary pressure on the garbage collector.
+**Action:** Hoist these invariant byte slices out to a package-level variable to eliminate dynamic allocation and improve execution speed inside hot loops.
