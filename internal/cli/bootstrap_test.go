@@ -340,6 +340,23 @@ func TestBootstrapCmd_MalformedConfig_FallsBackToFlags(t *testing.T) {
 	assert.Equal(t, bsKeyID, cred.Metadata["access_key_id"])
 }
 
+// TestBootstrapCmd_ExplicitConfigMissing_HardError covers bootstrap.go:77-79:
+// with --path/--region/--profile all unset (forcing config resolution) and
+// an explicit --config pointing at a file that does not exist,
+// resolveBootstrapConfig's error must be surfaced as a hard ExitConfigError
+// rather than the soft fallback that applies when --config was not set.
+func TestBootstrapCmd_ExplicitConfigMissing_HardError(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "missing.yaml")
+
+	cmd := NewRootCmd()
+	cmd.SetArgs([]string{"bootstrap", "--yes", "--config", missing})
+	err := cmd.Execute()
+	require.Error(t, err)
+
+	assert.Equal(t, skret.ExitConfigError, skret.ExitCode(err))
+	assert.Contains(t, err.Error(), "bootstrap: load config failed")
+}
+
 func TestSanitizeProject(t *testing.T) {
 	assert.Equal(t, "prod", sanitizeProject("/myapp/prod"))
 	assert.Equal(t, "prod", sanitizeProject("/myapp/prod/"))

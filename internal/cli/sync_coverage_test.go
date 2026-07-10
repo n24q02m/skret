@@ -919,6 +919,39 @@ func TestSyncOptions_Run_NoOverwrite_RestoreAfterDeleteBypassesSkipUnchanged(t *
 	assert.NotContains(t, out, "unchanged", "skip-unchanged filtering must not apply to a no-overwrite target")
 }
 
+// TestSyncOptions_Run_DryRun_EmptyWriteSet covers sync.go:140-142 (the
+// "would write 0 secret(s)" branch): a no-overwrite dry-run where every
+// secret already exists at the target, so FilterAbsent empties the write
+// set before dry-run's names slice is even built.
+func TestSyncOptions_Run_DryRun_EmptyWriteSet(t *testing.T) {
+	home := t.TempDir()
+	if runtime.GOOS == "windows" {
+		t.Setenv("USERPROFILE", home)
+	} else {
+		t.Setenv("HOME", home)
+	}
+
+	var writes int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/actions/secrets") {
+			_, _ = w.Write([]byte(`{"total_count":2,"secrets":[{"name":"ALPHA"},{"name":"BETA"}]}`))
+			return
+		}
+		writes++
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+
+	dir := setupSyncRepoWithSecrets(t, map[string]string{"ALPHA": "1", "BETA": "2"})
+	withGithubTarget(t, dir, "o/r", srv.URL, true /* no_overwrite: both keys already exist */)
+	t.Setenv("GITHUB_TOKEN", "tok")
+
+	out := runSyncCmd(t, dir, []string{"--dry-run"})
+	assert.Contains(t, out, "[dry-run] github: would write 0 secret(s)")
+	assert.Equal(t, 0, writes, "dry-run must not issue any write request")
+	assertNoSyncStateFiles(t)
+}
+
 func TestSyncOptions_Run_DryRun_DotenvWritesNoFile(t *testing.T) {
 	dir := setupSyncRepoWithSecrets(t, map[string]string{"ALPHA": "1"})
 	withDotenvTarget(t, dir, "out.env", false)

@@ -107,3 +107,93 @@ func TestFilterAbsent_ListErrorAborts(t *testing.T) {
 	_, _, err := FilterAbsent(context.Background(), g, secretsFromKeys("/ns/prod/A"))
 	require.Error(t, err)
 }
+
+// --- ExistingKeys error branches (codecov/patch: not exercised by the happy-path tests above) ---
+
+func TestCloudflareExistingKeys_ParseBaseURLError(t *testing.T) {
+	c := NewCloudflare("acc", "wkr", "", "tok", "://bad")
+	l, ok := c.(ExistingLister)
+	require.True(t, ok)
+	_, err := l.ExistingKeys(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cloudflare: parse base url")
+}
+
+func TestCloudflareExistingKeys_DoError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	srv.Close() // closed before use: httpClient.Do must fail (connection refused)
+
+	c := NewCloudflare("acc", "wkr", "", "tok", srv.URL)
+	l, ok := c.(ExistingLister)
+	require.True(t, ok)
+	_, err := l.ExistingKeys(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cloudflare: list worker secrets")
+}
+
+func TestCloudflareExistingKeys_NonOKStatus(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	c := NewCloudflare("acc", "wkr", "", "tok", srv.URL)
+	l, ok := c.(ExistingLister)
+	require.True(t, ok)
+	_, err := l.ExistingKeys(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cloudflare: list worker secrets: status 500")
+}
+
+func TestCloudflareExistingKeys_DecodeError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("not-json"))
+	}))
+	defer srv.Close()
+
+	c := NewCloudflare("acc", "wkr", "", "tok", srv.URL)
+	l, ok := c.(ExistingLister)
+	require.True(t, ok)
+	_, err := l.ExistingKeys(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cloudflare: decode worker secrets")
+}
+
+func TestGitHubExistingKeys_ParseBaseURLError(t *testing.T) {
+	g := NewGitHub("o", "r", "tok", "://bad")
+	l, ok := g.(ExistingLister)
+	require.True(t, ok)
+	_, err := l.ExistingKeys(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "github: parse base url")
+}
+
+func TestGitHubExistingKeys_DoError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	srv.Close() // closed before use: httpClient.Do must fail (connection refused)
+
+	g := NewGitHub("o", "r", "tok", srv.URL)
+	l, ok := g.(ExistingLister)
+	require.True(t, ok)
+	_, err := l.ExistingKeys(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "github: list secrets")
+}
+
+func TestGitHubExistingKeys_DecodeError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("not-json"))
+	}))
+	defer srv.Close()
+
+	g := NewGitHub("o", "r", "tok", srv.URL)
+	l, ok := g.(ExistingLister)
+	require.True(t, ok)
+	_, err := l.ExistingKeys(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "github: decode secrets list")
+}
