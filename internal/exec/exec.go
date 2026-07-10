@@ -14,7 +14,8 @@ import (
 // bcrypt hashes ($2a$14$...) or URLs with '$' in the password survive verbatim.
 // Cross-secret references are served by the explicit `skret template` command.
 func BuildEnv(secrets []*provider.Secret, existing []string, pathPrefix string, exclude []string) []string {
-	// ⚡ Bolt: Early return for empty secrets avoids expensive cache initializations
+	// With nothing to merge, hand the caller's environment back untouched rather
+	// than rebuilding the lookup map and the env slice.
 	if len(secrets) == 0 {
 		return existing
 	}
@@ -55,7 +56,8 @@ func BuildEnv(secrets []*provider.Secret, existing []string, pathPrefix string, 
 		//    and potential injection in tools that parse 'env' output line-by-line.
 		val := s.Value
 		if strings.ContainsAny(val, "\x00\n\r") {
-			// ⚡ Bolt: Use a single-pass builder to avoid multiple intermediate string allocations
+			// One pass over the value, so the three substitutions below cost a
+			// single allocation rather than one per chained strings.ReplaceAll.
 			var b strings.Builder
 			b.Grow(len(val))
 			for i := 0; i < len(val); i++ {
