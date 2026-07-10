@@ -36,6 +36,22 @@ exclude:                   # Optional. Secrets to exclude from injection.
 
 skret walks from the current directory upward to find `.skret.yaml`, stopping at the git root (`.git` directory) or filesystem root.
 
+## `--config`: bypass discovery
+
+Every command accepts a global `--config <path>` flag that loads the given
+`.skret.yaml` directly instead of discovering one from the current directory
+upward:
+
+```bash
+skret sync --config deploy/sync/knowledgeprism.skret.yaml
+skret env --config /etc/skret/app.skret.yaml -e prod
+```
+
+If the file does not exist the command fails with a config error -- it never
+silently falls back to discovery. This is what lets one process (for example
+the sync container) serve several namespaces, each declared in its own config
+file.
+
 ## Precedence
 
 Configuration values are resolved in this order (highest wins):

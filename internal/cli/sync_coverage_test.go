@@ -379,7 +379,7 @@ func TestLoadSyncConfig_NoConfigFile(t *testing.T) {
 	require.NoError(t, os.Chdir(dir))
 	defer os.Chdir(origDir)
 
-	sc, err := loadSyncConfig()
+	sc, err := loadSyncConfig(&GlobalOpts{})
 	require.NoError(t, err)
 	assert.Nil(t, sc)
 }
@@ -404,7 +404,7 @@ sync:
 	require.NoError(t, os.Chdir(dir))
 	defer os.Chdir(origDir)
 
-	sc, err := loadSyncConfig()
+	sc, err := loadSyncConfig(&GlobalOpts{})
 	require.NoError(t, err)
 	require.NotNil(t, sc)
 	require.Len(t, sc.Targets, 1)
@@ -579,7 +579,7 @@ func TestLoadSyncConfig_LoadError(t *testing.T) {
 	require.NoError(t, os.Chdir(dir))
 	defer os.Chdir(origDir)
 
-	sc, err := loadSyncConfig()
+	sc, err := loadSyncConfig(&GlobalOpts{})
 	require.Error(t, err)
 	assert.Nil(t, sc)
 }

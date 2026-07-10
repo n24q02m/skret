@@ -68,7 +68,7 @@ func (o *syncOptions) run(cmd *cobra.Command) error {
 		cmd.PrintErrln("No secrets found to sync. Use 'skret set' to add a secret.")
 	}
 
-	sc, err := loadSyncConfig()
+	sc, err := loadSyncConfig(o.global)
 	if err != nil {
 		return skret.NewError(skret.ExitConfigError, "sync: load config failed", err)
 	}
@@ -139,14 +139,10 @@ func filterExcluded(secrets []*provider.Secret, pathPrefix string, exclude []str
 	return out
 }
 
-// loadSyncConfig returns the .skret.yaml sync block, or nil when there is no
-// config file (flags-only mode) — never errors on a missing config.
-func loadSyncConfig() (*config.SyncConfig, error) {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return nil, err
-	}
-	cfgPath, derr := config.Discover(cwd)
+// loadSyncConfig returns the .skret.yaml sync block, honoring --config, or
+// nil when there is no config file (flags-only mode).
+func loadSyncConfig(opts *GlobalOpts) (*config.SyncConfig, error) {
+	cfgPath, derr := resolveConfigFile(opts)
 	if errors.Is(derr, config.ErrConfigNotFound) {
 		return nil, nil // no config -> declared targets absent; flags-only
 	}
