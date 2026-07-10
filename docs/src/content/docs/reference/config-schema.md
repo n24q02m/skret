@@ -91,6 +91,8 @@ sync:                       # Optional. Declared targets for `skret sync` / `skr
 | `pages` | string | One of `worker`/`pages` | `cloudflare` | Cloudflare Pages project name. Secrets pushed as production environment variables via a partial-merge PATCH — only the synced keys are sent; existing variables outside that set are untouched. |
 | `account` | string | Yes | `cloudflare` | Cloudflare account ID. Supports `${VAR}` expansion (e.g. `${CLOUDFLARE_ACCOUNT_ID}`) so the ID need not be committed literally. Auth via `CLOUDFLARE_API_TOKEN`. |
 | `file` | string | No | `dotenv` | Output file path. Defaults to `.env`. |
+| `no_overwrite` | bool | No | All | Only write keys absent at this target; existing keys are never overwritten. Rotation = delete the key at the target, the next sync repopulates it from the provider. |
+| `base_url` | string | No | `github` | Override the target API endpoint (GitHub Enterprise). Optional. |
 
 Exactly one of `worker`/`pages` must be set per `cloudflare` target — setting both, or neither, fails validation. `GITHUB_TOKEN` and `CLOUDFLARE_API_TOKEN` are read from the environment at sync time and are never stored in `.skret.yaml`.
 

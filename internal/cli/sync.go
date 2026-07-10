@@ -218,13 +218,14 @@ func (o *syncOptions) resolveTargets(sc *config.SyncConfig) ([]syncer.TargetConf
 // expanding ${VAR} references in account (e.g. cloudflare's account id).
 func targetFromConfig(t config.SyncTarget) syncer.TargetConfig {
 	fields := map[string]string{
-		"repo":    t.Repo,
-		"worker":  t.Worker,
-		"pages":   t.Pages,
-		"account": os.ExpandEnv(t.Account),
-		"file":    t.File,
+		"repo":     t.Repo,
+		"worker":   t.Worker,
+		"pages":    t.Pages,
+		"account":  os.ExpandEnv(t.Account),
+		"file":     t.File,
+		"base_url": t.BaseURL,
 	}
-	return syncer.TargetConfig{Type: t.Type, Fields: fields, Token: tokenForType(t.Type)}
+	return syncer.TargetConfig{Type: t.Type, Fields: fields, Token: tokenForType(t.Type), NoOverwrite: t.NoOverwrite}
 }
 
 // targetFromFlags builds TargetConfigs for a --to type that has no

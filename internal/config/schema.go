@@ -37,6 +37,15 @@ type SyncTarget struct {
 	Pages   string `yaml:"pages,omitempty"`   // cloudflare pages project
 	Account string `yaml:"account,omitempty"` // cloudflare account id
 	File    string `yaml:"file,omitempty"`    // dotenv
+	// NoOverwrite makes sync only write keys absent at this target; existing
+	// keys are never overwritten (rotation = delete at target, next sync
+	// repopulates from the provider). The --no-overwrite CLI flag forces this
+	// for every target of a run.
+	NoOverwrite bool `yaml:"no_overwrite,omitempty"`
+	// BaseURL overrides the target's API endpoint (GitHub Enterprise, tests).
+	// The github factory already consumes Fields["base_url"] (github.go:231);
+	// this exposes it from yaml.
+	BaseURL string `yaml:"base_url,omitempty"`
 }
 
 // HubConfig points at the vault dashboard manifest endpoint.

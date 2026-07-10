@@ -4,9 +4,10 @@ import "fmt"
 
 // TargetConfig is a resolved sync destination (from .skret.yaml or flags).
 type TargetConfig struct {
-	Type   string            // "github" | "cloudflare" | "dotenv"
-	Fields map[string]string // repo / worker / pages / account / file
-	Token  string            // resolved from env; never logged
+	Type        string            // "github" | "cloudflare" | "dotenv"
+	Fields      map[string]string // repo / worker / pages / account / file
+	Token       string            // resolved from env; never logged
+	NoOverwrite bool              // only write keys absent at the target
 }
 
 // Factory builds a Syncer from a resolved TargetConfig.

@@ -345,6 +345,13 @@ func TestTargetFromConfig_CloudflareExpandsAccountEnv(t *testing.T) {
 	assert.Equal(t, "cf-tok", tc.Token)
 }
 
+func TestTargetFromConfig_CarriesNoOverwrite(t *testing.T) {
+	tc := targetFromConfig(config.SyncTarget{Type: "github", Repo: "o/r", NoOverwrite: true})
+	assert.True(t, tc.NoOverwrite)
+	tc = targetFromConfig(config.SyncTarget{Type: "github", Repo: "o/r"})
+	assert.False(t, tc.NoOverwrite)
+}
+
 func TestTokenForType(t *testing.T) {
 	t.Setenv("GITHUB_TOKEN", "ghp_x")
 	t.Setenv("CLOUDFLARE_API_TOKEN", "cf_x")
