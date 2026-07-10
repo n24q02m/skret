@@ -20,6 +20,7 @@ type syncOptions struct {
 	file          string
 	githubRepo    string
 	skipUnchanged bool
+	noOverwrite   bool
 }
 
 func newSyncCmd(opts *GlobalOpts) *cobra.Command {
@@ -33,10 +34,14 @@ func newSyncCmd(opts *GlobalOpts) *cobra.Command {
 Targets are declared in .skret.yaml under sync.targets (github, cloudflare
 worker/pages, dotenv); running 'skret sync' with no --to pushes to all of them.
 --to accepts a comma-list to pick specific target types. Tokens come from
-GITHUB_TOKEN / CLOUDFLARE_API_TOKEN. Use --skip-unchanged for hash-based drift.`,
+GITHUB_TOKEN / CLOUDFLARE_API_TOKEN. Use --skip-unchanged for hash-based drift.
+--no-overwrite (or no_overwrite: true per target) only writes keys absent at
+the target, so existing values are never overwritten; rotate by deleting the
+key at the target and re-running sync.`,
 		Example: `  skret sync
   skret sync --to=github,cloudflare
-  skret sync --to=github --github-repo=owner/repo --skip-unchanged`,
+  skret sync --to=github --github-repo=owner/repo --skip-unchanged
+  skret sync --no-overwrite`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return o.run(cmd)
 		},
@@ -46,6 +51,7 @@ GITHUB_TOKEN / CLOUDFLARE_API_TOKEN. Use --skip-unchanged for hash-based drift.`
 	cmd.Flags().StringVar(&o.file, "file", "", "output file path (for dotenv)")
 	cmd.Flags().StringVar(&o.githubRepo, "github-repo", "", "GitHub repository (owner/repo, comma separated)")
 	cmd.Flags().BoolVar(&o.skipUnchanged, "skip-unchanged", false, "skip secrets whose value is unchanged since the previous successful sync (drift detection)")
+	cmd.Flags().BoolVar(&o.noOverwrite, "no-overwrite", false, "only write secrets absent at the target; never overwrite an existing one (forces no_overwrite for every target)")
 
 	return cmd
 }
@@ -95,6 +101,17 @@ func (o *syncOptions) run(cmd *cobra.Command) error {
 			toSync = state.FilterUnchanged(secrets)
 			if skipped := len(secrets) - len(toSync); skipped > 0 {
 				cmd.PrintErrf("Skipped %d unchanged secret(s) for %s\n", skipped, s.Name())
+			}
+		}
+
+		if tc.NoOverwrite || o.noOverwrite {
+			kept, skippedExisting, ferr := syncer.FilterAbsent(ctx, s, toSync)
+			if ferr != nil {
+				return skret.NewError(skret.ExitConfigError, fmt.Sprintf("sync: %s", s.Name()), ferr)
+			}
+			toSync = kept
+			if skippedExisting > 0 {
+				cmd.PrintErrf("Skipped %d existing secret(s) for %s (no-overwrite)\n", skippedExisting, s.Name())
 			}
 		}
 

@@ -2,10 +2,19 @@ package cli
 
 import (
 	"bytes"
+	"crypto/rand"
+	"encoding/base64"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
+	"strings"
 	"testing"
+
+	"golang.org/x/crypto/nacl/box"
 
 	"github.com/n24q02m/skret/internal/config"
 	"github.com/n24q02m/skret/internal/provider"
@@ -589,4 +598,187 @@ func TestLoadSyncConfig_LoadError(t *testing.T) {
 	sc, err := loadSyncConfig(&GlobalOpts{})
 	require.Error(t, err)
 	assert.Nil(t, sc)
+}
+
+// --- Task 4: --no-overwrite flag + per-target no_overwrite wiring ---
+
+// setupSyncRepoWithSecrets creates a temp local-provider repo (.git marker +
+// .skret.yaml + secrets.yaml seeded with the given key/value pairs) and
+// returns its path. It does not chdir; callers reach it via runSyncCmd(Err).
+func setupSyncRepoWithSecrets(t *testing.T, secrets map[string]string) string {
+	t.Helper()
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".git"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".skret.yaml"), []byte(`version: "1"
+default_env: dev
+environments:
+  dev:
+    provider: local
+    file: secrets.yaml
+`), 0o644))
+
+	keys := make([]string, 0, len(secrets))
+	for k := range secrets {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	var sb strings.Builder
+	sb.WriteString("version: \"1\"\nsecrets:\n")
+	for _, k := range keys {
+		fmt.Fprintf(&sb, "  %s: %q\n", k, secrets[k])
+	}
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "secrets.yaml"), []byte(sb.String()), 0o600))
+
+	return dir
+}
+
+// appendSyncTarget appends a `sync:` block to dir/.skret.yaml. Each helper
+// (withGithubTarget, withDotenvTarget) that calls this writes its own
+// top-level `sync:` key, so callers must only declare one target per repo.
+func appendSyncTarget(t *testing.T, dir, block string) {
+	t.Helper()
+	f, err := os.OpenFile(filepath.Join(dir, ".skret.yaml"), os.O_APPEND|os.O_WRONLY, 0o644)
+	require.NoError(t, err)
+	defer f.Close()
+	_, err = f.WriteString(block)
+	require.NoError(t, err)
+}
+
+// withGithubTarget declares a github sync.targets entry pointed at baseURL
+// (an httptest server, via the base_url passthrough added in Task 2/3), so
+// the test never needs a real GitHub API or an env-var seam.
+func withGithubTarget(t *testing.T, dir, repo, baseURL string, noOverwrite bool) {
+	t.Helper()
+	appendSyncTarget(t, dir, fmt.Sprintf(`sync:
+  targets:
+    - type: github
+      repo: %s
+      base_url: %s
+      no_overwrite: %v
+`, repo, baseURL, noOverwrite))
+}
+
+// withDotenvTarget declares a dotenv sync.targets entry writing to file
+// (relative to dir).
+func withDotenvTarget(t *testing.T, dir, file string, noOverwrite bool) {
+	t.Helper()
+	appendSyncTarget(t, dir, fmt.Sprintf(`sync:
+  targets:
+    - type: dotenv
+      file: %s
+      no_overwrite: %v
+`, file, noOverwrite))
+}
+
+// runSyncCmdCapture chdirs into dir (restored on return), runs a real
+// `newSyncCmd` through cobra flag parsing with args, and returns the
+// combined stdout+stderr output plus any error.
+func runSyncCmdCapture(t *testing.T, dir string, args []string) (string, error) {
+	t.Helper()
+	origDir, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(dir))
+	defer os.Chdir(origDir)
+
+	cmd := newSyncCmd(&GlobalOpts{})
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
+	cmd.SetArgs(args)
+	runErr := cmd.Execute()
+	return buf.String(), runErr
+}
+
+// runSyncCmd runs `skret sync` against dir and fails the test on error,
+// returning the captured output.
+func runSyncCmd(t *testing.T, dir string, args []string) string {
+	t.Helper()
+	out, err := runSyncCmdCapture(t, dir, args)
+	require.NoError(t, err)
+	return out
+}
+
+// runSyncCmdErr runs `skret sync` against dir and returns the error (nil on
+// success) without failing the test, for tests asserting on failure.
+func runSyncCmdErr(t *testing.T, dir string, args []string) error {
+	t.Helper()
+	_, err := runSyncCmdCapture(t, dir, args)
+	return err
+}
+
+// testPublicKeyB64 generates a real NaCl box keypair and returns the public
+// half base64-encoded, matching what the GitHub Actions secrets API returns
+// (the github syncer requires a valid 32-byte curve25519 key to seal against).
+func testPublicKeyB64(t *testing.T) string {
+	t.Helper()
+	pub, _, err := box.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	return base64.StdEncoding.EncodeToString(pub[:])
+}
+
+func TestSyncOptions_Run_NoOverwrite_GithubFiltersExisting(t *testing.T) {
+	var putCount int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/actions/secrets/public-key"):
+			_, _ = w.Write([]byte(`{"key_id":"1","key":"` + testPublicKeyB64(t) + `"}`))
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/actions/secrets"):
+			_, _ = w.Write([]byte(`{"total_count":1,"secrets":[{"name":"ALPHA"}]}`))
+		case r.Method == http.MethodPut:
+			putCount++
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	dir := setupSyncRepoWithSecrets(t, map[string]string{"ALPHA": "1", "BETA": "2"})
+	withGithubTarget(t, dir, "o/r", srv.URL, true /* no_overwrite */)
+	t.Setenv("GITHUB_TOKEN", "tok")
+
+	out := runSyncCmd(t, dir, nil)
+	assert.Contains(t, out, "Skipped 1 existing secret(s) for github (no-overwrite)")
+	assert.Equal(t, 1, putCount) // only BETA gets written
+}
+
+func TestSyncOptions_Run_NoOverwriteFlag_ForcesAllTargets(t *testing.T) {
+	// Target github does NOT declare no_overwrite in config (false/absent);
+	// the CLI flag must force it anyway. Same harness/expectations as
+	// TestSyncOptions_Run_NoOverwrite_GithubFiltersExisting.
+	var putCount int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/actions/secrets/public-key"):
+			_, _ = w.Write([]byte(`{"key_id":"1","key":"` + testPublicKeyB64(t) + `"}`))
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/actions/secrets"):
+			_, _ = w.Write([]byte(`{"total_count":1,"secrets":[{"name":"ALPHA"}]}`))
+		case r.Method == http.MethodPut:
+			putCount++
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	dir := setupSyncRepoWithSecrets(t, map[string]string{"ALPHA": "1", "BETA": "2"})
+	withGithubTarget(t, dir, "o/r", srv.URL, false /* no_overwrite absent in config */)
+	t.Setenv("GITHUB_TOKEN", "tok")
+
+	out := runSyncCmd(t, dir, []string{"--no-overwrite"})
+	assert.Contains(t, out, "Skipped 1 existing secret(s) for github (no-overwrite)")
+	assert.Equal(t, 1, putCount) // only BETA gets written
+}
+
+func TestSyncOptions_Run_NoOverwrite_DotenvErrorsNoWrite(t *testing.T) {
+	dir := setupSyncRepoWithSecrets(t, map[string]string{"ALPHA": "1"})
+	withDotenvTarget(t, dir, "out.env", true /* no_overwrite */)
+
+	err := runSyncCmdErr(t, dir, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "dotenv")
+	_, statErr := os.Stat(filepath.Join(dir, "out.env"))
+	assert.True(t, os.IsNotExist(statErr), "no file may be written on no-overwrite error")
 }
