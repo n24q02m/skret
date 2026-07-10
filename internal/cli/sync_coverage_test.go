@@ -782,3 +782,80 @@ func TestSyncOptions_Run_NoOverwrite_DotenvErrorsNoWrite(t *testing.T) {
 	_, statErr := os.Stat(filepath.Join(dir, "out.env"))
 	assert.True(t, os.IsNotExist(statErr), "no file may be written on no-overwrite error")
 }
+
+// --- Task 5: sync --dry-run ---
+
+// assertNoSyncStateFiles asserts that no sync-state file exists under the
+// current os.UserHomeDir() (~/.skret/sync-state), the directory
+// syncer.StatePathFor derives state paths from (internal/syncer/state.go:29).
+// Callers must t.Setenv the HOME (or, on Windows, USERPROFILE) variable
+// os.UserHomeDir reads to a fresh t.TempDir() before running sync, so this
+// only ever inspects an isolated, test-owned directory.
+func assertNoSyncStateFiles(t *testing.T) {
+	t.Helper()
+	home, err := os.UserHomeDir()
+	require.NoError(t, err)
+	stateDir := filepath.Join(home, ".skret", "sync-state")
+	entries, err := os.ReadDir(stateDir)
+	if os.IsNotExist(err) {
+		return
+	}
+	require.NoError(t, err)
+	assert.Empty(t, entries, "dry-run must not write any sync-state file")
+}
+
+func TestSyncOptions_Run_DryRun_NoWritesNoState(t *testing.T) {
+	home := t.TempDir()
+	if runtime.GOOS == "windows" {
+		t.Setenv("USERPROFILE", home)
+	} else {
+		t.Setenv("HOME", home)
+	}
+
+	var gets, writes int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			gets++
+			if strings.HasSuffix(r.URL.Path, "/actions/secrets") {
+				_, _ = w.Write([]byte(`{"total_count":1,"secrets":[{"name":"ALPHA"}]}`))
+				return
+			}
+		}
+		writes++
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+
+	dir := setupSyncRepoWithSecrets(t, map[string]string{"ALPHA": "1", "BETA": "2"})
+	withGithubTarget(t, dir, "o/r", srv.URL, true)
+	t.Setenv("GITHUB_TOKEN", "tok")
+
+	out := runSyncCmd(t, dir, []string{"--dry-run"})
+	assert.Contains(t, out, "[dry-run] github: would write 1 secret(s): BETA")
+	assert.Equal(t, 0, writes, "dry-run must not issue any write request")
+	assert.GreaterOrEqual(t, gets, 1, "no-overwrite needs the read-only listing")
+	assertNoSyncStateFiles(t)
+}
+
+func TestSyncOptions_Run_DryRun_WithoutNoOverwrite_ZeroHTTP(t *testing.T) {
+	var hits int
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) { hits++ }))
+	defer srv.Close()
+
+	dir := setupSyncRepoWithSecrets(t, map[string]string{"ALPHA": "1"})
+	withGithubTarget(t, dir, "o/r", srv.URL, false)
+	t.Setenv("GITHUB_TOKEN", "tok")
+
+	out := runSyncCmd(t, dir, []string{"--dry-run"})
+	assert.Contains(t, out, "would write 1 secret(s): ALPHA")
+	assert.Equal(t, 0, hits, "plain dry-run must not touch the network at all")
+}
+
+func TestSyncOptions_Run_DryRun_DotenvWritesNoFile(t *testing.T) {
+	dir := setupSyncRepoWithSecrets(t, map[string]string{"ALPHA": "1"})
+	withDotenvTarget(t, dir, "out.env", false)
+	out := runSyncCmd(t, dir, []string{"--dry-run"})
+	assert.Contains(t, out, "[dry-run] dotenv: would write 1 secret(s)")
+	_, err := os.Stat(filepath.Join(dir, "out.env"))
+	assert.True(t, os.IsNotExist(err))
+}

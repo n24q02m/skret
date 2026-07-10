@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/n24q02m/skret/internal/config"
@@ -21,6 +22,7 @@ type syncOptions struct {
 	githubRepo    string
 	skipUnchanged bool
 	noOverwrite   bool
+	dryRun        bool
 }
 
 func newSyncCmd(opts *GlobalOpts) *cobra.Command {
@@ -41,7 +43,8 @@ key at the target and re-running sync.`,
 		Example: `  skret sync
   skret sync --to=github,cloudflare
   skret sync --to=github --github-repo=owner/repo --skip-unchanged
-  skret sync --no-overwrite`,
+  skret sync --no-overwrite
+  skret sync --config deploy/sync/knowledgeprism.skret.yaml --dry-run`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return o.run(cmd)
 		},
@@ -52,6 +55,7 @@ key at the target and re-running sync.`,
 	cmd.Flags().StringVar(&o.githubRepo, "github-repo", "", "GitHub repository (owner/repo, comma separated)")
 	cmd.Flags().BoolVar(&o.skipUnchanged, "skip-unchanged", false, "skip secrets whose value is unchanged since the previous successful sync (drift detection)")
 	cmd.Flags().BoolVar(&o.noOverwrite, "no-overwrite", false, "only write secrets absent at the target; never overwrite an existing one (forces no_overwrite for every target)")
+	cmd.Flags().BoolVar(&o.dryRun, "dry-run", false, "print what each target would write and exit; issues no write request and saves no state")
 
 	return cmd
 }
@@ -113,6 +117,20 @@ func (o *syncOptions) run(cmd *cobra.Command) error {
 			if skippedExisting > 0 {
 				cmd.PrintErrf("Skipped %d existing secret(s) for %s (no-overwrite)\n", skippedExisting, s.Name())
 			}
+		}
+
+		if o.dryRun {
+			names := make([]string, 0, len(toSync))
+			for _, sec := range toSync {
+				names = append(names, syncer.SecretName(sec.Key))
+			}
+			sort.Strings(names)
+			if len(names) == 0 {
+				cmd.PrintErrf("[dry-run] %s: would write 0 secret(s)\n", s.Name())
+			} else {
+				cmd.PrintErrf("[dry-run] %s: would write %d secret(s): %s\n", s.Name(), len(names), strings.Join(names, ", "))
+			}
+			continue
 		}
 
 		if err := s.Sync(ctx, toSync); err != nil {

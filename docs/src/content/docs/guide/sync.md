@@ -102,6 +102,34 @@ skret sync --to=github --github-repo=myorg/myapp --skip-unchanged
 
 `--skip-unchanged` compares each secret's SHA256 hash against a local cache (`~/.skret/sync-state/`, one file per target) from the last successful sync and only pushes values that changed. This avoids unnecessary API calls on scheduled sync jobs where most secrets are unchanged run to run. The cache updates only after a fully successful sync to that target.
 
+## Safety flags
+
+### `--dry-run`
+
+Prints, per target, the exact secret names a sync would write, then exits
+without writing anything: no write request is issued, no sync state is saved,
+no dotenv file is touched. Combined with no-overwrite it first performs the
+read-only listing of the target so the printed set is accurate.
+
+### no-overwrite
+
+Two layers, same semantics -- only keys absent at the target are written,
+existing values are never overwritten:
+
+- Per target in `.skret.yaml`: `no_overwrite: true` on a `sync.targets`
+  entry. Use this for targets that must behave as a cache of the provider.
+- For a whole run: `skret sync --no-overwrite` forces it on every target.
+
+Rotation under no-overwrite is deliberate: delete the key at the target
+(`gh secret delete <KEY> -R owner/repo`), and the next sync repopulates it
+from the provider. Deleting is recoverable (the provider still holds the
+value); overwriting is not (GitHub and Cloudflare secrets are write-only).
+
+Supported targets: `github` (repository Actions secrets) and `cloudflare`
+worker scripts. A `dotenv` target rejects no-overwrite: it rewrites the whole
+file atomically, so "only new keys" would drop every existing line. A
+`cloudflare` pages target rejects it too.
+
 ## Security
 
 - Secret **values** are sent only to the target's own API — never printed to stdout/stderr.
