@@ -61,6 +61,11 @@ func TestRenderTable_NoDrift(t *testing.T) {
 	assert.Contains(t, out, "3 same")
 }
 
+func TestRenderTable_EmptyState(t *testing.T) {
+	out := RenderTable(Result{A: "env:dev", B: "env:prod"}, TableOpts{})
+	assert.Contains(t, out, "No secrets found to compare on either side.")
+}
+
 // Security invariant: no plaintext value ever reaches any render path.
 func TestRender_NeverLeaksValues(t *testing.T) {
 	const sentinel = "S3CRET_VALUE_SENTINEL"

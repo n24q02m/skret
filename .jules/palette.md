@@ -26,3 +26,7 @@
 ## 2026-06-30 - [Contextual Keybind Hiding in Empty States]
 **Learning:** When a list filter returns zero results, displaying contextual keybinds (e.g., "enter reveal") that depend on a selected item is confusing and sets false expectations, as pressing the key does nothing.
 **Action:** Always conditionally render contextual keybind hints so they only appear when an item is actually selected, leaving only global actions (like navigation or quitting) visible during empty states.
+
+## 2026-07-08 - [Empty States for CLI Commands Comparing Contexts]
+**Learning:** When a CLI command (like `diff`) compares two empty contexts, outputting "no drift" and "0 same" technically works but is confusing since there's no data. Printing a clear empty state message (e.g. "No secrets found to compare on either side.") explicitly surfaces the lack of data and sets correct user expectations.
+**Action:** Always intercept zero-data comparisons in comparison or diff commands to output a clear empty state message before rendering standard diff output elements like matching counts.

@@ -16,6 +16,11 @@ func RenderTable(r Result, opts TableOpts) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "diff %s vs %s\n\n", r.A, r.B)
 
+	if !r.HasDrift() && len(r.Unknown) == 0 && r.SameCount == 0 {
+		fmt.Fprintln(&b, "No secrets found to compare on either side.")
+		return b.String()
+	}
+
 	if len(r.OnlyA) > 0 {
 		fmt.Fprintf(&b, "+ only in %s\n", r.A)
 		for _, k := range r.OnlyA {
