@@ -1,10 +1,13 @@
 #!/bin/sh
 set -eu
-# One-shot sync: SSM -> declared targets, then refresh the vault dashboard.
-# The provider/target creds and SKRET_HUB_URL / SKRET_HUB_TOKEN are injected as
-# env vars by the hub Worker's scheduled() handler. `skret hub push` reads the
-# hub URL from SKRET_HUB_URL (falling back to sync.hub.url in .skret.yaml), so
-# no flag is needed and an unset var never aborts the run under `set -u`.
-skret sync --skip-unchanged
-skret hub push
+# One-shot sync: for each baked config, push SSM -> its declared targets,
+# then refresh that namespace's card on the vault dashboard. Creds and
+# SKRET_HUB_URL / SKRET_HUB_TOKEN are injected by the hub Worker's
+# scheduled() handler. A failing config aborts the run (set -e) so the
+# container exits non-zero and the failure is visible in observability.
+for f in /app/configs/*.skret.yaml; do
+    echo "sync-run: ${f}"
+    skret sync --config "${f}" --skip-unchanged
+    skret hub push --config "${f}"
+done
 echo "sync-run: complete"

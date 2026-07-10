@@ -1,0 +1,22 @@
+version: "1"
+default_env: prod
+project: knowledgeprism-sync
+environments:
+  prod:
+    provider: aws
+    path: /KnowledgePrism/prod
+    region: ap-southeast-1
+exclude:
+  - JINA_AI_API_KEY
+  - KLPRISM_CF_R2_ACCESS_KEY
+  - KLPRISM_CF_R2_SECRET_KEY
+  - KLPRISM_OPTIMIZER_DB_PASSWORD
+  - KLPRISM_RESEND_API_KEY
+  - VERTEX_LOCATION
+sync:
+  targets:
+    - type: github
+      repo: n24q02m/KnowledgePrism
+      no_overwrite: true
+  hub:
+    url: https://vault.n24q02m.com
