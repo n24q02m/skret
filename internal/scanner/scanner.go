@@ -122,3 +122,5 @@ func scanContent(path string, content []byte, targets []Target) []Finding {
 	}
 	return out
 }
+
+// trigger ci
