@@ -66,7 +66,7 @@ func (c *CloudflareSyncer) syncWorker(ctx context.Context, secrets []*provider.S
 				errCh <- ctx.Err()
 				return
 			}
-			if err := c.putWorkerSecret(ctx, secretName(s.Key), s.Value); err != nil {
+			if err := c.putWorkerSecret(ctx, SecretName(s.Key), s.Value); err != nil {
 				errCh <- err
 			}
 		}(s)
@@ -118,7 +118,7 @@ func (c *CloudflareSyncer) syncPages(ctx context.Context, secrets []*provider.Se
 	// would blank every pre-existing secret. (Verified live 2026-07-02.)
 	env := make(map[string]map[string]string, len(secrets))
 	for _, s := range secrets {
-		env[secretName(s.Key)] = map[string]string{"type": "secret_text", "value": s.Value}
+		env[SecretName(s.Key)] = map[string]string{"type": "secret_text", "value": s.Value}
 	}
 	payload := map[string]any{
 		"deployment_configs": map[string]any{
@@ -153,6 +153,46 @@ func (c *CloudflareSyncer) syncPages(ctx context.Context, secrets []*provider.Se
 		return fmt.Errorf("cloudflare: patch pages: API returned %d: %s", resp.StatusCode, string(b))
 	}
 	return nil
+}
+
+// ExistingKeys returns the names of the secrets already set on the worker
+// script. Pages targets cannot enumerate env vars equivalently, so
+// no-overwrite is rejected for them.
+func (c *CloudflareSyncer) ExistingKeys(ctx context.Context) ([]string, error) {
+	if c.pages != "" {
+		return nil, fmt.Errorf("cloudflare: no-overwrite is not supported for pages targets")
+	}
+	u, err := url.Parse(c.baseURL)
+	if err != nil {
+		return nil, fmt.Errorf("cloudflare: parse base url: %w", err)
+	}
+	u = u.JoinPath("accounts", c.accountID, "workers", "scripts", c.worker, "secrets")
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), http.NoBody)
+	if err != nil {
+		return nil, fmt.Errorf("cloudflare: create request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+c.token)
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("cloudflare: list worker secrets: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("cloudflare: list worker secrets: status %d", resp.StatusCode)
+	}
+	var body struct {
+		Result []struct {
+			Name string `json:"name"`
+		} `json:"result"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		return nil, fmt.Errorf("cloudflare: decode worker secrets: %w", err)
+	}
+	names := make([]string, 0, len(body.Result))
+	for _, s := range body.Result {
+		names = append(names, s.Name)
+	}
+	return names, nil
 }
 
 func init() { Register("cloudflare", newCloudflareFromConfig) }

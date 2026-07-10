@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -96,7 +97,7 @@ func (g *GitHubSyncer) Sync(ctx context.Context, secrets []*provider.Secret) err
 				return
 			}
 
-			name := secretName(s.Key)
+			name := SecretName(s.Key)
 			if err := g.putSecret(ctx, name, s.Value, &recipientKey, keyID); err != nil {
 				errCh <- fmt.Errorf("github: set %q: %w", name, err)
 			}
@@ -191,16 +192,64 @@ func (g *GitHubSyncer) putSecret(ctx context.Context, name, value string, recipi
 	return nil
 }
 
-// secretName extracts the final path segment from a secret key and normalises it
-// to match GitHub Actions' required pattern: uppercase letters, digits, and
-// underscores, not starting with a digit, not prefixed with GITHUB_. SSM stores
-// secrets as `/namespace/env/NAME`; GitHub only accepts `NAME`.
-func secretName(key string) string {
+// SecretName is the name a sync target stores a secret under: the last
+// path segment of the provider key, verbatim. Exported so the CLI can show
+// the exact names a sync would write.
+func SecretName(key string) string {
 	name := key
 	if idx := strings.LastIndex(name, "/"); idx >= 0 {
 		name = name[idx+1:]
 	}
 	return name
+}
+
+// ExistingKeys returns the names of the Actions secrets already present on
+// the repository (names only -- values are write-only), paginated at 100.
+func (g *GitHubSyncer) ExistingKeys(ctx context.Context) ([]string, error) {
+	var names []string
+	for page := 1; ; page++ {
+		u, err := url.Parse(g.baseURL)
+		if err != nil {
+			return nil, fmt.Errorf("github: parse base url: %w", err)
+		}
+		u = u.JoinPath("repos", g.owner, g.repo, "actions", "secrets")
+		q := u.Query()
+		q.Set("per_page", "100")
+		q.Set("page", strconv.Itoa(page))
+		u.RawQuery = q.Encode()
+
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), http.NoBody)
+		if err != nil {
+			return nil, fmt.Errorf("github: create request: %w", err)
+		}
+		req.Header.Set("Authorization", "Bearer "+g.token)
+		req.Header.Set("Accept", "application/vnd.github+json")
+
+		resp, err := g.httpClient.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("github: list secrets: %w", err)
+		}
+		var body struct {
+			TotalCount int `json:"total_count"`
+			Secrets    []struct {
+				Name string `json:"name"`
+			} `json:"secrets"`
+		}
+		decodeErr := json.NewDecoder(resp.Body).Decode(&body)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("github: list secrets: status %d", resp.StatusCode)
+		}
+		if decodeErr != nil {
+			return nil, fmt.Errorf("github: decode secrets list: %w", decodeErr)
+		}
+		for _, s := range body.Secrets {
+			names = append(names, s.Name)
+		}
+		if page*100 >= body.TotalCount {
+			return names, nil
+		}
+	}
 }
 
 // sealSecret encrypts a secret using NaCl sealed box (curve25519 + xsalsa20-poly1305).
