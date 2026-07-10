@@ -194,3 +194,20 @@ func TestGetCmd_Run(t *testing.T) {
 		})
 	}
 }
+
+func TestGetCmd_NotFoundSuggestsSet(t *testing.T) {
+	dir := setupGetTestRepo(t)
+	origDir, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	defer os.Chdir(origDir)
+
+	var buf bytes.Buffer
+	cmd := newGetCmd(&GlobalOpts{})
+	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
+	cmd.SetArgs([]string{"NONEXISTENT"})
+
+	err := cmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "skret set NONEXISTENT")
+}

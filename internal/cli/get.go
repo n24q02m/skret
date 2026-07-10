@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/n24q02m/skret/internal/provider"
@@ -45,6 +46,10 @@ object. To read ALL secrets use 'skret env'; to inject them into a command use
 			}
 			secret, err := p.Get(ctx, key)
 			if err != nil {
+				// Provide actionable feedback for empty states to improve UX
+				if errors.Is(err, provider.ErrNotFound) {
+					return skret.NewError(skret.ExitNotFoundError, fmt.Sprintf("Secret not found. Use 'skret set %s <value>' to create it.", key), err)
+				}
 				return skret.NewError(skret.ExitNotFoundError, fmt.Sprintf("get %q", key), err)
 			}
 
