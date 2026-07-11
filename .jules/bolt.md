@@ -61,6 +61,6 @@
 **Learning:** Initializing maps or arrays in a function before checking early return conditions (e.g., `if len(input) == 0`) leads to unnecessary memory allocation and iteration overhead, especially if the function is frequently called with empty inputs or used in recursive paths.
 **Action:** Always place early return checks at the very top of the function to avoid redundant memory allocations and logic executions.
 
-## 2026-07-10 - Avoid Byte Slice Allocation in Hot Loop
-**Learning:** `bytes.Count` requires a `[]byte` slice argument. Initializing a literal like `[]byte{'\n'}` in a loop allocates a new slice on every single iteration, which puts unnecessary pressure on the garbage collector.
-**Action:** Hoist these invariant byte slices out to a package-level variable to eliminate dynamic allocation and improve execution speed inside hot loops.
+## 2026-07-11 - Optimization of Cold Paths
+**Learning:** Optimizing code without confirming it's on a hot path leads to unmeasurable gains and unnecessary complexity. For example, a byte slice allocation inside `scanContent` during line number calculation only runs per *finding*, which is extremely rare.
+**Action:** Never optimize a path without a benchmark proving it is a bottleneck. Always verify whether the targeted code path is executed frequently enough (e.g., per-byte or in an unbounded loop) to warrant micro-optimizations.
