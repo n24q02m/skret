@@ -40,14 +40,17 @@ function renderNamespace(m: Manifest): string {
   const rows = m.keys
     .map((k) => {
       const badges = Object.entries(k.targets)
-        .map(([name, t]) => `<span class="badge ${esc(t.status)}">${esc(name)}: ${esc(t.status)}</span>`)
+        .map(
+          ([name, t]) =>
+            `<span class="badge ${esc(t.status)}">${esc(name)}: ${esc(t.status)}</span>`,
+        )
         .join("");
       return `<tr><td>${esc(k.name)}</td><td class="fp">${esc(k.fingerprint)}</td><td>${badges}</td></tr>`;
     })
     .join("");
   return (
     `<section class="ns"><h2>${esc(m.namespace)} &middot; ${esc(m.env)}</h2>` +
-    `<table><thead><tr><th>Key</th><th>Fingerprint</th><th>Targets</th></tr></thead>` +
+    `<table><thead><tr><th scope="col">Key</th><th scope="col">Fingerprint</th><th scope="col">Targets</th></tr></thead>` +
     `<tbody>${rows}</tbody></table></section>`
   );
 }
@@ -63,11 +66,11 @@ export function renderDashboard(manifests: Manifest[]): string {
 }
 
 export function renderLogin(error?: string): string {
-  const msg = error ? `<p class="err">${esc(error)}</p>` : "";
+  const msg = error ? `<p class="err" role="alert">${esc(error)}</p>` : "";
   return page(
     `<h1>skret vault</h1>${msg}` +
       `<form method="POST" action="/login">` +
-      `<input type="password" name="password" placeholder="relay password" autofocus>` +
+      `<input type="password" name="password" aria-label="Relay password" placeholder="relay password" autofocus>` +
       `<button type="submit">Enter</button></form>`,
   );
 }
