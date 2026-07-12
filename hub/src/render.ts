@@ -65,7 +65,7 @@ export function renderDashboard(manifests: Manifest[]): string {
   return page(`<h1>skret vault dashboard</h1>${body}`);
 }
 
-// Renders the login page form
+// Renders the login page HTML form
 export function renderLogin(error?: string): string {
   const msg = error ? `<p class="err" role="alert">${esc(error)}</p>` : "";
   return page(
