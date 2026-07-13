@@ -2,6 +2,7 @@ package cli_test
 
 import (
 	"bytes"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -21,6 +22,17 @@ func TestRootCmd_VersionFlag(t *testing.T) {
 	err := cmd.Execute()
 	assert.NoError(t, err)
 	assert.Contains(t, buf.String(), "skret")
+}
+
+func TestRootCmd_VersionFlag_NoDoublePrefix(t *testing.T) {
+	var buf bytes.Buffer
+	cmd := cli.NewRootCmd()
+	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
+	cmd.SetArgs([]string{"--version"})
+	require.NoError(t, cmd.Execute())
+	assert.NotContains(t, buf.String(), "skret version skret")
+	assert.Contains(t, buf.String(), "skret version 0.0.0-dev")
 }
 
 func TestRootCmd_HelpFlag(t *testing.T) {
@@ -687,4 +699,221 @@ func TestImportCmd_ConflictFail(t *testing.T) {
 	err := cmd.Execute()
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "conflict on \"API_KEY\"")
+}
+
+// --- Wave 2 T1: bare init must keep good prod defaults (fix C1) ---
+
+func TestInitCmd_BareInit_KeepsGoodProdDefaults(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".git"), 0o755))
+
+	origDir, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	defer os.Chdir(origDir)
+
+	cmd := cli.NewRootCmd()
+	cmd.SetArgs([]string{"init"})
+	require.NoError(t, cmd.Execute())
+
+	data, err := os.ReadFile(filepath.Join(dir, ".skret.yaml"))
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "provider: aws")
+	assert.Contains(t, string(data), "/myapp/prod")
+	assert.Contains(t, string(data), "us-east-1")
+}
+
+func TestInitCmd_PartialFlag_PathOnly_KeepsAWSDefaultProviderAndRegion(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".git"), 0o755))
+
+	origDir, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	defer os.Chdir(origDir)
+
+	cmd := cli.NewRootCmd()
+	cmd.SetArgs([]string{"init", "--path=/custom/prod"})
+	require.NoError(t, cmd.Execute())
+
+	data, err := os.ReadFile(filepath.Join(dir, ".skret.yaml"))
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "provider: aws")
+	assert.Contains(t, string(data), "/custom/prod")
+	assert.Contains(t, string(data), "us-east-1") // region untouched -- flag not passed
+}
+
+// TestInitCmd_C1_BareInit_DevWorksEndToEnd is the audit's exact C1 repro,
+// re-run for the fixed behavior: bare `skret init` -> set/get/list on the
+// default (dev) env all succeed (used to fail on every command because
+// Validate() blocked on the broken prod entry before dev was even looked
+// at -- see the config.Validate/Resolve split below in this same task).
+func TestInitCmd_C1_BareInit_DevWorksEndToEnd(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".git"), 0o755))
+
+	origDir, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	defer os.Chdir(origDir)
+
+	initCmd := cli.NewRootCmd()
+	initCmd.SetArgs([]string{"init"})
+	require.NoError(t, initCmd.Execute(), "bare `skret init` must succeed")
+
+	setCmd := cli.NewRootCmd()
+	setCmd.SetArgs([]string{"set", "FOO", "bar"})
+	require.NoError(t, setCmd.Execute(), "bare init: `set` on the default (dev) env must work")
+
+	var getBuf bytes.Buffer
+	getCmd := cli.NewRootCmd()
+	getCmd.SetOut(&getBuf)
+	getCmd.SetArgs([]string{"get", "FOO"})
+	require.NoError(t, getCmd.Execute(), "bare init: `get` on the default (dev) env must work")
+	assert.Equal(t, "bar\n", getBuf.String())
+
+	var listBuf bytes.Buffer
+	listCmd := cli.NewRootCmd()
+	listCmd.SetOut(&listBuf)
+	listCmd.SetArgs([]string{"list"})
+	require.NoError(t, listCmd.Execute(), "bare init: `list` on the default (dev) env must work")
+	assert.Contains(t, listBuf.String(), "FOO")
+}
+
+// --- Wave 2 T2: --path shell-mangling guard (fix C2) ---
+
+// TestPathMangling_C2_RecoversAndWarns is the audit's exact C2 repro,
+// re-run for the fixed behavior. Before the fix: `skret list
+// --path=<mangled>` exited 0 with "No secrets found" and NO warning,
+// silently querying the wrong prefix. After: still exits 0 (recover-and-warn,
+// consistent with the existing key-arg mangling behavior), but a warning
+// names the recovered path.
+func TestPathMangling_C2_RecoversAndWarns(t *testing.T) {
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	defer os.Chdir(origDir)
+
+	mangledPath := "C:/Users/test/scoop/apps/git/2.54.0/myapp/dev"
+
+	var stderr bytes.Buffer
+	cmd := cli.NewRootCmd()
+	cmd.SetErr(&stderr)
+	cmd.SetArgs([]string{"list", "--provider=local", "--path=" + mangledPath, "--file=./.secrets.dev.yaml"})
+
+	err := cmd.Execute()
+	require.NoError(t, err, "C2 fix: a shell-mangled --path must still exit 0, not error")
+	assert.Contains(t, stderr.String(), "warning: --path looked shell-mangled")
+	assert.Contains(t, stderr.String(), `"/myapp/dev"`)
+}
+
+// TestPathMangling_C2_SetThenGetRoundTrip proves the mangled --path and its
+// clean equivalent resolve to the SAME location -- the actual risk behind
+// C2: a `set` under a mangled --path silently writing under a bogus prefix
+// that a later, correctly-typed --path could never find.
+func TestPathMangling_C2_SetThenGetRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	defer os.Chdir(origDir)
+
+	mangledPath := "C:/Users/test/scoop/apps/git/2.54.0/myapp/dev"
+
+	setCmd := cli.NewRootCmd()
+	var setErr bytes.Buffer
+	setCmd.SetErr(&setErr)
+	setCmd.SetArgs([]string{"set", "FOO", "bar", "--provider=local", "--path=" + mangledPath, "--file=./.secrets.dev.yaml"})
+	require.NoError(t, setCmd.Execute())
+	assert.Contains(t, setErr.String(), "warning: --path looked shell-mangled")
+
+	getCmd := cli.NewRootCmd()
+	var getOut bytes.Buffer
+	getCmd.SetOut(&getOut)
+	getCmd.SetArgs([]string{"get", "FOO", "--provider=local", "--path=/myapp/dev", "--file=./.secrets.dev.yaml"})
+	require.NoError(t, getCmd.Execute())
+	assert.Equal(t, "bar\n", getOut.String(), "value set under the mangled --path must be readable via the clean equivalent path")
+}
+
+// TestInitCmd_M2_GeneratedYAMLOmitsEmptyFields is the fix for audit finding
+// M2: a freshly-generated .skret.yaml used to print path/region/profile/
+// kms_key_id explicitly as "" for every environment even when unset,
+// cluttering the very first file a newcomer is meant to read/edit.
+func TestInitCmd_M2_GeneratedYAMLOmitsEmptyFields(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".git"), 0o755))
+
+	origDir, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	defer os.Chdir(origDir)
+
+	cmd := cli.NewRootCmd()
+	cmd.SetArgs([]string{"init"})
+	require.NoError(t, cmd.Execute())
+
+	data, err := os.ReadFile(filepath.Join(dir, ".skret.yaml"))
+	require.NoError(t, err)
+	text := string(data)
+	assert.NotContains(t, text, `path: ""`)
+	assert.NotContains(t, text, `region: ""`)
+	assert.NotContains(t, text, `profile: ""`)
+	assert.NotContains(t, text, `kms_key_id: ""`)
+	// dev's file field is set, prod's provider/path/region are set -- these
+	// must still be present.
+	assert.Contains(t, text, "provider: local")
+	assert.Contains(t, text, "provider: aws")
+	assert.Contains(t, text, "/myapp/prod")
+}
+
+// --- Wave 2 T7(c): `completion <bad-shell>` must error, not silently show help (fix M5) ---
+
+func TestCompletionCmd_UnknownShell_Errors(t *testing.T) {
+	var buf bytes.Buffer
+	cmd := cli.NewRootCmd()
+	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
+	cmd.SetArgs([]string{"completion", "badshell"})
+
+	err := cmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "badshell")
+	assert.Contains(t, err.Error(), "bash")
+	assert.Contains(t, err.Error(), "zsh")
+	assert.Contains(t, err.Error(), "fish")
+	assert.Contains(t, err.Error(), "powershell")
+}
+
+func TestCompletionCmd_Bare_ShowsHelp(t *testing.T) {
+	var buf bytes.Buffer
+	cmd := cli.NewRootCmd()
+	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
+	cmd.SetArgs([]string{"completion"})
+
+	require.NoError(t, cmd.Execute())
+	assert.Contains(t, buf.String(), "autocompletion script")
+}
+
+func TestCompletionCmd_ValidShell_StillGeneratesScript(t *testing.T) {
+	// Cobra resolves the completion command's output writer once, when
+	// NewRootCmd calls InitDefaultCompletionCmd() at construction time (see
+	// root.go), not per Execute() call -- so os.Stdout must be swapped
+	// before the root command is built, not merely before Execute.
+	orig := os.Stdout
+	r, w, err := os.Pipe()
+	require.NoError(t, err)
+	os.Stdout = w
+	defer func() { os.Stdout = orig }()
+
+	cmd := cli.NewRootCmd()
+	cmd.SetArgs([]string{"completion", "bash"})
+
+	done := make(chan string, 1)
+	go func() {
+		data, _ := io.ReadAll(r)
+		done <- string(data)
+	}()
+
+	execErr := cmd.Execute()
+	require.NoError(t, w.Close())
+	os.Stdout = orig
+
+	require.NoError(t, execErr)
+	assert.Contains(t, <-done, "bash completion")
 }

@@ -433,7 +433,7 @@ func TestAppendGitignore_ExistingWithoutNewline(t *testing.T) {
 func TestGetEnvPairs_ProviderListError(t *testing.T) {
 	// This tests the error path in getEnvPairs when loadProvider fails
 	opts := &GlobalOpts{} // no config file in CWD
-	_, err := getEnvPairs(opts)
+	_, err := getEnvPairs(&cobra.Command{}, opts)
 	assert.Error(t, err)
 }
 
@@ -584,19 +584,23 @@ func TestInitOptions_Run_MarshalCheck(t *testing.T) {
 	require.NoError(t, os.Chdir(dir))
 	defer os.Chdir(origDir)
 
+	o := &initOptions{}
 	cmd := &cobra.Command{}
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
 	cmd.SetErr(&buf)
 	cmd.SetErr(&buf)
-
-	o := &initOptions{
-		provider: "aws",
-		path:     "/myapp/staging",
-		region:   "ap-southeast-1",
-		file:     "",
-		force:    false,
-	}
+	// init.go's override logic (fix C1 root cause 1) now keys off
+	// cmd.Flags().Changed(name) rather than a non-empty struct field, so the
+	// flags must be registered on cmd and explicitly Set to simulate a user
+	// passing --provider/--path/--region.
+	cmd.Flags().StringVar(&o.provider, "provider", "", "")
+	cmd.Flags().StringVar(&o.path, "path", "", "")
+	cmd.Flags().StringVar(&o.region, "region", "", "")
+	cmd.Flags().StringVar(&o.file, "file", "", "")
+	require.NoError(t, cmd.Flags().Set("provider", "aws"))
+	require.NoError(t, cmd.Flags().Set("path", "/myapp/staging"))
+	require.NoError(t, cmd.Flags().Set("region", "ap-southeast-1"))
 
 	err := o.run(cmd)
 	require.NoError(t, err)
@@ -615,16 +619,18 @@ func TestInitOptions_Run_WithFileFlag(t *testing.T) {
 	require.NoError(t, os.Chdir(dir))
 	defer os.Chdir(origDir)
 
+	o := &initOptions{}
 	cmd := &cobra.Command{}
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
 	cmd.SetErr(&buf)
 	cmd.SetErr(&buf)
-
-	o := &initOptions{
-		provider: "local",
-		file:     ".my-secrets.yaml",
-	}
+	cmd.Flags().StringVar(&o.provider, "provider", "", "")
+	cmd.Flags().StringVar(&o.path, "path", "", "")
+	cmd.Flags().StringVar(&o.region, "region", "", "")
+	cmd.Flags().StringVar(&o.file, "file", "", "")
+	require.NoError(t, cmd.Flags().Set("provider", "local"))
+	require.NoError(t, cmd.Flags().Set("file", ".my-secrets.yaml"))
 
 	err := o.run(cmd)
 	require.NoError(t, err)

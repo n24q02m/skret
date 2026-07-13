@@ -35,7 +35,7 @@ with secrets injected use 'skret run'.`,
   skret env --format=json | jq .
   eval "$(skret env --format=export)"`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			pairs, err := getEnvPairs(opts)
+			pairs, err := getEnvPairs(cmd, opts)
 			if err != nil {
 				return err
 			}
@@ -48,12 +48,13 @@ with secrets injected use 'skret run'.`,
 	return cmd
 }
 
-func getEnvPairs(opts *GlobalOpts) ([]envPair, error) {
+func getEnvPairs(cmd *cobra.Command, opts *GlobalOpts) ([]envPair, error) {
 	resolved, p, err := loadProvider(opts)
 	if err != nil {
 		return nil, err
 	}
 	defer p.Close()
+	warnIfPathMangled(cmd, resolved)
 
 	ctx := context.Background()
 	secrets, err := p.List(ctx, resolved.Path)

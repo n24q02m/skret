@@ -9,6 +9,6 @@ import (
 
 func TestString_Default(t *testing.T) {
 	s := version.String()
-	assert.Contains(t, s, "skret")
+	assert.NotContains(t, s, "skret", "String() must not embed the program name -- cobra's version template already prepends it (fix M1 double-prefix)")
 	assert.Contains(t, s, "0.0.0-dev")
 }

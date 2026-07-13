@@ -6,6 +6,7 @@ import (
 
 	"github.com/n24q02m/skret/internal/logging"
 	"github.com/n24q02m/skret/internal/version"
+	"github.com/n24q02m/skret/pkg/skret"
 	"github.com/spf13/cobra"
 )
 
@@ -78,7 +79,39 @@ func NewRootCmd() *cobra.Command {
 	cmd.AddCommand(newAuthCmd())
 	cmd.AddCommand(newHubCmd(opts))
 
+	// Force cobra's default "completion" command to materialize now (it is
+	// normally lazily created during Execute()) so it can be given a real
+	// RunE. Without one, cobra treats it as a non-runnable parent and skips
+	// its own Args: NoArgs validation entirely -- `skret completion
+	// badshell` silently showed help with exit 0 instead of erroring
+	// (audit finding M5). ValidCompletionShellArgs replaces cobra's bare
+	// NoArgs check with a message that lists the supported shells.
+	cmd.InitDefaultCompletionCmd()
+	for _, sub := range cmd.Commands() {
+		if sub.Name() == "completion" {
+			sub.Args = validCompletionShellArgs
+			sub.RunE = func(c *cobra.Command, _ []string) error {
+				return c.Help()
+			}
+			break
+		}
+	}
+
 	return cmd
+}
+
+// validCompletionShellArgs allows zero args (the completion command then
+// shows help via its new RunE) and rejects exactly one unrecognized shell
+// name with an actionable, skret-style error. A recognized shell name
+// (bash/zsh/fish/powershell) never reaches this validator at all -- cobra
+// matches it as a real subcommand first and dispatches straight to that
+// subcommand's own RunE.
+func validCompletionShellArgs(_ *cobra.Command, args []string) error {
+	if len(args) > 0 {
+		return skret.NewError(skret.ExitValidationError,
+			fmt.Sprintf("completion: unknown shell %q (available: bash, zsh, fish, powershell)", args[0]), nil)
+	}
+	return nil
 }
 
 // Execute runs the root command.

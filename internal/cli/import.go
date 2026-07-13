@@ -100,11 +100,12 @@ func (o *importOptions) createImporter() (importer.Importer, error) {
 
 // run executes the import logic.
 func (o *importOptions) run(cmd *cobra.Command) error {
-	_, p, err := loadProvider(o.global)
+	resolved, p, err := loadProvider(o.global)
 	if err != nil {
 		return err
 	}
 	defer p.Close()
+	warnIfPathMangled(cmd, resolved)
 
 	ctx := context.Background()
 	return o.runWithProvider(ctx, cmd, p)

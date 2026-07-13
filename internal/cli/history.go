@@ -34,6 +34,7 @@ func newHistoryCmd(opts *GlobalOpts) *cobra.Command {
 				return err
 			}
 			defer p.Close()
+			warnIfPathMangled(cmd, resolved)
 
 			ctx := context.Background()
 			key, mangled := resolveKeyArg(resolved.Path, args[0])

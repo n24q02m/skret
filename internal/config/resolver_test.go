@@ -197,3 +197,127 @@ func TestResolve_SKRETEnvOverride(t *testing.T) {
 
 	assert.Equal(t, "staging", resolved.EnvName)
 }
+
+// --- Wave 2 T1: per-provider requirement checks moved from Validate() to
+// Resolve(), scoped to only the selected env (fix C1 root cause 2 + I8) ---
+
+func TestResolve_EnvironmentMissingProvider(t *testing.T) {
+	cfg := &config.Config{
+		Version:    "1",
+		DefaultEnv: "prod",
+		Environments: map[string]config.Environment{
+			"prod": {Path: "/p/prod"},
+		},
+	}
+	_, err := config.Resolve(cfg, config.ResolveOpts{})
+	assert.ErrorContains(t, err, "provider")
+}
+
+func TestResolve_AWSMissingPath(t *testing.T) {
+	cfg := &config.Config{
+		Version:    "1",
+		DefaultEnv: "prod",
+		Environments: map[string]config.Environment{
+			"prod": {Provider: "aws"},
+		},
+	}
+	_, err := config.Resolve(cfg, config.ResolveOpts{})
+	assert.ErrorContains(t, err, "path")
+}
+
+func TestResolve_LocalMissingFile(t *testing.T) {
+	cfg := &config.Config{
+		Version:    "1",
+		DefaultEnv: "dev",
+		Environments: map[string]config.Environment{
+			"dev": {Provider: "local"},
+		},
+	}
+	_, err := config.Resolve(cfg, config.ResolveOpts{})
+	assert.ErrorContains(t, err, "file")
+}
+
+func TestResolve_UnknownProvider(t *testing.T) {
+	cfg := &config.Config{
+		Version:    "1",
+		DefaultEnv: "prod",
+		Environments: map[string]config.Environment{
+			"prod": {Provider: "gcp", Path: "/p/prod"},
+		},
+	}
+	_, err := config.Resolve(cfg, config.ResolveOpts{})
+	assert.ErrorContains(t, err, "unknown provider")
+}
+
+// TestResolve_ScopedValidation_BrokenEnvDoesNotBlockGoodEnv is the direct
+// regression guard for audit I8 / C1 root cause 2: a second, incomplete
+// environment must not block Resolve() for a different, already-working
+// one, and selecting the broken one directly must still error exactly as
+// before ("env hỏng không được chặn env lành; chọn đúng env hỏng thì error
+// như cũ" -- spec Wave 2 T1).
+func TestResolve_ScopedValidation_BrokenEnvDoesNotBlockGoodEnv(t *testing.T) {
+	cfg := &config.Config{
+		Version:    "1",
+		DefaultEnv: "dev",
+		Environments: map[string]config.Environment{
+			"dev":  {Provider: "local", File: "./.secrets.dev.yaml"},
+			"prod": {Provider: "aws"}, // deliberately incomplete: no Path
+		},
+	}
+
+	good, err := config.Resolve(cfg, config.ResolveOpts{Env: "dev"})
+	require.NoError(t, err)
+	assert.Equal(t, "local", good.Provider)
+
+	_, err = config.Resolve(cfg, config.ResolveOpts{Env: "prod"})
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "path is required for aws provider")
+}
+
+func TestResolve_EnvNotFound_ListsAvailable(t *testing.T) {
+	cfg := &config.Config{
+		Version:    "1",
+		DefaultEnv: "prod",
+		Environments: map[string]config.Environment{
+			"prod":    {Provider: "aws", Path: "/app/prod"},
+			"staging": {Provider: "aws", Path: "/app/staging"},
+		},
+	}
+	_, err := config.Resolve(cfg, config.ResolveOpts{Env: "nonexistent"})
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "nonexistent")
+	assert.ErrorContains(t, err, "prod")
+	assert.ErrorContains(t, err, "staging")
+}
+
+// --- Wave 2 T2: --path shell-mangling guard propagates through Resolve()
+// (fix C2) ---
+
+func TestResolve_PathMangled_RecoversAndFlags(t *testing.T) {
+	cfg := &config.Config{
+		Version:    "1",
+		DefaultEnv: "prod",
+		Environments: map[string]config.Environment{
+			"prod": {Provider: "aws", Path: "/fallback/prod"},
+		},
+	}
+	opts := config.ResolveOpts{Path: "C:/Users/x/scoop/apps/git/2.54.0/myapp/dev"}
+	resolved, err := config.Resolve(cfg, opts)
+	require.NoError(t, err)
+	assert.Equal(t, "/myapp/dev", resolved.Path)
+	assert.True(t, resolved.PathMangled)
+}
+
+func TestResolve_PathNotMangled_FlagFalse(t *testing.T) {
+	cfg := &config.Config{
+		Version:    "1",
+		DefaultEnv: "prod",
+		Environments: map[string]config.Environment{
+			"prod": {Provider: "aws", Path: "/fallback/prod"},
+		},
+	}
+	resolved, err := config.Resolve(cfg, config.ResolveOpts{})
+	require.NoError(t, err)
+	assert.Equal(t, "/fallback/prod", resolved.Path)
+	assert.False(t, resolved.PathMangled)
+}

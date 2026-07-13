@@ -33,6 +33,7 @@ or a pre-commit hook. Use --staged to scan only staged files.`,
 				return err
 			}
 			defer p.Close()
+			warnIfPathMangled(cmd, resolved)
 
 			secrets, err := p.List(context.Background(), resolved.Path)
 			if err != nil {

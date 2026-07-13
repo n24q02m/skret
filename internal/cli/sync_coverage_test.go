@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/rand"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -19,6 +20,7 @@ import (
 	"github.com/n24q02m/skret/internal/config"
 	"github.com/n24q02m/skret/internal/provider"
 	"github.com/n24q02m/skret/internal/syncer"
+	"github.com/n24q02m/skret/pkg/skret"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -959,4 +961,86 @@ func TestSyncOptions_Run_DryRun_DotenvWritesNoFile(t *testing.T) {
 	assert.Contains(t, out, "[dry-run] dotenv: would write 1 secret(s)")
 	_, err := os.Stat(filepath.Join(dir, "out.env"))
 	assert.True(t, os.IsNotExist(err))
+}
+
+// --- Wave 2 T4: sync exit-code classification (fix I2) ---
+
+func TestSyncOptions_Run_ExitClass_Dotenv_IsGenericError(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(dir+"/.git", 0o755))
+	require.NoError(t, os.WriteFile(dir+"/.skret.yaml", []byte(`
+version: "1"
+default_env: dev
+environments:
+  dev:
+    provider: local
+    file: secrets.yaml
+`), 0o644))
+	require.NoError(t, os.WriteFile(dir+"/secrets.yaml", []byte("version: \"1\"\nsecrets:\n  K: V"), 0o600))
+	require.NoError(t, os.Mkdir(filepath.Join(dir, "blocked_dir"), 0o755))
+
+	origDir, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	defer os.Chdir(origDir)
+
+	o := &syncOptions{global: &GlobalOpts{}, to: "dotenv", file: "blocked_dir"}
+	cmd := NewRootCmd()
+	err := o.run(cmd)
+	require.Error(t, err)
+
+	var se *skret.Error
+	require.True(t, errors.As(err, &se))
+	assert.Equal(t, skret.ExitGenericError, se.Code, "a local dotenv write failure is not a network error")
+}
+
+func TestSyncOptions_Run_ExitClass_Github_IsNetworkError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	dir := setupSyncRepoWithSecrets(t, map[string]string{"ALPHA": "1"})
+	withGithubTarget(t, dir, "o/r", srv.URL, false)
+	t.Setenv("GITHUB_TOKEN", "tok")
+
+	err := runSyncCmdErr(t, dir, nil)
+	require.Error(t, err)
+
+	var se *skret.Error
+	require.True(t, errors.As(err, &se))
+	assert.Equal(t, skret.ExitNetworkError, se.Code, "a github API failure stays classified as a network error")
+}
+
+// --- Wave 2 T6(c): sync --to=github reports ALL missing requirements at once ---
+
+func TestSyncOptions_TargetFromFlags_Github_ReportsBothMissingAtOnce(t *testing.T) {
+	o := &syncOptions{to: "github"} // no GITHUB_TOKEN, no --github-repo
+	_, err := o.targetFromFlags("github")
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "GITHUB_TOKEN")
+	assert.ErrorContains(t, err, "repository")
+}
+
+func TestSyncOptions_TargetFromFlags_Github_TokenOnlyMissing(t *testing.T) {
+	o := &syncOptions{to: "github", githubRepo: "owner/repo"}
+	_, err := o.targetFromFlags("github")
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "GITHUB_TOKEN")
+}
+
+func TestSyncOptions_TargetFromFlags_Github_RepoOnlyMissing(t *testing.T) {
+	t.Setenv("GITHUB_TOKEN", "ghp_test")
+	o := &syncOptions{to: "github"}
+	_, err := o.targetFromFlags("github")
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "repository")
+}
+
+func TestSyncOptions_TargetFromFlags_Github_ValidRepoAndToken_Succeeds(t *testing.T) {
+	t.Setenv("GITHUB_TOKEN", "ghp_test")
+	o := &syncOptions{to: "github", githubRepo: "owner/repo"}
+	tcs, err := o.targetFromFlags("github")
+	require.NoError(t, err)
+	require.Len(t, tcs, 1)
+	assert.Equal(t, "owner/repo", tcs[0].Fields["repo"])
 }

@@ -3,9 +3,11 @@ package cli
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
+	"github.com/n24q02m/skret/internal/provider"
 	"github.com/n24q02m/skret/pkg/skret"
 	"github.com/spf13/cobra"
 )
@@ -30,6 +32,7 @@ func newDeleteCmd(opts *GlobalOpts) *cobra.Command {
 				return err
 			}
 			defer p.Close()
+			warnIfPathMangled(cmd, resolved)
 
 			key, mangled := resolveKeyArg(resolved.Path, args[0])
 			if mangled {
@@ -48,6 +51,9 @@ func newDeleteCmd(opts *GlobalOpts) *cobra.Command {
 
 			ctx := context.Background()
 			if err := p.Delete(ctx, key); err != nil {
+				if errors.Is(err, provider.ErrNotFound) {
+					return skret.NewError(skret.ExitNotFoundError, fmt.Sprintf("Nothing to delete: %q not found. Use 'skret history %s' to check if it existed before.", key, key), err)
+				}
 				return skret.NewError(skret.ExitProviderError, fmt.Sprintf("delete %q failed", key), err)
 			}
 

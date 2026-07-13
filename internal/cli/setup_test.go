@@ -1,9 +1,14 @@
 package cli
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/n24q02m/skret/pkg/skret"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestSetupNonInteractiveWritesConfigAndAuths(t *testing.T) {
@@ -85,4 +90,55 @@ func TestSetupLocalProviderSkipsAuth(t *testing.T) {
 	if called {
 		t.Fatal("local provider must not invoke auth hook")
 	}
+}
+
+// --- Wave 2 T5: --yes gates the interactive auth step (fix I4) ---
+
+func TestSetupCmd_AWS_NonInteractive_NoYes_Errors(t *testing.T) {
+	dir := t.TempDir()
+	_ = os.MkdirAll(filepath.Join(dir, ".git"), 0o755)
+	orig, _ := os.Getwd()
+	defer os.Chdir(orig)
+	require.NoError(t, os.Chdir(dir))
+
+	origTTY := isInteractiveStdin
+	defer func() { isInteractiveStdin = origTTY }()
+	isInteractiveStdin = func() bool { return false }
+
+	called := false
+	origHook := setupAuthHook
+	defer func() { setupAuthHook = origHook }()
+	setupAuthHook = func(string, string, map[string]string) error { called = true; return nil }
+
+	cmd := NewRootCmd()
+	cmd.SetArgs([]string{"setup", "--provider=aws", "--path=/myapp/prod", "--region=us-east-1"})
+	err := cmd.Execute()
+	require.Error(t, err)
+
+	var se *skret.Error
+	require.True(t, errors.As(err, &se))
+	assert.Equal(t, skret.ExitValidationError, se.Code)
+	assert.False(t, called, "setupAuthHook must not run when the interactive guard is not satisfied")
+}
+
+func TestSetupCmd_AWS_YesBypassesNonInteractiveGuard(t *testing.T) {
+	dir := t.TempDir()
+	_ = os.MkdirAll(filepath.Join(dir, ".git"), 0o755)
+	orig, _ := os.Getwd()
+	defer os.Chdir(orig)
+	require.NoError(t, os.Chdir(dir))
+
+	origTTY := isInteractiveStdin
+	defer func() { isInteractiveStdin = origTTY }()
+	isInteractiveStdin = func() bool { return false } // simulate CI / non-terminal
+
+	called := false
+	origHook := setupAuthHook
+	defer func() { setupAuthHook = origHook }()
+	setupAuthHook = func(string, string, map[string]string) error { called = true; return nil }
+
+	cmd := NewRootCmd()
+	cmd.SetArgs([]string{"setup", "--provider=aws", "--path=/myapp/prod", "--region=us-east-1", "--yes"})
+	require.NoError(t, cmd.Execute())
+	assert.True(t, called, "--yes must bypass the interactive guard and reach setupAuthHook")
 }

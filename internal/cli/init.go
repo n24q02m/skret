@@ -38,7 +38,7 @@ func newInitCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&opts.provider, "provider", "aws", "secret provider (aws, local)")
+	cmd.Flags().StringVar(&opts.provider, "provider", "", "secret provider (aws, local); prod env keeps its /myapp/prod, us-east-1 defaults when unset")
 	cmd.Flags().StringVar(&opts.path, "path", "", "secret path prefix (aws provider)")
 	cmd.Flags().StringVar(&opts.region, "region", "", "cloud region (aws provider)")
 	cmd.Flags().StringVar(&opts.file, "file", "", "local file path (local provider)")
@@ -78,23 +78,48 @@ func (o *initOptions) run(cmd *cobra.Command) error {
 		},
 	}
 
-	// Override with flags if provided
-	if o.provider != "" {
-		prod := config.Environment{
-			Provider: o.provider,
-			Path:     o.path,
-			Region:   o.region,
+	// Override the baked-in prod entry ONLY for the flags the user actually
+	// passed (cmd.Flags().Changed, per flag) -- otherwise the good defaults
+	// set above (Path: "/myapp/prod", Region: "us-east-1") must survive a
+	// bare `skret init` untouched (fix for audit finding C1 root cause 1:
+	// this used to be gated on `o.provider != ""`, which was ALWAYS true
+	// because --provider had a non-empty "aws" default, so bare init always
+	// wiped the good defaults with the flags' zero values).
+	providerChanged := cmd.Flags().Changed("provider")
+	pathChanged := cmd.Flags().Changed("path")
+	regionChanged := cmd.Flags().Changed("region")
+	fileChanged := cmd.Flags().Changed("file")
+
+	if providerChanged {
+		reg := defaultRegistry()
+		known := false
+		for _, name := range reg.Providers() {
+			if name == o.provider {
+				known = true
+				break
+			}
 		}
-		switch o.provider {
-		case "local":
+		if !known {
+			return fmt.Errorf("init: unknown provider %q (available: %v)", o.provider, reg.Providers())
+		}
+	}
+
+	if providerChanged || pathChanged || regionChanged || fileChanged {
+		prod := cfg.Environments["prod"]
+		if providerChanged {
+			prod.Provider = o.provider
+		}
+		if pathChanged {
+			prod.Path = o.path
+		}
+		if regionChanged {
+			prod.Region = o.region
+		}
+		if fileChanged {
 			prod.File = o.file
-			if prod.File == "" {
-				prod.File = ".secrets.prod.yaml"
-			}
-		default:
-			if o.file != "" {
-				prod.File = o.file
-			}
+		}
+		if prod.Provider == "local" && prod.File == "" {
+			prod.File = ".secrets.prod.yaml"
 		}
 		cfg.Environments["prod"] = prod
 	}

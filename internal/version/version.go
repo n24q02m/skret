@@ -9,5 +9,5 @@ var (
 )
 
 func String() string {
-	return fmt.Sprintf("skret %s (commit: %s, built: %s)", Version, Commit, Date)
+	return fmt.Sprintf("%s (commit: %s, built: %s)", Version, Commit, Date)
 }

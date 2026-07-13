@@ -33,6 +33,7 @@ func newListCmd(opts *GlobalOpts) *cobra.Command {
 				return err
 			}
 			defer p.Close()
+			warnIfPathMangled(cmd, resolved)
 
 			// Path comes from the resolved config (root persistent --path /
 			// SKRET_PATH / .skret.yaml). A local --path here would shadow the

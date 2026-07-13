@@ -47,6 +47,7 @@ func (o *templateOptions) run(cmd *cobra.Command, file string) error {
 		return err
 	}
 	defer p.Close()
+	warnIfPathMangled(cmd, resolved)
 
 	secrets, err := p.List(context.Background(), resolved.Path)
 	if err != nil {

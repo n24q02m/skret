@@ -3,11 +3,13 @@ package cli
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
 	"strings"
 
+	"github.com/n24q02m/skret/internal/provider"
 	"github.com/n24q02m/skret/pkg/skret"
 	"github.com/spf13/cobra"
 )
@@ -38,6 +40,7 @@ func newRollbackCmd(opts *GlobalOpts) *cobra.Command {
 				return err
 			}
 			defer p.Close()
+			warnIfPathMangled(cmd, resolved)
 
 			ctx := context.Background()
 			key, mangled := resolveKeyArg(resolved.Path, args[0])
@@ -63,6 +66,9 @@ func newRollbackCmd(opts *GlobalOpts) *cobra.Command {
 
 			err = p.Rollback(ctx, key, version)
 			if err != nil {
+				if errors.Is(err, provider.ErrNotFound) {
+					return skret.NewError(skret.ExitNotFoundError, fmt.Sprintf("Nothing to roll back: %q has no version %d. Use 'skret history %s' to see available versions.", key, version, key), err)
+				}
 				return skret.NewError(skret.ExitProviderError, fmt.Sprintf("failed to rollback %q to version %d", key, version), err)
 			}
 

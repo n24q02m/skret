@@ -67,6 +67,7 @@ func (o *syncOptions) run(cmd *cobra.Command) error {
 		return err
 	}
 	defer p.Close()
+	warnIfPathMangled(cmd, resolved)
 
 	ctx := context.Background()
 	secrets, err := p.List(ctx, resolved.Path)
@@ -146,7 +147,13 @@ func (o *syncOptions) run(cmd *cobra.Command) error {
 		}
 
 		if err := s.Sync(ctx, toSync); err != nil {
-			return skret.NewError(skret.ExitNetworkError, fmt.Sprintf("sync failed for %s", s.Name()), err)
+			// dotenv writes a local file only -- a failure there is I/O, not
+			// network. github/cloudflare stay ExitNetworkError (audit I2).
+			exitCode := skret.ExitNetworkError
+			if tc.Type == "dotenv" {
+				exitCode = skret.ExitGenericError
+			}
+			return skret.NewError(exitCode, fmt.Sprintf("sync failed for %s", s.Name()), err)
 		}
 		cmd.PrintErrf("Synced %d secrets to %s\n", len(toSync), s.Name())
 
@@ -283,10 +290,13 @@ func (o *syncOptions) targetFromFlags(typ string) ([]syncer.TargetConfig, error)
 		return []syncer.TargetConfig{{Type: "dotenv", Fields: map[string]string{"file": o.file}}}, nil
 	case "github":
 		token := os.Getenv("GITHUB_TOKEN")
+		var errs []error
 		if token == "" {
-			return nil, skret.NewError(skret.ExitConfigError, "sync: GITHUB_TOKEN env var required", nil)
+			errs = append(errs, errors.New("sync: GITHUB_TOKEN env var required"))
 		}
+
 		var tcs []syncer.TargetConfig
+		hasRepoErr := false
 		for _, r := range strings.Split(o.githubRepo, ",") {
 			r = strings.TrimSpace(r)
 			if r == "" {
@@ -294,12 +304,21 @@ func (o *syncOptions) targetFromFlags(typ string) ([]syncer.TargetConfig, error)
 			}
 			parts := strings.SplitN(r, "/", 2)
 			if len(parts) != 2 {
-				return nil, skret.NewError(skret.ExitConfigError, fmt.Sprintf("sync: invalid repo format %q, must be owner/repo", r), nil)
+				errs = append(errs, fmt.Errorf("sync: invalid repo format %q, must be owner/repo", r))
+				hasRepoErr = true
+				continue
 			}
 			tcs = append(tcs, syncer.TargetConfig{Type: "github", Fields: map[string]string{"repo": r}, Token: token})
 		}
-		if len(tcs) == 0 {
-			return nil, skret.NewError(skret.ExitConfigError, "sync: --github-repo requires at least one repository", nil)
+		if len(tcs) == 0 && !hasRepoErr {
+			errs = append(errs, errors.New("sync: --github-repo requires at least one repository"))
+		}
+
+		// Report every missing/invalid requirement in one error instead of
+		// making the operator fix one, re-run, and discover the next one
+		// (audit finding I7).
+		if len(errs) > 0 {
+			return nil, skret.NewError(skret.ExitConfigError, "sync: github target misconfigured", errors.Join(errs...))
 		}
 		return tcs, nil
 	case "cloudflare":

@@ -39,6 +39,7 @@ changes.`,
 				return err
 			}
 			defer p.Close()
+			warnIfPathMangled(cmd, resolved)
 
 			ctx := context.Background()
 			secrets, err := p.List(ctx, resolved.Path)
