@@ -59,9 +59,9 @@ Each key gets one status per declared target:
 |--------|---------|
 | `present` | The target was asked "what secret names do you have?" and this key's name was in the answer. |
 | `absent` | The target answered, and this key's name was **not** in the answer. |
-| `unknown` | Presence could not be determined for this target: either its type cannot enumerate existing names at all (a `dotenv` target, or a Cloudflare **Pages** target), or the lookup call itself failed (network/API error, or a required credential like `GITHUB_TOKEN` was not set). A failed lookup never fails the whole push — it prints a `warning:` line to stderr and marks every key `unknown` for that one target only. |
+| `unknown` | Presence could not be determined for this target: either its type cannot enumerate existing names at all (a `dotenv` target -- silently), or the lookup call itself failed (network/API error, a required credential like `GITHUB_TOKEN` not set, or a Cloudflare **Pages** target, which cannot enumerate and reports it as a failed lookup). A failed lookup never fails the whole push -- it prints a `warning:` line to stderr and marks every key `unknown` for that one target only. |
 
-A `github` target and a Cloudflare **Worker** target (`sync.targets: - type: cloudflare, worker: ...`) can both enumerate, so they get real `present`/`absent` status; `dotenv` and Cloudflare **Pages** targets always show `unknown` — there is no API to list what a dotenv file or a Pages project's env vars currently hold, in the way `hub push` needs.
+A `github` target and a Cloudflare **Worker** target (`sync.targets: - type: cloudflare, worker: ...`) can both enumerate, so they get real `present`/`absent` status. A `dotenv` target always shows `unknown`, silently -- there is no file-independent API to ask. A Cloudflare **Pages** target also always shows `unknown`, and additionally prints the `warning:` line on every push: it cannot enumerate its env vars either, but `hub push` learns that from a failed lookup rather than from the target type, so it reports it like one.
 
 ### Credentials for a live presence check
 
