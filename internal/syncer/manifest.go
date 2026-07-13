@@ -8,13 +8,15 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/n24q02m/skret/internal/provider"
 )
 
 // Manifest is the names-only inventory published to the vault hub. It never
-// contains secret values — only salted fingerprints, names, and drift status.
+// contains secret values — only salted fingerprints, names, and per-target
+// presence status.
 type Manifest struct {
 	Namespace   string        `json:"namespace"`
 	Env         string        `json:"env"`
@@ -31,7 +33,22 @@ type ManifestKey struct {
 
 type ManifestTarget struct {
 	Present bool   `json:"present"`
-	Status  string `json:"status"` // in-sync | drift | missing
+	Status  string `json:"status"` // present | absent | unknown
+}
+
+// TargetPresence is what BuildManifest learns about one sync target by
+// calling ExistingKeys once (see internal/cli/hub.go's targetPresence,
+// which builds this map). Ok=false means the target's existing key names
+// could not be determined at all -- either its syncer has no
+// ExistingLister implementation (dotenv always; a Cloudflare Pages target),
+// or ExistingKeys itself failed (network/API error, or the syncer could
+// not even be built, e.g. a missing token) -- in which case every key is
+// reported "unknown" for that target rather than making hub push fail
+// outright. Names holds the existing key names, uppercased, and is only
+// meaningful when Ok is true.
+type TargetPresence struct {
+	Names map[string]bool
+	Ok    bool
 }
 
 // Fingerprint returns salted sha256[:8] of a value. Salt keeps it opaque to
@@ -75,32 +92,33 @@ func LoadDeploySalt() ([]byte, error) {
 	return salt, nil
 }
 
-// BuildManifest computes per-key fingerprint + per-target drift from the
-// current SSM secrets and each target's last-synced SyncState. GeneratedAt
-// is left zero here — the caller (hub push) stamps it once, so the manifest
-// timestamp is set exactly one place.
-func BuildManifest(ns, env string, salt []byte, secrets []*provider.Secret, states map[string]*SyncState) *Manifest {
+// BuildManifest computes per-key fingerprint + per-target presence from the
+// current SSM secrets and each declared target's TargetPresence (built by
+// calling ExistingKeys once per target -- see internal/cli/hub.go's
+// targetPresence). GeneratedAt is left zero here — the caller (hub push)
+// stamps it once, so the manifest timestamp is set exactly one place.
+//
+// Per key, per target:
+//   - presence.Ok == false                       -> "unknown" (can't tell)
+//   - presence.Ok == true, name found in Names    -> "present"
+//   - presence.Ok == true, name not found         -> "absent"
+func BuildManifest(ns, env string, salt []byte, secrets []*provider.Secret, presence map[string]TargetPresence) *Manifest {
 	m := &Manifest{Namespace: ns, Env: env, Keys: make([]ManifestKey, 0, len(secrets))}
 	for _, s := range secrets {
-		cur := hashSecret(s.Value)
+		name := SecretName(s.Key)
 		targets := map[string]ManifestTarget{}
-		for tname, st := range states {
-			if st == nil {
-				targets[tname] = ManifestTarget{Present: false, Status: "missing"}
-				continue
-			}
-			last, ok := st.Hashes[s.Key]
+		for tname, p := range presence {
 			switch {
-			case !ok:
-				targets[tname] = ManifestTarget{Present: false, Status: "missing"}
-			case last == cur:
-				targets[tname] = ManifestTarget{Present: true, Status: "in-sync"}
+			case !p.Ok:
+				targets[tname] = ManifestTarget{Present: false, Status: "unknown"}
+			case p.Names[strings.ToUpper(name)]:
+				targets[tname] = ManifestTarget{Present: true, Status: "present"}
 			default:
-				targets[tname] = ManifestTarget{Present: true, Status: "drift"}
+				targets[tname] = ManifestTarget{Present: false, Status: "absent"}
 			}
 		}
 		m.Keys = append(m.Keys, ManifestKey{
-			Name:        SecretName(s.Key),
+			Name:        name,
 			Fingerprint: Fingerprint(salt, s.Value),
 			UpdatedAt:   s.Meta.UpdatedAt,
 			Targets:     targets,
