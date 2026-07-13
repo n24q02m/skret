@@ -492,6 +492,7 @@ func TestTargetPresence_GitHub_PresentAndAbsent(t *testing.T) {
 // even be built without GITHUB_TOKEN (newGitHubFromConfig errors) -- that
 // must still degrade to "unknown" + a stderr warning, not fail the push.
 func TestTargetPresence_GitHub_NoToken_UnknownWithWarning(t *testing.T) {
+	t.Setenv("GITHUB_TOKEN", "")
 	sc := &config.SyncConfig{Targets: []config.SyncTarget{{Type: "github", Repo: "o/r"}}}
 	cmd := NewRootCmd()
 	var buf bytes.Buffer
@@ -617,4 +618,6 @@ sync:
 	assert.True(t, byName["HAVE_KEY"].Present)
 	assert.Equal(t, "absent", byName["MISSING_KEY"].Status)
 	assert.False(t, byName["MISSING_KEY"].Present)
+	assert.NotContains(t, string(gotBody), "v1")
+	assert.NotContains(t, string(gotBody), "v2")
 }
