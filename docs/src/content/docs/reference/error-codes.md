@@ -79,6 +79,8 @@ esac
 
 skret configures the AWS SDK's adaptive-mode retryer with up to 10 attempts and a 20-second max backoff (more than the SDK's 3-attempt default, since SSM `PutParameter` is throttled at roughly 3 requests per second per account) before a persisting `ThrottlingException` surfaces as the provider error above.
 
+These mappings reflect write/list-path commands (`set`, `env`, `run`, `sync`, ...). `skret get` currently deviates: a missing key surfaces as exit 5 (not found), and at present any other provider failure through `get` also surfaces as exit 5 rather than 3 -- a known CLI-side inconsistency tracked for a future fix.
+
 ## Debug Output
 
 For any error, enable debug logging to see the full context:
