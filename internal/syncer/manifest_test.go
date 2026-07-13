@@ -24,41 +24,50 @@ func TestFingerprint_SaltedDeterministic(t *testing.T) {
 func TestBuildManifest_NoValuesLeak(t *testing.T) {
 	salt := []byte("0123456789abcdef")
 	secrets := []*provider.Secret{{Key: "/a/prod/DB", Value: "$ecret=val"}}
-	states := map[string]*SyncState{
-		"github:o/r":            {Hashes: map[string]string{"/a/prod/DB": hashSecret("$ecret=val")}}, // in-sync
-		"cloudflare:worker/api": {Hashes: map[string]string{}},                                       // never synced -> missing
+	presence := map[string]TargetPresence{
+		"github:o/r":            {Ok: true, Names: map[string]bool{"DB": true}}, // present
+		"cloudflare:worker/api": {Ok: true, Names: map[string]bool{}},           // absent
 	}
-	m := BuildManifest("/a/prod", "prod", salt, secrets, states)
+	m := BuildManifest("/a/prod", "prod", salt, secrets, presence)
 	raw, _ := json.Marshal(m)
 	assert.NotContains(t, string(raw), "$ecret=val") // value never serialized
 	require.Len(t, m.Keys, 1)
 	assert.Equal(t, "DB", m.Keys[0].Name)
-	assert.Equal(t, "in-sync", m.Keys[0].Targets["github:o/r"].Status)
-	assert.Equal(t, "missing", m.Keys[0].Targets["cloudflare:worker/api"].Status)
-}
-
-func TestBuildManifest_Drift(t *testing.T) {
-	salt := []byte("0123456789abcdef")
-	secrets := []*provider.Secret{{Key: "/a/prod/DB", Value: "$ecret=val"}}
-	states := map[string]*SyncState{
-		"github:o/r": {Hashes: map[string]string{"/a/prod/DB": "deadbeef-not-matching"}}, // stale hash -> drift
-	}
-	m := BuildManifest("/a/prod", "prod", salt, secrets, states)
-	require.Len(t, m.Keys, 1)
+	assert.Equal(t, "present", m.Keys[0].Targets["github:o/r"].Status)
 	assert.True(t, m.Keys[0].Targets["github:o/r"].Present)
-	assert.Equal(t, "drift", m.Keys[0].Targets["github:o/r"].Status)
+	assert.Equal(t, "absent", m.Keys[0].Targets["cloudflare:worker/api"].Status)
+	assert.False(t, m.Keys[0].Targets["cloudflare:worker/api"].Present)
 }
 
-func TestBuildManifest_NilState_TreatedAsMissing(t *testing.T) {
+func TestBuildManifest_PresentByName_CaseInsensitive(t *testing.T) {
 	salt := []byte("0123456789abcdef")
-	secrets := []*provider.Secret{{Key: "/a/prod/DB", Value: "$ecret=val"}}
-	states := map[string]*SyncState{
-		"github:o/r": nil, // defensive: nil *SyncState must not panic
+	secrets := []*provider.Secret{{Key: "/a/prod/db_password", Value: "v"}}
+	presence := map[string]TargetPresence{
+		"github:o/r": {Ok: true, Names: map[string]bool{"DB_PASSWORD": true}},
 	}
-	m := BuildManifest("/a/prod", "prod", salt, secrets, states)
+	m := BuildManifest("/a/prod", "prod", salt, secrets, presence)
 	require.Len(t, m.Keys, 1)
-	assert.False(t, m.Keys[0].Targets["github:o/r"].Present)
-	assert.Equal(t, "missing", m.Keys[0].Targets["github:o/r"].Status)
+	assert.Equal(t, "present", m.Keys[0].Targets["github:o/r"].Status)
+}
+
+func TestBuildManifest_UnknownWhenNotOk(t *testing.T) {
+	salt := []byte("0123456789abcdef")
+	secrets := []*provider.Secret{{Key: "/a/prod/DB", Value: "v"}}
+	presence := map[string]TargetPresence{
+		"dotenv:.env": {}, // Ok defaults to false: can't enumerate, or listing failed
+	}
+	m := BuildManifest("/a/prod", "prod", salt, secrets, presence)
+	require.Len(t, m.Keys, 1)
+	assert.Equal(t, "unknown", m.Keys[0].Targets["dotenv:.env"].Status)
+	assert.False(t, m.Keys[0].Targets["dotenv:.env"].Present)
+}
+
+func TestBuildManifest_NoDeclaredTargets_EmptyTargetsMap(t *testing.T) {
+	salt := []byte("0123456789abcdef")
+	secrets := []*provider.Secret{{Key: "/a/prod/DB", Value: "v"}}
+	m := BuildManifest("/a/prod", "prod", salt, secrets, map[string]TargetPresence{})
+	require.Len(t, m.Keys, 1)
+	assert.Empty(t, m.Keys[0].Targets)
 }
 
 func TestLoadDeploySalt_FirstRun_CreatesSaltFile(t *testing.T) {

@@ -34,5 +34,11 @@ export interface ManifestKey {
 
 export interface ManifestTarget {
   present: boolean;
-  status: "in-sync" | "drift" | "missing";
+  status: string;
+  // "present" | "absent" | "unknown" for manifests written by the current
+  // CLI. Older manifests stored in KV before this change may still carry
+  // the retired "in-sync" | "drift" | "missing" enum until the next
+  // `skret hub push` overwrites that namespace -- render.ts's
+  // statusClass() falls back to a neutral style for any value outside the
+  // new set, so an old manifest never crashes rendering.
 }

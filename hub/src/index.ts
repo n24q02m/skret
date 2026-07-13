@@ -1,6 +1,6 @@
 import { getContainer } from "@cloudflare/containers";
 import type { Env } from "./types";
-import { handleRequest } from "./router";
+import { handleRequest, serverError } from "./router";
 
 // The Durable Object container class must be re-exported from the Worker entry
 // so the runtime can construct the SYNC binding.
@@ -25,7 +25,7 @@ export default {
       return await handleRequest(request, env);
     } catch {
       // Durable boundary: never leak a stack/exception to the client.
-      return new Response("internal error", { status: 500 });
+      return serverError();
     }
   },
 

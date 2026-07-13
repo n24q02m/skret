@@ -2,12 +2,12 @@
 
 Read-only vault dashboard for skret. Ingests the names-only manifest that
 `skret hub push` sends (no secret values, ever) and renders a password-gated
-map of every namespace's keys + per-target drift status.
+map of every namespace's keys + per-target presence status.
 
 ## What it is / is NOT
 
 - **Is:** a CF Worker + KV. Holds key **names**, salted `sha256[:8]`
-  fingerprints, and drift status only.
+  fingerprints, and presence status only.
 - **Is NOT:** a secret store. It has **0 AWS credentials** and never sees or
   stores a secret value. Ingest rejects any value-like field.
 

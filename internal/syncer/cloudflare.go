@@ -160,7 +160,7 @@ func (c *CloudflareSyncer) syncPages(ctx context.Context, secrets []*provider.Se
 // no-overwrite is rejected for them.
 func (c *CloudflareSyncer) ExistingKeys(ctx context.Context) ([]string, error) {
 	if c.pages != "" {
-		return nil, fmt.Errorf("cloudflare: no-overwrite is not supported for pages targets")
+		return nil, fmt.Errorf("cloudflare: pages targets cannot enumerate existing secret names")
 	}
 	u, err := url.Parse(c.baseURL)
 	if err != nil {

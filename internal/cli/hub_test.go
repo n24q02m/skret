@@ -289,11 +289,13 @@ sync:
 	var decoded syncer.Manifest
 	require.NoError(t, json.Unmarshal(gotBody, &decoded))
 	require.Len(t, decoded.Keys, 1)
-	// No prior sync for the declared dotenv target -> first-run empty state ->
-	// BuildManifest marks it "missing" (the correct drift signal).
+	// dotenv has no ExistingLister -- it cannot enumerate what it already
+	// wrote -- so BuildManifest marks it "unknown" (the correct presence
+	// signal for a target type that structurally can't answer).
 	target, ok := decoded.Keys[0].Targets["dotenv:out.env"]
 	require.True(t, ok, "declared sync.targets entry must appear in the manifest")
-	assert.Equal(t, "missing", target.Status)
+	assert.Equal(t, "unknown", target.Status)
+	assert.False(t, target.Present)
 }
 
 // TestHubOptions_RunPush_HubURLFromEnv verifies the SKRET_HUB_URL env var is
@@ -445,50 +447,177 @@ environments:
 	assert.Contains(t, err.Error(), "load deploy salt failed")
 }
 
-// --- loadHubStates ---
+// --- targetPresence ---
 
-func TestLoadHubStates_NilConfig(t *testing.T) {
-	assert.Empty(t, loadHubStates(NewRootCmd(), nil))
+func TestTargetPresence_NilConfig(t *testing.T) {
+	assert.Empty(t, targetPresence(context.Background(), NewRootCmd(), nil))
 }
 
-func TestLoadHubStates_AllTargetTypes(t *testing.T) {
-	setFakeHome(t)
-
-	sc := &config.SyncConfig{Targets: []config.SyncTarget{
-		{Type: "dotenv", File: "out.env"},
-		{Type: "github", Repo: "o/r"},
-		{Type: "cloudflare", Worker: "w"},
-	}}
-	states := loadHubStates(NewRootCmd(), sc)
-	assert.Contains(t, states, "dotenv:out.env")
-	assert.Contains(t, states, "github:o/r")
-	assert.Contains(t, states, "cloudflare:worker/w")
-}
-
-// TestLoadHubStates_CorruptStateFile_WarnsAndMarksMissing covers the fix for
-// a corrupt/unreadable sync-state cache: unlike the never-synced case (which
-// LoadSyncState reports as an empty, non-error state), a genuine read/parse
-// failure must not make the target vanish from the manifest silently. It
-// should still contribute an (empty) entry -- so BuildManifest marks it
-// "missing" -- and loadHubStates must warn on cmd's stderr.
-func TestLoadHubStates_CorruptStateFile_WarnsAndMarksMissing(t *testing.T) {
-	setFakeHome(t)
-
-	sc := &config.SyncConfig{Targets: []config.SyncTarget{
-		{Type: "dotenv", File: "out.env"},
-	}}
-
-	path, err := syncer.StatePathFor("dotenv", "out.env")
-	require.NoError(t, err)
-	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o700))
-	require.NoError(t, os.WriteFile(path, []byte("not json"), 0o600))
-
+// TestTargetPresence_Dotenv_Unknown_NoWarning: dotenv has no ExistingLister
+// implementation at all -- this is a structural limitation, not an error,
+// so it must NOT print a warning (only a genuine failure to determine
+// presence warns).
+func TestTargetPresence_Dotenv_Unknown_NoWarning(t *testing.T) {
+	sc := &config.SyncConfig{Targets: []config.SyncTarget{{Type: "dotenv", File: "out.env"}}}
 	cmd := NewRootCmd()
 	var buf bytes.Buffer
 	cmd.SetErr(&buf)
 
-	states := loadHubStates(cmd, sc)
-	require.Contains(t, states, "dotenv:out.env")
-	assert.Empty(t, states["dotenv:out.env"].Hashes)
-	assert.Contains(t, buf.String(), "warning: skipping drift for dotenv:out.env")
+	presence := targetPresence(context.Background(), cmd, sc)
+	require.Contains(t, presence, "dotenv:out.env")
+	assert.False(t, presence["dotenv:out.env"].Ok)
+	assert.Empty(t, buf.String())
+}
+
+func TestTargetPresence_GitHub_PresentAndAbsent(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"total_count":1,"secrets":[{"name":"HAVE_KEY"}]}`))
+	}))
+	defer srv.Close()
+
+	sc := &config.SyncConfig{Targets: []config.SyncTarget{
+		{Type: "github", Repo: "o/r", BaseURL: srv.URL},
+	}}
+	t.Setenv("GITHUB_TOKEN", "tok")
+
+	presence := targetPresence(context.Background(), NewRootCmd(), sc)
+	require.Contains(t, presence, "github:o/r")
+	got := presence["github:o/r"]
+	assert.True(t, got.Ok)
+	assert.True(t, got.Names["HAVE_KEY"])
+	assert.False(t, got.Names["MISSING_KEY"])
+}
+
+// TestTargetPresence_GitHub_NoToken_UnknownWithWarning: the syncer can't
+// even be built without GITHUB_TOKEN (newGitHubFromConfig errors) -- that
+// must still degrade to "unknown" + a stderr warning, not fail the push.
+func TestTargetPresence_GitHub_NoToken_UnknownWithWarning(t *testing.T) {
+	t.Setenv("GITHUB_TOKEN", "")
+	sc := &config.SyncConfig{Targets: []config.SyncTarget{{Type: "github", Repo: "o/r"}}}
+	cmd := NewRootCmd()
+	var buf bytes.Buffer
+	cmd.SetErr(&buf)
+
+	presence := targetPresence(context.Background(), cmd, sc)
+	require.Contains(t, presence, "github:o/r")
+	assert.False(t, presence["github:o/r"].Ok)
+	assert.Contains(t, buf.String(), "warning: hub push: github:o/r: build target failed")
+	assert.Contains(t, buf.String(), "GITHUB_TOKEN")
+}
+
+func TestTargetPresence_GitHub_NetworkError_UnknownWithWarning(t *testing.T) {
+	lc := &net.ListenConfig{}
+	l, err := lc.Listen(context.Background(), "tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	addr := l.Addr().String()
+	require.NoError(t, l.Close()) // nothing listening -> ExistingKeys fails
+
+	sc := &config.SyncConfig{Targets: []config.SyncTarget{
+		{Type: "github", Repo: "o/r", BaseURL: "http://" + addr},
+	}}
+	t.Setenv("GITHUB_TOKEN", "tok")
+	cmd := NewRootCmd()
+	var buf bytes.Buffer
+	cmd.SetErr(&buf)
+
+	presence := targetPresence(context.Background(), cmd, sc)
+	require.Contains(t, presence, "github:o/r")
+	assert.False(t, presence["github:o/r"].Ok)
+	assert.Contains(t, buf.String(), "warning: hub push: github:o/r: list existing keys failed")
+}
+
+func TestTargetPresence_CloudflarePages_Unknown_WithWarning(t *testing.T) {
+	sc := &config.SyncConfig{Targets: []config.SyncTarget{
+		{Type: "cloudflare", Pages: "proj", Account: "acc"},
+	}}
+	t.Setenv("CLOUDFLARE_API_TOKEN", "tok")
+	cmd := NewRootCmd()
+	var buf bytes.Buffer
+	cmd.SetErr(&buf)
+
+	presence := targetPresence(context.Background(), cmd, sc)
+	require.Contains(t, presence, "cloudflare:pages/proj")
+	assert.False(t, presence["cloudflare:pages/proj"].Ok)
+	assert.Contains(t, buf.String(), "warning: hub push: cloudflare:pages/proj: list existing keys failed")
+	assert.Contains(t, buf.String(), "pages targets cannot enumerate")
+}
+
+func TestTargetPresence_CloudflareWorker_Present(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"success":true,"result":[{"name":"HAVE_KEY","type":"secret_text"}]}`))
+	}))
+	defer srv.Close()
+
+	sc := &config.SyncConfig{Targets: []config.SyncTarget{
+		{Type: "cloudflare", Worker: "w", Account: "acc", BaseURL: srv.URL},
+	}}
+	t.Setenv("CLOUDFLARE_API_TOKEN", "tok")
+
+	presence := targetPresence(context.Background(), NewRootCmd(), sc)
+	require.Contains(t, presence, "cloudflare:worker/w")
+	got := presence["cloudflare:worker/w"]
+	assert.True(t, got.Ok)
+	assert.True(t, got.Names["HAVE_KEY"])
+}
+
+// TestHubOptions_RunPush_GitHubTarget_PresentAbsentEndToEnd exercises the
+// full runPush wiring: a real .skret.yaml github target (base_url pointed
+// at a local httptest GitHub-API double) plus a local-provider secrets
+// file with one key that "exists" on the fake GitHub side and one that
+// doesn't, posted to a fake hub ingest endpoint.
+func TestHubOptions_RunPush_GitHubTarget_PresentAbsentEndToEnd(t *testing.T) {
+	ghSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"total_count":1,"secrets":[{"name":"HAVE_KEY"}]}`))
+	}))
+	defer ghSrv.Close()
+
+	var gotBody []byte
+	hubSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotBody, _ = io.ReadAll(r.Body)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer hubSrv.Close()
+
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(dir+"/.git", 0o755))
+	cfgYAML := fmt.Sprintf(`
+version: "1"
+default_env: dev
+environments:
+  dev:
+    provider: local
+    file: secrets.yaml
+sync:
+  hub:
+    url: %q
+  targets:
+    - type: github
+      repo: o/r
+      base_url: %q
+`, hubSrv.URL, ghSrv.URL)
+	require.NoError(t, os.WriteFile(dir+"/.skret.yaml", []byte(cfgYAML), 0o644))
+	require.NoError(t, os.WriteFile(dir+"/secrets.yaml", []byte("version: \"1\"\nsecrets:\n  HAVE_KEY: v1\n  MISSING_KEY: v2"), 0o600))
+
+	setFakeHome(t)
+	t.Setenv("GITHUB_TOKEN", "tok")
+
+	origDir, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	defer os.Chdir(origDir)
+
+	o := &hubOptions{global: &GlobalOpts{}}
+	require.NoError(t, o.runPush(NewRootCmd()))
+
+	var decoded syncer.Manifest
+	require.NoError(t, json.Unmarshal(gotBody, &decoded))
+	byName := map[string]syncer.ManifestTarget{}
+	for _, k := range decoded.Keys {
+		byName[k.Name] = k.Targets["github:o/r"]
+	}
+	assert.Equal(t, "present", byName["HAVE_KEY"].Status)
+	assert.True(t, byName["HAVE_KEY"].Present)
+	assert.Equal(t, "absent", byName["MISSING_KEY"].Status)
+	assert.False(t, byName["MISSING_KEY"].Present)
+	assert.NotContains(t, string(gotBody), "v1")
+	assert.NotContains(t, string(gotBody), "v2")
 }

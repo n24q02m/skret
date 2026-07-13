@@ -13,7 +13,7 @@ function sampleManifest(ns: string, environment: string): Manifest {
         name: "DATABASE_URL",
         fingerprint: "a1b2c3d4",
         updated_at: "2026-07-01T00:00:00Z",
-        targets: { "github:n24q02m/skret": { present: true, status: "in-sync" } },
+        targets: { "github:n24q02m/skret": { present: true, status: "present" } },
       },
     ],
   };
