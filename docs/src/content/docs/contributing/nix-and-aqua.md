@@ -16,7 +16,7 @@ nix shell github:n24q02m/skret
 To pin a specific release:
 
 ```sh
-nix run "github:n24q02m/skret?ref=v1.0.0"
+nix run "github:n24q02m/skret?ref=v1.12.0"
 ```
 
 First-time builds need a vendor hash — `vendorHash` in `flake.nix` starts as `lib.fakeHash`; the first `nix build` prints the real hash in the error, paste it in and commit.
