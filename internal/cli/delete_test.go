@@ -2,10 +2,12 @@ package cli
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/n24q02m/skret/pkg/skret"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -130,4 +132,35 @@ secrets:
 		assert.NotContains(t, stderr.String(), "Delete secret")
 		assert.Contains(t, stderr.String(), "Deleted KEY2")
 	})
+}
+
+func TestDeleteCmd_NotFound_ExitCodeAndHint(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".git"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".skret.yaml"), []byte(`
+version: "1"
+default_env: dev
+environments:
+  dev:
+    provider: local
+    file: ./secrets.yaml
+`), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "secrets.yaml"), []byte("version: \"1\"\nsecrets: {}"), 0o600))
+
+	origDir, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	defer os.Chdir(origDir)
+
+	opts := &GlobalOpts{}
+	cmd := newDeleteCmd(opts)
+	cmd.SetArgs([]string{"NOPE", "--confirm"})
+
+	err := cmd.Execute()
+	require.Error(t, err)
+
+	var se *skret.Error
+	require.True(t, errors.As(err, &se))
+	assert.Equal(t, skret.ExitNotFoundError, se.Code)
+	assert.Contains(t, se.Message, "Nothing to delete")
+	assert.Contains(t, se.Message, "skret history NOPE")
 }

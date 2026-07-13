@@ -132,7 +132,7 @@ Error: AccessDeniedException: User: arn:aws:iam::123456789012:user/dev
 is not authorized to perform: ssm:GetParameter
 ```
 
-An IAM denial from AWS SSM surfaces as a provider error (exit 3) on write/list-path commands (`set`, `env`, `run`, `sync`, ...). `skret get` currently deviates -- any provider failure through `get`, including this `ssm:GetParameter` denial, surfaces as exit 5 (not found) instead.
+An IAM denial from AWS SSM surfaces as a provider error (exit 3) on every command, including `get` -- this `ssm:GetParameter` denial exits 3 just like the same denial would on `set`, `env`, `run`, `sync`, and the rest. Only a missing key exits 5 (not found).
 
 **Fix:** Your IAM policy does not allow access to this path. Update the IAM policy to include the SSM path prefix. See [Authentication - IAM Policies](/guide/authentication#iam-policy-examples).
 

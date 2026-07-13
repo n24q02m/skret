@@ -51,7 +51,7 @@ object. To read ALL secrets use 'skret env'; to inject them into a command use
 				if errors.Is(err, provider.ErrNotFound) {
 					return skret.NewError(skret.ExitNotFoundError, fmt.Sprintf("Secret not found. Use 'skret set %s <value>' to create it.", key), err)
 				}
-				return skret.NewError(skret.ExitNotFoundError, fmt.Sprintf("get %q", key), err)
+				return skret.NewError(skret.ExitProviderError, fmt.Sprintf("get %q failed", key), err)
 			}
 
 			return printSecret(cmd, secret, outputJSON, withMetadata, plain)
