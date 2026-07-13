@@ -9,6 +9,7 @@ describe("healthz", () => {
     expect(res.headers.get("Cache-Control")).toBe("no-store");
     expect(res.headers.get("X-Content-Type-Options")).toBe("nosniff");
     expect(res.headers.get("Content-Security-Policy")).toContain("default-src 'none'");
+    expect(res.headers.get("Content-Security-Policy")).toContain("img-src data:");
   });
 
   it("returns 404 for unknown path with the shared security headers", async () => {

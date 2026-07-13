@@ -87,14 +87,17 @@ function readCookie(req: Request, name: string): string | null {
   return null;
 }
 
-// SECURITY_HEADERS is shared by every response this Worker returns --
+// SECURITY_HEADERS is shared by every content response this Worker returns --
 // html(), json(), and notFound() alike -- so /healthz and 404s carry the
 // same Cache-Control/CSP/nosniff discipline as the HTML routes instead of
-// silently omitting them (audit finding M6).
+// silently omitting them (audit finding M6). The 303 redirects (login
+// success, logout) are bare Response objects and carry only Location +
+// Set-Cookie, not these headers.
 const SECURITY_HEADERS: Record<string, string> = {
   "Cache-Control": "no-store",
   "X-Content-Type-Options": "nosniff",
-  "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'",
+  "Content-Security-Policy":
+    "default-src 'none'; style-src 'unsafe-inline'; img-src data:; form-action 'self'; base-uri 'none'",
 };
 
 function withSecurityHeaders(body: BodyInit | null, status: number, contentType: string): Response {
