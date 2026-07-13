@@ -20,11 +20,44 @@ function statusClass(status: string): string {
   return KNOWN_STATUS.has(status) ? status : "other";
 }
 
+// STALE_MS: a card whose manifest is older than this is flagged "stale" --
+// the cron hasn't refreshed it, so its presence status may no longer
+// reflect reality even though nothing about it is literally wrong.
+const STALE_MS = 48 * 60 * 60 * 1000;
+
+// relativeTime renders `iso` (a manifest's generated_at) relative to `now`
+// (both parseable by Date.parse) as a short "Xm/h/d ago" string. Exported
+// for direct unit testing.
+export function relativeTime(iso: string, now: number): string {
+  const then = Date.parse(iso);
+  if (Number.isNaN(then)) return "unknown";
+  const diffMs = now - then;
+  if (diffMs < 60_000) return "just now";
+  const mins = Math.floor(diffMs / 60_000);
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
+// isStale reports whether `iso` is more than 48h before `now`. An
+// unparseable timestamp is reported not-stale (fail safe: an unreadable
+// date shouldn't paint a card as urgently wrong when the real problem is
+// a malformed field, which is a separate concern). Exported for direct
+// unit testing.
+export function isStale(iso: string, now: number): boolean {
+  const then = Date.parse(iso);
+  if (Number.isNaN(then)) return false;
+  return now - then > STALE_MS;
+}
+
 const STYLE = `
   body{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;margin:2rem;color:#1a1a1a;background:#fafafa}
   h1{font-size:1.3rem}
   .ns{margin:1.5rem 0;border:1px solid #ddd;border-radius:8px;overflow:hidden}
-  .ns h2{font-size:1rem;margin:0;padding:.6rem 1rem;background:#f0f0f0}
+  .ns h2{font-size:1rem;margin:0;padding:.6rem 1rem;background:#f0f0f0;display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}
+  .ns .meta{font-weight:normal;font-size:.8rem;color:#5a5a5a}
   table{width:100%;border-collapse:collapse;font-size:.85rem}
   th,td{text-align:left;padding:.4rem 1rem;border-top:1px solid #eee}
   .fp{color:#888}
@@ -33,6 +66,7 @@ const STYLE = `
   .absent{background:#f5d7d7;color:#8a1a1a}
   .unknown{background:#e8e8e8;color:#4a4a4a}
   .other{background:#e8e8e8;color:#4a4a4a}
+  .stale{background:#fde2c8;color:#9a4a0a}
   .empty{color:#888;padding:2rem;text-align:center}
   form{display:flex;gap:.5rem;margin-top:1rem}
   input,button{padding:.5rem;font-size:1rem}
@@ -48,28 +82,33 @@ function page(inner: string): string {
   );
 }
 
-function renderNamespace(m: Manifest): string {
+function renderNamespace(m: Manifest, now: number): string {
   const rows = m.keys
     .map((k) => {
       const badges = Object.entries(k.targets)
-        .map(([name, t]) => `<span class="badge ${statusClass(t.status)}">${esc(name)}: ${esc(t.status)}</span>`)
+        .map(
+          ([name, t]) =>
+            `<span class="badge ${statusClass(t.status)}">${esc(name)}: ${esc(t.status)}</span>`,
+        )
         .join("");
       return `<tr><td>${esc(k.name)}</td><td class="fp">${esc(k.fingerprint)}</td><td>${badges}</td></tr>`;
     })
     .join("");
+  const staleBadge = isStale(m.generated_at, now) ? `<span class="badge stale">stale</span>` : "";
   return (
-    `<section class="ns"><h2>${esc(m.namespace)} &middot; ${esc(m.env)}</h2>` +
+    `<section class="ns"><h2>${esc(m.namespace)} &middot; ${esc(m.env)}` +
+    ` <span class="meta">synced ${esc(relativeTime(m.generated_at, now))}</span>${staleBadge}</h2>` +
     `<table><thead><tr><th>Key</th><th>Fingerprint</th><th>Targets</th></tr></thead>` +
     `<tbody>${rows}</tbody></table></section>`
   );
 }
 
-export function renderDashboard(manifests: Manifest[]): string {
+export function renderDashboard(manifests: Manifest[], now: number = Date.now()): string {
   const sorted = [...manifests].sort((a, b) =>
     `${a.namespace}:${a.env}`.localeCompare(`${b.namespace}:${b.env}`),
   );
   const body = sorted.length
-    ? sorted.map(renderNamespace).join("\n")
+    ? sorted.map((mf) => renderNamespace(mf, now)).join("\n")
     : `<div class="empty">No manifests yet. Run <code>skret hub push</code>.</div>`;
   return page(`<h1>skret vault dashboard</h1>${body}`);
 }

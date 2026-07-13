@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { renderDashboard, renderLogin } from "../src/render";
+import { renderDashboard, renderLogin, relativeTime, isStale } from "../src/render";
 import type { Manifest } from "../src/types";
+
+const FIXED_NOW = Date.parse("2026-07-13T12:00:00Z");
 
 const m: Manifest = {
   namespace: "/klprism/prod",
@@ -56,6 +58,46 @@ describe("renderDashboard", () => {
       expect(html).toContain('class="badge other"');
       expect(html).toContain("in-sync"); // the raw legacy text is still shown, just unstyled
     });
+  });
+});
+
+describe("relativeTime", () => {
+  it("renders minutes/hours/days ago", () => {
+    expect(relativeTime(new Date(FIXED_NOW - 30_000).toISOString(), FIXED_NOW)).toBe("just now");
+    expect(relativeTime(new Date(FIXED_NOW - 5 * 60_000).toISOString(), FIXED_NOW)).toBe("5m ago");
+    expect(relativeTime(new Date(FIXED_NOW - 3 * 3_600_000).toISOString(), FIXED_NOW)).toBe("3h ago");
+    expect(relativeTime(new Date(FIXED_NOW - 2 * 86_400_000).toISOString(), FIXED_NOW)).toBe("2d ago");
+  });
+  it("returns 'unknown' for an unparseable timestamp", () => {
+    expect(relativeTime("not-a-date", FIXED_NOW)).toBe("unknown");
+  });
+});
+
+describe("isStale", () => {
+  it("is false just under 48h and true just over", () => {
+    expect(isStale(new Date(FIXED_NOW - (48 * 3_600_000 - 1_000)).toISOString(), FIXED_NOW)).toBe(false);
+    expect(isStale(new Date(FIXED_NOW - (48 * 3_600_000 + 1_000)).toISOString(), FIXED_NOW)).toBe(true);
+  });
+  it("is false for an unparseable timestamp (fail safe, not fail stale)", () => {
+    expect(isStale("not-a-date", FIXED_NOW)).toBe(false);
+  });
+});
+
+describe("generated_at rendering", () => {
+  it("shows a relative-time string in the card header", () => {
+    const recent: Manifest = { ...m, generated_at: new Date(FIXED_NOW - 5 * 60_000).toISOString() };
+    const html = renderDashboard([recent], FIXED_NOW);
+    expect(html).toContain("synced 5m ago");
+  });
+  it("flags a namespace stale after 48h with no new push", () => {
+    const stale: Manifest = { ...m, generated_at: new Date(FIXED_NOW - 49 * 3_600_000).toISOString() };
+    const html = renderDashboard([stale], FIXED_NOW);
+    expect(html).toContain('class="badge stale"');
+  });
+  it("does not flag a fresh namespace as stale", () => {
+    const fresh: Manifest = { ...m, generated_at: new Date(FIXED_NOW - 3_600_000).toISOString() };
+    const html = renderDashboard([fresh], FIXED_NOW);
+    expect(html).not.toContain('class="badge stale"');
   });
 });
 
