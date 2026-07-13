@@ -10,7 +10,7 @@ const manifest = {
       name: "API_KEY",
       fingerprint: "deadbeef",
       updated_at: "2026-07-01T00:00:00Z",
-      targets: { "github:n24q02m/skret": { present: true, status: "drift" } },
+      targets: { "github:n24q02m/skret": { present: true, status: "present" } },
     },
   ],
 };
@@ -65,7 +65,7 @@ describe("dashboard flow", () => {
     const body = await dashRes.text();
     expect(body).toContain("API_KEY");
     expect(body).toContain("deadbeef");
-    expect(body).toContain("drift");
+    expect(body).toContain("present");
   });
 
   it("GET / with a garbage cookie falls back to login", async () => {
@@ -82,5 +82,26 @@ describe("dashboard flow", () => {
     });
     expect(res.status).toBe(400);
     expect(await res.text()).toContain('name="password"');
+  });
+
+  it("POST /logout clears the session cookie and redirects to /", async () => {
+    const loginRes = await SELF.fetch("https://hub.test/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: "password=test-relay-password",
+      redirect: "manual",
+    });
+    const cookie = cookieFrom(loginRes);
+
+    const logoutRes = await SELF.fetch("https://hub.test/logout", {
+      method: "POST",
+      headers: { Cookie: cookie },
+      redirect: "manual",
+    });
+    expect(logoutRes.status).toBe(303);
+    expect(logoutRes.headers.get("Location")).toBe("/");
+    const setCookie = logoutRes.headers.get("Set-Cookie") ?? "";
+    expect(setCookie).toContain("session=;");
+    expect(setCookie).toContain("Max-Age=0");
   });
 });

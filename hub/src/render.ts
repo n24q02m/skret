@@ -96,12 +96,25 @@ const STYLE = `
   form{display:flex;gap:.5rem;margin-top:1rem;align-items:center}
   input,button{padding:.5rem;font-size:1rem}
   .err{color:#8a1a1a}
+  .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+  footer{margin-top:2rem;font-size:.8rem;color:#5a5a5a}
+  footer a{color:#5a5a5a}
 `;
+
+// FAVICON: a minimal inline SVG (dark rounded square, monospace "s") so the
+// browser tab has an icon at all -- no external asset, no CDN fetch.
+const FAVICON =
+  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E" +
+  "%3Crect width='32' height='32' rx='6' fill='%231a1a1a'/%3E" +
+  "%3Ctext x='16' y='23' font-family='monospace' font-size='20' fill='%23fafafa' text-anchor='middle'%3Es%3C/text%3E%3C/svg%3E";
+
+const FOOTER = `<footer><a href="https://skret.n24q02m.com">skret docs</a></footer>`;
 
 function page(inner: string): string {
   return (
     `<!doctype html><html lang="en"><head><meta charset="utf-8">` +
     `<meta name="viewport" content="width=device-width,initial-scale=1">` +
+    `<link rel="icon" href="${FAVICON}">` +
     `<title>skret vault</title><style>${STYLE}</style></head>` +
     `<body>${inner}</body></html>`
   );
@@ -136,15 +149,17 @@ export function renderDashboard(manifests: Manifest[], now: number = Date.now())
   const body = sorted.length
     ? sorted.map((mf) => renderNamespace(mf, now)).join("\n")
     : `<div class="empty">No manifests yet. Run <code>skret hub push</code>.</div>`;
-  return page(`<h1>skret vault dashboard</h1>${body}`);
+  const logout = `<form method="POST" action="/logout"><button type="submit">Logout</button></form>`;
+  return page(`<h1>skret vault dashboard</h1>${body}${logout}${FOOTER}`);
 }
 
 export function renderLogin(error?: string): string {
-  const msg = error ? `<p class="err">${esc(error)}</p>` : "";
+  const msg = error ? `<p class="err" role="alert">${esc(error)}</p>` : "";
   return page(
     `<h1>skret vault</h1>${msg}` +
       `<form method="POST" action="/login">` +
-      `<input type="password" name="password" placeholder="relay password" autofocus>` +
-      `<button type="submit">Enter</button></form>`,
+      `<label for="password" class="sr-only">Relay password</label>` +
+      `<input type="password" id="password" name="password" placeholder="relay password" autocomplete="current-password" autofocus>` +
+      `<button type="submit">Enter</button></form>${FOOTER}`,
   );
 }

@@ -177,3 +177,29 @@ describe("renderLogin", () => {
     expect(renderLogin("wrong password")).toContain("wrong password");
   });
 });
+
+describe("renderLogin a11y", () => {
+  it("has a label associated with the password input via id/for", () => {
+    const html = renderLogin();
+    expect(html).toContain('<label for="password"');
+    expect(html).toContain('id="password"');
+    expect(html).toContain('autocomplete="current-password"');
+  });
+  it("marks the error message with role=alert", () => {
+    const html = renderLogin("wrong password");
+    expect(html).toContain('role="alert"');
+  });
+});
+
+it("declares a favicon", () => {
+  expect(renderDashboard([])).toContain('rel="icon"');
+});
+
+it("links back to the docs site in the footer", () => {
+  expect(renderDashboard([])).toContain("skret.n24q02m.com");
+});
+
+it("offers a logout control on the dashboard", () => {
+  const html = renderDashboard([m], FIXED_NOW);
+  expect(html).toContain('action="/logout"');
+});
