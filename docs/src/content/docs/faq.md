@@ -25,7 +25,7 @@ AWS SSM Parameter Store Standard tier:
 **Total: $0/month** for most individual developers and small teams.
 
 Compare:
-- Doppler: Free for 5 projects, then $18/user/month
+- Doppler: Free for 3 users, then $8/user/month (source: <https://www.doppler.com/pricing>, as of 2026-07)
 - Infisical: Free (self-hosted), but requires a server (~$10-30/month compute)
 - HashiCorp Vault: Free (self-hosted), significant ops overhead
 
@@ -108,13 +108,15 @@ Yes, through your cloud provider's IAM. All team members with the appropriate IA
 
 ## What happens if AWS SSM is down?
 
-`skret run --` will fail with exit code 3 (provider error). You can fall back to the local provider for development:
+`skret run --` will fail with exit code 3 (provider error). You can fall back to the local provider for development, but the local provider needs a `secrets:`-wrapped YAML file (see [Can I use skret offline?](#can-i-use-skret-offline) above) -- a raw `skret env` dump does not match that shape:
 
 ```bash
-# Export current secrets for offline use
-skret env > .secrets.dev.yaml  # one-time backup
+# One-time: wrap the current environment's secrets in the schema the local
+# provider expects (a top-level `secrets:` key), then switch to it.
+{ echo 'secrets:'; skret env --format=yaml | sed 's/^/  /'; } > .secrets.dev.yaml
 
-# Switch to local provider
+# Switch to local provider (requires a `dev` environment already declared in
+# .skret.yaml with provider: local, file: ./.secrets.dev.yaml)
 skret --env=dev run -- make start
 ```
 
