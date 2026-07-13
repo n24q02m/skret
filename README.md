@@ -84,7 +84,7 @@ If you only need a single-cloud injector and you don't care about migration or C
 - **Doppler-grade CLI**: `skret run -- your-cmd` injects secrets as env vars. Identical UX to `doppler run --`.
 - **Migration-first**: Built-in importers for Doppler, Infisical, and `.env` files.
 - **CI/CD syncers**: Push secrets to GitHub Actions repository secrets in one command.
-- **Agent-ready**: documented exit-code contract, byte-exact secret injection, and an `llms.txt` map built for LLM/agent discovery — see the [agent guide](https://skret.n24q02m.com/guide/agents/).
+- **Agent-ready**: documented exit-code contract, byte-exact secret reads, and an `llms.txt` map built for LLM/agent discovery — see the [agent guide](https://skret.n24q02m.com/guide/agents/).
 - **Production-grade**: Coverage gates enforced in CI (`internal/` >=90%, `pkg/skret/` >=95% -- see the codecov badge above for the live number), CodeQL security scanning, SBOM + cosign-signed release artifacts.
 - **Cross-platform**: Linux, macOS, Windows — amd64 and arm64 binaries for each.
 - **Tab-completion of secret keys**: `skret get <TAB>` completes real key names via a names-only listing — zero decryption, zero KMS cost.
