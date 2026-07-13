@@ -39,6 +39,7 @@ or a pre-commit hook. Use --staged to scan only staged files.`,
 			if err != nil {
 				return skret.NewError(skret.ExitProviderError, "scan: list secrets failed", err)
 			}
+			// Provide actionable feedback for empty states to improve UX
 			if len(secrets) == 0 {
 				cmd.PrintErrln("No secrets found to scan. Use 'skret set' to add a secret.")
 				return nil
