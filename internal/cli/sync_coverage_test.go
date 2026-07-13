@@ -1010,3 +1010,37 @@ func TestSyncOptions_Run_ExitClass_Github_IsNetworkError(t *testing.T) {
 	require.True(t, errors.As(err, &se))
 	assert.Equal(t, skret.ExitNetworkError, se.Code, "a github API failure stays classified as a network error")
 }
+
+// --- Wave 2 T6(c): sync --to=github reports ALL missing requirements at once ---
+
+func TestSyncOptions_TargetFromFlags_Github_ReportsBothMissingAtOnce(t *testing.T) {
+	o := &syncOptions{to: "github"} // no GITHUB_TOKEN, no --github-repo
+	_, err := o.targetFromFlags("github")
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "GITHUB_TOKEN")
+	assert.ErrorContains(t, err, "repository")
+}
+
+func TestSyncOptions_TargetFromFlags_Github_TokenOnlyMissing(t *testing.T) {
+	o := &syncOptions{to: "github", githubRepo: "owner/repo"}
+	_, err := o.targetFromFlags("github")
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "GITHUB_TOKEN")
+}
+
+func TestSyncOptions_TargetFromFlags_Github_RepoOnlyMissing(t *testing.T) {
+	t.Setenv("GITHUB_TOKEN", "ghp_test")
+	o := &syncOptions{to: "github"}
+	_, err := o.targetFromFlags("github")
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "repository")
+}
+
+func TestSyncOptions_TargetFromFlags_Github_ValidRepoAndToken_Succeeds(t *testing.T) {
+	t.Setenv("GITHUB_TOKEN", "ghp_test")
+	o := &syncOptions{to: "github", githubRepo: "owner/repo"}
+	tcs, err := o.targetFromFlags("github")
+	require.NoError(t, err)
+	require.Len(t, tcs, 1)
+	assert.Equal(t, "owner/repo", tcs[0].Fields["repo"])
+}
