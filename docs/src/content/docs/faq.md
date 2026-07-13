@@ -49,6 +49,7 @@ With the `local` provider, yes. Local secrets are stored in a YAML file on disk:
 
 ```yaml
 # .skret.yaml
+version: "1"
 environments:
   dev:
     provider: local
@@ -111,9 +112,9 @@ Yes, through your cloud provider's IAM. All team members with the appropriate IA
 `skret run --` will fail with exit code 3 (provider error). You can fall back to the local provider for development, but the local provider needs a `secrets:`-wrapped YAML file (see [Can I use skret offline?](#can-i-use-skret-offline) above) -- a raw `skret env` dump does not match that shape:
 
 ```bash
-# One-time: wrap the current environment's secrets in the schema the local
+# One-time: wrap the prod environment's secrets in the schema the local
 # provider expects (a top-level `secrets:` key), then switch to it.
-{ echo 'secrets:'; skret env --format=yaml | sed 's/^/  /'; } > .secrets.dev.yaml
+{ echo 'secrets:'; skret env --format=yaml -e prod | sed 's/^/  /'; } > .secrets.dev.yaml
 
 # Switch to local provider (requires a `dev` environment already declared in
 # .skret.yaml with provider: local, file: ./.secrets.dev.yaml)

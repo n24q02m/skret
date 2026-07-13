@@ -79,11 +79,11 @@ supports.
 | Parameters per account/region | 10,000 (standard) |
 | GetParametersByPath throughput | 40 TPS |
 
-A value over 4 KB fails with AWS's `ValidationException`, surfaced as skret
-exit code **8** (`ExitValidationError`) -- see [error codes](/reference/error-codes/).
-If you need larger values, use the [`local`](/providers/local/) provider for
-development, or a provider with a bigger cap (see [provider
-comparison](/providers/comparison/)).
+A value over 4 KB fails with AWS's `ValidationException`, surfaced as a
+provider error (skret exit code **3**) -- see [error
+codes](/reference/error-codes/). If you need larger values, use the
+[`local`](/providers/local/) provider for development, or a provider with a
+bigger cap (see [provider comparison](/providers/comparison/)).
 
 ## Security
 

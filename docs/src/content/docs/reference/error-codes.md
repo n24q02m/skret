@@ -72,12 +72,12 @@ esac
 | AWS Error | skret Code | Description |
 |-----------|-----------|-------------|
 | `ParameterNotFound` | 5 | Secret key does not exist at the given path |
-| `AccessDeniedException` | 4 | IAM policy denies the operation |
-| `ThrottlingException` | 7 | API rate limit exceeded (40 TPS default) |
-| `ValidationException` | 8 | Invalid parameter name or value too large |
-| `InternalServerError` | 3 | AWS service error |
+| `AccessDeniedException` | 3 | IAM policy denies the operation, surfaced as a generic provider error |
+| `ThrottlingException` | 3 | API rate limit exceeded (40 TPS default); retried internally (see below), then surfaced as a generic provider error if it persists |
+| `ValidationException` | 3 | Invalid parameter name or value too large, surfaced as a generic provider error |
+| `InternalServerError` | 3 | AWS service error, surfaced as a generic provider error |
 
-skret automatically retries `ThrottlingException` with exponential backoff (up to 3 retries) before returning the error.
+skret configures the AWS SDK's adaptive-mode retryer with up to 10 attempts and a 20-second max backoff (more than the SDK's 3-attempt default, since SSM `PutParameter` is throttled at roughly 3 requests per second per account) before a persisting `ThrottlingException` surfaces as the provider error above.
 
 ## Debug Output
 
