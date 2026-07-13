@@ -147,7 +147,13 @@ func (o *syncOptions) run(cmd *cobra.Command) error {
 		}
 
 		if err := s.Sync(ctx, toSync); err != nil {
-			return skret.NewError(skret.ExitNetworkError, fmt.Sprintf("sync failed for %s", s.Name()), err)
+			// dotenv writes a local file only -- a failure there is I/O, not
+			// network. github/cloudflare stay ExitNetworkError (audit I2).
+			exitCode := skret.ExitNetworkError
+			if tc.Type == "dotenv" {
+				exitCode = skret.ExitGenericError
+			}
+			return skret.NewError(exitCode, fmt.Sprintf("sync failed for %s", s.Name()), err)
 		}
 		cmd.PrintErrf("Synced %d secrets to %s\n", len(toSync), s.Name())
 
