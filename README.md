@@ -47,6 +47,7 @@ skret sync --to=github           # Push secrets to GitHub Actions
 - [Quick start](#quick-start)
 - [Provider ranking](#provider-ranking)
 - [Comparison vs alternatives](#comparison-vs-alternatives)
+- [Vault dashboard](#vault-dashboard)
 - [Documentation](#documentation)
 - [Command overview](#command-overview)
 - [Contributing](#contributing)
@@ -213,6 +214,14 @@ Audited 2026-05-01 against the latest release of each tool. The comparison cover
 - If you only need a single-cloud `run -- cmd` injector and don't care about migration / CI sync, **summon** (most actively maintained) or **novops** (broadest backend list) is enough — and shorter than skret.
 - skret's wedge is the combination: cloud-native backend ranking + migration importers + GitHub Actions sync + signed release artifacts in one binary. If two or more of those matter to you, skret is meant to replace the patchwork.
 
+## Vault dashboard
+
+`skret hub push` publishes a names-only manifest — key names, salted `sha256[:8]` fingerprints, and a per-target status — to a self-hosted, read-only dashboard. No secret value ever leaves your machine. Deploy your own on Cloudflare Workers + KV; see the [hub guide](https://skret.n24q02m.com/guide/hub/).
+
+<p align="center">
+  <img src="https://skret.n24q02m.com/hub-screenshot.png" alt="skret vault dashboard showing per-key sync status badges" width="760">
+</p>
+
 ## Documentation
 
 Full docs at **[skret.n24q02m.com](https://skret.n24q02m.com)**:
@@ -243,6 +252,7 @@ Full docs at **[skret.n24q02m.com](https://skret.n24q02m.com)**:
 | `skret list` | List secret keys under the current environment path (no decryption; use --values for KEY+VERSION+VALUE) |
 | `skret import --from=<source>` | Import from Doppler, Infisical, dotenv |
 | `skret sync --to=<target>` | Sync to GitHub Actions, dotenv |
+| `skret hub push` | Publish a names-only secret inventory (no values) to the vault dashboard |
 | `skret diff <A> <B>` | Compare two environments (or env vs dotenv / env vs github) and report drift without printing values |
 | `skret template <file>` | Render a template file, substituting `${KEY}` with secret values |
 | `skret scan` | Scan tracked files for any managed secret value and exit 10 on a leak (`--staged` for pre-commit hooks) |
