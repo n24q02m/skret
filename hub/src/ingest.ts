@@ -2,7 +2,7 @@ import type { Env, Manifest, ManifestKey, ManifestTarget } from "./types";
 import { checkBearer } from "./auth";
 import { putManifest } from "./store";
 
-const VALID_STATUS = new Set(["in-sync", "drift", "missing"]);
+const VALID_STATUS = new Set(["present", "absent", "unknown"]);
 // B1 never sends a value; reject anything value-like (case-insensitive) if a
 // future producer regresses — checked at manifest, key AND target level.
 const FORBIDDEN_FIELDS = new Set(["value", "secret", "text", "plaintext", "data"]);

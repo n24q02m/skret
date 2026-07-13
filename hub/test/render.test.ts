@@ -12,8 +12,8 @@ const m: Manifest = {
       fingerprint: "a1b2c3d4",
       updated_at: "2026-07-01T00:00:00Z",
       targets: {
-        "github:n24q02m/skret": { present: true, status: "in-sync" },
-        "cloudflare:worker": { present: false, status: "missing" },
+        "github:n24q02m/skret": { present: true, status: "present" },
+        "cloudflare:worker": { present: false, status: "absent" },
       },
     },
   ],
@@ -24,8 +24,8 @@ describe("renderDashboard", () => {
     const html = renderDashboard([m]);
     expect(html).toContain("DATABASE_URL");
     expect(html).toContain("a1b2c3d4");
-    expect(html).toContain("in-sync");
-    expect(html).toContain("missing");
+    expect(html).toContain("present");
+    expect(html).toContain("absent");
     expect(html).toContain("/klprism/prod");
   });
   it("shows an empty state with no manifests", () => {
@@ -42,6 +42,20 @@ describe("renderDashboard", () => {
     const html = renderDashboard([q]);
     expect(html).toContain("a&#39;b");
     expect(html).not.toContain("a'b");
+  });
+  describe("statusClass fallback (forward-compat with pre-Wave-3 manifests)", () => {
+    it("renders present/absent with their own badge class", () => {
+      const html = renderDashboard([m]);
+      expect(html).toContain('class="badge present"');
+      expect(html).toContain('class="badge absent"');
+    });
+    it("falls back to the 'other' class for a legacy status string", () => {
+      const legacy: Manifest = structuredClone(m);
+      legacy.keys[0].targets["github:n24q02m/skret"] = { present: true, status: "in-sync" };
+      const html = renderDashboard([legacy]);
+      expect(html).toContain('class="badge other"');
+      expect(html).toContain("in-sync"); // the raw legacy text is still shown, just unstyled
+    });
   });
 });
 

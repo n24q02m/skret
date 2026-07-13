@@ -9,6 +9,17 @@ function esc(s: string): string {
     .replace(/'/g, "&#39;");
 }
 
+// KNOWN_STATUS maps the current status enum to its own badge/summary
+// label. Anything else (a manifest written by the pre-Wave-3 CLI, still
+// carrying "in-sync" | "drift" | "missing" until the next push overwrites
+// it) falls back to the "other" CSS class in statusClass() below, so
+// rendering never throws on stored data older than the code reading it.
+const KNOWN_STATUS = new Set(["present", "absent", "unknown"]);
+
+function statusClass(status: string): string {
+  return KNOWN_STATUS.has(status) ? status : "other";
+}
+
 const STYLE = `
   body{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;margin:2rem;color:#1a1a1a;background:#fafafa}
   h1{font-size:1.3rem}
@@ -18,9 +29,10 @@ const STYLE = `
   th,td{text-align:left;padding:.4rem 1rem;border-top:1px solid #eee}
   .fp{color:#888}
   .badge{display:inline-block;padding:.1rem .5rem;border-radius:4px;font-size:.75rem;margin-right:.3rem}
-  .in-sync{background:#d7f5dd;color:#0a6b2e}
-  .drift{background:#fde2c8;color:#9a4a0a}
-  .missing{background:#f5d7d7;color:#8a1a1a}
+  .present{background:#d7f5dd;color:#0a6b2e}
+  .absent{background:#f5d7d7;color:#8a1a1a}
+  .unknown{background:#e8e8e8;color:#4a4a4a}
+  .other{background:#e8e8e8;color:#4a4a4a}
   .empty{color:#888;padding:2rem;text-align:center}
   form{display:flex;gap:.5rem;margin-top:1rem}
   input,button{padding:.5rem;font-size:1rem}
@@ -40,7 +52,7 @@ function renderNamespace(m: Manifest): string {
   const rows = m.keys
     .map((k) => {
       const badges = Object.entries(k.targets)
-        .map(([name, t]) => `<span class="badge ${esc(t.status)}">${esc(name)}: ${esc(t.status)}</span>`)
+        .map(([name, t]) => `<span class="badge ${statusClass(t.status)}">${esc(name)}: ${esc(t.status)}</span>`)
         .join("");
       return `<tr><td>${esc(k.name)}</td><td class="fp">${esc(k.fingerprint)}</td><td>${badges}</td></tr>`;
     })
