@@ -74,42 +74,6 @@ func TestConfig_Validate_DefaultEnvNotInEnvironments(t *testing.T) {
 	assert.ErrorContains(t, err, "staging")
 }
 
-func TestConfig_Validate_EnvironmentMissingProvider(t *testing.T) {
-	cfg := config.Config{
-		Version:    "1",
-		DefaultEnv: "prod",
-		Environments: map[string]config.Environment{
-			"prod": {Path: "/p/prod"},
-		},
-	}
-	err := cfg.Validate()
-	assert.ErrorContains(t, err, "provider")
-}
-
-func TestConfig_Validate_AWSMissingPath(t *testing.T) {
-	cfg := config.Config{
-		Version:    "1",
-		DefaultEnv: "prod",
-		Environments: map[string]config.Environment{
-			"prod": {Provider: "aws"},
-		},
-	}
-	err := cfg.Validate()
-	assert.ErrorContains(t, err, "path")
-}
-
-func TestConfig_Validate_LocalMissingFile(t *testing.T) {
-	cfg := config.Config{
-		Version:    "1",
-		DefaultEnv: "dev",
-		Environments: map[string]config.Environment{
-			"dev": {Provider: "local"},
-		},
-	}
-	err := cfg.Validate()
-	assert.ErrorContains(t, err, "file")
-}
-
 func TestConfig_Validate_Success(t *testing.T) {
 	cfg := config.Config{
 		Version:    "1",
@@ -134,18 +98,6 @@ func TestConfig_Validate_UnsupportedVersion(t *testing.T) {
 	}
 	err := cfg.Validate()
 	assert.ErrorContains(t, err, "unsupported version")
-}
-
-func TestConfig_Validate_UnknownProvider(t *testing.T) {
-	cfg := config.Config{
-		Version:    "1",
-		DefaultEnv: "prod",
-		Environments: map[string]config.Environment{
-			"prod": {Provider: "gcp", Path: "/p/prod"},
-		},
-	}
-	err := cfg.Validate()
-	assert.ErrorContains(t, err, "unknown provider")
 }
 
 func TestConfig_Validate_NoDefaultEnv(t *testing.T) {

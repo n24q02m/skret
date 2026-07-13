@@ -688,3 +688,79 @@ func TestImportCmd_ConflictFail(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "conflict on \"API_KEY\"")
 }
+
+// --- Wave 2 T1: bare init must keep good prod defaults (fix C1) ---
+
+func TestInitCmd_BareInit_KeepsGoodProdDefaults(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".git"), 0o755))
+
+	origDir, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	defer os.Chdir(origDir)
+
+	cmd := cli.NewRootCmd()
+	cmd.SetArgs([]string{"init"})
+	require.NoError(t, cmd.Execute())
+
+	data, err := os.ReadFile(filepath.Join(dir, ".skret.yaml"))
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "provider: aws")
+	assert.Contains(t, string(data), "/myapp/prod")
+	assert.Contains(t, string(data), "us-east-1")
+}
+
+func TestInitCmd_PartialFlag_PathOnly_KeepsAWSDefaultProviderAndRegion(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".git"), 0o755))
+
+	origDir, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	defer os.Chdir(origDir)
+
+	cmd := cli.NewRootCmd()
+	cmd.SetArgs([]string{"init", "--path=/custom/prod"})
+	require.NoError(t, cmd.Execute())
+
+	data, err := os.ReadFile(filepath.Join(dir, ".skret.yaml"))
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "provider: aws")
+	assert.Contains(t, string(data), "/custom/prod")
+	assert.Contains(t, string(data), "us-east-1") // region untouched -- flag not passed
+}
+
+// TestInitCmd_C1_BareInit_DevWorksEndToEnd is the audit's exact C1 repro,
+// re-run for the fixed behavior: bare `skret init` -> set/get/list on the
+// default (dev) env all succeed (used to fail on every command because
+// Validate() blocked on the broken prod entry before dev was even looked
+// at -- see the config.Validate/Resolve split below in this same task).
+func TestInitCmd_C1_BareInit_DevWorksEndToEnd(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".git"), 0o755))
+
+	origDir, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	defer os.Chdir(origDir)
+
+	initCmd := cli.NewRootCmd()
+	initCmd.SetArgs([]string{"init"})
+	require.NoError(t, initCmd.Execute(), "bare `skret init` must succeed")
+
+	setCmd := cli.NewRootCmd()
+	setCmd.SetArgs([]string{"set", "FOO", "bar"})
+	require.NoError(t, setCmd.Execute(), "bare init: `set` on the default (dev) env must work")
+
+	var getBuf bytes.Buffer
+	getCmd := cli.NewRootCmd()
+	getCmd.SetOut(&getBuf)
+	getCmd.SetArgs([]string{"get", "FOO"})
+	require.NoError(t, getCmd.Execute(), "bare init: `get` on the default (dev) env must work")
+	assert.Equal(t, "bar\n", getBuf.String())
+
+	var listBuf bytes.Buffer
+	listCmd := cli.NewRootCmd()
+	listCmd.SetOut(&listBuf)
+	listCmd.SetArgs([]string{"list"})
+	require.NoError(t, listCmd.Execute(), "bare init: `list` on the default (dev) env must work")
+	assert.Contains(t, listBuf.String(), "FOO")
+}

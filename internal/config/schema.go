@@ -53,7 +53,16 @@ type HubConfig struct {
 	URL string `yaml:"url"`
 }
 
-// Validate checks all required fields and cross-references.
+// Validate checks structural requirements: version, that at least one
+// environment is declared, that default_env (if set) points at a real
+// entry, and sync target shape. Per-provider requirement checks (does THIS
+// environment have what its provider needs -- aws needs path, local needs
+// file, unknown providers are rejected) are deliberately NOT done here:
+// they run once, in Resolve() (resolver.go), scoped to only the
+// environment actually selected. This fixes audit finding C1 root cause 2:
+// Load() used to call Validate() before --env/default_env was even
+// consulted, so a second, still-incomplete environment blocked every
+// command that only ever touched a different, already-working one.
 func (c *Config) Validate() error {
 	if c.Version == "" {
 		return fmt.Errorf("config: version is required")
@@ -67,11 +76,6 @@ func (c *Config) Validate() error {
 	if c.DefaultEnv != "" {
 		if _, ok := c.Environments[c.DefaultEnv]; !ok {
 			return fmt.Errorf("config: default_env %q not found in environments", c.DefaultEnv)
-		}
-	}
-	for name, env := range c.Environments {
-		if err := env.validate(name); err != nil {
-			return err
 		}
 	}
 	if c.Sync != nil {

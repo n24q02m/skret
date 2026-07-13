@@ -142,3 +142,27 @@ environments:
 	require.NoError(t, cfg.Validate())
 	assert.Nil(t, cfg.Sync)
 }
+
+// TestLoad_SecondBrokenEnvDoesNotBlockLoad is Load()'s half of the C1 root
+// cause 2 fix: Load() only runs the structural Validate() now, so a config
+// file with a second, incomplete environment (prod: aws, no path) must
+// still load successfully -- the per-provider check only fires later, in
+// Resolve(), for whichever env is actually selected.
+func TestLoad_SecondBrokenEnvDoesNotBlockLoad(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, ".skret.yaml")
+	require.NoError(t, os.WriteFile(cfgPath, []byte(`
+version: "1"
+default_env: dev
+environments:
+  dev:
+    provider: local
+    file: ./.secrets.dev.yaml
+  prod:
+    provider: aws
+`), 0o644))
+
+	cfg, err := config.Load(cfgPath)
+	require.NoError(t, err, "Load must succeed even though the unselected prod env is missing its required path")
+	assert.Equal(t, "aws", cfg.Environments["prod"].Provider)
+}
