@@ -7,6 +7,9 @@ import (
 	"sort"
 )
 
+// nl is hoisted to prevent dynamic slice allocation inside the hot scanning loop.
+var nl = []byte{'\n'}
+
 // Finding is one managed secret value located in a file. It deliberately holds
 // NO value — only the key name and location — so output can never leak a secret.
 type Finding struct {
@@ -115,7 +118,7 @@ func scanContent(path string, content []byte, targets []Target) []Finding {
 			continue
 		}
 		// Line number of the first match: 1 + newlines before it.
-		line := 1 + bytes.Count(content[:idx], []byte{'\n'})
+		line := 1 + bytes.Count(content[:idx], nl)
 		out = append(out, Finding{Key: t.Key, File: path, Line: line})
 	}
 	return out

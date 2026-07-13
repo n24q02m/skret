@@ -60,3 +60,7 @@
 ## 2025-05-15 - Move slice early returns before slice/map initializations
 **Learning:** Initializing maps or arrays in a function before checking early return conditions (e.g., `if len(input) == 0`) leads to unnecessary memory allocation and iteration overhead, especially if the function is frequently called with empty inputs or used in recursive paths.
 **Action:** Always place early return checks at the very top of the function to avoid redundant memory allocations and logic executions.
+
+## 2026-07-13 - Hoisting small slice literals from hot loops is virtually unnecessary
+**Learning:** Hoisting small, non-escaping byte slice literals (e.g., `[]byte{'\n'}`) used as function arguments (like `bytes.Count`) out of hot loops yields virtually zero measurable performance impact. Modern Go compilers perform escape analysis and stack allocation for these, so manual hoisting borders on unnecessary micro-optimization. Note: `[]byte(string)` conversions inside standard library calls like `bytes.Index` are typically compiler-optimized and do not allocate.
+**Action:** Do not hoist small, non-escaping literal slices out of loops solely to save allocations unless a benchmark explicitly demonstrates a measurable and significant performance improvement.
