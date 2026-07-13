@@ -2,7 +2,6 @@ package cli
 
 import (
 	"fmt"
-	"io"
 	"os"
 
 	"github.com/n24q02m/skret/internal/logging"
@@ -94,43 +93,11 @@ func NewRootCmd() *cobra.Command {
 			sub.RunE = func(c *cobra.Command, _ []string) error {
 				return c.Help()
 			}
-			// Wrap shell subcommands to capture and redirect their os.Stdout
-			for _, shellSub := range sub.Commands() {
-				origRun := shellSub.Run
-				shellSub.Run = makeCompletionWrapper(origRun, cmd)
-			}
 			break
 		}
 	}
 
 	return cmd
-}
-
-// makeCompletionWrapper creates a wrapper that redirects os.Stdout writes
-// to the root command's configured output. The bash completion script is
-// written directly to os.Stdout by Cobra, so we capture it via pipes.
-func makeCompletionWrapper(origRun func(*cobra.Command, []string), rootCmd *cobra.Command) func(*cobra.Command, []string) {
-	return func(cmd *cobra.Command, args []string) {
-		oldStdout := os.Stdout
-		oldStderr := os.Stderr
-
-		r, w, err := os.Pipe()
-		if err != nil {
-			origRun(cmd, args)
-			return
-		}
-
-		os.Stdout = w
-		os.Stderr = w
-
-		origRun(cmd, args)
-
-		w.Close()
-		os.Stdout = oldStdout
-		os.Stderr = oldStderr
-
-		io.Copy(rootCmd.OutOrStdout(), r)
-	}
 }
 
 // validCompletionShellArgs allows zero args (the completion command then
