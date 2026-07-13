@@ -52,7 +52,7 @@ PSR automatically determines the version number from commits since the last rele
 default, this project never treated 0.x minor bumps as safe for breaking
 changes -- a breaking-change commit bumps the **major** version regardless
 of whether the project is pre- or post-1.0. The project has been on `v1.x`
-since mid-2026; there is no active `v0.x` phase to describe.
+since early 2026; there is no active `v0.x` phase to describe.
 
 ## CI/CD Pipeline
 
