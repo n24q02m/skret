@@ -166,3 +166,29 @@ environments:
 	require.NoError(t, err, "Load must succeed even though the unselected prod env is missing its required path")
 	assert.Equal(t, "aws", cfg.Environments["prod"].Provider)
 }
+
+// TestLoad_OldStyleExplicitEmptyFieldsStillDecode is the regression guard
+// for adding omitempty (Task 7 T7b): omitempty only changes MARSHAL
+// (encode) output, never DECODE -- an old .skret.yaml written before this
+// fix, with path/region/profile/kms_key_id explicitly present as "", must
+// still Load() successfully under strict yaml.KnownFields(true).
+func TestLoad_OldStyleExplicitEmptyFieldsStillDecode(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, ".skret.yaml")
+	require.NoError(t, os.WriteFile(cfgPath, []byte(`
+version: "1"
+default_env: dev
+environments:
+  dev:
+    provider: local
+    path: ""
+    region: ""
+    profile: ""
+    kms_key_id: ""
+    file: ./.secrets.dev.yaml
+`), 0o644))
+
+	cfg, err := config.Load(cfgPath)
+	require.NoError(t, err)
+	assert.Equal(t, "local", cfg.Environments["dev"].Provider)
+}

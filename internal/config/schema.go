@@ -16,11 +16,11 @@ type Config struct {
 // Environment defines provider configuration for one environment.
 type Environment struct {
 	Provider string `yaml:"provider"`
-	Path     string `yaml:"path"`
-	Region   string `yaml:"region"`
-	Profile  string `yaml:"profile"`
-	KMSKeyID string `yaml:"kms_key_id"`
-	File     string `yaml:"file"`
+	Path     string `yaml:"path,omitempty"`
+	Region   string `yaml:"region,omitempty"`
+	Profile  string `yaml:"profile,omitempty"`
+	KMSKeyID string `yaml:"kms_key_id,omitempty"`
+	File     string `yaml:"file,omitempty"`
 }
 
 // SyncConfig declares reusable sync routes (targets) + optional hub endpoint.

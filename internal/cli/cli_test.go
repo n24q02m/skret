@@ -23,6 +23,17 @@ func TestRootCmd_VersionFlag(t *testing.T) {
 	assert.Contains(t, buf.String(), "skret")
 }
 
+func TestRootCmd_VersionFlag_NoDoublePrefix(t *testing.T) {
+	var buf bytes.Buffer
+	cmd := cli.NewRootCmd()
+	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
+	cmd.SetArgs([]string{"--version"})
+	require.NoError(t, cmd.Execute())
+	assert.NotContains(t, buf.String(), "skret version skret")
+	assert.Contains(t, buf.String(), "skret version 0.0.0-dev")
+}
+
 func TestRootCmd_HelpFlag(t *testing.T) {
 	var buf bytes.Buffer
 	cmd := cli.NewRootCmd()
@@ -817,4 +828,74 @@ func TestPathMangling_C2_SetThenGetRoundTrip(t *testing.T) {
 	getCmd.SetArgs([]string{"get", "FOO", "--provider=local", "--path=/myapp/dev", "--file=./.secrets.dev.yaml"})
 	require.NoError(t, getCmd.Execute())
 	assert.Equal(t, "bar\n", getOut.String(), "value set under the mangled --path must be readable via the clean equivalent path")
+}
+
+// TestInitCmd_M2_GeneratedYAMLOmitsEmptyFields is the fix for audit finding
+// M2: a freshly-generated .skret.yaml used to print path/region/profile/
+// kms_key_id explicitly as "" for every environment even when unset,
+// cluttering the very first file a newcomer is meant to read/edit.
+func TestInitCmd_M2_GeneratedYAMLOmitsEmptyFields(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".git"), 0o755))
+
+	origDir, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	defer os.Chdir(origDir)
+
+	cmd := cli.NewRootCmd()
+	cmd.SetArgs([]string{"init"})
+	require.NoError(t, cmd.Execute())
+
+	data, err := os.ReadFile(filepath.Join(dir, ".skret.yaml"))
+	require.NoError(t, err)
+	text := string(data)
+	assert.NotContains(t, text, `path: ""`)
+	assert.NotContains(t, text, `region: ""`)
+	assert.NotContains(t, text, `profile: ""`)
+	assert.NotContains(t, text, `kms_key_id: ""`)
+	// dev's file field is set, prod's provider/path/region are set -- these
+	// must still be present.
+	assert.Contains(t, text, "provider: local")
+	assert.Contains(t, text, "provider: aws")
+	assert.Contains(t, text, "/myapp/prod")
+}
+
+// --- Wave 2 T7(c): `completion <bad-shell>` must error, not silently show help (fix M5) ---
+
+func TestCompletionCmd_UnknownShell_Errors(t *testing.T) {
+	var buf bytes.Buffer
+	cmd := cli.NewRootCmd()
+	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
+	cmd.SetArgs([]string{"completion", "badshell"})
+
+	err := cmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "badshell")
+	assert.Contains(t, err.Error(), "bash")
+	assert.Contains(t, err.Error(), "zsh")
+	assert.Contains(t, err.Error(), "fish")
+	assert.Contains(t, err.Error(), "powershell")
+}
+
+func TestCompletionCmd_Bare_ShowsHelp(t *testing.T) {
+	var buf bytes.Buffer
+	cmd := cli.NewRootCmd()
+	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
+	cmd.SetArgs([]string{"completion"})
+
+	require.NoError(t, cmd.Execute())
+	assert.Contains(t, buf.String(), "autocompletion script")
+}
+
+func TestCompletionCmd_ValidShell_StillGeneratesScript(t *testing.T) {
+	var buf bytes.Buffer
+	cmd := cli.NewRootCmd()
+	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
+	cmd.SetArgs([]string{"completion", "bash"})
+
+	require.NoError(t, cmd.Execute())
+	assert.Contains(t, buf.String(), "bash completion")
 }
