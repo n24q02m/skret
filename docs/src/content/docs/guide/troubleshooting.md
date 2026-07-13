@@ -171,6 +171,34 @@ which mycommand
 skret run -- /full/path/to/mycommand
 ```
 
+## Windows: Git Bash / MSYS Path Mangling
+
+If you run skret from Git Bash (or another MSYS2-based shell) on Windows, a
+leading-slash key argument like `/myapp/prod/DATABASE_URL` (or a bare key
+that skret qualifies into that shape) can get silently rewritten by the
+shell's POSIX-path emulation into something like
+`C:/Program Files/Git/myapp/prod/DATABASE_URL` before skret ever sees it —
+Git Bash treats a leading `/` as a Unix root and expands it against its own
+install path.
+
+`skret get`, `set`, `delete`, `history`, and `rollback` all detect this: if
+the resolved secret path prefix (e.g. `/myapp/prod`) shows up in the middle
+of the mangled argument, skret recovers the intended key and prints:
+
+```
+warning: key looked shell-mangled; using "/myapp/prod/DATABASE_URL" (omit the leading slash, or set MSYS_NO_PATHCONV=1)
+```
+
+If you see this warning:
+
+- The command still ran correctly — skret recovered the key you meant.
+- To avoid the mangling (and the warning) entirely, either:
+  - Omit the leading slash and pass a bare key (`skret get DATABASE_URL`) — skret qualifies it with the configured path itself, so the shell never sees a `/`-prefixed argument to rewrite.
+  - Set `MSYS_NO_PATHCONV=1` for the command, which disables Git Bash's path conversion: `MSYS_NO_PATHCONV=1 skret get /myapp/prod/DATABASE_URL`.
+  - Use PowerShell instead of Git Bash — PowerShell has no POSIX-path emulation, so this class of mangling cannot happen there.
+
+This only affects command **arguments** (the key you pass to `get`/`set`/`delete`/`history`/`rollback`). It does not affect secret **values** — those are never touched by shell path expansion.
+
 ## Environment Variable Conflicts
 
 skret merges secrets into the existing environment. Existing env vars take precedence over secrets from the provider. This is intentional (user control).

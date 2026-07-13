@@ -1,6 +1,8 @@
 ---
 title: Configuration
 description: "skret uses a `.skret.yaml` file in your project root to define environments, providers, and settings."
+sidebar:
+  order: 3
 ---
 
 skret uses a `.skret.yaml` file in your project root to define environments, providers, and settings.

@@ -1,6 +1,8 @@
 ---
 title: Getting Started
 description: "Get up and running with skret in under 5 minutes."
+sidebar:
+  order: 1
 ---
 
 Get up and running with skret in under 5 minutes.
@@ -104,5 +106,5 @@ INFISICAL_TOKEN=st.xxx skret import --from=infisical --infisical-project-id=... 
 ## Next Steps
 
 - [Configuration Reference](/guide/configuration)
-- [Command Reference](/commands/init)
+- [Config Schema Reference](/reference/config-schema)
 - [AWS Provider Setup](/providers/aws)

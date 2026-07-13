@@ -1,6 +1,8 @@
 ---
 title: Installation
 description: "Requires Go 1.26+:"
+sidebar:
+  order: 2
 ---
 
 ## Package Managers
@@ -55,5 +57,5 @@ Download pre-built binaries from [GitHub Releases](https://github.com/n24q02m/sk
 
 ```bash
 skret --version
-# Output: skret 0.1.0 (commit: abc123, built: 2026-04-08T00:00:00Z)
+# Output: skret 1.12.0 (commit: 31a3df5, built: 2026-07-10T16:58:02Z)
 ```
