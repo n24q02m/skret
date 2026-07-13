@@ -98,6 +98,12 @@ Each release entry includes:
 - Grouped changes under `feat:` and `fix:` headings
 - Links to commits and compare URLs
 
+`CHANGELOG.md` uses PSR's `update` mode: new release sections are spliced in right below the
+`<!-- version list -->` marker near the top of the file on every release. Do not remove that marker
+— without it, PSR silently leaves the file unchanged (by design, not an error) instead of appending
+new content. Do not switch to `init` mode either — that regenerates the whole file from full git
+history on every run.
+
 ## Verifying a Release
 
 After a release completes:
