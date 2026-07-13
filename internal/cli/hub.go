@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/n24q02m/skret/internal/config"
@@ -29,17 +30,26 @@ func newHubCmd(opts *GlobalOpts) *cobra.Command {
 		Short: "Publish secret inventory to the vault dashboard",
 		Long: "Groups subcommands that publish secret inventory to the vault dashboard.\n\n" +
 			"'hub push' sends a names-only manifest (no values) so the dashboard can show " +
-			"drift status per sync target.",
+			"presence status (present/absent/unknown) per sync target.",
 	}
 	push := &cobra.Command{
 		Use:   "push",
 		Short: "Push a names-only manifest (no values) to the hub",
 		Long: `Publish a names-only inventory (manifest) to the vault dashboard.
 
-The manifest contains key names, a salted sha256[:8] fingerprint, and per-target
-drift status (in-sync/drift/missing) — never secret values. Auth via
-SKRET_HUB_TOKEN; the endpoint comes from --hub-url, the SKRET_HUB_URL env var,
-or sync.hub.url in .skret.yaml (in that order).`,
+The manifest contains key names, a salted sha256[:8] fingerprint, and a
+per-target presence status (present/absent/unknown) — never secret values.
+Presence is looked up live: for each declared sync.targets entry whose
+syncer can enumerate existing names (github, cloudflare worker), hub push
+calls that target's API once per push. Targets that cannot enumerate
+(dotenv, a Cloudflare Pages target) or whose lookup fails always report
+"unknown" for every key, with a warning on stderr in the failure case --
+one target's problem never fails the whole push. Auth via SKRET_HUB_TOKEN;
+the endpoint comes from --hub-url, the SKRET_HUB_URL env var, or
+sync.hub.url in .skret.yaml (in that order). A live presence check needs
+the same target credentials as 'skret sync' (GITHUB_TOKEN /
+CLOUDFLARE_API_TOKEN); the cron sync container already forwards them, a
+manual/laptop run must export them itself.`,
 		Example: `  skret hub push
   skret hub push --hub-url https://vault.example.com`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -90,8 +100,8 @@ func (o *hubOptions) runPush(cmd *cobra.Command) error {
 		return skret.NewError(skret.ExitGenericError, "hub push: load deploy salt failed", err)
 	}
 
-	states := loadHubStates(cmd, sc)
-	m := syncer.BuildManifest(resolved.Path, resolved.EnvName, salt, secrets, states)
+	presence := targetPresence(ctx, cmd, sc)
+	m := syncer.BuildManifest(resolved.Path, resolved.EnvName, salt, secrets, presence)
 	m.GeneratedAt = time.Now().UTC()
 
 	token := os.Getenv("SKRET_HUB_TOKEN")
@@ -102,41 +112,62 @@ func (o *hubOptions) runPush(cmd *cobra.Command) error {
 	return nil
 }
 
-// loadHubStates loads each declared sync target's last-synced state, keyed
-// as "<type>:<stateID>" to match syncer.BuildManifest's ManifestKey.Targets
-// naming. A target with no prior sync (LoadSyncState returns an empty state
-// on first run, never an error) still contributes an entry — BuildManifest
-// then marks every key "missing" for it, which is the correct drift signal.
+// targetPresence determines, for each declared sync target, which secret
+// names already exist at that target -- by building the target's Syncer
+// and calling ExistingKeys once (the same mechanism sync --no-overwrite
+// uses via syncer.FilterAbsent). hub push never reads local sync-state:
+// presence is always a live name-by-name check against the target itself.
 //
-// A target whose cache file exists but fails to read/parse is a genuine
-// error (as opposed to the never-synced case above): loadHubStates warns on
-// cmd's stderr and still inserts an empty state, so the target surfaces as
-// "missing" in the manifest instead of disappearing from it silently.
-func loadHubStates(cmd *cobra.Command, sc *config.SyncConfig) map[string]*syncer.SyncState {
-	states := map[string]*syncer.SyncState{}
+// A target contributes an "unknown" (syncer.TargetPresence{}) entry, never
+// an error that aborts the whole push, when:
+//   - it cannot be built at all (e.g. a required token env var is unset) --
+//     warned, since this is a real, fixable misconfiguration;
+//   - its syncer type has no ExistingLister implementation (dotenv always;
+//     cloudflare when it is a Pages target) -- silent, since this is a
+//     structural limitation of the target type, not a failure;
+//   - ExistingKeys itself returns an error (network/API failure, or a
+//     Cloudflare Pages target, which satisfies ExistingLister but always
+//     errors from inside ExistingKeys) -- warned.
+func targetPresence(ctx context.Context, cmd *cobra.Command, sc *config.SyncConfig) map[string]syncer.TargetPresence {
+	presence := map[string]syncer.TargetPresence{}
 	if sc == nil {
-		return states
+		return presence
 	}
 	for _, t := range sc.Targets {
 		tc := targetFromConfig(t) // Task 5 helper: resolves Fields/Token from env
-		id := targetStateID(hubSyncerStub(t.Type), tc)
-		key := t.Type + ":" + id
-		st, err := syncer.LoadSyncState(t.Type, id)
+		key := t.Type + ":" + targetStateID(hubSyncerStub(t.Type), tc)
+
+		syncers, err := syncer.Build([]syncer.TargetConfig{tc})
 		if err != nil {
-			cmd.PrintErrf("warning: skipping drift for %s: %v\n", key, err)
-			states[key] = &syncer.SyncState{Hashes: map[string]string{}}
+			cmd.PrintErrf("warning: hub push: %s: build target failed: %v\n", key, err)
+			presence[key] = syncer.TargetPresence{}
 			continue
 		}
-		states[key] = st
+		lister, ok := syncers[0].(syncer.ExistingLister)
+		if !ok {
+			presence[key] = syncer.TargetPresence{} // e.g. dotenv: cannot enumerate
+			continue
+		}
+		names, err := lister.ExistingKeys(ctx)
+		if err != nil {
+			cmd.PrintErrf("warning: hub push: %s: list existing keys failed: %v\n", key, err)
+			presence[key] = syncer.TargetPresence{}
+			continue
+		}
+		set := make(map[string]bool, len(names))
+		for _, n := range names {
+			set[strings.ToUpper(n)] = true
+		}
+		presence[key] = syncer.TargetPresence{Names: set, Ok: true}
 	}
-	return states
+	return presence
 }
 
 // hubSyncerStub returns a syncer.Syncer of the requested type purely to
-// resolve its Name() for the Task 5 targetStateID helper. hub push only
-// reads cached sync-state files — it never calls Sync() — so the
-// constructor arguments (repo/worker/token/...) are irrelevant and left
-// empty.
+// resolve its Name() for targetStateID, ahead of (and independent from)
+// whether syncer.Build succeeds for the real, fully-configured target --
+// so the manifest key ("<type>:<id>") is stable even when a target fails
+// to build (e.g. missing token) and falls back to "unknown".
 func hubSyncerStub(typ string) syncer.Syncer {
 	switch typ {
 	case "github":
@@ -151,7 +182,7 @@ func hubSyncerStub(typ string) syncer.Syncer {
 // postManifest sends the names-only manifest to the hub's ingest endpoint.
 // The request body is the JSON-encoded Manifest, which by construction
 // (syncer.BuildManifest) never carries secret values — only names,
-// fingerprints, and per-target drift status.
+// fingerprints, and per-target presence status.
 //
 // If a bearer token is set, the hub URL is checked first: plain http to any
 // host other than loopback would put SKRET_HUB_TOKEN on the wire in the
