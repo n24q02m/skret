@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { renderDashboard, renderLogin, relativeTime, isStale } from "../src/render";
+import { renderDashboard, renderLogin, relativeTime, isStale, summary } from "../src/render";
 import type { Manifest } from "../src/types";
 
 const FIXED_NOW = Date.parse("2026-07-13T12:00:00Z");
@@ -20,6 +20,39 @@ const m: Manifest = {
     },
   ],
 };
+
+describe("summary", () => {
+  it("counts (key, target) badges by status and hides zero groups", () => {
+    const manyAbsent: Manifest = {
+      namespace: "/x/prod",
+      env: "prod",
+      generated_at: m.generated_at,
+      keys: Array.from({ length: 3 }, (_, i) => ({
+        name: `K${i}`,
+        fingerprint: "ffffffff",
+        updated_at: m.keys[0].updated_at,
+        targets: { "github:o/r": { present: false, status: "absent" } },
+      })),
+    };
+    expect(summary(manyAbsent)).toBe("3 keys — 3 absent");
+  });
+  it("shows a mixed count", () => {
+    const mixed: Manifest = {
+      namespace: "/x/prod",
+      env: "prod",
+      generated_at: m.generated_at,
+      keys: [
+        { name: "A", fingerprint: "f1", updated_at: m.keys[0].updated_at, targets: { t: { present: true, status: "present" } } },
+        { name: "B", fingerprint: "f2", updated_at: m.keys[0].updated_at, targets: { t: { present: false, status: "unknown" } } },
+      ],
+    };
+    expect(summary(mixed)).toBe("2 keys — 1 present · 1 unknown");
+  });
+  it("uses singular 'key' for exactly one", () => {
+    const one: Manifest = { ...m, keys: [{ ...m.keys[0], targets: {} }] };
+    expect(summary(one)).toBe("1 key");
+  });
+});
 
 describe("renderDashboard", () => {
   it("renders key name, fingerprint and per-target status", () => {
@@ -58,6 +91,15 @@ describe("renderDashboard", () => {
       expect(html).toContain('class="badge other"');
       expect(html).toContain("in-sync"); // the raw legacy text is still shown, just unstyled
     });
+  });
+  it("shows a per-card summary count in the header area", () => {
+    const html = renderDashboard([m], FIXED_NOW);
+    expect(html).toContain("1 key — 1 present · 1 absent");
+  });
+  it("wraps the table in a horizontally-scrollable container and lets long key names wrap", () => {
+    const html = renderDashboard([m], FIXED_NOW);
+    expect(html).toContain('class="tablewrap"');
+    expect(html).toContain('class="keyname"');
   });
 });
 

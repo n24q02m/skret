@@ -52,23 +52,43 @@ export function isStale(iso: string, now: number): boolean {
   return now - then > STALE_MS;
 }
 
+// summary renders "N keys — P present · A absent · U unknown", counting
+// every (key, target) badge in the card and omitting any status with a
+// zero count. Exported for direct unit testing.
+export function summary(m: Manifest): string {
+  const counts: Record<string, number> = { present: 0, absent: 0, unknown: 0 };
+  for (const k of m.keys) {
+    for (const t of Object.values(k.targets)) {
+      counts[t.status] = (counts[t.status] ?? 0) + 1;
+    }
+  }
+  const order = ["present", "absent", "unknown"];
+  const parts = order.filter((s) => counts[s] > 0).map((s) => `${counts[s]} ${s}`);
+  const total = m.keys.length;
+  const suffix = parts.length ? ` — ${parts.join(" · ")}` : "";
+  return `${total} key${total === 1 ? "" : "s"}${suffix}`;
+}
+
 const STYLE = `
   body{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;margin:2rem;color:#1a1a1a;background:#fafafa}
   h1{font-size:1.3rem}
   .ns{margin:1.5rem 0;border:1px solid #ddd;border-radius:8px;overflow:hidden}
   .ns h2{font-size:1rem;margin:0;padding:.6rem 1rem;background:#f0f0f0;display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}
   .ns .meta{font-weight:normal;font-size:.8rem;color:#5a5a5a}
+  .summary{padding:.4rem 1rem;font-size:.8rem;color:#5a5a5a;border-top:1px solid #eee}
+  .tablewrap{overflow-x:auto}
   table{width:100%;border-collapse:collapse;font-size:.85rem}
   th,td{text-align:left;padding:.4rem 1rem;border-top:1px solid #eee}
-  .fp{color:#888}
+  td.keyname{word-break:break-all}
+  .fp{color:#5a5a5a}
   .badge{display:inline-block;padding:.1rem .5rem;border-radius:4px;font-size:.75rem;margin-right:.3rem}
   .present{background:#d7f5dd;color:#0a6b2e}
   .absent{background:#f5d7d7;color:#8a1a1a}
   .unknown{background:#e8e8e8;color:#4a4a4a}
   .other{background:#e8e8e8;color:#4a4a4a}
   .stale{background:#fde2c8;color:#9a4a0a}
-  .empty{color:#888;padding:2rem;text-align:center}
-  form{display:flex;gap:.5rem;margin-top:1rem}
+  .empty{color:#5a5a5a;padding:2rem;text-align:center}
+  form{display:flex;gap:.5rem;margin-top:1rem;align-items:center}
   input,button{padding:.5rem;font-size:1rem}
   .err{color:#8a1a1a}
 `;
@@ -91,15 +111,16 @@ function renderNamespace(m: Manifest, now: number): string {
             `<span class="badge ${statusClass(t.status)}">${esc(name)}: ${esc(t.status)}</span>`,
         )
         .join("");
-      return `<tr><td>${esc(k.name)}</td><td class="fp">${esc(k.fingerprint)}</td><td>${badges}</td></tr>`;
+      return `<tr><td class="keyname">${esc(k.name)}</td><td class="fp">${esc(k.fingerprint)}</td><td>${badges}</td></tr>`;
     })
     .join("");
   const staleBadge = isStale(m.generated_at, now) ? `<span class="badge stale">stale</span>` : "";
   return (
     `<section class="ns"><h2>${esc(m.namespace)} &middot; ${esc(m.env)}` +
     ` <span class="meta">synced ${esc(relativeTime(m.generated_at, now))}</span>${staleBadge}</h2>` +
-    `<table><thead><tr><th>Key</th><th>Fingerprint</th><th>Targets</th></tr></thead>` +
-    `<tbody>${rows}</tbody></table></section>`
+    `<div class="summary">${esc(summary(m))}</div>` +
+    `<div class="tablewrap"><table><thead><tr><th>Key</th><th>Fingerprint</th><th>Targets</th></tr></thead>` +
+    `<tbody>${rows}</tbody></table></div></section>`
   );
 }
 
