@@ -52,17 +52,22 @@ export function isStale(iso: string, now: number): boolean {
   return now - then > STALE_MS;
 }
 
-// summary renders "N keys — P present · A absent · U unknown", counting
-// every (key, target) badge in the card and omitting any status with a
-// zero count. Exported for direct unit testing.
+// summary renders "N keys — P present · A absent · U unknown · O other",
+// counting every (key, target) badge in the card and omitting any bucket
+// with a zero count. Any status outside the known enum (a manifest written
+// by the pre-Wave-3 CLI, still carrying "in-sync" | "drift" | "missing"
+// until the next push overwrites it) aggregates into "other" instead of
+// being dropped from the breakdown -- mirroring statusClass()'s
+// transition-window tolerance. Exported for direct unit testing.
 export function summary(m: Manifest): string {
-  const counts: Record<string, number> = { present: 0, absent: 0, unknown: 0 };
+  const counts: Record<string, number> = { present: 0, absent: 0, unknown: 0, other: 0 };
   for (const k of m.keys) {
     for (const t of Object.values(k.targets)) {
-      counts[t.status] = (counts[t.status] ?? 0) + 1;
+      const bucket = KNOWN_STATUS.has(t.status) ? t.status : "other";
+      counts[bucket] += 1;
     }
   }
-  const order = ["present", "absent", "unknown"];
+  const order = ["present", "absent", "unknown", "other"];
   const parts = order.filter((s) => counts[s] > 0).map((s) => `${counts[s]} ${s}`);
   const total = m.keys.length;
   const suffix = parts.length ? ` — ${parts.join(" · ")}` : "";

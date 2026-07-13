@@ -52,6 +52,30 @@ describe("summary", () => {
     const one: Manifest = { ...m, keys: [{ ...m.keys[0], targets: {} }] };
     expect(summary(one)).toBe("1 key");
   });
+  it("aggregates legacy (pre-Wave-3) statuses into an 'other' bucket", () => {
+    const legacy: Manifest = {
+      namespace: "/x/prod",
+      env: "prod",
+      generated_at: m.generated_at,
+      keys: [
+        { name: "A", fingerprint: "f1", updated_at: m.keys[0].updated_at, targets: { t: { present: true, status: "missing" } } },
+        { name: "B", fingerprint: "f2", updated_at: m.keys[0].updated_at, targets: { t: { present: true, status: "drift" } } },
+      ],
+    };
+    expect(summary(legacy)).toBe("2 keys — 2 other");
+  });
+  it("shows a known bucket alongside the 'other' bucket in a mixed fixture", () => {
+    const mixed: Manifest = {
+      namespace: "/x/prod",
+      env: "prod",
+      generated_at: m.generated_at,
+      keys: [
+        { name: "A", fingerprint: "f1", updated_at: m.keys[0].updated_at, targets: { t: { present: true, status: "present" } } },
+        { name: "B", fingerprint: "f2", updated_at: m.keys[0].updated_at, targets: { t: { present: true, status: "missing" } } },
+      ],
+    };
+    expect(summary(mixed)).toBe("2 keys — 1 present · 1 other");
+  });
 });
 
 describe("renderDashboard", () => {
