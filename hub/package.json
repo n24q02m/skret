@@ -13,7 +13,7 @@
     "@cloudflare/containers": "^0.3.7"
   },
   "devDependencies": {
-    "@cloudflare/vitest-pool-workers": "^0.8.19",
+    "@cloudflare/vitest-pool-workers": "^0.18.0",
     "@cloudflare/workers-types": "^4.20260101.0",
     "typescript": "^5.7.3",
     "vitest": "3.2.6",
