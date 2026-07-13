@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/n24q02m/skret/internal/auth"
+	"github.com/n24q02m/skret/pkg/skret"
 	"github.com/spf13/cobra"
 )
 
@@ -44,6 +45,21 @@ func newSetupCmd() *cobra.Command {
 				cmd.PrintErrln("Local provider: no authentication needed. Next: skret run -- <cmd>")
 				return nil
 			}
+			// Authenticating a non-local provider goes through a genuinely
+			// interactive step (AWS SSO device-code browser flow, or pasted
+			// access keys read from stdin -- see auth.Method.Interactive for
+			// aws's "sso"/"access-key" methods). Without a terminal to drive
+			// that, fail fast with an actionable message instead of hanging
+			// or failing deep inside the auth package (mirrors bootstrap.go's
+			// existing --yes/isInteractiveStdin gate). --yes = "I know this
+			// may be interactive, proceed anyway" (fix for audit finding I4:
+			// --yes used to be declared and documented but never read).
+			if !yes && !isInteractiveStdin() {
+				return skret.NewError(skret.ExitValidationError,
+					"setup: authenticating "+io.provider+" needs an interactive step (browser SSO or pasted keys); "+
+						"re-run with --yes to attempt it anyway, or run 'skret auth login "+io.provider+
+						" --method=profile' (or --method=assume-role) for a non-interactive method", nil)
+			}
 			opts := map[string]string{}
 			for _, kv := range rawOpt {
 				if i := strings.IndexByte(kv, '='); i > 0 {
@@ -63,6 +79,6 @@ func newSetupCmd() *cobra.Command {
 	cmd.Flags().StringVar(&io.file, "file", "", "local file path (local)")
 	cmd.Flags().StringVar(&method, "method", "", "auth method (sso, access-key, profile)")
 	cmd.Flags().StringArrayVar(&rawOpt, "opt", nil, "auth option key=value (repeatable)")
-	cmd.Flags().BoolVar(&yes, "yes", false, "non-interactive (accept defaults)")
+	cmd.Flags().BoolVar(&yes, "yes", false, "confirm running an interactive auth step non-interactively (required when stdin is not a terminal)")
 	return cmd
 }
