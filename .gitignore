@@ -28,6 +28,7 @@ Thumbs.db
 .secrets.*.yml
 .env
 .env.*
+.dev.vars
 
 # Build
 vendor/

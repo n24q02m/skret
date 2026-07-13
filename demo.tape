@@ -48,6 +48,20 @@ Type "skret list"
 Enter
 Sleep 2s
 
+# --- Browse secrets interactively (TUI) ---------------------------------------
+Type "# Browse secrets in an interactive TUI — masked list, reveal on demand"
+Enter
+Sleep 1s
+Type "skret browse"
+Enter
+Sleep 1s
+Down
+Sleep 500ms
+Enter
+Sleep 2s
+Type "q"
+Sleep 1s
+
 # --- Inject into a command ----------------------------------------------------
 Type "# Inject secrets as env vars into any command"
 Enter
@@ -59,6 +73,14 @@ Sleep 2s
 Type "# Export to .env for local dev"
 Enter
 Type "skret env --format=dotenv | head -3"
+Enter
+Sleep 2s
+
+# --- Preview a sync target without writing (dry-run) ---------------------------
+Type "# Preview what 'sync' would push — no write, no state saved"
+Enter
+Sleep 1s
+Type "skret sync --to=dotenv --dry-run"
 Enter
 Sleep 2s
 

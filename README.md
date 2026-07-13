@@ -15,8 +15,6 @@
   <a href="https://codecov.io/gh/n24q02m/skret"><img alt="codecov" src="https://codecov.io/gh/n24q02m/skret/graph/badge.svg"></a>
   <a href="https://goreportcard.com/report/github.com/n24q02m/skret"><img alt="Go Report Card" src="https://goreportcard.com/badge/github.com/n24q02m/skret"></a>
   <a href="https://github.com/n24q02m/skret/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/n24q02m/skret?display_name=tag&sort=semver"></a>
-  <a href="https://go.dev"><img alt="Go 1.26+" src="https://img.shields.io/badge/Go-1.26+-00ADD8?logo=go&logoColor=white"></a>
-  <a href="https://github.com/python-semantic-release/python-semantic-release"><img alt="semantic-release" src="https://img.shields.io/badge/semantic--release-e10079?logo=semantic-release&logoColor=white"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/github/license/n24q02m/skret"></a>
 </p>
 
@@ -47,6 +45,7 @@ skret sync --to=github           # Push secrets to GitHub Actions
 - [Quick start](#quick-start)
 - [Provider ranking](#provider-ranking)
 - [Comparison vs alternatives](#comparison-vs-alternatives)
+- [Vault dashboard](#vault-dashboard)
 - [Documentation](#documentation)
 - [Command overview](#command-overview)
 - [Contributing](#contributing)
@@ -68,7 +67,7 @@ Using skret from a script or AI agent? See the [agent guide](https://skret.n24q0
 
 ## Why skret?
 
-CLI wrappers that inject cloud secrets into a `run -- cmd` invocation already exist — `teller`, `novops`, `summon`, and a long tail of single-backend tools like `chamber`. What was missing for our use case was a single binary that combines:
+CLI wrappers that inject cloud secrets into a `run -- cmd` invocation already exist — `teller`, `novops`, `summon`, and narrower single-cloud tools like `chamber` (AWS-only: SSM, Secrets Manager, S3). What was missing for our use case was a single binary that combines:
 
 1. **Migration importers** for Doppler, Infisical, and `.env` — so a team can leave a paid SaaS without rewriting deploy pipelines.
 2. **CI/CD sync** that pushes the same secret set to GitHub Actions in one command, with hash-based drift detection.
@@ -85,6 +84,7 @@ If you only need a single-cloud injector and you don't care about migration or C
 - **Doppler-grade CLI**: `skret run -- your-cmd` injects secrets as env vars. Identical UX to `doppler run --`.
 - **Migration-first**: Built-in importers for Doppler, Infisical, and `.env` files.
 - **CI/CD syncers**: Push secrets to GitHub Actions repository secrets in one command.
+- **Agent-ready**: documented exit-code contract, byte-exact secret reads, and an `llms.txt` map built for LLM/agent discovery — see the [agent guide](https://skret.n24q02m.com/guide/agents/).
 - **Production-grade**: Coverage gates enforced in CI (`internal/` >=90%, `pkg/skret/` >=95% -- see the codecov badge above for the live number), CodeQL security scanning, SBOM + cosign-signed release artifacts.
 - **Cross-platform**: Linux, macOS, Windows — amd64 and arm64 binaries for each.
 - **Tab-completion of secret keys**: `skret get <TAB>` completes real key names via a names-only listing — zero decryption, zero KMS cost.
@@ -187,22 +187,22 @@ See [provider comparison](https://skret.n24q02m.com/reference/provider-compariso
 
 ## Comparison vs alternatives
 
-Audited 2026-05-01 against the latest release of each tool. The comparison covers three SaaS / self-host secret managers (Doppler, Infisical, Bitwarden Secrets Manager) and three OSS CLI wrappers in skret's design space (teller, novops, summon).
+Audited 2026-07-13 against the latest release of each tool. The comparison covers three SaaS / self-host secret managers (Doppler, Infisical, Bitwarden Secrets Manager) and four OSS CLI wrappers in skret's design space (teller, novops, summon, chamber).
 
-| Feature | skret | Doppler | Infisical | Bitwarden SM | teller | novops | summon |
-|---|---|---|---|---|---|---|---|
-| Type | OSS CLI | SaaS | SaaS / self-host | SaaS / self-host | OSS CLI | OSS CLI | OSS CLI |
-| Language | Go 1.26 | proprietary | TypeScript | Rust | Rust | Rust | Go |
-| Licence | MIT | proprietary | MIT (complex) | GPL-3.0 (CLI) | Apache-2.0 | LGPL-3.0 | MIT |
-| Server / control plane | none | none (SaaS) | container + Postgres | none (SaaS) | none | none | none |
-| Free tier ceiling (10 devs, 17 repos) | unlimited (cloud cost only) | 3 users, then $8/seat* | self-host or $7/seat | 3 projects, then $6/seat (Teams) | unlimited | unlimited | unlimited |
-| Cloud secret-store backends | AWS SSM today; OCI Vault, Azure KV, GCP SM on roadmap | own store | own store | own store | AWS SM, AWS SSM, GCP SM, Vault, Consul, dotenv | AWS SM/SSM, GCP SM, Azure KV, Vault, SOPS, Bitwarden | Conjur, AWS, keyring (provider plugin) |
-| `run -- cmd` injection | yes | yes | yes | yes | yes | yes (`run` and `load`) | yes |
-| Importer for Doppler / Infisical / .env | **all three built-in** | n/a | partial (one-way) | none | dotenv only | none (Infisical on roadmap) | none |
-| Sync to GitHub Actions secrets | **built-in (`skret sync --to=github`; `--skip-unchanged` for hash-based drift detection)** | via paid integration | via paid integration | none | none | none | none |
-| Release-artifact provenance | **cosign + SBOM + reproducible** | n/a (SaaS) | n/a (SaaS) | n/a (SaaS) | none | none | none |
-| Cost at our scale (17 repos × 20 secrets/repo × 1,000 reads/day, AWS SSM Standard) | **$0** | $56 / mo (10 seats: 3 free + 7 × $8, Developer plan)* | ~$30 / mo infra (self-host) | $60 / mo (10 seats, Teams) | $0 | $0 | $0 |
-| Latest release (audit 2026-05-01) | rolling, semantic-release | rolling SaaS | rolling SaaS | rolling SaaS | v2.0.7, May 2024 (12 mo gap) | v0.20.1, Jun 2025 (10 mo gap) | v0.11.0, Mar 2026 |
+| Feature | skret | Doppler | Infisical | Bitwarden SM | teller | novops | summon | chamber |
+|---|---|---|---|---|---|---|---|---|
+| Type | OSS CLI | SaaS | SaaS / self-host | SaaS / self-host | OSS CLI | OSS CLI | OSS CLI | OSS CLI |
+| Language | Go 1.26 | proprietary | TypeScript | Rust | Rust | Rust | Go | Go |
+| Licence | MIT | proprietary | MIT (complex) | GPL-3.0 (CLI) | Apache-2.0 | LGPL-3.0 | MIT | MIT |
+| Server / control plane | none | none (SaaS) | container + Postgres | none (SaaS) | none | none | none | none |
+| Free tier ceiling (10 devs, 17 repos) | unlimited (cloud cost only) | 3 users, then $8/seat* | self-host or $7/seat | 3 projects, then $6/seat (Teams) | unlimited | unlimited | unlimited | unlimited (cloud cost only) |
+| Cloud secret-store backends | AWS SSM today; OCI Vault, Azure KV, GCP SM on roadmap | own store | own store | own store | AWS SM, AWS SSM, GCP SM, Vault, Consul, dotenv | AWS SM/SSM, GCP SM, Azure KV, Vault, SOPS, Bitwarden | Conjur, AWS, keyring (provider plugin) | AWS SSM, AWS Secrets Manager, S3 / S3-KMS (AWS-only) |
+| `run -- cmd` injection | yes | yes | yes | yes | yes | yes (`run` and `load`) | yes | yes (`chamber exec`) |
+| Importer for Doppler / Infisical / .env | **all three built-in** | n/a | partial (one-way) | none | dotenv only | none (Infisical on roadmap) | none | none (own export/import format only) |
+| Sync to GitHub Actions secrets | **built-in (`skret sync --to=github`; `--skip-unchanged` for hash-based drift detection)** | via paid integration | via paid integration | none | none | none | none | none |
+| Release-artifact provenance | **cosign + SBOM + reproducible** | n/a (SaaS) | n/a (SaaS) | n/a (SaaS) | none | none | none | none (sha256 checksums only) |
+| Cost at our scale (17 repos × 20 secrets/repo × 1,000 reads/day, AWS SSM Standard) | **$0** | $56 / mo (10 seats: 3 free + 7 × $8, Developer plan)* | ~$30 / mo infra (self-host) | $60 / mo (10 seats, Teams) | $0 | $0 | $0 | $0 |
+| Latest release (audited 2026-07-13) | rolling, semantic-release | rolling SaaS | rolling SaaS | rolling SaaS | v2.0.7, May 2024 (26 mo gap) | v0.20.1, Jun 2025 (13 mo gap) | v0.11.0, Mar 2026 | v3.1.5, Feb 2026 (5 mo gap) |
 
 \* Doppler pricing from <https://www.doppler.com/pricing> (as of 2026-07): Developer plan is free for 3 users, then $8/user/month; the larger Team plan is $21/user/month.
 
@@ -211,7 +211,16 @@ Audited 2026-05-01 against the latest release of each tool. The comparison cover
 - If you want a managed UX and you're happy paying per seat, **Doppler** still has the best DX in this space.
 - If you want self-host SaaS with K8s-native operators and a web UI, **Infisical** is the right pick — accept the Postgres + container ops cost.
 - If you only need a single-cloud `run -- cmd` injector and don't care about migration / CI sync, **summon** (most actively maintained) or **novops** (broadest backend list) is enough — and shorter than skret.
+- If you're AWS-only and want a lean multi-backend CLI (SSM, Secrets Manager, S3) without migration importers or CI sync, **chamber** is a solid, actively-maintained pick.
 - skret's wedge is the combination: cloud-native backend ranking + migration importers + GitHub Actions sync + signed release artifacts in one binary. If two or more of those matter to you, skret is meant to replace the patchwork.
+
+## Vault dashboard
+
+`skret hub push` publishes a names-only manifest — key names, salted `sha256[:8]` fingerprints, and a per-target status — to a self-hosted, read-only dashboard. No secret value ever leaves your machine. Deploy your own on Cloudflare Workers + KV; see the [hub guide](https://skret.n24q02m.com/guide/hub/).
+
+<p align="center">
+  <img src="https://skret.n24q02m.com/hub-screenshot.png" alt="skret vault dashboard showing per-key sync status badges" width="760">
+</p>
 
 ## Documentation
 
@@ -243,6 +252,7 @@ Full docs at **[skret.n24q02m.com](https://skret.n24q02m.com)**:
 | `skret list` | List secret keys under the current environment path (no decryption; use --values for KEY+VERSION+VALUE) |
 | `skret import --from=<source>` | Import from Doppler, Infisical, dotenv |
 | `skret sync --to=<target>` | Sync to GitHub Actions, dotenv |
+| `skret hub push` | Publish a names-only secret inventory (no values) to the vault dashboard |
 | `skret diff <A> <B>` | Compare two environments (or env vs dotenv / env vs github) and report drift without printing values |
 | `skret template <file>` | Render a template file, substituting `${KEY}` with secret values |
 | `skret scan` | Scan tracked files for any managed secret value and exit 10 on a leak (`--staged` for pre-commit hooks) |

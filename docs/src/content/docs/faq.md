@@ -11,6 +11,10 @@ description: "AWS SSM Parameter Store Standard tier:"
 
 **Lock-in.** Doppler and Infisical are proprietary platforms. skret wraps standard cloud APIs behind a uniform CLI, so switching from AWS to GCP means changing one line in `.skret.yaml`.
 
+## What about SOPS?
+
+Different category. [SOPS](https://github.com/getsops/sops) encrypts files in place (YAML/JSON/ENV/INI) — it is an editor for encrypted config, not a `run -- cmd` injector. skret has no file-encryption mode; it stores secrets in your cloud provider's secret manager and injects them into a process at runtime. Use SOPS if you want encrypted files committed to git; use skret if you want secrets to never touch disk in plaintext.
+
 ## What does it cost?
 
 AWS SSM Parameter Store Standard tier:

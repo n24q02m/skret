@@ -5,6 +5,10 @@ description: "Publish a names-only secret inventory to the vault dashboard — v
 
 Publish a names-only secret inventory to the vault dashboard — values never leave your machine.
 
+<p align="center">
+  <img src="/hub-screenshot.png" alt="skret vault dashboard showing per-key sync status badges" width="760">
+</p>
+
 ```bash
 skret hub push
 ```
