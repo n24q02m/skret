@@ -2,6 +2,7 @@ package cli_test
 
 import (
 	"bytes"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -890,12 +891,29 @@ func TestCompletionCmd_Bare_ShowsHelp(t *testing.T) {
 }
 
 func TestCompletionCmd_ValidShell_StillGeneratesScript(t *testing.T) {
-	var buf bytes.Buffer
+	// Cobra resolves the completion command's output writer once, when
+	// NewRootCmd calls InitDefaultCompletionCmd() at construction time (see
+	// root.go), not per Execute() call -- so os.Stdout must be swapped
+	// before the root command is built, not merely before Execute.
+	orig := os.Stdout
+	r, w, err := os.Pipe()
+	require.NoError(t, err)
+	os.Stdout = w
+	defer func() { os.Stdout = orig }()
+
 	cmd := cli.NewRootCmd()
-	cmd.SetOut(&buf)
-	cmd.SetErr(&buf)
 	cmd.SetArgs([]string{"completion", "bash"})
 
-	require.NoError(t, cmd.Execute())
-	assert.Contains(t, buf.String(), "bash completion")
+	done := make(chan string, 1)
+	go func() {
+		data, _ := io.ReadAll(r)
+		done <- string(data)
+	}()
+
+	execErr := cmd.Execute()
+	require.NoError(t, w.Close())
+	os.Stdout = orig
+
+	require.NoError(t, execErr)
+	assert.Contains(t, <-done, "bash completion")
 }
