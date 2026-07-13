@@ -37,6 +37,7 @@ sync:                       # Optional. Declared targets for `skret sync` / `skr
   targets:
     - type: github          # "github" | "cloudflare" | "dotenv"
       repo: myorg/myapp     # Required for github. owner/repo.
+      no_overwrite: true    # Optional. Only write keys absent at this target; never overwrites.
     - type: cloudflare
       worker: my-worker     # One of worker/pages required for cloudflare.
       account: ${CLOUDFLARE_ACCOUNT_ID}  # Required for cloudflare. Supports ${VAR} expansion.

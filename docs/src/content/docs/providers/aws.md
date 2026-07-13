@@ -68,11 +68,22 @@ skret run -- node server.js
 
 ## Quotas
 
+skret only ever writes AWS SSM **Standard**-tier parameters -- it never sets
+`Tier: Advanced` on `PutParameter`, so the effective value-size limit through
+skret is the Standard-tier cap, regardless of what your AWS account otherwise
+supports.
+
 | Resource | Limit |
 |----------|-------|
-| Parameter value size | 4 KB (standard), 8 KB (advanced) |
+| Parameter value size (via skret) | 4 KB (Standard tier only; skret does not request Advanced) |
 | Parameters per account/region | 10,000 (standard) |
 | GetParametersByPath throughput | 40 TPS |
+
+A value over 4 KB fails with AWS's `ValidationException`, surfaced as a
+provider error (skret exit code **3**) -- see [error
+codes](/reference/error-codes/). If you need larger values, use the
+[`local`](/providers/local/) provider for development, or a provider with a
+bigger cap (see [provider comparison](/providers/comparison/)).
 
 ## Security
 

@@ -5,7 +5,7 @@ description: "Exit codes, non-interactive flags, and copy-paste recipes for runn
 
 Exit codes, non-interactive flags, and copy-paste recipes for running skret from CI, cron, or an AI agent.
 
-Every skret command is non-interactive by default — the exceptions are `skret rollback` without `--confirm`/`--force` (prompts y/N) and `--from-stdin` at a real terminal (blocks until you send EOF, see below). Output streams are deliberate: **stdout carries data** (secret values, JSON, rendered templates), **stderr carries status** ("Set KEY", warnings, progress). Every failure exits with a distinct, documented code you can branch on instead of parsing stderr text.
+Every skret command is non-interactive by default — the exceptions are `skret delete` and `skret rollback` without `--confirm`/`--force` (both prompt y/N) and `--from-stdin` at a real terminal (blocks until you send EOF, see below). Output streams are deliberate: **stdout carries data** (secret values, JSON, rendered templates), **stderr carries status** ("Set KEY", warnings, progress). Every failure exits with a distinct, documented code you can branch on instead of parsing stderr text.
 
 ## Exit codes
 
@@ -40,6 +40,7 @@ See the [Error Codes reference](/reference/error-codes/) for the full table plus
 - **Multi-line value in**: `skret set KEY --from-stdin < file.pem` or `skret set KEY --from-file path`. Both read the *entire* stream/file (not just the first line), so a PEM key or multi-line JSON blob survives with every embedded newline intact.
 - **A value that starts with `-`**: pass `--` before the key, or it's parsed as a flag: `skret set -- KEY '-----BEGIN PRIVATE KEY-----...'`.
 - **Secrets are byte-exact everywhere except `run`**: `get`, `env`, `template`, and `sync`/`import` preserve every byte, including NUL, CR, and embedded newlines. `skret run`/`skret run --watch` sanitize control bytes on the way into the child process's environment, because an OS process environment can't carry a NUL or embedded newline. Full detail: [Value fidelity](/guide/value-fidelity/).
+- **Multiple config namespaces from one process**: the global `--config <path>` flag loads a specific `.skret.yaml` directly, bypassing directory discovery entirely — useful for a single cron container serving several projects, each declared in its own config file. If the file does not exist the command fails with a config error; it never silently falls back to discovery. See [Configuration](/guide/configuration/).
 
 ## Recipes
 
@@ -69,7 +70,7 @@ skret env --format=json | jq -r '.DATABASE_URL'
 skret sync --to=github,cloudflare
 ```
 
-`github` needs `GITHUB_TOKEN` in the environment. `cloudflare` has no flags-only path — it must be declared under `sync.targets` in `.skret.yaml` (worker or pages) and needs `CLOUDFLARE_API_TOKEN`. See [Sync](/guide/sync/).
+`github` needs `GITHUB_TOKEN` in the environment. `cloudflare` has no flags-only path — it must be declared under `sync.targets` in `.skret.yaml` (worker or pages) and needs `CLOUDFLARE_API_TOKEN`. Preview first with no writes: `skret sync --to=github --dry-run` prints the exact secret names it would push and exits without writing anything, saving sync state, or touching a dotenv file. Add `--no-overwrite` to only fill keys absent at the target (existing values are never overwritten) — the safer default for an agent driving `sync` unattended. See [Sync](/guide/sync/).
 
 ### Leak-guard in a pre-commit hook
 

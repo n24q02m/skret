@@ -14,14 +14,14 @@ skret uses [Python Semantic Release](https://python-semantic-release.readthedocs
 
 ## Triggering a Release
 
-Releases are triggered via `workflow_dispatch` on the `release.yml` workflow:
+Releases are triggered via `workflow_dispatch` on the `cd.yml` workflow:
 
 ```bash
 # Stable release
-gh workflow run release.yml -f release_type=stable
+gh workflow run cd.yml -f release_type=stable
 
 # Beta/prerelease
-gh workflow run release.yml -f release_type=beta
+gh workflow run cd.yml -f release_type=beta
 ```
 
 Never create tags manually. Always use the workflow.
@@ -35,9 +35,9 @@ Never create tags manually. Always use the workflow.
 
 ### Beta to Stable Promotion
 
-1. Release a beta: `gh workflow run release.yml -f release_type=beta`
+1. Release a beta: `gh workflow run cd.yml -f release_type=beta`
 2. Test the beta build
-3. If passing, release stable: `gh workflow run release.yml -f release_type=stable`
+3. If passing, release stable: `gh workflow run cd.yml -f release_type=stable`
 
 PSR automatically determines the version number from commits since the last release.
 
@@ -45,10 +45,14 @@ PSR automatically determines the version number from commits since the last rele
 
 | Commit Prefix | Version Bump |
 |---------------|-------------|
-| `fix:` | Patch (0.1.0 -> 0.1.1) |
-| `feat:` | Minor (0.1.0 -> 0.2.0) |
+| `fix:` | Patch (`1.12.0` -> `1.12.1`) |
+| `feat:` | Minor (`1.12.0` -> `1.13.0`) |
 
-During `v0.x`, breaking changes are allowed in minor versions and documented in the CHANGELOG.
+`semantic-release.toml` sets `major_on_zero = false`, so unlike the PSR
+default, this project never treated 0.x minor bumps as safe for breaking
+changes -- a breaking-change commit bumps the **major** version regardless
+of whether the project is pre- or post-1.0. The project has been on `v1.x`
+since early 2026; there is no active `v0.x` phase to describe.
 
 ## CI/CD Pipeline
 
@@ -56,15 +60,19 @@ During `v0.x`, breaking changes are allowed in minor versions and documented in 
 push to main
   -> ci.yml (lint, test, build)
 
-workflow_dispatch (release.yml)
-  -> PSR: analyze commits, bump version, update CHANGELOG, create tag
-  -> tag push triggers cd.yml
+workflow_dispatch (cd.yml: "release" job)
+  -> PSR: analyze commits, bump version, update CHANGELOG, create + push tag
+  -> cd.yml: "goreleaser" job (same run, needs: release)
     -> GoReleaser: build 6 binaries, create GitHub Release
     -> Docker: push ghcr.io/n24q02m/skret:<version>
     -> Homebrew: update tap formula
     -> Scoop: update bucket manifest
     -> Cosign: sign artifacts (keyless, GitHub OIDC)
     -> Syft: generate SBOM
+
+(a raw `git tag vX.Y.Z && git push --tags` also triggers cd.yml's
+"goreleaser" job directly, without the "release" job -- recovery path,
+not routine use; see "Never create tags manually" above)
 ```
 
 ## Build Targets

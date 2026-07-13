@@ -96,7 +96,7 @@ Public reference for skret's supported and roadmap backends. Numbers below use a
 - $0/month at any realistic scale under 10k parameters.
 - `SecureString` with AWS-managed KMS key is free.
 - CloudTrail audit is included.
-- 4 KB limit covers the vast majority of configuration secrets. The rare oversized items (TLS certs, JSON blobs) can use a secondary backend via `overrides:` in `.skret.yaml`.
+- 4 KB limit covers the vast majority of configuration secrets. Routing rare oversized items (TLS certs, JSON blobs) to a secondary backend is on the roadmap along with the Tier-1/2 providers; today a value over 4 KB fails validation (AWS `ValidationException`, surfaced as skret exit code 3), so split it or keep it outside skret.
 
 Users with existing OCI tenancy can set **OCI Vault (software-protected)** as default with equivalent cost. Tier-2 and Tier-3 backends come online as skret's provider registry expands.
 

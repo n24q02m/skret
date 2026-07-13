@@ -125,34 +125,40 @@ skret list
 skret --env=prod list
 ```
 
-### Access denied (exit 4)
+### Access denied (exit 3)
 
 ```
 Error: AccessDeniedException: User: arn:aws:iam::123456789012:user/dev
 is not authorized to perform: ssm:GetParameter
 ```
 
+An IAM denial from AWS SSM surfaces as a provider error (exit 3) on write/list-path commands (`set`, `env`, `run`, `sync`, ...). `skret get` currently deviates -- any provider failure through `get`, including this `ssm:GetParameter` denial, surfaces as exit 5 (not found) instead.
+
 **Fix:** Your IAM policy does not allow access to this path. Update the IAM policy to include the SSM path prefix. See [Authentication - IAM Policies](/guide/authentication#iam-policy-examples).
 
-### Value too large (exit 8)
+### Value too large (exit 3)
 
 ```
 Error: validation: value size 5120 bytes exceeds maximum 4096 bytes for standard parameters
 ```
 
-**Fix:** AWS SSM Standard parameters have a 4 KB limit. Options:
+skret only ever writes AWS SSM Standard-tier parameters -- it never requests `Tier: Advanced` -- so the effective limit is 4 KB. A value over that limit fails with AWS's `ValidationException`, surfaced as a provider error (exit 3).
+
+**Fix:** Options:
 
 1. Reduce the secret value size
 2. Split into multiple secrets
-3. Use Advanced parameters (cost: $0.05/month per parameter)
+3. Use the [`local`](/providers/local/) provider for development, or a provider with a bigger cap (see [provider comparison](/providers/comparison/))
 
-### Throttling (exit 7)
+### Throttling (exit 3)
 
 ```
 Error: ThrottlingException: Rate exceeded
 ```
 
-**Fix:** AWS SSM has a 40 TPS limit for `GetParameter*` calls. skret retries with exponential backoff automatically. If this persists:
+AWS SSM has a 40 TPS limit for `GetParameter*` calls. skret configures the AWS SDK's adaptive-mode retryer with up to 10 attempts and a 20-second max backoff automatically; a `ThrottlingException` that persists past those retries surfaces as a provider error (exit 3).
+
+**Fix:** If this persists:
 
 1. Reduce concurrent calls
 2. Use `skret run --` (single batch call) instead of individual `skret get` calls
@@ -170,6 +176,34 @@ Error: exec: "mycommand": executable file not found in $PATH
 which mycommand
 skret run -- /full/path/to/mycommand
 ```
+
+## Windows: Git Bash / MSYS Path Mangling
+
+If you run skret from Git Bash (or another MSYS2-based shell) on Windows, a
+leading-slash key argument like `/myapp/prod/DATABASE_URL` (or a bare key
+that skret qualifies into that shape) can get silently rewritten by the
+shell's POSIX-path emulation into something like
+`C:/Program Files/Git/myapp/prod/DATABASE_URL` before skret ever sees it —
+Git Bash treats a leading `/` as a Unix root and expands it against its own
+install path.
+
+`skret get`, `set`, `delete`, `history`, and `rollback` all detect this: if
+the resolved secret path prefix (e.g. `/myapp/prod`) shows up in the middle
+of the mangled argument, skret recovers the intended key and prints:
+
+```
+warning: key looked shell-mangled; using "/myapp/prod/DATABASE_URL" (omit the leading slash, or set MSYS_NO_PATHCONV=1)
+```
+
+If you see this warning:
+
+- The command still ran correctly — skret recovered the key you meant.
+- To avoid the mangling (and the warning) entirely, either:
+  - Omit the leading slash and pass a bare key (`skret get DATABASE_URL`) — skret qualifies it with the configured path itself, so the shell never sees a `/`-prefixed argument to rewrite.
+  - Set `MSYS_NO_PATHCONV=1` for the command, which disables Git Bash's path conversion: `MSYS_NO_PATHCONV=1 skret get /myapp/prod/DATABASE_URL`.
+  - Use PowerShell instead of Git Bash — PowerShell has no POSIX-path emulation, so this class of mangling cannot happen there.
+
+This only affects command **arguments** (the key you pass to `get`/`set`/`delete`/`history`/`rollback`). It does not affect secret **values** — those are never touched by shell path expansion.
 
 ## Environment Variable Conflicts
 

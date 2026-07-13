@@ -35,7 +35,7 @@ Are your secrets > 4 KB (TLS certs, PEM keys, JSON blobs)?
          └── Yes → AWS Secrets Manager (opt-in, per-secret)
 ```
 
-You can mix backends in a single `.skret.yaml`: default environment uses SSM, specific oversized secrets route to OCI Vault via the `overrides:` block (v0.4+).
+Mixing backends in a single `.skret.yaml` -- default environment on SSM, specific oversized secrets routed to a Tier-1/2 backend like OCI Vault -- is on the roadmap, not yet implemented. Today, pick one provider per environment (see [Choosing a backend](#choosing-a-backend) above) and add a second environment entry if you need a second backend.
 
 ## Cost at different scales
 
@@ -97,10 +97,4 @@ See the [provider comparison reference](../reference/provider-comparison.md) for
 
 ## When a backend crosses a tier threshold
 
-skret warns in `skret cost estimate` output (v0.5+) when a configuration is needlessly expensive:
-
-- A repo default set to AWS Secrets Manager for bulk config → suggests SSM Standard.
-- GCP user-managed replication across 3+ locations when automatic replication (1-location billing) would serve the same purpose.
-- SSM Advanced used for secrets that fit in 4 KB → recommends Standard.
-
-This is advisory; skret does not change provider selection automatically.
+A cost-advisory command that flags needlessly expensive configurations is on the roadmap, not yet implemented -- for example, a repo default set to AWS Secrets Manager for bulk config when SSM Standard would serve the same purpose, GCP user-managed replication across 3+ locations when automatic replication would do, or SSM Advanced used for secrets that fit in 4 KB. Today, use the [cost tables above](#cost-at-different-scales) to check a configuration manually. Any future version of this would be advisory only -- skret does not change provider selection automatically.

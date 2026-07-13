@@ -4,25 +4,28 @@
 
 ## Getting started
 
-- [Getting Started](https://skret.n24q02m.com/guide/getting-started/): Install skret and run the two-command loop (`skret setup` then `skret run -- <command>`); covers `get`/`set`/`list`/`import` basics.
+- [Getting Started](https://skret.n24q02m.com/guide/getting-started/): Install skret and run the two-command loop (`skret setup` then `skret run -- <command>`); covers `skret init`, `get`/`set`/`list`/`import` basics.
 - [Installation](https://skret.n24q02m.com/guide/installation/): Homebrew, Scoop, Go install, and verified binaries.
-- [Configuration](https://skret.n24q02m.com/guide/configuration/): The `.skret.yaml` schema — environments, providers, required secrets.
+- [Configuration](https://skret.n24q02m.com/guide/configuration/): The `.skret.yaml` schema — environments, providers, required secrets, and the global `--config <path>` flag to bypass directory discovery (multi-namespace processes).
+- [Authentication](https://skret.n24q02m.com/guide/authentication/): `skret auth login/status/logout`, AWS SSO, OIDC, and IAM setup.
+- [Bootstrap](https://skret.n24q02m.com/guide/bootstrap/): `skret bootstrap` provisions a dedicated least-privilege IAM user + access key from an admin identity, used once.
 
 ## Scripts and agents
 
-- [Using skret from a script or agent](https://skret.n24q02m.com/guide/agents/): Exit codes (`ExitLeakFound`=10, `ExitDrift`=9, ...), non-interactive flags (`get --plain`, `env --format=json`, `set --from-stdin`), and recipes for `run`/`get`/`env`/`set`/`sync`/`scan`/`import` in CI/cron/AI agents.
+- [Using skret from a script or agent](https://skret.n24q02m.com/guide/agents/): Exit codes (`ExitLeakFound`=10, `ExitDrift`=9, ...), non-interactive flags (`get --plain`, `env --format=json`, `set --from-stdin`), and recipes for `run`/`get`/`env`/`set`/`sync`/`scan`/`import` in CI/cron/AI agents. `skret delete` and `skret rollback` are the only commands that prompt (y/N) without `--confirm`/`-f`. `skret history`/`skret rollback` are experimental, gated behind `SKRET_EXPERIMENTAL=1`.
 - [Value fidelity](https://skret.n24q02m.com/guide/value-fidelity/): How skret preserves secret values byte-for-byte across `get`/`env`/`set`/`template`/`sync`/`import`, and the one exception (`skret run` sanitizes control bytes for the process environment).
 - [Error Codes](https://skret.n24q02m.com/reference/error-codes/): Full exit-code table with remediation steps per code.
 
 ## Command guides
 
-- [Sync](https://skret.n24q02m.com/guide/sync/): Push secrets to GitHub Actions, Cloudflare Worker/Pages, or a dotenv file; `--skip-unchanged` for drift-aware CI syncs.
+- [Sync](https://skret.n24q02m.com/guide/sync/): Push secrets to GitHub Actions, Cloudflare Worker/Pages, or a dotenv file; `--dry-run` to preview with no writes, `--no-overwrite` (or per-target `no_overwrite`) to only fill missing keys, `--skip-unchanged` for drift-aware CI syncs.
 - [Scan](https://skret.n24q02m.com/guide/scan/): Leak-guard — find managed secret values committed into tracked files; exits 10 on a match, wire into pre-commit or CI.
 - [Diff](https://skret.n24q02m.com/guide/diff/): Compare two secret sets without printing values; `--exit-code` turns it into a CI drift gate.
 - [Template](https://skret.n24q02m.com/guide/template/): Render `${KEY}` placeholders in a file from secret values.
 - [Hub](https://skret.n24q02m.com/guide/hub/): Publish a names-only secret inventory (no values) to a dashboard.
 - [Watch mode](https://skret.n24q02m.com/guide/watch/): Auto-restart `skret run` when a secret changes upstream, with no polling cost.
 - [Browse](https://skret.n24q02m.com/guide/browse/): Interactive terminal UI to browse and reveal secrets on demand.
+- [Completion](https://skret.n24q02m.com/guide/completion/): Shell completions (bash/zsh/fish/PowerShell) for `get`/`delete`/`history`/`rollback`, including real secret key names via a names-only listing (no decryption cost).
 
 ## Providers
 
