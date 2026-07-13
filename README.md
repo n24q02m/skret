@@ -85,7 +85,7 @@ If you only need a single-cloud injector and you don't care about migration or C
 - **Doppler-grade CLI**: `skret run -- your-cmd` injects secrets as env vars. Identical UX to `doppler run --`.
 - **Migration-first**: Built-in importers for Doppler, Infisical, and `.env` files.
 - **CI/CD syncers**: Push secrets to GitHub Actions repository secrets in one command.
-- **Production-grade**: 93%+ test coverage, CodeQL security scanning, SBOM + cosign-signed release artifacts.
+- **Production-grade**: Coverage gates enforced in CI (`internal/` >=90%, `pkg/skret/` >=95% -- see the codecov badge above for the live number), CodeQL security scanning, SBOM + cosign-signed release artifacts.
 - **Cross-platform**: Linux, macOS, Windows — amd64 and arm64 binaries for each.
 - **Tab-completion of secret keys**: `skret get <TAB>` completes real key names via a names-only listing — zero decryption, zero KMS cost.
 - **Watch mode**: `skret run --watch -- your-cmd` auto-restarts the command when secrets change. Change detection polls a no-decrypt fingerprint, so it issues zero KMS Decrypt requests.
@@ -173,7 +173,7 @@ See [Getting started](https://skret.n24q02m.com/guide/getting-started/) for the 
 
 ## Provider ranking
 
-Cost figures below use a representative scale: 17 repos × 340 secrets × 30,000 reads/month, `ap-southeast-1` (Singapore).
+Cost figures below use a representative scale: 17 repos × 20 secrets/repo × 1,000 reads/day (30k/month), `ap-southeast-1` (Singapore).
 
 | Rank | Backend | Monthly cost | Recommended for |
 |------|---------|--------------|-----------------|
@@ -195,14 +195,16 @@ Audited 2026-05-01 against the latest release of each tool. The comparison cover
 | Language | Go 1.26 | proprietary | TypeScript | Rust | Rust | Rust | Go |
 | Licence | MIT | proprietary | MIT (complex) | GPL-3.0 (CLI) | Apache-2.0 | LGPL-3.0 | MIT |
 | Server / control plane | none | none (SaaS) | container + Postgres | none (SaaS) | none | none | none |
-| Free tier ceiling (10 devs, 17 repos) | unlimited (cloud cost only) | 5 projects, then $7/seat | self-host or $7/seat | 3 projects, then $6/seat (Teams) | unlimited | unlimited | unlimited |
+| Free tier ceiling (10 devs, 17 repos) | unlimited (cloud cost only) | 3 users, then $8/seat* | self-host or $7/seat | 3 projects, then $6/seat (Teams) | unlimited | unlimited | unlimited |
 | Cloud secret-store backends | AWS SSM today; OCI Vault, Azure KV, GCP SM on roadmap | own store | own store | own store | AWS SM, AWS SSM, GCP SM, Vault, Consul, dotenv | AWS SM/SSM, GCP SM, Azure KV, Vault, SOPS, Bitwarden | Conjur, AWS, keyring (provider plugin) |
 | `run -- cmd` injection | yes | yes | yes | yes | yes | yes (`run` and `load`) | yes |
 | Importer for Doppler / Infisical / .env | **all three built-in** | n/a | partial (one-way) | none | dotenv only | none (Infisical on roadmap) | none |
 | Sync to GitHub Actions secrets | **built-in (`skret sync --to=github`; `--skip-unchanged` for hash-based drift detection)** | via paid integration | via paid integration | none | none | none | none |
 | Release-artifact provenance | **cosign + SBOM + reproducible** | n/a (SaaS) | n/a (SaaS) | n/a (SaaS) | none | none | none |
-| Cost at our scale (17 repos × 340 secrets × 30k reads/mo, AWS SSM Standard) | **$0** | $84 / mo (10 seats) | ~$30 / mo infra (self-host) | $60 / mo (10 seats, Teams) | $0 | $0 | $0 |
+| Cost at our scale (17 repos × 20 secrets/repo × 1,000 reads/day, AWS SSM Standard) | **$0** | $56 / mo (10 seats: 3 free + 7 × $8, Developer plan)* | ~$30 / mo infra (self-host) | $60 / mo (10 seats, Teams) | $0 | $0 | $0 |
 | Latest release (audit 2026-05-01) | rolling, semantic-release | rolling SaaS | rolling SaaS | rolling SaaS | v2.0.7, May 2024 (12 mo gap) | v0.20.1, Jun 2025 (10 mo gap) | v0.11.0, Mar 2026 |
+
+\* Doppler pricing from <https://www.doppler.com/pricing> (as of 2026-07): Developer plan is free for 3 users, then $8/user/month; the larger Team plan is $21/user/month.
 
 **How to read this:**
 
