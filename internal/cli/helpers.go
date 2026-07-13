@@ -12,6 +12,7 @@ import (
 	skaws "github.com/n24q02m/skret/internal/provider/aws"
 	"github.com/n24q02m/skret/internal/provider/local"
 	"github.com/n24q02m/skret/pkg/skret"
+	"github.com/spf13/cobra"
 )
 
 // configNotFoundMsg is the actionable error shown when a command needs a config
@@ -128,6 +129,22 @@ func loadProvider(opts *GlobalOpts) (*config.ResolvedConfig, provider.SecretProv
 	slog.Debug("skret: configuration resolved", "provider", resolved.Provider, "path", resolved.Path)
 
 	return resolved, p, nil
+}
+
+// pathMangledWarningFmt matches resolveKeyArg's key-mangling warning style
+// (see get.go/delete.go/rollback.go/set.go/history.go) so the operator sees
+// a consistent class of hint regardless of whether the KEY positional arg
+// or the --path flag was what Git Bash/MSYS rewrote.
+const pathMangledWarningFmt = "warning: --path looked shell-mangled; using %q (set MSYS_NO_PATHCONV=1, or run from PowerShell)\n"
+
+// warnIfPathMangled prints the --path shell-mangling warning to cmd's
+// stderr when config.Resolve recovered (or flagged) a --path value
+// MSYS/Git-Bash rewrote into an absolute Windows path (fix for audit
+// finding C2). Callers invoke this right after loadProvider succeeds.
+func warnIfPathMangled(cmd *cobra.Command, resolved *config.ResolvedConfig) {
+	if resolved != nil && resolved.PathMangled {
+		cmd.PrintErrf(pathMangledWarningFmt, resolved.Path)
+	}
 }
 
 // KeyToEnvName is the single source of truth for converting secret keys to env var names.

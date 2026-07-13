@@ -57,6 +57,7 @@ func (o *hubOptions) runPush(cmd *cobra.Command) error {
 		return err
 	}
 	defer p.Close()
+	warnIfPathMangled(cmd, resolved)
 
 	sc, err := loadSyncConfig(o.global)
 	if err != nil {

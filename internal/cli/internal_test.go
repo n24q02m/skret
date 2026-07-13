@@ -433,7 +433,7 @@ func TestAppendGitignore_ExistingWithoutNewline(t *testing.T) {
 func TestGetEnvPairs_ProviderListError(t *testing.T) {
 	// This tests the error path in getEnvPairs when loadProvider fails
 	opts := &GlobalOpts{} // no config file in CWD
-	_, err := getEnvPairs(opts)
+	_, err := getEnvPairs(&cobra.Command{}, opts)
 	assert.Error(t, err)
 }
 

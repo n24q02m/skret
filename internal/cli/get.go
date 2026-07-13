@@ -38,6 +38,7 @@ object. To read ALL secrets use 'skret env'; to inject them into a command use
 				return err
 			}
 			defer p.Close()
+			warnIfPathMangled(cmd, resolved)
 
 			ctx := context.Background()
 			key, mangled := resolveKeyArg(resolved.Path, args[0])

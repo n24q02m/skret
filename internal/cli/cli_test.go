@@ -764,3 +764,57 @@ func TestInitCmd_C1_BareInit_DevWorksEndToEnd(t *testing.T) {
 	require.NoError(t, listCmd.Execute(), "bare init: `list` on the default (dev) env must work")
 	assert.Contains(t, listBuf.String(), "FOO")
 }
+
+// --- Wave 2 T2: --path shell-mangling guard (fix C2) ---
+
+// TestPathMangling_C2_RecoversAndWarns is the audit's exact C2 repro,
+// re-run for the fixed behavior. Before the fix: `skret list
+// --path=<mangled>` exited 0 with "No secrets found" and NO warning,
+// silently querying the wrong prefix. After: still exits 0 (recover-and-warn,
+// consistent with the existing key-arg mangling behavior), but a warning
+// names the recovered path.
+func TestPathMangling_C2_RecoversAndWarns(t *testing.T) {
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	defer os.Chdir(origDir)
+
+	mangledPath := "C:/Users/test/scoop/apps/git/2.54.0/myapp/dev"
+
+	var stderr bytes.Buffer
+	cmd := cli.NewRootCmd()
+	cmd.SetErr(&stderr)
+	cmd.SetArgs([]string{"list", "--provider=local", "--path=" + mangledPath, "--file=./.secrets.dev.yaml"})
+
+	err := cmd.Execute()
+	require.NoError(t, err, "C2 fix: a shell-mangled --path must still exit 0, not error")
+	assert.Contains(t, stderr.String(), "warning: --path looked shell-mangled")
+	assert.Contains(t, stderr.String(), `"/myapp/dev"`)
+}
+
+// TestPathMangling_C2_SetThenGetRoundTrip proves the mangled --path and its
+// clean equivalent resolve to the SAME location -- the actual risk behind
+// C2: a `set` under a mangled --path silently writing under a bogus prefix
+// that a later, correctly-typed --path could never find.
+func TestPathMangling_C2_SetThenGetRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	defer os.Chdir(origDir)
+
+	mangledPath := "C:/Users/test/scoop/apps/git/2.54.0/myapp/dev"
+
+	setCmd := cli.NewRootCmd()
+	var setErr bytes.Buffer
+	setCmd.SetErr(&setErr)
+	setCmd.SetArgs([]string{"set", "FOO", "bar", "--provider=local", "--path=" + mangledPath, "--file=./.secrets.dev.yaml"})
+	require.NoError(t, setCmd.Execute())
+	assert.Contains(t, setErr.String(), "warning: --path looked shell-mangled")
+
+	getCmd := cli.NewRootCmd()
+	var getOut bytes.Buffer
+	getCmd.SetOut(&getOut)
+	getCmd.SetArgs([]string{"get", "FOO", "--provider=local", "--path=/myapp/dev", "--file=./.secrets.dev.yaml"})
+	require.NoError(t, getCmd.Execute())
+	assert.Equal(t, "bar\n", getOut.String(), "value set under the mangled --path must be readable via the clean equivalent path")
+}

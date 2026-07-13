@@ -47,6 +47,7 @@ func newBrowseCmd(opts *GlobalOpts) *cobra.Command {
 				return err
 			}
 			defer p.Close()
+			warnIfPathMangled(cmd, resolved)
 
 			names, err := p.ListNames(context.Background(), resolved.Path)
 			if err != nil {

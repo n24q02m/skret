@@ -53,11 +53,11 @@ func (o *diffOptions) run(cmd *cobra.Command, args []string) error {
 	if len(args) == 2 && o.opts.File != "" {
 		return skret.NewError(skret.ExitValidationError, "--file cannot be combined with two environments (it would apply to both sides)", nil)
 	}
-	a, err := o.buildEnvSource(args[0])
+	a, err := o.buildEnvSource(cmd, args[0])
 	if err != nil {
 		return err
 	}
-	b, err := o.buildSecondSide(args)
+	b, err := o.buildSecondSide(cmd, args)
 	if err != nil {
 		return err
 	}
@@ -82,7 +82,7 @@ func (o *diffOptions) run(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func (o *diffOptions) buildSecondSide(args []string) (differ.Source, error) {
+func (o *diffOptions) buildSecondSide(cmd *cobra.Command, args []string) (differ.Source, error) {
 	switch {
 	case o.dotenv != "" && o.to != "":
 		return nil, skret.NewError(skret.ExitValidationError, "use only one of --dotenv or --to", nil)
@@ -107,13 +107,13 @@ func (o *diffOptions) buildSecondSide(args []string) (differ.Source, error) {
 	case o.to != "":
 		return nil, skret.NewError(skret.ExitValidationError, fmt.Sprintf("unknown --to %q (github)", o.to), nil)
 	case len(args) == 2:
-		return o.buildEnvSource(args[1])
+		return o.buildEnvSource(cmd, args[1])
 	default:
 		return nil, skret.NewError(skret.ExitValidationError, "diff needs a second env, --dotenv, or --to=github", nil)
 	}
 }
 
-func (o *diffOptions) buildEnvSource(target string) (differ.Source, error) {
+func (o *diffOptions) buildEnvSource(cmd *cobra.Command, target string) (differ.Source, error) {
 	sideOpts := *o.opts
 	isPath := target != "" && target[0] == '/'
 	if isPath {
@@ -125,6 +125,7 @@ func (o *diffOptions) buildEnvSource(target string) (differ.Source, error) {
 	if err != nil {
 		return nil, err
 	}
+	warnIfPathMangled(cmd, resolved)
 	label := "env:" + resolved.EnvName
 	if isPath {
 		label = "path:" + resolved.Path

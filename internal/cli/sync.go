@@ -67,6 +67,7 @@ func (o *syncOptions) run(cmd *cobra.Command) error {
 		return err
 	}
 	defer p.Close()
+	warnIfPathMangled(cmd, resolved)
 
 	ctx := context.Background()
 	secrets, err := p.List(ctx, resolved.Path)
