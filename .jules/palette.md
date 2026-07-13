@@ -34,3 +34,7 @@
 ## 2026-07-09 - [CLI Actionable Feedback for Missing Secrets]
 **Learning:** When a command like `skret get <KEY>` fails because the secret does not exist, simply returning a standard error obscures the solution. Providing an actionable hint on standard error (e.g., `Secret not found. Use 'skret set <KEY> <value>' to create it.`) dramatically improves user experience and matches behavior in other parts of the system.
 **Action:** Always intercept `ErrNotFound` states when retrieving individual items and print an actionable call-to-action to stderr before exiting.
+
+## 2026-07-13 - [Empty States for CLI Commands Executing Scans]
+**Learning:** Returning empty states for CLI commands that manipulate/evaluate sets (like `scan` or `diff`) directly after listing from the provider improves UX. For example, failing to do so in `scan` silently does a directory walk of tracked files and gives no actionable message that there's nothing to scan, which confuses the user. Providing an early, clear call-to-action ("No secrets found to scan. Use skret set...") saves processing and sets correct expectations.
+**Action:** When a CLI command acts on a collection of secrets, check for an empty list (`len(secrets) == 0`) immediately after retrieving it, and print an actionable error/empty-state hint to standard error before any further downstream actions (like directory scanning or test execution).

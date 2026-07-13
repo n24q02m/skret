@@ -68,6 +68,8 @@ func TestScanCmd_Clean(t *testing.T) {
 	cmd.SetErr(&out)
 	cmd.SetArgs([]string{"scan"})
 	require.NoError(t, cmd.Execute())
+
+	assert.Contains(t, out.String(), "No secrets found to scan. Use 'skret set' to add a secret.")
 }
 
 func TestScanCmd_JSON(t *testing.T) {
@@ -99,7 +101,7 @@ func TestScanCmd_JSON(t *testing.T) {
 
 func TestScanCmd_Staged(t *testing.T) {
 	// Not a git repo, so StagedFiles' `git diff --cached` fails -> wrapped error.
-	dir := writeEmptyLocalConfig(t)
+	dir := writeLocalTemplateConfig(t)
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
 	defer os.Chdir(origDir) //nolint:errcheck
