@@ -68,6 +68,8 @@ func TestScanCmd_Clean(t *testing.T) {
 	cmd.SetErr(&out)
 	cmd.SetArgs([]string{"scan"})
 	require.NoError(t, cmd.Execute())
+
+	assert.Contains(t, out.String(), "No secrets found to scan. Use 'skret set' to add a secret.")
 }
 
 func TestScanCmd_JSON(t *testing.T) {
