@@ -196,3 +196,12 @@ func TestDiffCmd_RawPathLabels(t *testing.T) {
 	assert.Contains(t, s, "path:/bar")
 	assert.Contains(t, s, "no drift")
 }
+
+func BenchmarkSplitOwnerRepo(b *testing.B) {
+	s := "owner/repo"
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		splitOwnerRepo(s)
+	}
+}
