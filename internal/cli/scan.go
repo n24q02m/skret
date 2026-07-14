@@ -39,6 +39,11 @@ or a pre-commit hook. Use --staged to scan only staged files.`,
 			if err != nil {
 				return skret.NewError(skret.ExitProviderError, "scan: list secrets failed", err)
 			}
+			// Provide actionable feedback for empty states to improve UX
+			if len(secrets) == 0 && !staged {
+				cmd.PrintErrln("No secrets found to scan. Use 'skret set' to add a secret.")
+				return nil
+			}
 			targets := make([]scanner.Target, 0, len(secrets))
 			for _, s := range secrets {
 				targets = append(targets, scanner.Target{Key: KeyToEnvName(s.Key, resolved.Path), Value: s.Value})
