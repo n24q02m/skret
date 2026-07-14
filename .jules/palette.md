@@ -40,3 +40,7 @@
 **Action:** When a CLI command acts on a collection of secrets, check for an empty list (`len(secrets) == 0`) immediately after retrieving it, and print an actionable error/empty-state hint to standard error before any further downstream actions (like directory scanning or test execution).
 trigger CI
 <!-- force CI trigger -->
+
+## 2026-07-13 - [PR Rejection: Title Lint and Test Fidelity]
+**Learning:** A PR was rejected because the title "🎨 Palette: add actionable empty state to scan command" failed PR title linting (it expects conventional commits like `feat: 🎨 palette: ...`). Additionally, the `scan --staged` test relies on a git error from the file system, so placing the empty state check before the file system scan breaks the test expectation unless the empty state is explicitly gated on `!staged`. Modifying the test to use `writeLocalTemplateConfig` broke the fidelity of what it was supposed to test (a completely clean environment).
+**Action:** When PRs are superseded or rejected as obsolete, acknowledge the PR comment, revert local changes, and record the failure context in the journal so that the same mistakes (like unconventional PR titles or invalidating test fidelity by bypassing core logic checks like `staged`) are not repeated in future tasks.
