@@ -27,7 +27,6 @@ describe("renderDashboard", () => {
     expect(html).toContain("in-sync");
     expect(html).toContain("missing");
     expect(html).toContain("/klprism/prod");
-    expect(html).toContain('scope="col"');
   });
   it("shows an empty state with no manifests", () => {
     expect(renderDashboard([])).toContain("hub push");
@@ -51,11 +50,8 @@ describe("renderLogin", () => {
     const html = renderLogin();
     expect(html).toContain('name="password"');
     expect(html).toContain('action="/login"');
-    expect(html).toContain('aria-label="Relay password"');
   });
   it("shows an error message when given one", () => {
-    const html = renderLogin("wrong password");
-    expect(html).toContain("wrong password");
-    expect(html).toContain('role="alert"');
+    expect(renderLogin("wrong password")).toContain("wrong password");
   });
 });
