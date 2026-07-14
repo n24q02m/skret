@@ -4,6 +4,47 @@ All notable changes to this project will be documented in this file.
 
 <!-- version list -->
 
+## v1.13.0-beta.2 (2026-07-14)
+
+### Bug Fixes
+
+- Say byte-exact secret reads, not injection, in the agent-ready copy
+  ([#549](https://github.com/n24q02m/skret/pull/549),
+  [`5722e9c`](https://github.com/n24q02m/skret/commit/5722e9c5280ed087d668efbb22339fd9fc68ca7f))
+
+- **deps**: Update pnpm to v10.34.5 ([#538](https://github.com/n24q02m/skret/pull/538),
+  [`448bee3`](https://github.com/n24q02m/skret/commit/448bee3c52ae52d3a5cb0fcf8fdf333be81c9aa2))
+
+- **deps**: Update vitest to v3.2.7 ([#539](https://github.com/n24q02m/skret/pull/539),
+  [`111e31e`](https://github.com/n24q02m/skret/commit/111e31e36b8f1b4685299fcabc063408ea4aed23))
+
+### Features
+
+- Add browse and sync dry-run scenes to demo.tape
+  ([#549](https://github.com/n24q02m/skret/pull/549),
+  [`5722e9c`](https://github.com/n24q02m/skret/commit/5722e9c5280ed087d668efbb22339fd9fc68ca7f))
+
+- Add vault dashboard screenshot to README and hub guide
+  ([#549](https://github.com/n24q02m/skret/pull/549),
+  [`5722e9c`](https://github.com/n24q02m/skret/commit/5722e9c5280ed087d668efbb22339fd9fc68ca7f))
+
+- Print an empty-state hint when scan finds no secrets
+  ([#553](https://github.com/n24q02m/skret/pull/553),
+  [`fccbc89`](https://github.com/n24q02m/skret/commit/fccbc8900ff1ed3fd7cfd62798d5f998bf40b9e7))
+
+- Regenerate demo.gif with browse and sync dry-run scenes
+  ([#549](https://github.com/n24q02m/skret/pull/549),
+  [`5722e9c`](https://github.com/n24q02m/skret/commit/5722e9c5280ed087d668efbb22339fd9fc68ca7f))
+
+- Surface agent-ready differentiator, add chamber comparison row, prune badges
+  ([#549](https://github.com/n24q02m/skret/pull/549),
+  [`5722e9c`](https://github.com/n24q02m/skret/commit/5722e9c5280ed087d668efbb22339fd9fc68ca7f))
+
+- Surface hub dashboard, agent-ready differentiator, and demo scenes (Wave 4)
+  ([#549](https://github.com/n24q02m/skret/pull/549),
+  [`5722e9c`](https://github.com/n24q02m/skret/commit/5722e9c5280ed087d668efbb22339fd9fc68ca7f))
+
+
 ## v1.13.0-beta.1 (2026-07-13)
 
 ### Bug Fixes
