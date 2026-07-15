@@ -134,11 +134,11 @@ func (o *diffOptions) buildEnvSource(cmd *cobra.Command, target string) (differ.
 }
 
 func splitOwnerRepo(s string) (owner, repo string, err error) {
-	parts := strings.SplitN(s, "/", 2)
-	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+	owner, repo, found := strings.Cut(s, "/")
+	if !found || owner == "" || repo == "" {
 		return "", "", skret.NewError(skret.ExitValidationError, "--github-repo must be owner/repo", nil)
 	}
-	return parts[0], parts[1], nil
+	return owner, repo, nil
 }
 
 func requireGitHubToken() (string, error) {

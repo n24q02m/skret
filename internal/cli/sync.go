@@ -302,8 +302,8 @@ func (o *syncOptions) targetFromFlags(typ string) ([]syncer.TargetConfig, error)
 			if r == "" {
 				continue
 			}
-			parts := strings.SplitN(r, "/", 2)
-			if len(parts) != 2 {
+			owner, repo, found := strings.Cut(r, "/")
+			if !found || owner == "" || repo == "" {
 				errs = append(errs, fmt.Errorf("sync: invalid repo format %q, must be owner/repo", r))
 				hasRepoErr = true
 				continue

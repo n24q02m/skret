@@ -109,9 +109,9 @@ func (o *setOptions) getMeta() provider.SecretMeta {
 	if len(o.tags) > 0 {
 		meta.Tags = make(map[string]string, len(o.tags))
 		for _, tag := range o.tags {
-			parts := strings.SplitN(tag, "=", 2)
-			if len(parts) == 2 {
-				meta.Tags[parts[0]] = parts[1]
+			key, val, found := strings.Cut(tag, "=")
+			if found {
+				meta.Tags[key] = val
 			}
 		}
 	}

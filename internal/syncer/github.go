@@ -270,12 +270,12 @@ func newGitHubFromConfig(tc TargetConfig) (Syncer, error) {
 	if repo == "" {
 		return nil, fmt.Errorf("github: repo is required")
 	}
-	parts := strings.SplitN(repo, "/", 2)
-	if len(parts) != 2 {
+	owner, repoName, found := strings.Cut(repo, "/")
+	if !found || owner == "" || repoName == "" {
 		return nil, fmt.Errorf("github: invalid repo %q, must be owner/repo", repo)
 	}
 	if tc.Token == "" {
 		return nil, fmt.Errorf("github: GITHUB_TOKEN is required")
 	}
-	return NewGitHub(parts[0], parts[1], tc.Token, field(tc, "base_url")), nil
+	return NewGitHub(owner, repoName, tc.Token, field(tc, "base_url")), nil
 }
