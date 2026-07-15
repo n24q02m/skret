@@ -37,3 +37,6 @@
 ## $(date +%Y-%m-%d) - TUI Contextual Keybind Hints
 **Learning:** In Bubble Tea TUIs, standard footer keybind hints can remain visible during specialized states like filtering, leading to user confusion since standard navigation keys (up/down/enter to reveal) stop functioning normally.
 **Action:** Always check the current component state (e.g., `m.list.FilterState() == list.Filtering`) in the `View()` function and update the footer to display the contextually correct keybinds (e.g., 'esc cancel - enter confirm filter') to set accurate expectations.
+## 2026-07-15 - [Conventional Commits with Persona Prefix]
+**Learning:** The PR Title lint check enforces Conventional Commits (`feat:`, `fix:`, `perf:`). If a persona prefix like `🎨 Palette:` is used as the primary prefix, the CI will fail.
+**Action:** Always nest the persona prefix inside the conventional commit prefix, e.g., `feat: 🎨 palette: add keybind hints`. Ensure both the PR title and the commit message are updated to trigger the CI rerun successfully.
