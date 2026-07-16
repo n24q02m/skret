@@ -34,3 +34,9 @@
 ## 2026-07-09 - [CLI Actionable Feedback for Missing Secrets]
 **Learning:** When a command like `skret get <KEY>` fails because the secret does not exist, simply returning a standard error obscures the solution. Providing an actionable hint on standard error (e.g., `Secret not found. Use 'skret set <KEY> <value>' to create it.`) dramatically improves user experience and matches behavior in other parts of the system.
 **Action:** Always intercept `ErrNotFound` states when retrieving individual items and print an actionable call-to-action to stderr before exiting.
+## 2026-07-15 - TUI Contextual Keybind Hints
+**Learning:** In Bubble Tea TUIs, standard footer keybind hints can remain visible during specialized states like filtering, leading to user confusion since standard navigation keys (up/down/enter to reveal) stop functioning normally.
+**Action:** Always check the current component state (e.g., `m.list.FilterState() == list.Filtering`) in the `View()` function and update the footer to display the contextually correct keybinds (e.g., 'esc cancel - enter confirm filter') to set accurate expectations.
+## 2026-07-15 - [Conventional Commits with Persona Prefix]
+**Learning:** The PR Title lint check enforces Conventional Commits (`feat:`, `fix:`, `perf:`). If a persona prefix like `🎨 Palette:` is used as the primary prefix, the CI will fail.
+**Action:** Always nest the persona prefix inside the conventional commit prefix, e.g., `feat: 🎨 palette: add keybind hints`. Ensure both the PR title and the commit message are updated to trigger the CI rerun successfully.

@@ -113,6 +113,9 @@ func (m Model) View() string {
 		detail = lipgloss.JoinVertical(lipgloss.Left, "Key:   "+it.key, "Value: "+val)
 		footer = "up/down move - / filter - enter " + enterAction + " - q quit"
 	}
+	if m.list.FilterState() == list.Filtering {
+		footer = "esc cancel - enter confirm filter"
+	}
 	if m.err != "" {
 		footer = m.err + "  |  " + footer
 	}

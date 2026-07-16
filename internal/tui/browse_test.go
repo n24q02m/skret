@@ -151,3 +151,15 @@ func TestFilter_KeystrokesGoToList(t *testing.T) {
 		}
 	}
 }
+
+func TestFilter_KeybindHints(t *testing.T) {
+	reveal := func(_ context.Context, _ string) (string, error) { return secretVal, nil }
+	m := sized(t, NewModel([]string{"DB_URL", "API_KEY"}, reveal))
+
+	// Not filtering initially.
+	assert.NotContains(t, m.View(), "esc cancel - enter confirm filter")
+
+	// Activate filter and verify hint is shown.
+	m, _ = send(t, m, runes("/"))
+	assert.Contains(t, m.View(), "esc cancel - enter confirm filter")
+}
