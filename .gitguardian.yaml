@@ -9,3 +9,11 @@ secret:
     # managed value in a file and never prints it. It is not a real credential.
     - name: scanner test fixture (fabricated, not a real secret)
       match: sup3r-s3cret-value
+    # `nested-key-fixture-not-a-secret` is a fabricated fixture used by the
+    # dotenv syncer's nested-key regression (#536,
+    # internal/syncer/dotenv_test.go) to verify a nested key like
+    # "/app/prod/db/PASSWORD" is written under a valid variable name. The
+    # "Generic Password" detector fires on the PASSWORD keyword, not a real
+    # credential.
+    - name: dotenv syncer nested-key test fixture (fabricated, not a real secret)
+      match: nested-key-fixture-not-a-secret
