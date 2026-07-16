@@ -66,6 +66,56 @@ func TestDotenvSyncer_RoundTrip(t *testing.T) {
 	}
 }
 
+// TestDotenvSyncer_NestedKeys is the regression for #536: a provider that
+// lists secrets under nested paths (AWS SSM) yields keys like
+// "/app/prod/db/PASSWORD". The written variable name must be the target-side
+// SecretName (last path segment) -- the same name `sync --dry-run` prints --
+// not the raw nested key, which is not a valid dotenv variable name.
+func TestDotenvSyncer_NestedKeys(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".env.nested")
+
+	secrets := []*provider.Secret{
+		{Key: "/app/prod/db/PASSWORD", Value: "nested-key-fixture-not-a-secret"},
+		{Key: "/app/prod/API_KEY", Value: "sk-123"},
+	}
+
+	require.NoError(t, syncer.NewDotenv(path).Sync(context.Background(), secrets))
+
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	content := string(data)
+
+	assert.Contains(t, content, "PASSWORD=nested-key-fixture-not-a-secret")
+	assert.Contains(t, content, "API_KEY=sk-123")
+	assert.NotContains(t, content, "/app/prod", "raw nested key must not leak into the .env line")
+}
+
+// TestDotenvSyncer_NestedKeyCollision covers the collision edge case: two
+// distinct nested keys whose last path segment is identical would produce two
+// lines with the same variable name, silently losing one secret. The sync must
+// fail loudly, naming both keys (never their values), and leave no file behind.
+func TestDotenvSyncer_NestedKeyCollision(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".env.collision")
+
+	secrets := []*provider.Secret{
+		{Key: "/app/prod/db/HOST", Value: "db.internal"},
+		{Key: "/app/prod/cache/HOST", Value: "cache.internal"},
+	}
+
+	err := syncer.NewDotenv(path).Sync(context.Background(), secrets)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "HOST")
+	assert.Contains(t, err.Error(), "/app/prod/db/HOST")
+	assert.Contains(t, err.Error(), "/app/prod/cache/HOST")
+	assert.NotContains(t, err.Error(), "db.internal", "secret values must never appear in errors")
+	assert.NotContains(t, err.Error(), "cache.internal", "secret values must never appear in errors")
+
+	_, statErr := os.Stat(path)
+	assert.True(t, os.IsNotExist(statErr), "no file must be written when a collision is detected")
+}
+
 func TestDotenvSyncer_WriteError(t *testing.T) {
 	dir := t.TempDir()
 	// Using a directory path instead of a file path will cause os.WriteFile to fail
