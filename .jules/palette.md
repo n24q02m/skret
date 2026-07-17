@@ -40,3 +40,7 @@
 ## 2026-07-15 - [Conventional Commits with Persona Prefix]
 **Learning:** The PR Title lint check enforces Conventional Commits (`feat:`, `fix:`, `perf:`). If a persona prefix like `🎨 Palette:` is used as the primary prefix, the CI will fail.
 **Action:** Always nest the persona prefix inside the conventional commit prefix, e.g., `feat: 🎨 palette: add keybind hints`. Ensure both the PR title and the commit message are updated to trigger the CI rerun successfully.
+
+## 2026-07-17 - [Empty States for Execution and Generation Commands]
+**Learning:** When executing downstream logic like command injection (`run`) or file rendering (`template`) against an empty set of secrets, the command silently executing or rendering incomplete files is technically correct but creates a poor UX because it lacks transparency.
+**Action:** Always add an actionable empty-state message routed to stderr before proceeding with execution or generation if the secret source is empty. This informs the user without breaking piped outputs or halting valid workflows.
