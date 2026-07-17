@@ -191,19 +191,21 @@ func hubSyncerStub(typ string) syncer.Syncer {
 // http.NewRequestWithContext below, which reports it as a "create request"
 // error the same way it always has.
 func postManifest(hubURL, token string, m *syncer.Manifest) error {
+	u, err := url.Parse(hubURL)
+	if err != nil {
+		return fmt.Errorf("invalid hub URL: %w", err)
+	}
 	if token != "" {
-		if u, err := url.Parse(hubURL); err == nil {
-			host := u.Hostname()
-			if u.Scheme == "http" && host != "127.0.0.1" && host != "localhost" && host != "::1" {
-				return fmt.Errorf("refusing to send SKRET_HUB_TOKEN over insecure http to %q; use https", host)
-			}
+		host := u.Hostname()
+		if u.Scheme == "http" && host != "127.0.0.1" && host != "localhost" && host != "::1" {
+			return fmt.Errorf("refusing to send SKRET_HUB_TOKEN over insecure http to %q; use https", host)
 		}
 	}
 	body, err := json.Marshal(m)
 	if err != nil {
 		return fmt.Errorf("marshal manifest: %w", err)
 	}
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, hubURL+"/api/manifest", bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, u.JoinPath("api/manifest").String(), bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("create request: %w", err)
 	}

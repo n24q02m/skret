@@ -43,3 +43,8 @@ Added `ReadTimeout` and `WriteTimeout` to `http.Server` in `internal/auth/infisi
 **Vulnerability:** A potential path traversal vulnerability where untrusted input (target, id) could be used to construct a sync state file path (`StatePathFor` in `internal/syncer/state.go`), potentially escaping the intended directory if not properly sanitized.
 **Learning:** While the codebase uses a `sanitizeID` function to strip separators and `..`, relying solely on input sanitization for file paths is prone to edge cases if the sanitization logic is later updated or has missed cases.
 **Prevention:** Add a defense-in-depth check using `filepath.Rel(baseDir, constructedPath)` to ensure the final resolved path strictly resides within the expected directory base and consists of exactly the expected filename, guaranteeing isolation regardless of the input.
+
+## 2026-07-17 - Prevent Malformed URL Injection in Hub CLI Client
+**Vulnerability:** Constructing the hub manifest API URL via raw string concatenation (`hubURL + "/api/manifest"`) left the request vulnerable to URL injection. If the base `hubURL` contained query parameters, the `/api/manifest` segment was incorrectly appended to the query rather than the path, leading to malformed requests or unexpected endpoints being targeted.
+**Learning:** Raw string manipulation (like `+` or `fmt.Sprintf`) for URL construction is dangerous because it ignores the structural semantics of URLs (paths vs. queries vs. fragments).
+**Prevention:** Always parse untrusted or configurable base URLs with `url.Parse` and use the `u.JoinPath(...)` method to safely append path segments, ensuring they are placed before the query string and properly escaped.

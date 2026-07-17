@@ -63,7 +63,7 @@ func TestPostManifest_NoTokenSkipsAuthHeader(t *testing.T) {
 func TestPostManifest_InvalidURL_CreateRequestError(t *testing.T) {
 	err := postManifest("http://%zz", "t", &syncer.Manifest{})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "create request")
+	assert.Contains(t, err.Error(), "invalid hub URL")
 }
 
 func TestPostManifest_ConnectionRefused(t *testing.T) {
