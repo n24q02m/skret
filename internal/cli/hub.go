@@ -205,6 +205,7 @@ func postManifest(hubURL, token string, m *syncer.Manifest) error {
 	if err != nil {
 		return fmt.Errorf("marshal manifest: %w", err)
 	}
+	// Use JoinPath to safely construct the URL and prevent query parameter injection
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, u.JoinPath("api/manifest").String(), bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("create request: %w", err)
