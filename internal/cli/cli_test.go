@@ -917,3 +917,29 @@ func TestCompletionCmd_ValidShell_StillGeneratesScript(t *testing.T) {
 	require.NoError(t, execErr)
 	assert.Contains(t, <-done, "bash completion")
 }
+
+func TestRunCmd_EmptySecrets(t *testing.T) {
+	dir := setupTestRepo(t)
+	os.WriteFile(filepath.Join(dir, ".skret.yaml"), []byte(`
+version: "1"
+default_env: dev
+environments:
+  dev:
+    provider: local
+    file: ./.secrets.dev.yaml
+`), 0o644)
+	os.WriteFile(filepath.Join(dir, ".secrets.dev.yaml"), []byte("version: \"1\"\nsecrets:\n"), 0o644)
+
+	origDir, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	defer os.Chdir(origDir)
+
+	var out bytes.Buffer
+	cmd := cli.NewRootCmd()
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"run", "--", "nonexistent-cmd"})
+	err := cmd.Execute()
+	assert.Error(t, err)
+	assert.Contains(t, out.String(), "No secrets found to inject. Use 'skret set' to add a secret.")
+}

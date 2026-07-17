@@ -138,3 +138,28 @@ func TestTemplateCmd_EscapeAndBareDollar(t *testing.T) {
 	assert.Contains(t, s, "bare=$PATH")       // bare $ untouched
 	assert.Contains(t, s, "literal=${TOKEN}") // $$ escape -> literal ${TOKEN}, not substituted
 }
+
+func TestTemplateCmd_EmptySecrets(t *testing.T) {
+	dir := t.TempDir()
+	must := func(name, content string) {
+		require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(content), 0o600))
+	}
+	must("dev.yaml", "version: \"1\"\nsecrets:\n")
+	must(".skret.yaml", "version: \"1\"\ndefault_env: dev\nenvironments:\n  dev:\n    provider: local\n    file: dev.yaml\n")
+
+	origDir, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	defer os.Chdir(origDir) //nolint:errcheck
+
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "e.tpl"), []byte("bare=$PATH\n"), 0o600))
+
+	var out bytes.Buffer
+	cmd := NewRootCmd()
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"template", "e.tpl"})
+	require.NoError(t, cmd.Execute())
+
+	s := out.String()
+	assert.Contains(t, s, "No secrets found to template. Use 'skret set' to add a secret.")
+}
