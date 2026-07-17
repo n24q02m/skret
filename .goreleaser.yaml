@@ -1,5 +1,12 @@
 version: 2
 
+release:
+  # A transient GitHub upload error mid-publish leaves the release with a
+  # partial asset set; without this flag a rerun dies on 422 already_exists
+  # for every asset that did land, so the scoop/brew/docker publishers after
+  # the upload step never run (v1.14.0, run 29544187972).
+  replace_existing_artifacts: true
+
 builds:
   - id: skret
     main: ./cmd/skret
