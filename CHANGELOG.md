@@ -4,6 +4,50 @@ All notable changes to this project will be documented in this file.
 
 <!-- version list -->
 
+## v1.14.0 (2026-07-17)
+
+### Bug Fixes
+
+- Add command-reference docs for core commands ([#561](https://github.com/n24q02m/skret/pull/561),
+  [`caa34b5`](https://github.com/n24q02m/skret/commit/caa34b5081d7061a87f1f21a9de16a952f94b095))
+
+- Dotenv syncer writes invalid variable names for nested provider keys
+  ([#560](https://github.com/n24q02m/skret/pull/560),
+  [`d7ab5fe`](https://github.com/n24q02m/skret/commit/d7ab5fe2f8a42d5730d429a87f3fa37ff23d4abb))
+
+- Expand literal date placeholder in palette ledger entry
+  ([#557](https://github.com/n24q02m/skret/pull/557),
+  [`9f56eab`](https://github.com/n24q02m/skret/commit/9f56eabe8a9b65e33168e89d2402a234c73ce06a))
+
+- **deps**: Update actions/setup-node digest to 2499707
+  ([#555](https://github.com/n24q02m/skret/pull/555),
+  [`44b3261`](https://github.com/n24q02m/skret/commit/44b3261bcad2fdee25c6ec7e073eb0a10d625d0c))
+
+- **deps**: Update alpine Docker tag to v3.24 ([#559](https://github.com/n24q02m/skret/pull/559),
+  [`80f2dff`](https://github.com/n24q02m/skret/commit/80f2dff34053e9e73f3d05f7deda06a549358907))
+
+- **deps**: Update aws-sdk-go-v2 monorepo ([#556](https://github.com/n24q02m/skret/pull/556),
+  [`a2342ec`](https://github.com/n24q02m/skret/commit/a2342ec05a64858ad9fce658592982992d896fb4))
+
+### Features
+
+- Palette: add keybind hints for filtering state ([#557](https://github.com/n24q02m/skret/pull/557),
+  [`9f56eab`](https://github.com/n24q02m/skret/commit/9f56eabe8a9b65e33168e89d2402a234c73ce06a))
+
+- 🎨 palette: add keybind hints for filtering state
+  ([#557](https://github.com/n24q02m/skret/pull/557),
+  [`9f56eab`](https://github.com/n24q02m/skret/commit/9f56eabe8a9b65e33168e89d2402a234c73ce06a))
+
+### Performance Improvements
+
+- Replace strings.SplitN with strings.Cut ([#558](https://github.com/n24q02m/skret/pull/558),
+  [`c0b4b61`](https://github.com/n24q02m/skret/commit/c0b4b61a9d2fec1f6673fa73b7fd63b42b3d2548))
+
+- ⚡ bolt: bypass string allocation in splitOwnerRepo
+  ([#554](https://github.com/n24q02m/skret/pull/554),
+  [`215a6ad`](https://github.com/n24q02m/skret/commit/215a6ad4f1c3eee375385b2b8896cdbc9904197b))
+
+
 ## v1.13.0 (2026-07-14)
 
 
