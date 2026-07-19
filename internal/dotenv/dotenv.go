@@ -24,6 +24,11 @@ func Encode(key, value string) string {
 	if !needsQuoting(value) {
 		return key + "=" + value
 	}
+	// Fast path: values that require quoting (e.g. spaces) but have no characters
+	// requiring escapes bypass the strings.Builder allocation.
+	if !strings.ContainsAny(value, "\\\"\n\r\t") {
+		return key + "=\"" + value + "\""
+	}
 	var b strings.Builder
 	b.Grow(len(value) + 2)
 	b.WriteByte('"')
