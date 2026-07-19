@@ -40,3 +40,11 @@
 ## 2026-07-15 - [Conventional Commits with Persona Prefix]
 **Learning:** The PR Title lint check enforces Conventional Commits (`feat:`, `fix:`, `perf:`). If a persona prefix like `🎨 Palette:` is used as the primary prefix, the CI will fail.
 **Action:** Always nest the persona prefix inside the conventional commit prefix, e.g., `feat: 🎨 palette: add keybind hints`. Ensure both the PR title and the commit message are updated to trigger the CI rerun successfully.
+
+## $(date +%Y-%m-%d) - [Interactive Element Focus Styles]
+**Learning:** Native form elements (like `button`, `input`) and links (`a`) often lack distinct `:focus-visible` styles in custom, inline CSS templates, making keyboard navigation difficult to track for users relying on it. Similarly, missing `cursor: pointer` on buttons degrades mouse interaction cues.
+**Action:** Always ensure that reset or custom CSS explicitly includes an `outline` for `:focus-visible` states on interactive elements (`a:focus-visible, input:focus-visible, button:focus-visible`) and `cursor: pointer` on buttons.
+
+## $(date +%Y-%m-%d) - [Native Form Validation]
+**Learning:** Using the native `required` attribute on essential inputs (like a password field in a login form) provides immediate, browser-native validation feedback and improves screen-reader context before a form is submitted.
+**Action:** Always verify that critical form fields have appropriate native validation attributes (like `required`, `type="email"`, etc.) alongside custom error handling.
