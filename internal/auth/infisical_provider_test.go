@@ -352,17 +352,17 @@ func TestInfisicalProvider_LoginToken_DecodeFail(t *testing.T) {
 }
 
 func TestInfisicalProvider_Login_BuildRequestError(t *testing.T) {
-	// Use an invalid URL to trigger NewRequestWithContext error.
+	// Use an invalid URL to trigger parse base url error.
 	p := &InfisicalProvider{baseURL: "http://bad-url\x7f"}
 	_, err := p.Login(context.Background(), "universal-auth", map[string]string{
 		"client_id": "a", "client_secret": "b",
 	})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "build request")
+	assert.Contains(t, err.Error(), "parse base url")
 
 	_, err = p.Login(context.Background(), "token", map[string]string{"token": "tok"})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "create request")
+	assert.Contains(t, err.Error(), "parse base url")
 }
 
 func TestInfisicalProvider_LoginBrowser_CoverBranch(t *testing.T) {

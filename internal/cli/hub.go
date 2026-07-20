@@ -186,24 +186,24 @@ func hubSyncerStub(typ string) syncer.Syncer {
 //
 // If a bearer token is set, the hub URL is checked first: plain http to any
 // host other than loopback would put SKRET_HUB_TOKEN on the wire in the
-// clear, so that combination is refused before the request is built. A
-// malformed hubURL is not rejected here — it falls through to
-// http.NewRequestWithContext below, which reports it as a "create request"
-// error the same way it always has.
+// clear, so that combination is refused before the request is built.
 func postManifest(hubURL, token string, m *syncer.Manifest) error {
+	u, err := url.Parse(hubURL)
+	if err != nil {
+		return fmt.Errorf("create request: parse hub url: %w", err)
+	}
 	if token != "" {
-		if u, err := url.Parse(hubURL); err == nil {
-			host := u.Hostname()
-			if u.Scheme == "http" && host != "127.0.0.1" && host != "localhost" && host != "::1" {
-				return fmt.Errorf("refusing to send SKRET_HUB_TOKEN over insecure http to %q; use https", host)
-			}
+		host := u.Hostname()
+		if u.Scheme == "http" && host != "127.0.0.1" && host != "localhost" && host != "::1" {
+			return fmt.Errorf("refusing to send SKRET_HUB_TOKEN over insecure http to %q; use https", host)
 		}
 	}
 	body, err := json.Marshal(m)
 	if err != nil {
 		return fmt.Errorf("marshal manifest: %w", err)
 	}
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, hubURL+"/api/manifest", bytes.NewReader(body))
+	reqURL := u.JoinPath("api/manifest").String()
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, reqURL, bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("create request: %w", err)
 	}
