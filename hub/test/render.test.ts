@@ -185,9 +185,19 @@ describe("renderLogin a11y", () => {
     expect(html).toContain('id="password"');
     expect(html).toContain('autocomplete="current-password"');
   });
+  it("marks the password input as required", () => {
+    const html = renderLogin();
+    expect(html).toContain("required>");
+  });
   it("marks the error message with role=alert", () => {
     const html = renderLogin("wrong password");
     expect(html).toContain('role="alert"');
+    expect(html).toContain('id="login-err"');
+  });
+  it("associates the error message with the input when present", () => {
+    const html = renderLogin("wrong password");
+    expect(html).toContain('aria-invalid="true"');
+    expect(html).toContain('aria-describedby="login-err"');
   });
 });
 
