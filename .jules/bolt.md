@@ -64,3 +64,7 @@
 ## 2026-07-14 - Replacing strings.SplitN with strings.Cut
 **Learning:** Functions like `strings.SplitN(s, delim, 2)` provide a convenient API, but when used to split strings by a single character or string, they incur measurable memory allocation overhead because they return a slice. Replacing them with `strings.Cut(s, delim)` avoids the heap allocation of the slice, providing a measurable performance improvement (zero allocations) while maintaining readability.
 **Action:** Always prefer `strings.Cut` over `strings.SplitN(s, delim, 2)` when splitting a string into exactly two parts.
+
+## 2026-07-20 - Fast-path check bypasses strings.Builder allocation for safe quotes
+**Learning:** When generating quoted strings, iterating and using `strings.Builder` causes unnecessary overhead if the value requires quotes (e.g., has spaces) but does not require any internal character escaping.
+**Action:** Adding a fast-path check with `strings.ContainsAny(value, "\\\\"\n\r\t")` avoids this overhead. Falling back to simple string concatenation (`key + "=\"" + value + "\""`) significantly reduces memory allocations and execution time for compliant strings.
