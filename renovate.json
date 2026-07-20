@@ -1,8 +1,14 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["config:recommended"],
-  "labels": ["dependencies"],
-  "schedule": ["before 5am every weekday"],
+  "extends": [
+    "config:recommended"
+  ],
+  "labels": [
+    "dependencies"
+  ],
+  "schedule": [
+    "before 5am every weekday"
+  ],
   "prConcurrentLimit": 3,
   "semanticCommits": "enabled",
   "commitMessagePrefix": "fix(deps):",
@@ -11,23 +17,38 @@
   "semanticCommitType": "fix",
   "semanticCommitScope": "deps",
   "golang": {
-    "postUpdateOptions": ["gomodTidy"]
+    "postUpdateOptions": [
+      "gomodTidy"
+    ]
   },
   "packageRules": [
     {
-      "matchPackageNames": ["astro"],
+      "matchPackageNames": [
+        "astro"
+      ],
       "allowedVersions": "<6.4.0",
       "description": "Hold astro <6.4 until @astrojs/starlight + @astrojs/mdx support it. astro 6.4.0 removed the astro/jsx/rehype.js export that @astrojs/mdx 5.0.6 (transitive via starlight) imports, breaking the Deploy Docs CD build."
     },
     {
-      "matchPackageNames": ["pnpm"],
+      "matchPackageNames": [
+        "pnpm"
+      ],
       "allowedVersions": "<11",
       "description": "Hold pnpm <11. pnpm 11 makes ERR_PNPM_IGNORED_BUILDS (esbuild/sharp) fatal, breaking 'pnpm install --frozen-lockfile' in the docs Deploy Docs CD job."
     },
     {
-      "matchPackageNames": ["@astrojs/starlight"],
+      "matchPackageNames": [
+        "@astrojs/starlight"
+      ],
       "allowedVersions": "<0.40",
       "description": "Hold @astrojs/starlight <0.40 to match the astro <6.4 hold. starlight 0.41 pulls @astrojs/mdx@7 which needs astro 7 (chunkToString export), breaking the Deploy Docs build against astro 6.4.x. Unfreeze together with astro in one coordinated astro-7 upgrade."
+    },
+    {
+      "description": "Pin GitHub Actions to SHA for security",
+      "matchManagers": [
+        "github-actions"
+      ],
+      "pinDigests": true
     }
   ]
 }
