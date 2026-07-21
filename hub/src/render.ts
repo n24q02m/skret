@@ -154,12 +154,13 @@ export function renderDashboard(manifests: Manifest[], now: number = Date.now())
 }
 
 export function renderLogin(error?: string): string {
-  const msg = error ? `<p class="err" role="alert">${esc(error)}</p>` : "";
+  const msg = error ? `<p class="err" id="login-error" role="alert">${esc(error)}</p>` : "";
+  const ariaAttrs = error ? ` aria-invalid="true" aria-describedby="login-error"` : "";
   return page(
     `<h1>skret vault</h1>${msg}` +
       `<form method="POST" action="/login">` +
       `<label for="password" class="sr-only">Relay password</label>` +
-      `<input type="password" id="password" name="password" placeholder="relay password" autocomplete="current-password" autofocus>` +
+      `<input type="password" id="password" name="password" placeholder="relay password" autocomplete="current-password" required${ariaAttrs} autofocus>` +
       `<button type="submit">Enter</button></form>${FOOTER}`,
   );
 }

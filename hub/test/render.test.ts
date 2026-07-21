@@ -184,10 +184,15 @@ describe("renderLogin a11y", () => {
     expect(html).toContain('<label for="password"');
     expect(html).toContain('id="password"');
     expect(html).toContain('autocomplete="current-password"');
+    expect(html).toContain('required');
+    expect(html).not.toContain('aria-invalid');
   });
-  it("marks the error message with role=alert", () => {
+  it("marks the error message with role=alert and links input via aria-describedby when error is present", () => {
     const html = renderLogin("wrong password");
     expect(html).toContain('role="alert"');
+    expect(html).toContain('id="login-error"');
+    expect(html).toContain('aria-invalid="true"');
+    expect(html).toContain('aria-describedby="login-error"');
   });
 });
 
