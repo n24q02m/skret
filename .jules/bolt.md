@@ -64,3 +64,6 @@
 ## 2026-07-14 - Replacing strings.SplitN with strings.Cut
 **Learning:** Functions like `strings.SplitN(s, delim, 2)` provide a convenient API, but when used to split strings by a single character or string, they incur measurable memory allocation overhead because they return a slice. Replacing them with `strings.Cut(s, delim)` avoids the heap allocation of the slice, providing a measurable performance improvement (zero allocations) while maintaining readability.
 **Action:** Always prefer `strings.Cut` over `strings.SplitN(s, delim, 2)` when splitting a string into exactly two parts.
+## 2024-08-16 - Bypass Builder Allocation for Unescaped Strings
+**Learning:** In string serialization functions (like dotenv encoding), if a string needs boundary modifications (quotes) but no internal escaping, bypassing the `strings.Builder` allocation and loop overhead in favor of simple string concatenation reduces execution time and memory allocations significantly.
+**Action:** When a string requires boundary modifications but no internal escaping, use a fast-path check (`strings.ContainsAny`) to fallback to simple string concatenation.
