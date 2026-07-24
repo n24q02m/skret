@@ -49,6 +49,19 @@
         "github-actions"
       ],
       "pinDigests": true
+    },
+    {
+      "matchFileNames": [
+        "docs/**"
+      ],
+      "matchPackageNames": [
+        "astro"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "enabled": false,
+      "description": "Block astro major bumps for docs/**. astro 7 breaks the Docs Astro build because @astrojs/mdx (pulled in transitively via starlight) is not yet compatible: \"Package subpath './jsx/rehype.js' is not defined by 'exports'\". An astro major needs a coordinated @astrojs/* bump, not a single-package one."
     }
   ]
 }
