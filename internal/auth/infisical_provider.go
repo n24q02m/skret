@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"time"
 )
@@ -62,7 +63,12 @@ func (p *InfisicalProvider) loginUniversalAuth(ctx context.Context, opts map[str
 		"clientId":     clientID,
 		"clientSecret": clientSecret,
 	})
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.baseURL+"/api/v1/auth/universal-auth/login", bytes.NewReader(body))
+	u, err := url.Parse(p.baseURL)
+	if err != nil {
+		return nil, fmt.Errorf("infisical universal-auth: parse base url: %w", err)
+	}
+	reqURL := u.JoinPath("api/v1/auth/universal-auth/login").String()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, reqURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("infisical universal-auth: build request: %w", err)
 	}
@@ -102,7 +108,12 @@ func (p *InfisicalProvider) loginToken(ctx context.Context, opts map[string]stri
 
 	// Validate token
 	client := &http.Client{Timeout: 10 * time.Second}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.baseURL+"/api/v1/auth/check", http.NoBody)
+	u, err := url.Parse(p.baseURL)
+	if err != nil {
+		return nil, fmt.Errorf("infisical: parse base url: %w", err)
+	}
+	reqURL := u.JoinPath("api/v1/auth/check").String()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, http.NoBody)
 	if err != nil {
 		return nil, fmt.Errorf("infisical: create request: %w", err)
 	}

@@ -43,3 +43,7 @@ Added `ReadTimeout` and `WriteTimeout` to `http.Server` in `internal/auth/infisi
 **Vulnerability:** A potential path traversal vulnerability where untrusted input (target, id) could be used to construct a sync state file path (`StatePathFor` in `internal/syncer/state.go`), potentially escaping the intended directory if not properly sanitized.
 **Learning:** While the codebase uses a `sanitizeID` function to strip separators and `..`, relying solely on input sanitization for file paths is prone to edge cases if the sanitization logic is later updated or has missed cases.
 **Prevention:** Add a defense-in-depth check using `filepath.Rel(baseDir, constructedPath)` to ensure the final resolved path strictly resides within the expected directory base and consists of exactly the expected filename, guaranteeing isolation regardless of the input.
+## 2026-07-20 - Prevent malformed URL injection
+**Vulnerability:** Raw string concatenation was used to construct API URLs from potentially untrusted base URLs, which can lead to malformed URL injection and escaping issues.
+**Learning:** Using `url.Parse` and `url.URL.JoinPath()` prevents these issues by properly encoding path segments and preventing query string injection.
+**Prevention:** Always use the `net/url` package to construct URLs, particularly when incorporating external input.
