@@ -53,6 +53,9 @@ func (o *templateOptions) run(cmd *cobra.Command, file string) error {
 	if err != nil {
 		return skret.NewError(skret.ExitProviderError, "template: list secrets failed", err)
 	}
+	if len(secrets) == 0 {
+		cmd.PrintErrln("No secrets found to template. Use 'skret set' to add a secret.")
+	}
 
 	values := make(map[string]string, len(secrets))
 	for _, s := range secrets {
