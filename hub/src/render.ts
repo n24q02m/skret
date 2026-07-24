@@ -139,7 +139,7 @@ function renderNamespace(m: Manifest, now: number): string {
     `<section class="ns"><h2>${esc(m.namespace)} &middot; ${esc(m.env)}` +
     ` <span class="meta">synced ${esc(relativeTime(m.generated_at, now))}</span>${staleBadge}</h2>` +
     `<div class="summary">${esc(summary(m))}</div>` +
-    `<div class="tablewrap"><table><thead><tr><th>Key</th><th>Fingerprint</th><th>Targets</th></tr></thead>` +
+    `<div class="tablewrap"><table><thead><tr><th scope="col">Key</th><th scope="col">Fingerprint</th><th scope="col">Targets</th></tr></thead>` +
     `<tbody>${rows}</tbody></table></div></section>`
   );
 }
@@ -150,8 +150,8 @@ export function renderDashboard(manifests: Manifest[], now: number = Date.now())
   );
   const body = sorted.length
     ? sorted.map((mf) => renderNamespace(mf, now)).join("\n")
-    : `<div class="empty">No manifests yet. Run <code>skret hub push</code>.</div>`;
-  const logout = `<form method="POST" action="/logout"><button type="submit">Logout</button></form>`;
+    : `<div class="empty"><p><strong>No manifests yet.</strong></p><p>Run <code>skret hub push</code> from your CLI to sync secrets.</p></div>`;
+  const logout = `<form method="POST" action="/logout"><button type="submit" aria-label="Logout of vault dashboard">Logout</button></form>`;
   return page(`<h1>skret vault dashboard</h1>${body}${logout}`);
 }
 

@@ -88,7 +88,7 @@ describe("renderDashboard", () => {
     expect(html).toContain("/klprism/prod");
   });
   it("shows an empty state with no manifests", () => {
-    expect(renderDashboard([])).toContain("hub push");
+    expect(renderDashboard([])).toContain("sync secrets");
   });
   it("escapes HTML in names (XSS guard)", () => {
     const evil: Manifest = { ...m, namespace: "<script>", keys: [] };
