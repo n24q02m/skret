@@ -43,3 +43,8 @@ Added `ReadTimeout` and `WriteTimeout` to `http.Server` in `internal/auth/infisi
 **Vulnerability:** A potential path traversal vulnerability where untrusted input (target, id) could be used to construct a sync state file path (`StatePathFor` in `internal/syncer/state.go`), potentially escaping the intended directory if not properly sanitized.
 **Learning:** While the codebase uses a `sanitizeID` function to strip separators and `..`, relying solely on input sanitization for file paths is prone to edge cases if the sanitization logic is later updated or has missed cases.
 **Prevention:** Add a defense-in-depth check using `filepath.Rel(baseDir, constructedPath)` to ensure the final resolved path strictly resides within the expected directory base and consists of exactly the expected filename, guaranteeing isolation regardless of the input.
+
+## 2026-07-17 - Avoid Duplicate Work
+**Vulnerability:** Addressed the URL injection vulnerability in `hub.go`, but this duplicate effort missed additional missing usages across the codebase, leaving the task incomplete when compared to an already merged alternative.
+**Learning:** Checking for similar vulnerabilities across the whole project is necessary, instead of only patching the first one found.
+**Prevention:** Always conduct a broad grep search and fix all instances of a vulnerability pattern globally instead of locally to guarantee comprehensive fixes.
