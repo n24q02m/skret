@@ -64,3 +64,7 @@
 ## 2026-07-14 - Replacing strings.SplitN with strings.Cut
 **Learning:** Functions like `strings.SplitN(s, delim, 2)` provide a convenient API, but when used to split strings by a single character or string, they incur measurable memory allocation overhead because they return a slice. Replacing them with `strings.Cut(s, delim)` avoids the heap allocation of the slice, providing a measurable performance improvement (zero allocations) while maintaining readability.
 **Action:** Always prefer `strings.Cut` over `strings.SplitN(s, delim, 2)` when splitting a string into exactly two parts.
+
+## 2026-07-19 - Avoid Premature Micro-Optimizations on String Allocations
+**Learning:** Adding complex fast-paths with manual character scanning to bypass small allocations (like `strings.Builder` overhead) in non-hot paths is generally viewed as unnecessary churn. Maintainers prefer the simpler, more readable idiomatic code unless a benchmark definitively proves a significant performance impact in a critical path.
+**Action:** Do not implement manual character scanning or other micro-optimizations just to avoid a single heap allocation unless you have explicitly verified that the code is in a critical, highly-executed hot-path and you can attach a benchmark proving the value of the optimization versus the readability cost.
