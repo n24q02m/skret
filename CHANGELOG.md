@@ -4,6 +4,57 @@ All notable changes to this project will be documented in this file.
 
 <!-- version list -->
 
+## v1.15.0-beta.1 (2026-07-24)
+
+### Bug Fixes
+
+- Add focus-visible styles and a main landmark to the hub UI
+  ([`db5be8e`](https://github.com/n24q02m/skret/commit/db5be8e85f5b13eb7fe618f178be51327910c72b))
+
+- Adopt better-semantic-release for built-in release guards
+  ([`c83239f`](https://github.com/n24q02m/skret/commit/c83239f19fe1f5abacbc4df3b1c74625638f6f2e))
+
+- Build provider and hub API URLs with url.JoinPath to prevent malformed URLs
+  ([`9a955f3`](https://github.com/n24q02m/skret/commit/9a955f30c53ad9667e89a7bc81dba9f0d9727f5d))
+
+- Consolidate dependency automation onto renovate
+  ([`1b82b03`](https://github.com/n24q02m/skret/commit/1b82b03f4db4df2e1fa3f7b520820e44137d4b74))
+
+- Improve hub login form accessibility (labels, focus, validation)
+  ([`7ee9d26`](https://github.com/n24q02m/skret/commit/7ee9d268a638f7faa2db460e2aee84d12bbe43c6))
+
+- Pin GitHub Action references to commit SHAs ([#569](https://github.com/n24q02m/skret/pull/569),
+  [`f6f22d4`](https://github.com/n24q02m/skret/commit/f6f22d4c39b76e284601c3a96b7baa169ef4d5ff))
+
+- Replace existing release artifacts on goreleaser rerun
+  ([#562](https://github.com/n24q02m/skret/pull/562),
+  [`761564b`](https://github.com/n24q02m/skret/commit/761564bfca35fc38bc6fa4510be7de60202cd2bc))
+
+- Stop browser-open tests from launching a real browser
+  ([`630b6e0`](https://github.com/n24q02m/skret/commit/630b6e0e21e18cc2b647af8bdd3d6106c8ffa392))
+
+- **deps**: Update actions/checkout action to v4.4.0
+  ([#576](https://github.com/n24q02m/skret/pull/576),
+  [`86ba656`](https://github.com/n24q02m/skret/commit/86ba65666bc9ff1ea062f07fa731f3c4643351d3))
+
+- **deps**: Update github/codeql-action digest to 7188fc3
+  ([#563](https://github.com/n24q02m/skret/pull/563),
+  [`fe01c3e`](https://github.com/n24q02m/skret/commit/fe01c3ede12595b8086af6c26fff7f5a90a5bc30))
+
+- **deps**: Update module github.com/aws/smithy-go to v1.27.4
+  ([#564](https://github.com/n24q02m/skret/pull/564),
+  [`1750994`](https://github.com/n24q02m/skret/commit/17509945ec1d17055f5e810264135ed1be16373d))
+
+- **deps**: Update module golang.org/x/crypto to v0.54.0
+  ([#570](https://github.com/n24q02m/skret/pull/570),
+  [`329824b`](https://github.com/n24q02m/skret/commit/329824beaae11cce7aa5a985b5be8c36006fed74))
+
+### Features
+
+- Add actionable empty-state messages to run and template commands
+  ([`ea0423a`](https://github.com/n24q02m/skret/commit/ea0423a582ffe835dea5e11c2905eb054edfdb89))
+
+
 ## v1.14.0 (2026-07-17)
 
 ### Bug Fixes
