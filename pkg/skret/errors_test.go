@@ -97,3 +97,24 @@ func TestExitCode(t *testing.T) {
 		})
 	}
 }
+
+func TestWithRemediation(t *testing.T) {
+	base := NewError(ExitAuthError, "not authenticated", nil)
+	err := WithRemediation(base, "run: skret auth login aws --method=profile")
+
+	assert.Equal(t, "not authenticated", err.Error())
+	assert.Equal(t, "run: skret auth login aws --method=profile", RemediationOf(err))
+	assert.Equal(t, ExitAuthError, ExitCode(err), "wrapping must not disturb the exit-code contract")
+}
+
+func TestWithRemediation_NilOrEmptyPassthrough(t *testing.T) {
+	assert.Nil(t, WithRemediation(nil, "hint"))
+
+	base := NewError(ExitGenericError, "plain", nil)
+	assert.Same(t, base, WithRemediation(base, "").(*Error), "empty hint returns err unchanged")
+}
+
+func TestRemediationOf_NoneAttached(t *testing.T) {
+	assert.Empty(t, RemediationOf(errors.New("plain failure")))
+	assert.Empty(t, RemediationOf(NewError(ExitGenericError, "no hint here", nil)))
+}

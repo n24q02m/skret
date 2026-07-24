@@ -15,11 +15,12 @@ import (
 // --- Execute function test ---
 
 func TestExecute(t *testing.T) {
-	// Execute() just wraps NewRootCmd().Execute(), but calling it in a dir without config
+	// Execute() just wraps NewRootCmd().ExecuteC(), but calling it in a dir without config
 	// will result in a non-nil error from any subcommand. We just need it to run.
-	err := cli.Execute()
+	format, err := cli.Execute()
 	// Without args it just shows help and returns nil
 	assert.NoError(t, err)
+	assert.Equal(t, "table", format)
 }
 
 // --- Delete with --force flag ---

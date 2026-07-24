@@ -12,7 +12,7 @@
 
 ## Scripts and agents
 
-- [Using skret from a script or agent](https://skret.n24q02m.com/guide/agents/): Exit codes (`ExitLeakFound`=10, `ExitDrift`=9, ...), non-interactive flags (`get --plain`, `env --format=json`, `set --from-stdin`), and recipes for `run`/`get`/`env`/`set`/`sync`/`scan`/`import` in CI/cron/AI agents. `skret delete` and `skret rollback` are the only commands that prompt (y/N) without `--confirm`/`-f`. `skret history`/`skret rollback` are experimental, gated behind `SKRET_EXPERIMENTAL=1`.
+- [Using skret from a script or agent](https://skret.n24q02m.com/guide/agents/): Exit codes (`ExitLeakFound`=10, `ExitDrift`=9, ...), the `--format json` error envelope (`{"error","code","remediation"}`) any command can opt into on failure, non-interactive flags (`get --plain`, `env --format=json`, `set --from-stdin`), `--format json` on the write path (`set`/`delete`/`history`/`sync`, alongside the existing `get`/`list`/`env`/`diff`/`scan`), and recipes for `run`/`get`/`env`/`set`/`sync`/`scan`/`import` in CI/cron/AI agents. `skret delete` and `skret rollback` are the only commands that prompt (y/N) without `--confirm`/`-f`. `skret history`/`skret rollback` are experimental, gated behind `SKRET_EXPERIMENTAL=1`.
 - [Value fidelity](https://skret.n24q02m.com/guide/value-fidelity/): How skret preserves secret values byte-for-byte across `get`/`env`/`set`/`template`/`sync`/`import`, and the one exception (`skret run` sanitizes control bytes for the process environment).
 - [Error Codes](https://skret.n24q02m.com/reference/error-codes/): Full exit-code table with remediation steps per code.
 

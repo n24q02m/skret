@@ -134,6 +134,33 @@ worker scripts. A `dotenv` target rejects no-overwrite: it rewrites the whole
 file atomically, so "only new keys" would drop every existing line. A
 `cloudflare` pages target rejects it too.
 
+## `--format json`
+
+```bash
+skret sync --to=dotenv --format json
+```
+
+```json
+[
+  {
+    "source": "/myapp/prod",
+    "target": "dotenv",
+    "synced": 4
+  }
+]
+```
+
+One object per target actually synced, in the order they ran; a multi-target
+run (`--to=github,dotenv`, or several `sync.targets` entries) produces one
+array entry per target. `synced` is the same count the default table's
+`Synced N secrets to TARGET` stderr line already reports — no target
+implements a per-key added/updated/deleted breakdown (`dotenv` rewrites its
+file wholesale and has no such concept), so `--format json` doesn't invent
+one either. `--dry-run` is unaffected: it still only prints its preview to
+stderr, since nothing is written for `--format json` to report. See [Using
+skret from a script or agent](/guide/agents/#json-output-on-the-write-path)
+for the equivalent shapes on `set`/`delete`.
+
 ## Security
 
 - Secret **values** are sent only to the target's own API — never printed to stdout/stderr.

@@ -30,7 +30,7 @@ func TestRenderHistory_WithEntries(t *testing.T) {
 	cmd.SetOut(&buf)
 	cmd.SetErr(&buf)
 
-	err := renderHistory(cmd, history, "DB_URL", false)
+	err := renderHistory(cmd, history, "DB_URL", false, "table")
 	require.NoError(t, err)
 	out := buf.String()
 	assert.Contains(t, out, "VERSION")
@@ -46,7 +46,7 @@ func TestRenderHistory_Empty(t *testing.T) {
 	cmd.SetOut(&buf)
 	cmd.SetErr(&buf)
 
-	err := renderHistory(cmd, nil, "EMPTY_KEY", false)
+	err := renderHistory(cmd, nil, "EMPTY_KEY", false, "table")
 	require.NoError(t, err)
 	assert.Contains(t, buf.String(), "No history found for \"EMPTY_KEY\". Use 'skret set' to create a version.")
 }
@@ -62,7 +62,7 @@ func TestRenderHistory_Verbose(t *testing.T) {
 	cmd.SetOut(&buf)
 	cmd.SetErr(&buf)
 
-	err := renderHistory(cmd, history, "KEY", true)
+	err := renderHistory(cmd, history, "KEY", true, "table")
 	require.NoError(t, err)
 	out := buf.String()
 	assert.Contains(t, out, "full-secret-value-here")
@@ -78,7 +78,7 @@ func TestRenderHistory_ZeroTimestamp(t *testing.T) {
 	cmd.SetOut(&buf)
 	cmd.SetErr(&buf)
 
-	err := renderHistory(cmd, history, "KEY", false)
+	err := renderHistory(cmd, history, "KEY", false, "table")
 	require.NoError(t, err)
 	out := buf.String()
 	assert.Contains(t, out, "-") // zero timestamp shows as "-"

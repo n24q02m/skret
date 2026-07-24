@@ -2,6 +2,8 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -18,6 +20,15 @@ type setOptions struct {
 	fromFile    string
 	description string
 	tags        []string
+	format      string
+}
+
+// SetResult is the --format json payload for a successful `set`.
+type SetResult struct {
+	Key     string `json:"key"`
+	Path    string `json:"path"`
+	Version int64  `json:"version"`
+	Created bool   `json:"created"`
 }
 
 func newSetCmd(opts *GlobalOpts) *cobra.Command {
@@ -46,6 +57,7 @@ put '--' before the key so it is not parsed as a flag. --from-stdin and
 	cmd.Flags().StringVarP(&o.fromFile, "from-file", "f", "", "read value from file")
 	cmd.Flags().StringVarP(&o.description, "description", "d", "", "secret description")
 	cmd.Flags().StringArrayVarP(&o.tags, "tag", "t", nil, "secret tag (key=value, repeatable)")
+	cmd.Flags().StringVar(&o.format, "format", "table", "output format (table, json)")
 
 	return cmd
 }
@@ -70,11 +82,46 @@ func (o *setOptions) run(cmd *cobra.Command, args []string) error {
 	meta := o.getMeta()
 
 	ctx := context.Background()
+
+	// The existence check only runs for --format json, where a scripting
+	// agent needs to know whether the write created a new secret or
+	// overwrote one; the table path takes no extra provider round trip and
+	// its output stays exactly as before.
+	var created bool
+	if o.format == "json" {
+		_, getErr := p.Get(ctx, key)
+		created = errors.Is(getErr, provider.ErrNotFound)
+	}
+
 	if err := p.Set(ctx, key, value, meta); err != nil {
 		return skret.NewError(skret.ExitProviderError, fmt.Sprintf("set %q", key), err)
 	}
 
+	if o.format == "json" {
+		return o.printResult(cmd, key, resolved.Path, created, p)
+	}
+
 	cmd.PrintErrf("Set %s\n", key)
+	return nil
+}
+
+// printResult renders the --format json payload for a successful set. It
+// re-reads the secret to report the version the provider assigned to this
+// write (0 for a provider, like local, that does not track versions); the
+// value itself is never included.
+func (o *setOptions) printResult(cmd *cobra.Command, key, path string, created bool, p provider.SecretProvider) error {
+	var version int64
+	if s, err := p.Get(context.Background(), key); err == nil {
+		version = s.Version
+	}
+
+	data, err := json.MarshalIndent(SetResult{
+		Key: key, Path: path, Version: version, Created: created,
+	}, "", "  ")
+	if err != nil {
+		return skret.NewError(skret.ExitGenericError, "set: encode result", err)
+	}
+	fmt.Fprintln(cmd.OutOrStdout(), string(data))
 	return nil
 }
 

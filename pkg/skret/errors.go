@@ -58,3 +58,30 @@ func ExitCode(err error) int {
 	}
 	return ExitGenericError
 }
+
+// remediated wraps an error with a one-line, copy-pasteable fix hint.
+type remediated struct {
+	err  error
+	hint string
+}
+
+func (r *remediated) Error() string { return r.err.Error() }
+func (r *remediated) Unwrap() error { return r.err }
+
+// WithRemediation attaches a remediation hint to err. Returns err unchanged if
+// err is nil or hint is empty.
+func WithRemediation(err error, hint string) error {
+	if err == nil || hint == "" {
+		return err
+	}
+	return &remediated{err: err, hint: hint}
+}
+
+// RemediationOf returns the remediation hint attached to err, or "".
+func RemediationOf(err error) string {
+	var r *remediated
+	if errors.As(err, &r) {
+		return r.hint
+	}
+	return ""
+}
