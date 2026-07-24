@@ -3,6 +3,7 @@ package cli
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -12,10 +13,18 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// DeleteResult is the --format json payload for a successful `delete`.
+type DeleteResult struct {
+	Key     string `json:"key"`
+	Path    string `json:"path"`
+	Deleted bool   `json:"deleted"`
+}
+
 func newDeleteCmd(opts *GlobalOpts) *cobra.Command {
 	var (
 		confirm bool
 		force   bool
+		format  string
 	)
 
 	cmd := &cobra.Command{
@@ -57,6 +66,17 @@ func newDeleteCmd(opts *GlobalOpts) *cobra.Command {
 				return skret.NewError(skret.ExitProviderError, fmt.Sprintf("delete %q failed", key), err)
 			}
 
+			if format == "json" {
+				data, err := json.MarshalIndent(DeleteResult{
+					Key: key, Path: resolved.Path, Deleted: true,
+				}, "", "  ")
+				if err != nil {
+					return skret.NewError(skret.ExitGenericError, "delete: encode result", err)
+				}
+				fmt.Fprintln(cmd.OutOrStdout(), string(data))
+				return nil
+			}
+
 			cmd.PrintErrf("Deleted %s\n", key)
 			return nil
 		},
@@ -64,6 +84,7 @@ func newDeleteCmd(opts *GlobalOpts) *cobra.Command {
 
 	cmd.Flags().BoolVar(&confirm, "confirm", false, "skip confirmation prompt")
 	cmd.Flags().BoolVarP(&force, "force", "f", false, "skip confirmation prompt (alias for --confirm)")
+	cmd.Flags().StringVar(&format, "format", "table", "output format (table, json)")
 
 	return cmd
 }

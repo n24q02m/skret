@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -23,6 +24,19 @@ type syncOptions struct {
 	skipUnchanged bool
 	noOverwrite   bool
 	dryRun        bool
+	format        string
+}
+
+// SyncResult is the --format json payload for one successfully synced
+// target. syncer.Syncer only reports success/failure for a whole batch (no
+// target implements a per-key added/updated/deleted breakdown -- dotenv
+// rewrites its file wholesale and has no notion of either), so Synced is the
+// same count sync's table/stderr line already reports, not a speculative
+// finer-grained one. --dry-run targets are not included: they write nothing.
+type SyncResult struct {
+	Source string `json:"source"`
+	Target string `json:"target"`
+	Synced int    `json:"synced"`
 }
 
 func newSyncCmd(opts *GlobalOpts) *cobra.Command {
@@ -57,6 +71,7 @@ would write and exits without writing anything or saving sync state.`,
 	cmd.Flags().BoolVar(&o.skipUnchanged, "skip-unchanged", false, "skip secrets whose value is unchanged since the previous successful sync (drift detection)")
 	cmd.Flags().BoolVar(&o.noOverwrite, "no-overwrite", false, "only write secrets absent at the target; never overwrite an existing one (forces no_overwrite for every target)")
 	cmd.Flags().BoolVar(&o.dryRun, "dry-run", false, "print what each target would write and exit; issues no write request and saves no state")
+	cmd.Flags().StringVar(&o.format, "format", "table", "output format (table, json)")
 
 	return cmd
 }
@@ -94,6 +109,7 @@ func (o *syncOptions) run(cmd *cobra.Command) error {
 		return skret.NewError(skret.ExitConfigError, "sync: build targets", err)
 	}
 
+	results := make([]SyncResult, 0, len(syncers))
 	for i, s := range syncers {
 		tc := targets[i]
 		toSync := secrets
@@ -155,7 +171,11 @@ func (o *syncOptions) run(cmd *cobra.Command) error {
 			}
 			return skret.NewError(exitCode, fmt.Sprintf("sync failed for %s", s.Name()), err)
 		}
-		cmd.PrintErrf("Synced %d secrets to %s\n", len(toSync), s.Name())
+		if o.format == "json" {
+			results = append(results, SyncResult{Source: resolved.Path, Target: s.Name(), Synced: len(toSync)})
+		} else {
+			cmd.PrintErrf("Synced %d secrets to %s\n", len(toSync), s.Name())
+		}
 
 		if o.skipUnchanged && !noOv && state != nil {
 			state.Update(toSync)
@@ -163,6 +183,14 @@ func (o *syncOptions) run(cmd *cobra.Command) error {
 				return skret.NewError(skret.ExitGenericError, "sync: save state failed", err)
 			}
 		}
+	}
+
+	if o.format == "json" {
+		data, err := json.MarshalIndent(results, "", "  ")
+		if err != nil {
+			return skret.NewError(skret.ExitGenericError, "sync: encode result", err)
+		}
+		fmt.Fprintln(cmd.OutOrStdout(), string(data))
 	}
 
 	return nil

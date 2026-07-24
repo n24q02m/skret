@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -163,4 +164,71 @@ environments:
 	assert.Equal(t, skret.ExitNotFoundError, se.Code)
 	assert.Contains(t, se.Message, "Nothing to delete")
 	assert.Contains(t, se.Message, "skret history NOPE")
+}
+
+func TestDeleteCmd_JSONFormat(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".git"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".skret.yaml"), []byte(`
+version: "1"
+default_env: dev
+environments:
+  dev:
+    provider: local
+    file: ./secrets.yaml
+`), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "secrets.yaml"), []byte(`
+version: "1"
+secrets:
+  DELETE_ME: "killme"
+`), 0o600))
+
+	origDir, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	defer os.Chdir(origDir)
+
+	opts := &GlobalOpts{}
+	cmd := newDeleteCmd(opts)
+	cmd.SetArgs([]string{"DELETE_ME", "--confirm", "--format", "json"})
+
+	var stdout bytes.Buffer
+	cmd.SetOut(&stdout)
+
+	err := cmd.Execute()
+	require.NoError(t, err)
+
+	var got DeleteResult
+	require.NoError(t, json.Unmarshal(stdout.Bytes(), &got))
+	assert.Equal(t, "DELETE_ME", got.Key)
+	assert.True(t, got.Deleted)
+	assert.NotContains(t, stdout.String(), "killme", "the secret value must never appear in output")
+}
+
+func TestDeleteCmd_JSONFormat_NotFoundKeepsExitCode(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".git"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".skret.yaml"), []byte(`
+version: "1"
+default_env: dev
+environments:
+  dev:
+    provider: local
+    file: ./secrets.yaml
+`), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "secrets.yaml"), []byte("version: \"1\"\nsecrets: {}"), 0o600))
+
+	origDir, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	defer os.Chdir(origDir)
+
+	opts := &GlobalOpts{}
+	cmd := newDeleteCmd(opts)
+	cmd.SetArgs([]string{"NOPE", "--confirm", "--format", "json"})
+
+	err := cmd.Execute()
+	require.Error(t, err, "--format json must not swallow the not-found error")
+
+	var se *skret.Error
+	require.True(t, errors.As(err, &se))
+	assert.Equal(t, skret.ExitNotFoundError, se.Code)
 }

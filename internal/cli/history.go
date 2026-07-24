@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"text/tabwriter"
@@ -12,8 +13,25 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// historyEntry is the --format json shape for one history row. It is a
+// dedicated type rather than marshaling []*provider.Secret directly for two
+// reasons: provider.Secret's untagged field names (Key, Value, ...) don't
+// match this codebase's lowercase JSON convention (list.go, get.go, diff.go),
+// and Value must go through the same mask-by-default/--verbose-to-reveal
+// policy the table already applies -- marshaling the raw slice would leak
+// full values in JSON even when the caller omitted --verbose.
+type historyEntry struct {
+	Version   int64  `json:"version"`
+	Value     string `json:"value"`
+	UpdatedAt string `json:"updated_at,omitempty"`
+	Author    string `json:"author,omitempty"`
+}
+
 func newHistoryCmd(opts *GlobalOpts) *cobra.Command {
-	var verbose bool
+	var (
+		verbose bool
+		format  string
+	)
 
 	cmd := &cobra.Command{
 		Use:   "history <KEY>",
@@ -47,20 +65,28 @@ func newHistoryCmd(opts *GlobalOpts) *cobra.Command {
 				return skret.NewError(skret.ExitProviderError, fmt.Sprintf("failed to get history for %q", key), err)
 			}
 
-			return renderHistory(cmd, history, key, verbose)
+			return renderHistory(cmd, history, key, verbose, format)
 		},
 	}
 
 	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "display full unmasked secret values")
+	cmd.Flags().StringVar(&format, "format", "table", "output format (table, json)")
 
 	return cmd
 }
 
-// renderHistory formats and prints the history table.
-func renderHistory(cmd *cobra.Command, history []*provider.Secret, key string, verbose bool) error {
+// renderHistory formats and prints the history table or, for --format json,
+// the same rows as a JSON array (see historyEntry).
+func renderHistory(cmd *cobra.Command, history []*provider.Secret, key string, verbose bool, format string) error {
 	if len(history) == 0 {
 		cmd.PrintErrf("No history found for %q. Use 'skret set' to create a version.\n", key)
-		return nil
+		if format != "json" {
+			return nil
+		}
+	}
+
+	if format == "json" {
+		return renderHistoryJSON(cmd, history, verbose)
 	}
 
 	w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
@@ -85,6 +111,30 @@ func renderHistory(cmd *cobra.Command, history []*provider.Secret, key string, v
 		fmt.Fprintf(w, "%d\t%s\t%s\t%s\n", s.Version, val, updatedAt, author)
 	}
 	return w.Flush()
+}
+
+// renderHistoryJSON writes history as a JSON array, applying the same
+// mask-by-default/--verbose policy as the table.
+func renderHistoryJSON(cmd *cobra.Command, history []*provider.Secret, verbose bool) error {
+	entries := make([]historyEntry, 0, len(history))
+	for _, s := range history {
+		val := s.Value
+		if !verbose {
+			val = maskValue(val)
+		}
+		entry := historyEntry{Version: s.Version, Value: val, Author: s.Meta.CreatedBy}
+		if !s.Meta.UpdatedAt.IsZero() {
+			entry.UpdatedAt = s.Meta.UpdatedAt.Format(time.RFC3339)
+		}
+		entries = append(entries, entry)
+	}
+
+	data, err := json.MarshalIndent(entries, "", "  ")
+	if err != nil {
+		return skret.NewError(skret.ExitGenericError, "history: encode result", err)
+	}
+	fmt.Fprintln(cmd.OutOrStdout(), string(data))
+	return nil
 }
 
 // maskValue shows the first and last 4 runes of a value with an ellipsis between,
