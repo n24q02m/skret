@@ -69,6 +69,11 @@ func SelectMethod(r io.Reader, w io.Writer, methods []Method) (Method, error) {
 // goos is a package-level variable to allow mocking in tests for OS-specific branches.
 var goos = func() string { return runtime.GOOS }
 
+// startCommand is a package-level variable to allow mocking cmd.Start in tests,
+// so OpenBrowser's URL-validation branches can be exercised without launching
+// a real browser process.
+var startCommand = func(cmd *exec.Cmd) error { return cmd.Start() }
+
 // OpenBrowser attempts to open the URL in the platform browser, best-effort.
 // Honors SKRET_NO_BROWSER=1 to skip the launch (used by tests + headless runs).
 func OpenBrowser(ctx context.Context, u string) error {
@@ -110,5 +115,5 @@ func OpenBrowser(ctx context.Context, u string) error {
 	default:
 		cmd = exec.CommandContext(ctx, "xdg-open", safeURL)
 	}
-	return cmd.Start()
+	return startCommand(cmd)
 }
