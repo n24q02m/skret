@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/n24q02m/skret/internal/cli"
@@ -9,8 +8,9 @@ import (
 )
 
 func main() {
-	if err := cli.Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, err)
+	format, err := cli.Execute()
+	if err != nil {
+		cli.RenderError(os.Stderr, err, format)
 		os.Exit(skret.ExitCode(err))
 	}
 }

@@ -57,6 +57,12 @@ func NewRootCmd() *cobra.Command {
 	f.StringVar(&opts.File, "file", "", "override local provider file path")
 	f.StringVar(&opts.Config, "config", "", "path to a .skret.yaml config file (bypasses directory discovery)")
 	f.StringVar(&opts.LogLevel, "log-level", "", "log level (debug, info, warn, error) [env: SKRET_LOG, default: info]")
+	// Inherited by any command that doesn't register its own local --format
+	// (get uses --json instead; list/env/diff/scan/set/delete/history/sync
+	// each register a local --format that shadows this one during parsing --
+	// see Execute() below for how a failing command's actual format is read
+	// back regardless of which of the two flags received it).
+	f.String("format", "table", "output format (table, json) for commands without their own --format flag")
 
 	// Register subcommands — pass opts explicitly
 	cmd.AddCommand(newInitCmd())
@@ -114,7 +120,24 @@ func validCompletionShellArgs(_ *cobra.Command, args []string) error {
 	return nil
 }
 
-// Execute runs the root command.
-func Execute() error {
-	return NewRootCmd().Execute()
+// Execute runs the CLI and reports the resolved --format so the caller can
+// render a failure (see RenderError) in the format the user asked for.
+//
+// The format is read off whichever command actually ran, not a single
+// shared variable: cobra resolves a subcommand's own local --format flag
+// (the list.go idiom, used by list/env/diff/scan/set/delete/history/sync)
+// over the persistent one registered above, so a package-level variable
+// bound only to the persistent flag would silently stay "table" for every
+// one of those commands. cmd.Flags().Lookup("format") instead returns
+// whichever flag object cobra actually parsed the value into -- local or
+// inherited -- which is correct for both cases.
+func Execute() (string, error) {
+	cmd, err := NewRootCmd().ExecuteC()
+	format := "table"
+	if cmd != nil {
+		if f := cmd.Flags().Lookup("format"); f != nil {
+			format = f.Value.String()
+		}
+	}
+	return format, err
 }
