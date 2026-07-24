@@ -40,3 +40,7 @@
 ## 2026-07-15 - [Conventional Commits with Persona Prefix]
 **Learning:** The PR Title lint check enforces Conventional Commits (`feat:`, `fix:`, `perf:`). If a persona prefix like `🎨 Palette:` is used as the primary prefix, the CI will fail.
 **Action:** Always nest the persona prefix inside the conventional commit prefix, e.g., `feat: 🎨 palette: add keybind hints`. Ensure both the PR title and the commit message are updated to trigger the CI rerun successfully.
+
+## 2026-07-23 - [Form Accessibility with ARIA Attributes]
+**Learning:** Adding `required` alongside dynamically updating `aria-invalid` and `aria-describedby` when errors occur in HTML forms significantly improves screen reader accessibility without changing core logic.
+**Action:** Always add native validation attributes and dynamically set ARIA attributes to properly associate error states with form inputs in string templates.

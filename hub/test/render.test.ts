@@ -179,15 +179,19 @@ describe("renderLogin", () => {
 });
 
 describe("renderLogin a11y", () => {
-  it("has a label associated with the password input via id/for", () => {
+  it("has a label associated with the password input via id/for and requires input", () => {
     const html = renderLogin();
     expect(html).toContain('<label for="password"');
     expect(html).toContain('id="password"');
     expect(html).toContain('autocomplete="current-password"');
+    expect(html).toContain('required');
   });
-  it("marks the error message with role=alert", () => {
+  it("marks the error message with role=alert and adds aria attributes to input", () => {
     const html = renderLogin("wrong password");
     expect(html).toContain('role="alert"');
+    expect(html).toContain('id="login-error"');
+    expect(html).toContain('aria-invalid="true"');
+    expect(html).toContain('aria-describedby="login-error"');
   });
 });
 
