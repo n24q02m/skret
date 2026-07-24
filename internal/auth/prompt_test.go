@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os/exec"
 	"strings"
 	"testing"
 	"testing/iotest"
@@ -104,30 +105,46 @@ func TestOpenBrowser_InvalidURL(t *testing.T) {
 func TestOpenBrowser_ValidScheme(t *testing.T) {
 	t.Setenv("SKRET_NO_BROWSER", "")
 
+	const url = "https://example.com"
 	tests := []struct {
-		name string
-		goos string
+		name     string
+		goos     string
+		wantArgs []string
 	}{
-		{"darwin", "darwin"},
-		{"windows", "windows"},
-		{"linux", "linux"},
+		{"darwin", "darwin", []string{"open", "--", url}},
+		{"windows", "windows", []string{"rundll32", "url.dll,FileProtocolHandler", url}},
+		{"linux", "linux", []string{"xdg-open", url}},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			restore := auth.SetGoos(func() string { return tt.goos })
-			defer restore()
+			restoreGoos := auth.SetGoos(func() string { return tt.goos })
+			defer restoreGoos()
 
-			err := auth.OpenBrowser(context.Background(), "https://example.com")
-			if err != nil {
-				assert.NotContains(t, err.Error(), "invalid url")
-			}
+			var captured *exec.Cmd
+			restoreCmd := auth.SetStartCommand(func(cmd *exec.Cmd) error {
+				captured = cmd
+				return nil
+			})
+			defer restoreCmd()
+
+			err := auth.OpenBrowser(context.Background(), url)
+			require.NoError(t, err)
+			require.NotNil(t, captured, "OpenBrowser should build a command instead of erroring")
+			assert.Equal(t, tt.wantArgs, captured.Args)
 		})
 	}
 }
 
 func TestOpenBrowser_Injection(t *testing.T) {
 	t.Setenv("SKRET_NO_BROWSER", "")
+
+	var captured *exec.Cmd
+	restoreCmd := auth.SetStartCommand(func(cmd *exec.Cmd) error {
+		captured = cmd
+		return nil
+	})
+	defer restoreCmd()
 
 	tests := []struct {
 		name string
@@ -145,11 +162,14 @@ func TestOpenBrowser_Injection(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			captured = nil
 			err := auth.OpenBrowser(context.Background(), tt.url)
 			if tt.msg == "" {
 				assert.NoError(t, err)
+				assert.NotNil(t, captured, "a benign URL should reach the browser-open command")
 			} else if assert.Error(t, err) {
 				assert.Contains(t, err.Error(), tt.msg)
+				assert.Nil(t, captured, "a rejected URL must never reach the browser-open command")
 			}
 		})
 	}
