@@ -40,3 +40,7 @@
 ## 2026-07-15 - [Conventional Commits with Persona Prefix]
 **Learning:** The PR Title lint check enforces Conventional Commits (`feat:`, `fix:`, `perf:`). If a persona prefix like `🎨 Palette:` is used as the primary prefix, the CI will fail.
 **Action:** Always nest the persona prefix inside the conventional commit prefix, e.g., `feat: 🎨 palette: add keybind hints`. Ensure both the PR title and the commit message are updated to trigger the CI rerun successfully.
+
+## $(date +%Y-%m-%d) - [Handling Obsolete/Duplicate PRs]
+**Learning:** When a maintainer closes a PR as obsolete or duplicate (e.g., noting that the work was merged elsewhere, like a consolidated a11y pass), the correct response is to acknowledge the instruction, reset the working branch to drop the rejected changes, record this workflow learning, and submit the journal update using the exact same branch name to complete the review cycle.
+**Action:** Always follow the Workflow Convention (PR Rejection/Closure) strictly when receiving such feedback on a PR.
