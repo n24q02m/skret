@@ -40,3 +40,6 @@
 ## 2026-07-15 - [Conventional Commits with Persona Prefix]
 **Learning:** The PR Title lint check enforces Conventional Commits (`feat:`, `fix:`, `perf:`). If a persona prefix like `🎨 Palette:` is used as the primary prefix, the CI will fail.
 **Action:** Always nest the persona prefix inside the conventional commit prefix, e.g., `feat: 🎨 palette: add keybind hints`. Ensure both the PR title and the commit message are updated to trigger the CI rerun successfully.
+## 2026-07-24 - [Consolidated UX/A11y Passes]
+**Learning:** Micro-UX enhancements on specific components (like the hub login form) may occasionally collide with broader, consolidated a11y sweeps done by the maintainer team. Small targeted PRs can become duplicates if a wider sweep covering the same component is merged first.
+**Action:** Always check recent closed/merged PRs or issues to see if a consolidated sweep for a11y has already covered a targeted component before starting work. If a PR is closed as a duplicate, drop the local changes cleanly.
