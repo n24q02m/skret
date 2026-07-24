@@ -95,6 +95,8 @@ const STYLE = `
   .empty{color:#5a5a5a;padding:2rem;text-align:center}
   form{display:flex;gap:.5rem;margin-top:1rem;align-items:center}
   input,button{padding:.5rem;font-size:1rem}
+  button{cursor:pointer}
+  a:focus-visible,input:focus-visible,button:focus-visible{outline:2px solid #1a1a1a;outline-offset:2px;border-radius:2px}
   .err{color:#8a1a1a}
   .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
   footer{margin-top:2rem;font-size:.8rem;color:#5a5a5a}
@@ -116,7 +118,7 @@ function page(inner: string): string {
     `<meta name="viewport" content="width=device-width,initial-scale=1">` +
     `<link rel="icon" href="${FAVICON}">` +
     `<title>skret vault</title><style>${STYLE}</style></head>` +
-    `<body>${inner}</body></html>`
+    `<body><main>${inner}</main>${FOOTER}</body></html>`
   );
 }
 
@@ -150,7 +152,7 @@ export function renderDashboard(manifests: Manifest[], now: number = Date.now())
     ? sorted.map((mf) => renderNamespace(mf, now)).join("\n")
     : `<div class="empty">No manifests yet. Run <code>skret hub push</code>.</div>`;
   const logout = `<form method="POST" action="/logout"><button type="submit">Logout</button></form>`;
-  return page(`<h1>skret vault dashboard</h1>${body}${logout}${FOOTER}`);
+  return page(`<h1>skret vault dashboard</h1>${body}${logout}`);
 }
 
 export function renderLogin(error?: string): string {
@@ -161,6 +163,6 @@ export function renderLogin(error?: string): string {
       `<form method="POST" action="/login">` +
       `<label for="password" class="sr-only">Relay password</label>` +
       `<input type="password" id="password" name="password" placeholder="relay password" autocomplete="current-password" autofocus required${aria}>` +
-      `<button type="submit">Enter</button></form>${FOOTER}`,
+      `<button type="submit">Enter</button></form>`,
   );
 }
