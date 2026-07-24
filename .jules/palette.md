@@ -40,3 +40,6 @@
 ## 2026-07-15 - [Conventional Commits with Persona Prefix]
 **Learning:** The PR Title lint check enforces Conventional Commits (`feat:`, `fix:`, `perf:`). If a persona prefix like `🎨 Palette:` is used as the primary prefix, the CI will fail.
 **Action:** Always nest the persona prefix inside the conventional commit prefix, e.g., `feat: 🎨 palette: add keybind hints`. Ensure both the PR title and the commit message are updated to trigger the CI rerun successfully.
+## 2026-07-21 - [Handling Rejected UX Changes]
+**Learning:** PRs containing specific micro-UX or accessibility improvements (like adding validation attributes to a login form) may be closed as duplicates if a broader, consolidated effort is already underway or merged for that component.
+**Action:** When a PR is rejected as a duplicate, drop the changes to avoid merge conflicts and update the journal to document the constraint.
