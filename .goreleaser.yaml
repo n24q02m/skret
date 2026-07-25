@@ -6,6 +6,9 @@ release:
   # for every asset that did land, so the scoop/brew/docker publishers after
   # the upload step never run (v1.14.0, run 29544187972).
   replace_existing_artifacts: true
+  # Mark -beta/-rc tags as GitHub pre-releases so a beta never takes the
+  # "Latest" slot that install scripts and `gh release view --latest` read.
+  prerelease: auto
 
 builds:
   - id: skret
@@ -56,6 +59,12 @@ brews:
       name: goreleaser-bot
       email: bot@goreleaser.com
     commit_msg_template: "feat: bump skret to {{ .Tag }}"
+    # homebrew-tap is the channel `brew install skret` reads, so a prerelease
+    # build must never overwrite the formula there: someone installing during a
+    # beta window would silently get the beta. release.prerelease: auto keeps
+    # prerelease tags out of GitHub's "Latest" slot; skip_upload: auto applies
+    # the same policy one layer down, skipping this bump on a prerelease tag.
+    skip_upload: "auto"
 
 scoops:
   - repository:
@@ -71,6 +80,10 @@ scoops:
       name: goreleaser-bot
       email: bot@goreleaser.com
     commit_msg_template: "feat: bump skret to {{ .Tag }}"
+    # Same reasoning as the brews entry above: scoop-bucket is the stable
+    # channel for `scoop install skret`, so a prerelease must not overwrite the
+    # manifest there.
+    skip_upload: "auto"
 
 dockers:
   - image_templates:
