@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 <!-- version list -->
 
+## v1.15.0 (2026-07-25)
+
+
 ## v1.15.0-beta.2 (2026-07-25)
 
 ### Features
