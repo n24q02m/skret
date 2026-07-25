@@ -31,36 +31,32 @@ builds:
 
 archives:
   - id: default
-    format: tar.gz
     format_overrides:
       - goos: windows
-        format: zip
+        formats: [zip]
     name_template: "skret_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 
 checksum:
   name_template: "checksums.txt"
 
-brews:
+homebrew_casks:
   - repository:
       owner: n24q02m
       name: homebrew-tap
       branch: main
       token: "{{ .Env.TAP_GITHUB_TOKEN }}"
-    directory: Formula
+    directory: Casks
     homepage: "https://skret.n24q02m.com"
     description: "Cloud-provider secret manager CLI with Doppler/Infisical-grade DX"
     license: "MIT"
-    install: |
-      bin.install "skret"
-      generate_completions_from_executable(bin/"skret", "completion")
-    test: |
-      assert_match "skret version", shell_output("#{bin}/skret --version")
+    binaries:
+      - skret
     commit_author:
       name: goreleaser-bot
       email: bot@goreleaser.com
     commit_msg_template: "feat: bump skret to {{ .Tag }}"
     # homebrew-tap is the channel `brew install skret` reads, so a prerelease
-    # build must never overwrite the formula there: someone installing during a
+    # build must never overwrite the cask there: someone installing during a
     # beta window would silently get the beta. release.prerelease: auto keeps
     # prerelease tags out of GitHub's "Latest" slot; skip_upload: auto applies
     # the same policy one layer down, skipping this bump on a prerelease tag.
