@@ -57,6 +57,11 @@ homebrew_casks:
     generate_completions_from_executable:
       args: [completion]
       shell_parameter_format: cobra
+      # Pinned, not left to the cobra default. That default includes "pwsh",
+      # and `skret completion pwsh` exits 8 with `unknown shell "pwsh"` - the
+      # command spells it "powershell". Naming the four shells skret actually
+      # accepts keeps the generator off a name that fails.
+      shells: [bash, zsh, fish, powershell]
     commit_author:
       name: goreleaser-bot
       email: bot@goreleaser.com
