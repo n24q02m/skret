@@ -4,6 +4,29 @@ All notable changes to this project will be documented in this file.
 
 <!-- version list -->
 
+## v1.15.1 (2026-07-25)
+
+### Bug Fixes
+
+- Keep generating shell completions in the homebrew cask
+  ([`23f73ed`](https://github.com/n24q02m/skret/commit/23f73ed091d3d37bea22a680d3b549061822c68b))
+
+- Keep prereleases out of the scoop, brew and Latest channels
+  ([`503b847`](https://github.com/n24q02m/skret/commit/503b84749dfe9fa537079191a89a70d3d725408a))
+
+- Pin the completion shells the cask generates
+  ([`02af452`](https://github.com/n24q02m/skret/commit/02af45279355e580bbb84ce24cb4cf7024a8f71f))
+
+- Publish the homebrew tap as a cask and drop the deprecated archive format keys
+  ([`09dc29b`](https://github.com/n24q02m/skret/commit/09dc29ba808eca21af7e490cc1fd35b654075a17))
+
+- Scope table headers and structure the vault empty state
+  ([`9636485`](https://github.com/n24q02m/skret/commit/9636485c821fd571e3544bf2bcdd58640b1f02ef))
+
+- Smoke test the brew and scoop channels, not just the install scripts
+  ([`454e81d`](https://github.com/n24q02m/skret/commit/454e81d3995aa568ae55cc9a0018c80281ef7cd9))
+
+
 ## v1.15.0 (2026-07-25)
 
 
