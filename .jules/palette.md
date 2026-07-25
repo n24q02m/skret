@@ -44,3 +44,6 @@
 ## 2026-07-23 - [Form Accessibility with ARIA Attributes]
 **Learning:** Adding `required` alongside dynamically updating `aria-invalid` and `aria-describedby` when errors occur in HTML forms significantly improves screen reader accessibility without changing core logic.
 **Action:** Always add native validation attributes and dynamically set ARIA attributes to properly associate error states with form inputs in string templates.
+## 2026-07-24 - Improve Empty State & Table Accessibility
+**Learning:** When displaying complex data in tables, adding `scope="col"` to table headers significantly improves screen reader navigation. Empty states should also provide clear, structured formatting with actionable instructions rather than a single unbroken sentence.
+**Action:** Ensure all future UI tables use proper semantic scoping and empty states utilize rich formatting (e.g., `<p>`, `<strong>`) for better readability and guidance.
