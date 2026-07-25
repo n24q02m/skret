@@ -170,6 +170,25 @@ jobs:
         run: |
           .\install.ps1 -Quiet
           & "$env:LOCALAPPDATA\Programs\skret\skret.exe" --version
+      # The homebrew tap ships a cask now, and casks have no `brew test`
+      # equivalent - the formula's smoke assertion could not be migrated. This
+      # leg covers the same ground automatically instead of on demand, and it
+      # exercises the whole tap channel rather than just the binary.
+      - name: Install via brew (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install n24q02m/tap/skret
+          skret --version
+      - name: Install via scoop (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if (-not (Get-Command scoop -ErrorAction SilentlyContinue)) {
+            iwr -useb get.scoop.sh | iex
+          }
+          scoop bucket add n24q02m https://github.com/n24q02m/scoop-bucket
+          scoop install skret
+          skret --version
 
   dependency-review:
     name: Dependency Review
