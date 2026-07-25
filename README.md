@@ -100,6 +100,8 @@ If you only need a single-cloud injector and you don't care about migration or C
 | **Windows** | `iwr -useb https://skret.n24q02m.com/install.ps1 \| iex` | `scoop bucket add n24q02m https://github.com/n24q02m/scoop-bucket && scoop install skret` |
 | **Cross-OS managers** | `mise use -g aqua:n24q02m/skret@latest` | `nix shell github:n24q02m/skret-nix#skret` |
 | **Go developers** | `go install github.com/n24q02m/skret/cmd/skret@latest` | — |
+
+Homebrew users who installed before 1.15.1: the tap now ships a cask rather than a formula, because goreleaser retired its formula generator. The install command is unchanged, but an existing install has to be swapped once — `brew uninstall skret && brew install n24q02m/tap/skret`.
 | **Direct binary** | Download from [Releases](https://github.com/n24q02m/skret/releases/latest) | — |
 
 Verify the install and check the version:
