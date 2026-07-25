@@ -51,6 +51,12 @@ homebrew_casks:
     license: "MIT"
     binaries:
       - skret
+    # The formula ran generate_completions_from_executable(bin/"skret",
+    # "completion"); the cask spelling is this structured field. Without it a
+    # brew install silently loses tab completion, which the formula shipped.
+    generate_completions_from_executable:
+      args: [completion]
+      shell_parameter_format: cobra
     commit_author:
       name: goreleaser-bot
       email: bot@goreleaser.com
