@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 <!-- version list -->
 
+## v1.15.0-beta.2 (2026-07-25)
+
+### Features
+
+- Json error envelope and json output for the write path
+  ([`e39e2b7`](https://github.com/n24q02m/skret/commit/e39e2b7151c20c6db7e65bddb6fa6395c5563d4f))
+
+
 ## v1.15.0-beta.1 (2026-07-24)
 
 ### Bug Fixes
