@@ -151,9 +151,10 @@ describe("isStale", () => {
 
 describe("generated_at rendering", () => {
   it("shows a relative-time string in the card header", () => {
-    const recent: Manifest = { ...m, generated_at: new Date(FIXED_NOW - 5 * 60_000).toISOString() };
+    const ts = new Date(FIXED_NOW - 5 * 60_000).toISOString();
+    const recent: Manifest = { ...m, generated_at: ts };
     const html = renderDashboard([recent], FIXED_NOW);
-    expect(html).toContain("synced 5m ago");
+    expect(html).toContain(`synced <time datetime="${ts}" title="${ts}">5m ago</time>`);
   });
   it("flags a namespace stale after 48h with no new push", () => {
     const stale: Manifest = { ...m, generated_at: new Date(FIXED_NOW - 49 * 3_600_000).toISOString() };
