@@ -47,3 +47,7 @@ Added `ReadTimeout` and `WriteTimeout` to `http.Server` in `internal/auth/infisi
 **Vulnerability:** Raw string concatenation was used to construct API URLs from potentially untrusted base URLs, which can lead to malformed URL injection and escaping issues.
 **Learning:** Using `url.Parse` and `url.URL.JoinPath()` prevents these issues by properly encoding path segments and preventing query string injection.
 **Prevention:** Always use the `net/url` package to construct URLs, particularly when incorporating external input.
+## 2026-07-26 - Add missing security headers
+**Vulnerability:** Missing Strict-Transport-Security (HSTS) and X-Frame-Options headers on dashboard responses.
+**Learning:** Even internal or simplified dashboards should implement defense in depth. Missing HSTS allows potential protocol downgrade attacks on subsequent visits, and missing X-Frame-Options opens the door for clickjacking attacks.
+**Prevention:** Always include a comprehensive set of security headers (including HSTS and X-Frame-Options) in the shared middleware or common response headers configuration.
