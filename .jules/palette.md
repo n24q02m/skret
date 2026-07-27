@@ -47,3 +47,7 @@
 ## 2026-07-24 - Improve Empty State & Table Accessibility
 **Learning:** When displaying complex data in tables, adding `scope="col"` to table headers significantly improves screen reader navigation. Empty states should also provide clear, structured formatting with actionable instructions rather than a single unbroken sentence.
 **Action:** Ensure all future UI tables use proper semantic scoping and empty states utilize rich formatting (e.g., `<p>`, `<strong>`) for better readability and guidance.
+
+## 2026-07-27 - [Use Semantic <time> Element for Timestamps]
+**Learning:** Using generic `<span>` elements for rendering timestamps in HTML hurts accessibility and machine readability. By replacing them with semantic `<time>` tags that include a `datetime` attribute (with an ISO string) and a `title` tooltip, we improve machine readability and expose the exact timestamp gracefully to users on hover, without cluttering the UI.
+**Action:** When rendering relative times or timestamps, always use `<time>` elements with `datetime` and `title` attributes instead of plain `<span`> elements.
