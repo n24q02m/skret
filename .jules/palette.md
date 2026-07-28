@@ -47,3 +47,6 @@
 ## 2026-07-24 - Improve Empty State & Table Accessibility
 **Learning:** When displaying complex data in tables, adding `scope="col"` to table headers significantly improves screen reader navigation. Empty states should also provide clear, structured formatting with actionable instructions rather than a single unbroken sentence.
 **Action:** Ensure all future UI tables use proper semantic scoping and empty states utilize rich formatting (e.g., `<p>`, `<strong>`) for better readability and guidance.
+## $(date +%Y-%m-%d) - Native tooltips with Playwright
+**Learning:** Native HTML `title` tooltips (such as those on `<time>` elements) are not reliably captured in headless Playwright screenshots during frontend verification.
+**Action:** Rely on DOM validation to ensure the attribute is present rather than visual screenshot evidence when testing native hover states.
