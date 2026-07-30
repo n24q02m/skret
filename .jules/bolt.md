@@ -63,4 +63,7 @@
 
 ## 2026-07-14 - Replacing strings.SplitN with strings.Cut
 **Learning:** Functions like `strings.SplitN(s, delim, 2)` provide a convenient API, but when used to split strings by a single character or string, they incur measurable memory allocation overhead because they return a slice. Replacing them with `strings.Cut(s, delim)` avoids the heap allocation of the slice, providing a measurable performance improvement (zero allocations) while maintaining readability.
-**Action:** Always prefer `strings.Cut` over `strings.SplitN(s, delim, 2)` when splitting a string into exactly two parts.
+
+## 2026-07-30 - Single-pass Dictionary Lookup in JS String Replacements
+**Learning:** When escaping HTML or performing multiple distinct character substitutions on a string, chained `String.prototype.replace()` calls create multiple intermediate string allocations and require multiple passes over the string.
+**Action:** Replace chained `String.prototype.replace()` calls with a single-pass regular expression and a dictionary map lookup (e.g., `s.replace(/[...]/g, (m) => map[m] || m)`). This avoids creating intermediate string allocations and significantly improves performance on rendering hot paths.
