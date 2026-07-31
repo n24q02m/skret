@@ -155,6 +155,11 @@ describe("generated_at rendering", () => {
     const html = renderDashboard([recent], FIXED_NOW);
     expect(html).toContain("synced 5m ago");
   });
+  it("uses a semantic time element with datetime and title attributes", () => {
+    const recent: Manifest = { ...m, generated_at: new Date(FIXED_NOW - 5 * 60_000).toISOString() };
+    const html = renderDashboard([recent], FIXED_NOW);
+    expect(html).toContain(`<time class="meta" datetime="${recent.generated_at}" title="${recent.generated_at}">`);
+  });
   it("flags a namespace stale after 48h with no new push", () => {
     const stale: Manifest = { ...m, generated_at: new Date(FIXED_NOW - 49 * 3_600_000).toISOString() };
     const html = renderDashboard([stale], FIXED_NOW);
