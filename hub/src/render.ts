@@ -1,12 +1,17 @@
 import type { Manifest } from "./types";
 
+const HTML_ENTITIES = {
+  "&": "&amp;",
+  "<": "&lt;",
+  ">": "&gt;",
+  '"': "&quot;",
+  "'": "&#39;",
+};
+
 function esc(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
+  // Optimize HTML escaping by avoiding intermediate string allocations
+  // from chained .replace() calls on rendering hot paths.
+  return s.replace(/[&<>"']/g, (m) => HTML_ENTITIES[m as keyof typeof HTML_ENTITIES]);
 }
 
 // KNOWN_STATUS maps the current status enum to its own badge/summary
