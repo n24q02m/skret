@@ -15,7 +15,7 @@
   <a href="https://codecov.io/gh/n24q02m/skret"><img alt="codecov" src="https://codecov.io/gh/n24q02m/skret/graph/badge.svg"></a>
   <a href="https://goreportcard.com/report/github.com/n24q02m/skret"><img alt="Go Report Card" src="https://goreportcard.com/badge/github.com/n24q02m/skret"></a>
   <a href="https://github.com/n24q02m/skret/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/n24q02m/skret?display_name=tag&sort=semver"></a>
-  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/github/license/n24q02m/skret"></a>
+  <a href="LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/github/license/n24q02m/skret"></a>
 </p>
 
 <p align="center">
@@ -195,7 +195,7 @@ Audited 2026-07-13 against the latest release of each tool. The comparison cover
 |---|---|---|---|---|---|---|---|---|
 | Type | OSS CLI | SaaS | SaaS / self-host | SaaS / self-host | OSS CLI | OSS CLI | OSS CLI | OSS CLI |
 | Language | Go 1.26 | proprietary | TypeScript | Rust | Rust | Rust | Go | Go |
-| Licence | MIT | proprietary | MIT (complex) | GPL-3.0 (CLI) | Apache-2.0 | LGPL-3.0 | MIT | MIT |
+| Licence | Apache-2.0 | proprietary | MIT (complex) | GPL-3.0 (CLI) | Apache-2.0 | LGPL-3.0 | MIT | MIT |
 | Server / control plane | none | none (SaaS) | container + Postgres | none (SaaS) | none | none | none | none |
 | Free tier ceiling (10 devs, 17 repos) | unlimited (cloud cost only) | 3 users, then $8/seat* | self-host or $7/seat | 3 projects, then $6/seat (Teams) | unlimited | unlimited | unlimited | unlimited (cloud cost only) |
 | Cloud secret-store backends | AWS SSM today; OCI Vault, Azure KV, GCP SM on roadmap | own store | own store | own store | AWS SM, AWS SSM, GCP SM, Vault, Consul, dotenv | AWS SM/SSM, GCP SM, Azure KV, Vault, SOPS, Bitwarden | Conjur, AWS, keyring (provider plugin) | AWS SSM, AWS Secrets Manager, S3 / S3-KMS (AWS-only) |
@@ -320,4 +320,4 @@ Report vulnerabilities privately — see [SECURITY.md](SECURITY.md).
 
 ## License
 
-[MIT](LICENSE) © n24q02m
+[Apache-2.0](LICENSE) © n24q02m

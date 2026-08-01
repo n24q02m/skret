@@ -48,7 +48,7 @@ homebrew_casks:
     directory: Casks
     homepage: "https://skret.n24q02m.com"
     description: "Cloud-provider secret manager CLI with Doppler/Infisical-grade DX"
-    license: "MIT"
+    license: "Apache-2.0"
     binaries:
       - skret
     # The formula ran generate_completions_from_executable(bin/"skret",
@@ -82,7 +82,7 @@ scoops:
     directory: bucket
     homepage: "https://skret.n24q02m.com"
     description: "Cloud-provider secret manager CLI with Doppler/Infisical-grade DX"
-    license: MIT
+    license: Apache-2.0
     commit_author:
       name: goreleaser-bot
       email: bot@goreleaser.com
