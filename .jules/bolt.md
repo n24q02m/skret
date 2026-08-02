@@ -64,3 +64,7 @@
 ## 2026-07-14 - Replacing strings.SplitN with strings.Cut
 **Learning:** Functions like `strings.SplitN(s, delim, 2)` provide a convenient API, but when used to split strings by a single character or string, they incur measurable memory allocation overhead because they return a slice. Replacing them with `strings.Cut(s, delim)` avoids the heap allocation of the slice, providing a measurable performance improvement (zero allocations) while maintaining readability.
 **Action:** Always prefer `strings.Cut` over `strings.SplitN(s, delim, 2)` when splitting a string into exactly two parts.
+
+## 2026-08-02 - Avoiding chained String.prototype.replace() for string sanitization
+**Learning:** When escaping HTML or performing multiple distinct character substitutions on a string, using chained `String.prototype.replace()` calls iterates over the string multiple times and creates multiple intermediate string allocations. This significantly reduces performance, especially on rendering hot paths.
+**Action:** Replace chained `String.prototype.replace()` calls with a single-pass regular expression and a dictionary map lookup (e.g., `s.replace(/[...]/g, (m) => map[m] || m)`). This avoids creating intermediate string allocations and significantly improves performance.
