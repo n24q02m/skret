@@ -47,3 +47,6 @@
 ## 2026-07-24 - Improve Empty State & Table Accessibility
 **Learning:** When displaying complex data in tables, adding `scope="col"` to table headers significantly improves screen reader navigation. Empty states should also provide clear, structured formatting with actionable instructions rather than a single unbroken sentence.
 **Action:** Ensure all future UI tables use proper semantic scoping and empty states utilize rich formatting (e.g., `<p>`, `<strong>`) for better readability and guidance.
+## 2026-08-04 - [Closing Obsolete PRs]
+**Learning:** When a maintainer closes a PR as a duplicate or obsolete, the PR Title Lint check failure may just be an artifact of the PR remaining in a failing state. No further code changes are necessary, just acknowledge the comment, reset the workspace, and add the learning to the journal.
+**Action:** Acknowledge PR closure instructions directly via comments and submit the journal update to complete the review cycle.
