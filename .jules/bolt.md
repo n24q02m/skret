@@ -65,6 +65,6 @@
 **Learning:** Functions like `strings.SplitN(s, delim, 2)` provide a convenient API, but when used to split strings by a single character or string, they incur measurable memory allocation overhead because they return a slice. Replacing them with `strings.Cut(s, delim)` avoids the heap allocation of the slice, providing a measurable performance improvement (zero allocations) while maintaining readability.
 **Action:** Always prefer `strings.Cut` over `strings.SplitN(s, delim, 2)` when splitting a string into exactly two parts.
 
-## 2026-08-01 - HTML Escaping Allocation Overhead
-**Learning:** Chained `String.prototype.replace()` calls (e.g., for HTML escaping) create multiple intermediate string allocations. In high-throughput rendering paths, this overhead becomes measurable.
-**Action:** When performing multiple distinct character substitutions on a string on a hot path, replace chained `.replace()` calls with a single-pass regular expression and a dictionary map lookup (`s.replace(/[...]/g, (m) => map[m])`) to avoid intermediate allocations and improve performance.
+## 2026-08-04 - Duplicated effort on HTML Escaping Optimization
+**Learning:** PR was rejected and closed because the HTML escaping optimization (replacing chained `.replace()` calls) was already implemented and merged in another PR (#617).
+**Action:** When working on generic, highly impactful performance optimizations, check recent PRs or closed issues to ensure the work isn't already being done or hasn't recently been merged. Always acknowledge PR closure instructions immediately and revert local changes.
