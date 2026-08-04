@@ -1,12 +1,17 @@
 import type { Manifest } from "./types";
 
+// ESCAPE_MAP is used by esc() to perform single-pass HTML escaping, avoiding
+// multiple intermediate string allocations from chained .replace() calls.
+const ESCAPE_MAP: Record<string, string> = {
+  "&": "&amp;",
+  "<": "&lt;",
+  ">": "&gt;",
+  '"': "&quot;",
+  "'": "&#39;",
+};
+
 function esc(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
+  return s.replace(/[&<>"']/g, (m) => ESCAPE_MAP[m] || m);
 }
 
 // KNOWN_STATUS maps the current status enum to its own badge/summary
