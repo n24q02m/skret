@@ -48,6 +48,6 @@
 **Learning:** When displaying complex data in tables, adding `scope="col"` to table headers significantly improves screen reader navigation. Empty states should also provide clear, structured formatting with actionable instructions rather than a single unbroken sentence.
 **Action:** Ensure all future UI tables use proper semantic scoping and empty states utilize rich formatting (e.g., `<p>`, `<strong>`) for better readability and guidance.
 
-## 2026-08-03 - [Semantic Time Elements]
-**Learning:** When rendering timestamps or relative times in HTML, generic `<span>` elements hide the exact time from users unless explicitly rendered. Replacing them with semantic `<time>` tags that include a `datetime` attribute and a `title` tooltip gracefully exposes exact timestamps on hover without cluttering the UI, while improving machine readability.
-**Action:** Replace generic `<span>` elements displaying relative time with semantic `<time>` elements using `datetime` and `title` attributes to expose exact timestamps on hover.
+## 2026-08-04 - [PR Closed - Semantic Time Elements]
+**Learning:** If a maintainer closes a PR as obsolete or duplicate (e.g., duplicate of an already merged PR that implements the same feature), drop the changes on the branch to abandon the work.
+**Action:** Acknowledge the PR closure, reset the branch, and submit the journal update to complete the review cycle without committing obsolete code.
