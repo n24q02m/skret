@@ -9,6 +9,11 @@ repos:
 
   - repo: local
     hooks:
+      - id: repo-bootstrap-verify
+        name: Verify README sync
+        entry: python scripts/repo-bootstrap/verify_readme_sync.py --repo-root=.
+        language: system
+        pass_filenames: false
       - id: enforce-commit
         name: Enforce feat and fix commit prefixes
         entry: bash scripts/enforce-commit.sh
