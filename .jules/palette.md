@@ -47,6 +47,6 @@
 ## 2026-07-24 - Improve Empty State & Table Accessibility
 **Learning:** When displaying complex data in tables, adding `scope="col"` to table headers significantly improves screen reader navigation. Empty states should also provide clear, structured formatting with actionable instructions rather than a single unbroken sentence.
 **Action:** Ensure all future UI tables use proper semantic scoping and empty states utilize rich formatting (e.g., `<p>`, `<strong>`) for better readability and guidance.
-## 2026-08-01 - Semantic HTML for relative times
-**Learning:** Using generic `<span>` tags for relative timestamps hides the exact timestamp data and semantic meaning from screen readers and machines.
-**Action:** Replace `<span>` elements used for relative times (e.g., "5m ago") with semantic `<time>` tags. Include a `datetime` attribute with the ISO string to improve machine readability, and a `title` attribute so standard desktop users can naturally see the exact timestamp natively on hover.
+## 2026-08-04 - Handling Obsolete UX Work
+**Learning:** UX improvements can sometimes duplicate ongoing or merged efforts (e.g., semantic-time implementations).
+**Action:** When a maintainer closes a PR as a duplicate, acknowledge the instruction, reset the codebase to drop the rejected changes, and record the learning in the journal to complete the review cycle without persisting obsolete code.
