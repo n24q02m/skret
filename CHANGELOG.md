@@ -4,6 +4,37 @@ All notable changes to this project will be documented in this file.
 
 <!-- version list -->
 
+## v1.16.0-beta.1 (2026-08-04)
+
+### Bug Fixes
+
+- Enforce bot governance review findings ([#619](https://github.com/n24q02m/skret/pull/619),
+  [`e47b2fa`](https://github.com/n24q02m/skret/commit/e47b2fa87e8e9f41b1af00d4c2fb088b72292267))
+
+- Make bot governance labels reliable ([#619](https://github.com/n24q02m/skret/pull/619),
+  [`e47b2fa`](https://github.com/n24q02m/skret/commit/e47b2fa87e8e9f41b1af00d4c2fb088b72292267))
+
+- Move this repo to Apache-2.0 ([#612](https://github.com/n24q02m/skret/pull/612),
+  [`80e75fd`](https://github.com/n24q02m/skret/commit/80e75fd1e339a97f6ed7284a6d34be9de542a3f5))
+
+- Stabilize env provider list error test ([#619](https://github.com/n24q02m/skret/pull/619),
+  [`e47b2fa`](https://github.com/n24q02m/skret/commit/e47b2fa87e8e9f41b1af00d4c2fb088b72292267))
+
+### Features
+
+- Add bot PR governance workflow ([#619](https://github.com/n24q02m/skret/pull/619),
+  [`e47b2fa`](https://github.com/n24q02m/skret/commit/e47b2fa87e8e9f41b1af00d4c2fb088b72292267))
+
+- Add skret manifest and bot PR governance ([#619](https://github.com/n24q02m/skret/pull/619),
+  [`e47b2fa`](https://github.com/n24q02m/skret/commit/e47b2fa87e8e9f41b1af00d4c2fb088b72292267))
+
+- Add skret repository configuration ([#619](https://github.com/n24q02m/skret/pull/619),
+  [`e47b2fa`](https://github.com/n24q02m/skret/commit/e47b2fa87e8e9f41b1af00d4c2fb088b72292267))
+
+- Sync cross-promo section ([#600](https://github.com/n24q02m/skret/pull/600),
+  [`96610ac`](https://github.com/n24q02m/skret/commit/96610acf54a4beb0d06bde33809bad5c93f8443c))
+
+
 ## v1.15.1 (2026-07-25)
 
 ### Bug Fixes
