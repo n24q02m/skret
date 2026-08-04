@@ -65,6 +65,6 @@
 **Learning:** Functions like `strings.SplitN(s, delim, 2)` provide a convenient API, but when used to split strings by a single character or string, they incur measurable memory allocation overhead because they return a slice. Replacing them with `strings.Cut(s, delim)` avoids the heap allocation of the slice, providing a measurable performance improvement (zero allocations) while maintaining readability.
 **Action:** Always prefer `strings.Cut` over `strings.SplitN(s, delim, 2)` when splitting a string into exactly two parts.
 
-## 2026-07-28 - JS: Bypass String Allocation in HTML Escaping
-**Learning:** When escaping HTML or performing multiple distinct character substitutions on a string, chained `String.prototype.replace()` calls create multiple intermediate string allocations and require multiple passes over the string. This slows down performance on rendering hot paths in Cloudflare Workers.
-**Action:** Replace chained `String.prototype.replace()` calls with a single-pass regular expression and a dictionary map lookup (e.g., `s.replace(/[...]/g, (m) => map[m] || m)`). This avoids creating multiple intermediate string allocations and significantly improves performance on rendering hot paths.
+## 2026-08-04 - Duplicate PR closure
+**Learning:** If a maintainer comments to close a PR as obsolete or rejected, acknowledge the instruction, reset the codebase to drop the rejected changes, record the learning in the relevant journal, and submit the journal update using the exact same branch name to complete the review cycle.
+**Action:** Acknowledge the comment and drop the changes, then record this in the journal and update the PR to finalize closure.
