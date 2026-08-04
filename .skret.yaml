@@ -1,0 +1,12 @@
+version: "1"
+default_env: dev
+project: skret
+
+environments:
+  dev:
+    provider: local
+    file: .secrets.dev.yaml
+  prod:
+    provider: aws
+    path: /skret/prod
+    region: ap-southeast-1
