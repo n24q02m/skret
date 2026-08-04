@@ -48,6 +48,6 @@
 **Learning:** When displaying complex data in tables, adding `scope="col"` to table headers significantly improves screen reader navigation. Empty states should also provide clear, structured formatting with actionable instructions rather than a single unbroken sentence.
 **Action:** Ensure all future UI tables use proper semantic scoping and empty states utilize rich formatting (e.g., `<p>`, `<strong>`) for better readability and guidance.
 
-## 2026-07-30 - [Semantic Timestamps]
-**Learning:** Using semantic `<time>` elements with `datetime` and `title` attributes for timestamps instead of generic `<span>` elements improves machine readability and gracefully exposes exact timestamps to users on hover without cluttering the UI.
-**Action:** Always replace generic HTML elements with semantic `<time>` elements for dates and timestamps to improve structure and screen reader capabilities.
+## 2026-08-04 - [Handling Rejected PRs]
+**Learning:** If a PR is closed as a duplicate or rejected, the procedure is to acknowledge the rejection, reset the codebase to drop the rejected changes, record the learning, and submit the journal update using the exact same branch name to complete the review cycle.
+**Action:** Always follow the PR closure convention by resetting and submitting journal updates on the same branch.
