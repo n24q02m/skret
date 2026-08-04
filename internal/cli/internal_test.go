@@ -431,8 +431,10 @@ func TestAppendGitignore_ExistingWithoutNewline(t *testing.T) {
 }
 
 func TestGetEnvPairs_ProviderListError(t *testing.T) {
-	// This tests the error path in getEnvPairs when loadProvider fails
-	opts := &GlobalOpts{} // no config file in CWD
+	// This tests the error path in getEnvPairs when loadProvider fails.
+	// Use an explicit missing config so the assertion stays deterministic
+	// regardless of whether the repo root contains a discoverable .skret.yaml.
+	opts := &GlobalOpts{Config: filepath.Join(t.TempDir(), "missing.skret.yaml")}
 	_, err := getEnvPairs(&cobra.Command{}, opts)
 	assert.Error(t, err)
 }
