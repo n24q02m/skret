@@ -48,6 +48,6 @@
 **Learning:** When displaying complex data in tables, adding `scope="col"` to table headers significantly improves screen reader navigation. Empty states should also provide clear, structured formatting with actionable instructions rather than a single unbroken sentence.
 **Action:** Ensure all future UI tables use proper semantic scoping and empty states utilize rich formatting (e.g., `<p>`, `<strong>`) for better readability and guidance.
 
-## 2026-07-25 - Semantic Time Tags and Tooltips
-**Learning:** Using semantic `<time datetime="...">` tags in place of `<span>` elements alongside `title` tooltips gracefully exposes exact timestamps to users on hover without cluttering the UI, while improving machine readability. Adding `aria-label` to identical table structures across namespaces clarifies screen reader navigation.
-**Action:** Always favor semantic tags (e.g., `<time>`) for time-based data and use `title` attributes to provide helpful supplementary context (like exact timestamps or badge explanations) in dashboards.
+## 2026-08-04 - [Duplicate PRs for UX Improvements]
+**Learning:** UX improvements such as semantic-time implementations might already be addressed in concurrent PRs (e.g., #611). Submitting duplicate changes results in the PR being closed.
+**Action:** Always verify if a UX change or component update is already covered by existing open PRs or merged work before starting implementation.

@@ -134,12 +134,12 @@ function renderNamespace(m: Manifest, now: number): string {
       return `<tr><td class="keyname">${esc(k.name)}</td><td class="fp">${esc(k.fingerprint)}</td><td>${badges}</td></tr>`;
     })
     .join("");
-  const staleBadge = isStale(m.generated_at, now) ? `<span class="badge stale" title="Not refreshed in over 48 hours">stale</span>` : "";
+  const staleBadge = isStale(m.generated_at, now) ? `<span class="badge stale">stale</span>` : "";
   return (
     `<section class="ns"><h2>${esc(m.namespace)} &middot; ${esc(m.env)}` +
-    ` <time class="meta" datetime="${esc(m.generated_at)}" title="${esc(m.generated_at)}">synced ${esc(relativeTime(m.generated_at, now))}</time>${staleBadge}</h2>` +
+    ` <span class="meta">synced ${esc(relativeTime(m.generated_at, now))}</span>${staleBadge}</h2>` +
     `<div class="summary">${esc(summary(m))}</div>` +
-    `<div class="tablewrap"><table aria-label="Secrets for ${esc(m.namespace)}"><thead><tr><th scope="col">Key</th><th scope="col">Fingerprint</th><th scope="col">Targets</th></tr></thead>` +
+    `<div class="tablewrap"><table><thead><tr><th scope="col">Key</th><th scope="col">Fingerprint</th><th scope="col">Targets</th></tr></thead>` +
     `<tbody>${rows}</tbody></table></div></section>`
   );
 }
