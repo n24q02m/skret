@@ -1,15 +1,12 @@
 import type { Manifest } from "./types";
 
-const ESC_MAP: Record<string, string> = {
-  "&": "&amp;",
-  "<": "&lt;",
-  ">": "&gt;",
-  '"': "&quot;",
-  "'": "&#39;",
-};
-
 function esc(s: string): string {
-  return s.replace(/[&<>"']/g, (m) => ESC_MAP[m] || m);
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 // KNOWN_STATUS maps the current status enum to its own badge/summary
