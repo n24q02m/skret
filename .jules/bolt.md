@@ -64,6 +64,6 @@
 ## 2026-07-14 - Replacing strings.SplitN with strings.Cut
 **Learning:** Functions like `strings.SplitN(s, delim, 2)` provide a convenient API, but when used to split strings by a single character or string, they incur measurable memory allocation overhead because they return a slice. Replacing them with `strings.Cut(s, delim)` avoids the heap allocation of the slice, providing a measurable performance improvement (zero allocations) while maintaining readability.
 **Action:** Always prefer `strings.Cut` over `strings.SplitN(s, delim, 2)` when splitting a string into exactly two parts.
-## 2026-07-27 - Single-Pass HTML Escaping
-**Learning:** Chained `String.prototype.replace()` calls (e.g., escaping multiple different HTML entities one by one) create intermediate string allocations and require multiple passes over the text, which becomes a measurable bottleneck when run against many strings on a dashboard rendering hot-path.
-**Action:** Replace chained `.replace()` calls with a single-pass regex and a dictionary map lookup (e.g., `s.replace(/[...]/g, (m) => map[m] || m)`). This single-pass approach minimizes string allocations and dramatically improves performance.
+## 2026-07-27 - Single-Pass HTML Escaping Optimization (Rejected)
+**Learning:** The optimization to replace chained `String.prototype.replace()` calls with a single-pass regex for HTML escaping was correct in principle, but the work was obsolete because a duplicate PR (#617) had already been merged with the same tested optimization.
+**Action:** When a PR is rejected as obsolete or duplicate, acknowledge the closure, drop the changes locally, log the learning that the optimization is already present, and submit the journal update to complete the review cycle.
