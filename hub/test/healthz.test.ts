@@ -2,15 +2,6 @@ import { SELF } from "cloudflare:test";
 import { describe, it, expect } from "vitest";
 
 describe("healthz", () => {
-  it("returns the exact dashboard security headers", async () => {
-    const res = await SELF.fetch("https://hub.test/healthz");
-
-    expect(res.headers.get("Strict-Transport-Security")).toBe(
-      "max-age=31536000; includeSubDomains",
-    );
-    expect(res.headers.get("X-Frame-Options")).toBe("DENY");
-  });
-
   it("returns 200 {ok:true} with no auth and the shared security headers", async () => {
     const res = await SELF.fetch("https://hub.test/healthz");
     expect(res.status).toBe(200);
