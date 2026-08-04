@@ -1,18 +1,12 @@
 import type { Manifest } from "./types";
 
-const HTML_ENTITIES: Record<string, string> = {
-  "&": "&amp;",
-  "<": "&lt;",
-  ">": "&gt;",
-  '"': "&quot;",
-  "'": "&#39;",
-};
-
 function esc(s: string): string {
-  // Use a single-pass regex and dictionary lookup to avoid intermediate string
-  // allocations caused by chained replace() calls. This significantly improves
-  // performance on rendering hot paths.
-  return s.replace(/[&<>"']/g, (m) => HTML_ENTITIES[m]);
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 // KNOWN_STATUS maps the current status enum to its own badge/summary

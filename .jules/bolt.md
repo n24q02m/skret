@@ -65,6 +65,6 @@
 **Learning:** Functions like `strings.SplitN(s, delim, 2)` provide a convenient API, but when used to split strings by a single character or string, they incur measurable memory allocation overhead because they return a slice. Replacing them with `strings.Cut(s, delim)` avoids the heap allocation of the slice, providing a measurable performance improvement (zero allocations) while maintaining readability.
 **Action:** Always prefer `strings.Cut` over `strings.SplitN(s, delim, 2)` when splitting a string into exactly two parts.
 
-## 2026-07-29 - Single-pass regex with dictionary mapping vs chained replace
-**Learning:** When escaping HTML or performing multiple distinct character substitutions on a string, chained `String.prototype.replace()` calls create multiple intermediate string allocations. A single-pass regular expression with a dictionary map lookup avoids these allocations, significantly improving performance on rendering hot paths.
-**Action:** Always prefer a single-pass regex and a dictionary map over chained `replace()` calls for multiple character substitutions.
+## 2026-07-29 - Obsolete HTML Escaping Optimization
+**Learning:** Submitted a PR to optimize HTML escaping in `hub/src/render.ts` using a single-pass regex and dictionary mapping instead of chained `.replace()` calls. This approach avoids intermediate string allocations, improving performance. The PR was closed as a duplicate of an already merged PR containing the same optimization.
+**Action:** Always check for open or recently merged PRs addressing the same issue before starting work on a task to avoid duplication of effort.
