@@ -26,6 +26,9 @@ type ExistingLister interface {
 // the target cannot enumerate existing names -- callers must treat that as
 // fatal rather than silently overwriting.
 func FilterAbsent(ctx context.Context, s Syncer, secrets []*provider.Secret) ([]*provider.Secret, int, error) {
+	if len(secrets) == 0 {
+		return secrets, 0, nil
+	}
 	l, ok := s.(ExistingLister)
 	if !ok {
 		return nil, 0, fmt.Errorf("no-overwrite: target %q cannot enumerate existing secrets", s.Name())

@@ -20,6 +20,24 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+type dummySyncer struct {
+	keys []string
+}
+
+func (d *dummySyncer) Name() string { return "dummy" }
+func (d *dummySyncer) Sync(ctx context.Context, secrets []*provider.Secret) error { return nil }
+func (d *dummySyncer) ExistingKeys(ctx context.Context) ([]string, error) { return d.keys, nil }
+
+func TestFilterAbsent_EarlyReturn(t *testing.T) {
+	s := &dummySyncer{keys: []string{"EXISTING"}}
+	ctx := context.Background()
+	var secrets []*provider.Secret
+	kept, skipped, err := syncer.FilterAbsent(ctx, s, secrets)
+	require.NoError(t, err)
+	assert.Empty(t, kept)
+	assert.Equal(t, 0, skipped)
+}
+
 func TestGitHubSyncer(t *testing.T) {
 	// Generate a real curve25519 keypair for the mock server
 	pubKey, _, err := box.GenerateKey(rand.Reader)

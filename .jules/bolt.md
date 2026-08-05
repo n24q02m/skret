@@ -68,3 +68,7 @@
 ## 2026-08-03 - Single-pass HTML escaping on hot paths
 **Learning:** Chained `String.prototype.replace()` calls for HTML escaping create multiple intermediate string allocations, significantly impacting performance on rendering hot paths in the Cloudflare Workers environment.
 **Action:** Replace chained `.replace()` calls with a single-pass regular expression and a dictionary map lookup (e.g., `s.replace(/[...]/g, (m) => map[m] || m)`) to minimize allocations and improve rendering throughput.
+
+## 2026-08-05 - Skip ExistingLister and map allocations for empty secrets
+**Learning:** Functions that filter state, like `syncer.FilterAbsent`, often perform expensive remote API calls (e.g., `ExistingKeys`) and allocate maps for deduping before knowing if there are any inputs to filter. If a push or sync has no secrets, this leads to unnecessary remote I/O and memory allocation overhead.
+**Action:** Always add an early return (`if len(secrets) == 0`) at the top of filtering or processing functions before executing interface method calls or initializing state structures.
