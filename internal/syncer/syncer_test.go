@@ -24,9 +24,9 @@ type dummySyncer struct {
 	keys []string
 }
 
-func (d *dummySyncer) Name() string { return "dummy" }
+func (d *dummySyncer) Name() string                                               { return "dummy" }
 func (d *dummySyncer) Sync(ctx context.Context, secrets []*provider.Secret) error { return nil }
-func (d *dummySyncer) ExistingKeys(ctx context.Context) ([]string, error) { return d.keys, nil }
+func (d *dummySyncer) ExistingKeys(ctx context.Context) ([]string, error)         { return d.keys, nil }
 
 func TestFilterAbsent_EarlyReturn(t *testing.T) {
 	s := &dummySyncer{keys: []string{"EXISTING"}}
