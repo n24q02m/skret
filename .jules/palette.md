@@ -50,3 +50,6 @@
 ## 2026-07-31 - [Time Element Semantics]
 **Learning:** When rendering relative timestamps in HTML, generic `<span>` elements lack machine readability. Using semantic `<time>` elements with `datetime` and `title` attributes makes the time machine-readable and natively exposes the absolute timestamp via browser tooltips without requiring custom UI components.
 **Action:** Always replace generic span elements used for timestamps with semantic time tags (`<time datetime="..." title="...">`) in HTML templates.
+## 2026-08-05 - [Dynamic Document Titles for Form Errors]
+**Learning:** Hardcoded <title> tags fail to notify screen reader users when a form submission results in an error state. By dynamically updating the document title (e.g., prefixing with "Error - "), assistive technologies immediately announce the error upon page reload.
+**Action:** Always expose error states in the <title> tag of the document, not just within inline ARIA elements, so users with screen readers are instantly aware of the outcome.
