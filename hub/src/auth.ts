@@ -1,15 +1,15 @@
-// Constant-time string compare. Length is compared first (a token-length
-// oracle is not meaningfully exploitable for fixed-length secrets), then
-// bytes via the runtime's timing-safe primitive.
-export function timingSafeEqualStr(a: string, b: string): boolean {
+// Constant-time string compare. To prevent length oracles (since original
+// strings may have different lengths, which would cause an early exit or
+// crypto.subtle.timingSafeEqual to throw), both inputs are hashed to a
+// fixed 32-byte length before comparison via the runtime's timing-safe primitive.
+export async function timingSafeEqualStr(a: string, b: string): Promise<boolean> {
   const enc = new TextEncoder();
-  const ab = enc.encode(a);
-  const bb = enc.encode(b);
-  if (ab.byteLength !== bb.byteLength) return false;
-  return crypto.subtle.timingSafeEqual(ab, bb);
+  const aHash = await crypto.subtle.digest("SHA-256", enc.encode(a));
+  const bHash = await crypto.subtle.digest("SHA-256", enc.encode(b));
+  return crypto.subtle.timingSafeEqual(aHash, bHash);
 }
 
-export function checkBearer(req: Request, token: string): boolean {
+export async function checkBearer(req: Request, token: string): Promise<boolean> {
   const header = req.headers.get("Authorization") ?? "";
   const prefix = "Bearer ";
   if (!header.startsWith(prefix)) return false;
@@ -18,8 +18,8 @@ export function checkBearer(req: Request, token: string): boolean {
 
 export const SESSION_TTL = 43200; // 12 hours in seconds
 
-export function checkPassword(password: string, expected: string): boolean {
-  return timingSafeEqualStr(password, expected);
+export async function checkPassword(password: string, expected: string): Promise<boolean> {
+  return await timingSafeEqualStr(password, expected);
 }
 
 function b64urlEncode(bytes: Uint8Array): string {

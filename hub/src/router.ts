@@ -35,7 +35,7 @@ async function handleLogin(req: Request, env: Env): Promise<Response> {
   } catch {
     return html(renderLogin("bad request"), 400);
   }
-  if (!checkPassword(password, env.RELAY_PASSWORD)) {
+  if (!(await checkPassword(password, env.RELAY_PASSWORD))) {
     return html(renderLogin("wrong password"), 401);
   }
   const token = await mintSession(env.RELAY_PASSWORD, SESSION_TTL);

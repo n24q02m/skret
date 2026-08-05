@@ -51,3 +51,7 @@ Added `ReadTimeout` and `WriteTimeout` to `http.Server` in `internal/auth/infisi
 **Vulnerability:** Missing Strict-Transport-Security (HSTS) and X-Frame-Options headers on dashboard responses.
 **Learning:** Even internal or simplified dashboards should implement defense in depth. Missing HSTS allows potential protocol downgrade attacks on subsequent visits, and missing X-Frame-Options opens the door for clickjacking attacks.
 **Prevention:** Always include a comprehensive set of security headers (including HSTS and X-Frame-Options) in the shared middleware or common response headers configuration.
+## 2026-08-05 - [CRITICAL] Fix timingSafeEqual string length leak
+**Vulnerability:** The `timingSafeEqualStr` function returned false immediately if the strings had different byte lengths, allowing an attacker to incrementally guess the length of secrets (length oracle). `crypto.subtle.timingSafeEqual` also throws an error if buffer lengths mismatch.
+**Learning:** Checking length before calling a timing safe equality function undermines the timing safety by leaking the secret length via timing or error output.
+**Prevention:** Always hash the inputs to a fixed length (e.g., using SHA-256) before calling a timing-safe equality primitive to completely obscure the original lengths.
