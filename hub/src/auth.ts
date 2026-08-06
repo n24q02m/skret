@@ -22,14 +22,18 @@ export function checkPassword(password: string, expected: string): boolean {
   return timingSafeEqualStr(password, expected);
 }
 
+const ENCODE_MAP: Record<string, string> = { "+": "-", "/": "_" };
+
 function b64urlEncode(bytes: Uint8Array): string {
   let s = "";
   for (const b of bytes) s += String.fromCharCode(b);
-  return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  return btoa(s).replace(/[+/]/g, (m) => ENCODE_MAP[m] || m).replace(/=+$/, "");
 }
 
+const DECODE_MAP: Record<string, string> = { "-": "+", "_": "/" };
+
 function b64urlDecode(s: string): Uint8Array {
-  const norm = s.replace(/-/g, "+").replace(/_/g, "/");
+  const norm = s.replace(/[-_]/g, (m) => DECODE_MAP[m] || m);
   const pad = norm.length % 4 ? 4 - (norm.length % 4) : 0;
   const bin = atob(norm + "=".repeat(pad));
   const out = new Uint8Array(bin.length);
