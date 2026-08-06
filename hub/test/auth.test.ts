@@ -4,14 +4,14 @@ import { checkPassword, mintSession, verifySession, SESSION_TTL } from "../src/a
 const SECRET = "test-relay-password";
 
 describe("checkPassword", () => {
-  it("true for exact match", () => {
-    expect(checkPassword("hunter2", "hunter2")).toBe(true);
+  it("true for exact match", async () => {
+    expect(await checkPassword("hunter2", "hunter2")).toBe(true);
   });
-  it("false for mismatch", () => {
-    expect(checkPassword("hunter2", "hunter3")).toBe(false);
+  it("false for mismatch", async () => {
+    expect(await checkPassword("hunter2", "hunter3")).toBe(false);
   });
-  it("false for different length", () => {
-    expect(checkPassword("short", "longerpass")).toBe(false);
+  it("false for different length", async () => {
+    expect(await checkPassword("short", "longerpass")).toBe(false);
   });
 });
 
