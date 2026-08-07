@@ -68,3 +68,7 @@
 ## 2026-08-03 - Single-pass HTML escaping on hot paths
 **Learning:** Chained `String.prototype.replace()` calls for HTML escaping create multiple intermediate string allocations, significantly impacting performance on rendering hot paths in the Cloudflare Workers environment.
 **Action:** Replace chained `.replace()` calls with a single-pass regular expression and a dictionary map lookup (e.g., `s.replace(/[...]/g, (m) => map[m] || m)`) to minimize allocations and improve rendering throughput.
+
+## 2026-08-07 - Single-pass Base64URL encoding/decoding
+**Learning:** Chained `String.prototype.replace()` calls for replacing characters (like in Base64 to Base64URL conversion) create multiple intermediate string allocations, negatively impacting performance.
+**Action:** Replace chained `.replace()` calls with a single-pass regular expression and a dictionary map lookup (e.g., `s.replace(/[+/=]/g, (m) => map[m])`) to minimize allocations and improve throughput.
