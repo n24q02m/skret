@@ -52,7 +52,7 @@ export function validateManifest(body: unknown): ValidateResult {
 }
 
 export async function handleIngest(req: Request, env: Env): Promise<Response> {
-  if (!checkBearer(req, env.SKRET_HUB_TOKEN)) {
+  if (!(await checkBearer(req, env.SKRET_HUB_TOKEN))) {
     return new Response("unauthorized", { status: 401 });
   }
   let body: unknown;

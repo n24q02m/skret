@@ -51,3 +51,8 @@ Added `ReadTimeout` and `WriteTimeout` to `http.Server` in `internal/auth/infisi
 **Vulnerability:** Missing Strict-Transport-Security (HSTS) and X-Frame-Options headers on dashboard responses.
 **Learning:** Even internal or simplified dashboards should implement defense in depth. Missing HSTS allows potential protocol downgrade attacks on subsequent visits, and missing X-Frame-Options opens the door for clickjacking attacks.
 **Prevention:** Always include a comprehensive set of security headers (including HSTS and X-Frame-Options) in the shared middleware or common response headers configuration.
+
+## 2026-08-07 - Prevent Timing Attack in string Comparison
+**Vulnerability:** The `timingSafeEqualStr` function in `hub/src/auth.ts` compared string lengths before using `crypto.subtle.timingSafeEqual`, creating a length oracle vulnerability. An attacker could deduce the length of secrets (like RELAY_PASSWORD or SKRET_HUB_TOKEN) by observing the time taken to reject an invalid token or password.
+**Learning:** Checking string lengths and short-circuiting prior to constant-time comparison still creates a measurable timing oracle if the strings can be user-controlled and secret.
+**Prevention:** When performing constant-time string comparisons on user-provided secrets of potentially variable lengths, always hash both inputs (e.g., using SHA-256) before comparison. Comparing string lengths beforehand and exiting early creates a dangerous length oracle vulnerability.
