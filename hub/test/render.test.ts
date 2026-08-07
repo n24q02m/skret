@@ -198,6 +198,10 @@ describe("renderLogin a11y", () => {
     expect(html).toContain('aria-invalid="true"');
     expect(html).toContain('aria-describedby="login-error"');
   });
+  it("exposes the error state in the document title", () => {
+    expect(renderLogin()).toContain("<title>skret vault</title>");
+    expect(renderLogin("wrong password")).toContain("<title>Error - skret vault</title>");
+  });
 });
 
 it("declares a favicon", () => {
