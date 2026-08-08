@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -150,6 +151,17 @@ func TestFilter_KeystrokesGoToList(t *testing.T) {
 			assert.False(t, isQuit, "q while filtering must not quit")
 		}
 	}
+}
+
+func TestView_SingleKeybindLine(t *testing.T) {
+	reveal := func(_ context.Context, _ string) (string, error) { return secretVal, nil }
+	m := sized(t, NewModel([]string{"DB_URL", "API_KEY"}, reveal))
+
+	// Both the list's built-in help and View()'s footer advertise "q quit". Two
+	// of them means the list's help came back and the browse screen is showing
+	// two stacked keybind lines, as it did in the 1.16.0 demo recording.
+	assert.Equal(t, 1, strings.Count(m.View(), "q quit"),
+		"exactly one keybind line: the footer, not the list's built-in help")
 }
 
 func TestFilter_KeybindHints(t *testing.T) {

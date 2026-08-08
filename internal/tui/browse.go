@@ -39,6 +39,12 @@ func NewModel(names []string, reveal RevealFunc) Model {
 	}
 	l := list.New(items, list.NewDefaultDelegate(), 0, 0)
 	l.Title = "Secrets"
+	// The list renders its own help line ("↑/k up • ↓/j down • / filter • q
+	// quit • ? more"), which View() then repeats in its footer -- two keybind
+	// lines stacked, in two different notations. The footer is the one to keep:
+	// only it can say "enter reveal" vs "enter hide" for the current selection,
+	// and only it carries the reveal error.
+	l.SetShowHelp(false)
 	return Model{
 		list:     l,
 		reveal:   reveal,
