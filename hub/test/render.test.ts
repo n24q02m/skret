@@ -125,6 +125,24 @@ describe("renderDashboard", () => {
     expect(html).toContain('class="tablewrap"');
     expect(html).toContain('class="keyname"');
   });
+  describe("namespace with no keys", () => {
+    const noKeys: Manifest = { ...m, keys: [] };
+    it("renders an actionable empty row spanning every column", () => {
+      const html = renderDashboard([noKeys], FIXED_NOW);
+      expect(html).toContain('<td colspan="3" class="empty">');
+      expect(html).toContain("No keys yet.");
+      expect(html).toContain("skret hub push");
+    });
+    it("still renders the namespace header and its summary", () => {
+      const html = renderDashboard([noKeys], FIXED_NOW);
+      expect(html).toContain("/klprism/prod");
+      expect(html).toContain("0 keys");
+    });
+    it("does not emit the empty row when the namespace has keys", () => {
+      const html = renderDashboard([m], FIXED_NOW);
+      expect(html).not.toContain("No keys yet.");
+    });
+  });
 });
 
 describe("relativeTime", () => {

@@ -50,6 +50,10 @@
 ## 2026-07-31 - [Time Element Semantics]
 **Learning:** When rendering relative timestamps in HTML, generic `<span>` elements lack machine readability. Using semantic `<time>` elements with `datetime` and `title` attributes makes the time machine-readable and natively exposes the absolute timestamp via browser tooltips without requiring custom UI components.
 **Action:** Always replace generic span elements used for timestamps with semantic time tags (`<time datetime="..." title="...">`) in HTML templates.
-## 2026-08-07 - [Form Errors in Document Titles]
+## 2026-08-07 - [Form Errors in Document Titles] (shipped; do not re-propose for the login form)
 **Learning:** UX/Accessibility Pattern (Form Errors): Exposing form validation error states in the document `<title>` tag (e.g., prefixing the title with 'Error - ') in addition to using inline ARIA attributes ensures screen readers immediately announce the error state to the user upon page reload or form submission.
-**Action:** Always expose form validation error states in the document `<title>` tag in addition to using inline ARIA attributes.
+**Action:** Always expose form validation error states in the document `<title>` tag in addition to using inline ARIA attributes. For `hub/src/render.ts` this is already implemented: `page()` takes a `title` argument and `renderLogin()` passes `Error - skret vault` when an error is present, covered by a test asserting both branches. Four PRs proposed the same change (#633, #635, #640 -- #640 merged, the rest closed on 2026-08-08); the remaining opportunity is other forms, not this one.
+
+## 2026-08-08 - [Empty States for Data Tables]
+**Learning:** A table rendered with a header row and an empty `<tbody>` is indistinguishable from a table whose data failed to load. A manifest can legitimately carry zero keys -- pushed before any secret was set, or emptied after deletions -- and the dashboard should say so.
+**Action:** Render an empty-state row (`<td colspan="N" class="empty">`) whose colspan matches the column count declared in `thead`, with a heading plus the command that populates the table. Implemented for `renderNamespace` in `hub/src/render.ts`; the dashboard-level empty state (no manifests at all) already existed and is a separate case.

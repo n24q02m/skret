@@ -127,18 +127,29 @@ function page(inner: string, title: string = "skret vault"): string {
   );
 }
 
+// EMPTY_ROW covers a manifest that exists but carries no keys -- a namespace
+// pushed before any secret was set, or one whose secrets were all deleted. A
+// header-only table reads as a failed load; this says the namespace is
+// deliberately empty and what to do about it. colspan matches the three
+// columns declared in renderNamespace's thead.
+const EMPTY_ROW =
+  `<tr><td colspan="3" class="empty"><p><strong>No keys yet.</strong></p>` +
+  `<p>Run <code>skret hub push</code> from your CLI to sync this namespace.</p></td></tr>`;
+
 function renderNamespace(m: Manifest, now: number): string {
-  const rows = m.keys
-    .map((k) => {
-      const badges = Object.entries(k.targets)
-        .map(
-          ([name, t]) =>
-            `<span class="badge ${statusClass(t.status)}">${esc(name)}: ${esc(t.status)}</span>`,
-        )
-        .join("");
-      return `<tr><td class="keyname">${esc(k.name)}</td><td class="fp">${esc(k.fingerprint)}</td><td>${badges}</td></tr>`;
-    })
-    .join("");
+  const rows = m.keys.length
+    ? m.keys
+        .map((k) => {
+          const badges = Object.entries(k.targets)
+            .map(
+              ([name, t]) =>
+                `<span class="badge ${statusClass(t.status)}">${esc(name)}: ${esc(t.status)}</span>`,
+            )
+            .join("");
+          return `<tr><td class="keyname">${esc(k.name)}</td><td class="fp">${esc(k.fingerprint)}</td><td>${badges}</td></tr>`;
+        })
+        .join("")
+    : EMPTY_ROW;
   const staleBadge = isStale(m.generated_at, now) ? `<span class="badge stale">stale</span>` : "";
   return (
     `<section class="ns"><h2>${esc(m.namespace)} &middot; ${esc(m.env)}` +
