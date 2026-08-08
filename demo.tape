@@ -21,8 +21,10 @@ Type "export PS1='$ '" Enter
 # created. `Output demo.gif` above is resolved by vhs, not by this shell, so
 # the rendered file still lands in the checkout root.
 Type "cd $(mktemp -d)" Enter
+# `clear` must be the last hidden command. Hide only stops vhs capturing frames;
+# it does not blank the terminal, so anything typed after this point is still on
+# screen when Show starts recording.
 Type "clear" Enter
-Type "alias skret='skret'" Enter
 Show
 
 Sleep 1s
