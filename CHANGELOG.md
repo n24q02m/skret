@@ -4,6 +4,107 @@ All notable changes to this project will be documented in this file.
 
 <!-- version list -->
 
+## v1.16.0-beta.2 (2026-08-08)
+
+### Bug Fixes
+
+- Add dashboard security headers
+  ([`39a35f5`](https://github.com/n24q02m/skret/commit/39a35f590ba95ad08e6beb9e95d088bffb8be03d))
+
+- Add local README sync release gate
+  ([`5c9c70c`](https://github.com/n24q02m/skret/commit/5c9c70cb8a398936e7798a52fef8f59e8e3a852e))
+
+- Align Vitest 4 worker test configuration
+  ([`5657ab4`](https://github.com/n24q02m/skret/commit/5657ab49225b99d35a29889801fd35d88b96f9be))
+
+- Clear all 22 npm advisories in docs and hub ([#644](https://github.com/n24q02m/skret/pull/644),
+  [`7717c2f`](https://github.com/n24q02m/skret/commit/7717c2f1954f2d87fa55d3f4d4b8f215acabbe42))
+
+- Close bot PRs that re-file an already-declined change
+  ([#642](https://github.com/n24q02m/skret/pull/642),
+  [`5f56090`](https://github.com/n24q02m/skret/commit/5f56090acba25eb609300999cfc7df7b9b9f082e))
+
+- Correct palette learning date
+  ([`d6b86a7`](https://github.com/n24q02m/skret/commit/d6b86a7c03991f3f2143821957dc44605267208c))
+
+- Hash inputs before constant-time comparison to remove length oracle
+  ([`769a4a5`](https://github.com/n24q02m/skret/commit/769a4a551997cba3c87050bfea3cc8dc239cb733))
+
+- Normalize baseline EOF files
+  ([`5c9c70c`](https://github.com/n24q02m/skret/commit/5c9c70cb8a398936e7798a52fef8f59e8e3a852e))
+
+- Pin sync image bases by digest and drop two stray permissions
+  ([#645](https://github.com/n24q02m/skret/pull/645),
+  [`29ff572`](https://github.com/n24q02m/skret/commit/29ff572cd6bdd12d5230ba97aaa0822917f4d4eb))
+
+- Raise hub devDependencies past three npm advisories
+  ([#644](https://github.com/n24q02m/skret/pull/644),
+  [`7717c2f`](https://github.com/n24q02m/skret/commit/7717c2f1954f2d87fa55d3f4d4b8f215acabbe42))
+
+- Record the demo from an empty directory ([#643](https://github.com/n24q02m/skret/pull/643),
+  [`f671706`](https://github.com/n24q02m/skret/commit/f671706a8db310c44852158111230b219d15851c))
+
+- Reduce HTML escaping allocations
+  ([`a2309a1`](https://github.com/n24q02m/skret/commit/a2309a1891bcaf75a4df9f59e76f04ffcf0caebd))
+
+- Skip allocations in DetectEnvNameCollisions for empty secrets
+  ([`be5d2f1`](https://github.com/n24q02m/skret/commit/be5d2f137621374ad2cdeee7ec73483d76f44135))
+
+- Update AWS credentials action pin
+  ([`e49807b`](https://github.com/n24q02m/skret/commit/e49807b17c203847e71d13c2f7aa156158207323))
+
+- Update better semantic release action pin
+  ([`68b3133`](https://github.com/n24q02m/skret/commit/68b31330354414be58b0063c341ac741338969fd))
+
+- Update CodeQL action pin
+  ([`2931250`](https://github.com/n24q02m/skret/commit/2931250e0630129325430ca3203d4abbc51da7c1))
+
+- Update pnpm action pin
+  ([`27627bc`](https://github.com/n24q02m/skret/commit/27627bcbdb74b8d119a0794d411b5996e2fca7a9))
+
+- Update scorecard action pin
+  ([`724ce27`](https://github.com/n24q02m/skret/commit/724ce27490e7249f16b2d09fdb2c6bf5dae40295))
+
+- Update smithy-go dependency
+  ([`49ba1d2`](https://github.com/n24q02m/skret/commit/49ba1d2b68d35e2955085a35ca779f49f2ef919e))
+
+- Upgrade docs to astro 7 and lift the renovate holds behind it
+  ([#644](https://github.com/n24q02m/skret/pull/644),
+  [`7717c2f`](https://github.com/n24q02m/skret/commit/7717c2f1954f2d87fa55d3f4d4b8f215acabbe42))
+
+- **deps**: Update actions/checkout action to v6.1.0
+  ([`5054fc2`](https://github.com/n24q02m/skret/commit/5054fc23fe73d27cc8556c9e84ad2af49cc52342))
+
+- **deps**: Update aws-sdk-go-v2 monorepo
+  ([`e54c015`](https://github.com/n24q02m/skret/commit/e54c015aed0c63b6bb285aa0a80ea999149af947))
+
+- **deps**: Update github/codeql-action action to v4.37.6
+  ([`b2ea287`](https://github.com/n24q02m/skret/commit/b2ea2873594612fca666a0b6d9702d55a5f80dbc))
+
+### Features
+
+- Expose login form error state in document title
+  ([`3bae474`](https://github.com/n24q02m/skret/commit/3bae47437dcb396b62f304307d0a1c2881cead90))
+
+- Namespace empty state + close re-filed bot PRs ([#642](https://github.com/n24q02m/skret/pull/642),
+  [`5f56090`](https://github.com/n24q02m/skret/commit/5f56090acba25eb609300999cfc7df7b9b9f082e))
+
+- Regenerate demo.gif ([#641](https://github.com/n24q02m/skret/pull/641),
+  [`b635899`](https://github.com/n24q02m/skret/commit/b635899ea342e95395e68c70ecd96ec5845f0d37))
+
+- Render an empty-state row for namespaces with no keys
+  ([#642](https://github.com/n24q02m/skret/pull/642),
+  [`5f56090`](https://github.com/n24q02m/skret/commit/5f56090acba25eb609300999cfc7df7b9b9f082e))
+
+- Use semantic time elements in dashboard
+  ([`bd28fe0`](https://github.com/n24q02m/skret/commit/bd28fe043201c76c7205f67c094e781ba2b04a71))
+
+### Performance Improvements
+
+- ⚡ bolt: Add early return to DetectEnvNameCollisions for empty secrets
+  ([`be5d2f1`](https://github.com/n24q02m/skret/commit/be5d2f137621374ad2cdeee7ec73483d76f44135))
+
+
 ## v1.16.0-beta.1 (2026-08-04)
 
 ### Bug Fixes
