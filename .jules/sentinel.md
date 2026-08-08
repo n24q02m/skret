@@ -51,3 +51,7 @@ Added `ReadTimeout` and `WriteTimeout` to `http.Server` in `internal/auth/infisi
 **Vulnerability:** Missing Strict-Transport-Security (HSTS) and X-Frame-Options headers on dashboard responses.
 **Learning:** Even internal or simplified dashboards should implement defense in depth. Missing HSTS allows potential protocol downgrade attacks on subsequent visits, and missing X-Frame-Options opens the door for clickjacking attacks.
 **Prevention:** Always include a comprehensive set of security headers (including HSTS and X-Frame-Options) in the shared middleware or common response headers configuration.
+## 2026-08-06 - Fix Length Oracle Timing Attack in String Comparisons
+**Vulnerability:** The `timingSafeEqualStr` function implemented a length check that exited early before performing a constant-time comparison on user-provided secrets. This creates a length oracle timing attack vulnerability where attackers can deduce the length of secrets.
+**Learning:** Checking string lengths and exiting early avoids throwing exceptions in `timingSafeEqual` but exposes the secret's length via timing differences.
+**Prevention:** Always hash both inputs (e.g., using SHA-256) before performing a constant-time comparison when dealing with potentially variable-length secrets. This ensures the comparison operates in constant time regardless of the original inputs' lengths.
