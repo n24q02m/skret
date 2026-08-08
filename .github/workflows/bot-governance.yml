@@ -87,6 +87,56 @@ jobs:
             exit 0
           fi
 
+          # --- Re-proposal of an already-rejected change ---
+          #
+          # The rate limit above caps how fast a bot files PRs; it does nothing
+          # about the same idea coming back on a new branch a few days later,
+          # under the day's quota each time. That is the shape the backlog
+          # actually grows in: on 2026-08-08 seven of fourteen open bot PRs were
+          # re-proposals of a change already reviewed and declined.
+          #
+          # Signature is the set of production files touched, with .jules/
+          # excluded because every bot PR appends to its own ledger and would
+          # otherwise look distinct. An exact match against a bot PR that was
+          # closed WITHOUT being merged in the last 30 days means a human has
+          # already read this change and said no.
+          #
+          # Merged PRs are deliberately not signatures: touching the same file
+          # as a landed change is normal iteration, not a re-proposal.
+          #
+          # Closing is reversible -- the comment names the earlier PR and says
+          # how to reopen, so a genuine second attempt costs one click.
+          BOT_BRANCH_RE='^(bolt[-/]|palette-ux-|fix/web-scraper-|jules[-/])|-[0-9]{14,}$'
+          SIG=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json files \
+                 --jq '[.files[].path | select(startswith(".jules/") | not)] | sort | join(",")')
+
+          if [ -z "$SIG" ]; then
+            echo "PR touches only ledger files, skipping re-proposal check."
+          else
+            echo "Production file signature: $SIG"
+            SINCE_30D=$(date -u -d '30 days ago' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || \
+                        date -u -v-30d +%Y-%m-%dT%H:%M:%SZ)
+            REJECTED=$(gh pr list --repo "$REPO" --state closed --limit 1000 \
+                        --json number,closedAt,mergedAt,headRefName \
+                        --jq "[.[] |
+                               select(.mergedAt == null) |
+                               select(.closedAt > \"$SINCE_30D\") |
+                               select(.headRefName | test(\"$BOT_BRANCH_RE\")) |
+                               .number] | .[]")
+
+            for PREV in $REJECTED; do
+              PREV_SIG=$(gh pr view "$PREV" --repo "$REPO" --json files \
+                          --jq '[.files[].path | select(startswith(".jules/") | not)] | sort | join(",")')
+              if [ "$PREV_SIG" = "$SIG" ]; then
+                gh pr close "$PR_NUMBER" --repo "$REPO" --comment \
+                  "**Already declined**: this PR touches exactly the production files that #${PREV} touched, and #${PREV} was closed without being merged. Re-filing a reviewed-and-declined change on a new branch is what this check exists to stop. Read the closing comment on #${PREV} first -- it states the technical reason. If that reason no longer holds, or this PR differs in a way the file list cannot show, reopen with the difference stated in the description."
+                echo "PR #$PR_NUMBER closed: same file signature as rejected #$PREV"
+                exit 0
+              fi
+            done
+            echo "No rejected bot PR shares this file signature."
+          fi
+
           # --- Duplicate detection by title keyword ---
           KEYWORD=$(echo "$PR_TITLE" | sed 's/[^a-zA-Z0-9 _-]//g' | \
                     tr '[:upper:]' '[:lower:]' | cut -c1-50 | xargs)

@@ -65,9 +65,17 @@
 **Learning:** Functions like `strings.SplitN(s, delim, 2)` provide a convenient API, but when used to split strings by a single character or string, they incur measurable memory allocation overhead because they return a slice. Replacing them with `strings.Cut(s, delim)` avoids the heap allocation of the slice, providing a measurable performance improvement (zero allocations) while maintaining readability.
 **Action:** Always prefer `strings.Cut` over `strings.SplitN(s, delim, 2)` when splitting a string into exactly two parts.
 
-## 2026-08-03 - Single-pass HTML escaping on hot paths
-**Learning:** Chained `String.prototype.replace()` calls for HTML escaping create multiple intermediate string allocations, significantly impacting performance on rendering hot paths in the Cloudflare Workers environment.
-**Action:** Replace chained `.replace()` calls with a single-pass regular expression and a dictionary map lookup (e.g., `s.replace(/[...]/g, (m) => map[m] || m)`) to minimize allocations and improve rendering throughput.
+## 2026-08-03 - Single-pass HTML escaping on hot paths (scope: hot paths only)
+**Learning:** Chained `String.prototype.replace()` calls for HTML escaping create multiple intermediate string allocations, significantly impacting performance on rendering hot paths in the Cloudflare Workers environment. `esc()` in `hub/src/render.ts` qualifies: it runs once per key, per target and per namespace on every dashboard render. Its single-pass form is the terminal state.
+**Action:** Replace chained `.replace()` calls with a single-pass regular expression and a dictionary map lookup (e.g., `s.replace(/[...]/g, (m) => map[m] || m)`) **only where the function runs per-request or inside a loop over unbounded input, and attach a measurement to the PR** (a `vitest bench` or a timed loop over representative input). A rewrite proposed without a number and without naming the hot path is a style change, not an optimization, and will be closed.
+
+## 2026-08-08 - Base64URL helpers in hub/src/auth.ts are a cold path (done; do not revisit)
+**Learning:** `b64urlEncode` and `b64urlDecode` each execute exactly once per session mint and once per session verify -- a handful of calls per login, not per request and not inside a loop. The chained `.replace()` calls they use are already correct, and the trailing-padding strip (`.replace(/=+$/, "")`) is deliberately its own step so that padding is only removed from the tail rather than from anywhere in the string.
+**Action:** Treat these two functions as settled. Two PRs proposing the single-pass rewrite here were closed on 2026-08-08 (#636, #639) because neither carried a measurement and neither call site is hot; #639 additionally widened the contract by folding the padding character into the character class. If a future change touches base64url, the win must be shown with a benchmark first.
+
+## 2026-08-08 - An early return must not jump over a safety guard
+**Learning:** `syncer.FilterAbsent` deliberately fails when the target cannot enumerate its existing secrets, because the caller must treat that as fatal rather than silently overwriting. Placing `if len(secrets) == 0 { return }` above that check moves a correctness guard behind an input-size condition: a target misconfigured for `no_overwrite` would then pass silently on an empty sync instead of surfacing the error. PR #632 was closed on 2026-08-08 for exactly this.
+**Action:** When adding an early return, first read what the code above it is protecting. Place the early return **after** any assertion, capability check, or validation whose failure the caller depends on -- and pair it with a `Benchmark*` showing the saved work, per the fast-path rule above.
 
 ## 2026-08-04 - Skip Map Initialization on Empty Secrets in DetectEnvNameCollisions
 **Learning:** When `DetectEnvNameCollisions` is called with an empty list of secrets, the function would still unnecessarily allocate a map for `excludeSet` and check constraints before realizing there were no secrets to process.
