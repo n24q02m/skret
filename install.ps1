@@ -49,8 +49,9 @@ New-Item -ItemType Directory -Path $Prefix -Force | Out-Null
 $asset       = "skret_${verTrim}_windows_${arch}.zip"
 $url         = "https://github.com/$Repo/releases/download/$Version/$asset"
 $checksumUrl = "https://github.com/$Repo/releases/download/$Version/checksums.txt"
-$certUrl     = "https://github.com/$Repo/releases/download/$Version/checksums.txt.pem"
-$sigUrl      = "https://github.com/$Repo/releases/download/$Version/checksums.txt.sig"
+# goreleaser signs with `--bundle`, so the release carries one signature artifact
+# (checksums.txt.bundle). It does not publish separate .pem/.sig files.
+$bundleUrl   = "https://github.com/$Repo/releases/download/$Version/checksums.txt.bundle"
 
 $tmp = Join-Path $env:TEMP ("skret-install-" + [guid]::NewGuid())
 New-Item -ItemType Directory -Path $tmp -Force | Out-Null
@@ -70,11 +71,9 @@ try {
 
     if (Get-Command cosign -ErrorAction SilentlyContinue) {
         Log "Verifying cosign Sigstore signature"
-        Invoke-WebRequest $certUrl -OutFile (Join-Path $tmp "checksums.txt.pem") -UseBasicParsing
-        Invoke-WebRequest $sigUrl  -OutFile (Join-Path $tmp "checksums.txt.sig") -UseBasicParsing
+        Invoke-WebRequest $bundleUrl -OutFile (Join-Path $tmp "checksums.txt.bundle") -UseBasicParsing
         & cosign verify-blob `
-            --certificate (Join-Path $tmp "checksums.txt.pem") `
-            --signature   (Join-Path $tmp "checksums.txt.sig") `
+            --bundle (Join-Path $tmp "checksums.txt.bundle") `
             --certificate-identity-regexp "https://github.com/$Repo/.+" `
             --certificate-oidc-issuer "https://token.actions.githubusercontent.com" `
             (Join-Path $tmp "checksums.txt") 2>&1 | Out-Null

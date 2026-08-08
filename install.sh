@@ -83,8 +83,9 @@ mkdir -p "$PREFIX"
 asset="skret_${ver_trim}_${os}_${arch}.tar.gz"
 url="https://github.com/$REPO/releases/download/$VERSION/$asset"
 checksum_url="https://github.com/$REPO/releases/download/$VERSION/checksums.txt"
-cert_url="https://github.com/$REPO/releases/download/$VERSION/checksums.txt.pem"
-sig_url="https://github.com/$REPO/releases/download/$VERSION/checksums.txt.sig"
+# goreleaser signs with `--bundle`, so the release carries one signature artifact
+# (checksums.txt.bundle). It does not publish separate .pem/.sig files.
+bundle_url="https://github.com/$REPO/releases/download/$VERSION/checksums.txt.bundle"
 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
@@ -99,17 +100,17 @@ if command -v sha256sum >/dev/null 2>&1; then
 else
   actual=$(shasum -a 256 "$tmp/skret.tar.gz" | awk '{print $1}')
 fi
-expected=$(grep "  $asset" "$tmp/checksums.txt" | awk '{print $1}')
+# Match the filename field exactly. A substring match also hits the SBOM row
+# ("<asset>.sbom.json"), which yields two hashes and a false "checksum mismatch".
+expected=$(awk -v a="$asset" '$2 == a {print $1}' "$tmp/checksums.txt")
 [ -n "$expected" ] || err "no checksum row for $asset"
 [ "$expected" = "$actual" ] || err "checksum mismatch (expected $expected, got $actual)"
 
 if command -v cosign >/dev/null 2>&1; then
   log "Verifying cosign Sigstore signature"
-  curl -fsSL "$cert_url" -o "$tmp/checksums.txt.pem"
-  curl -fsSL "$sig_url" -o "$tmp/checksums.txt.sig"
+  curl -fsSL "$bundle_url" -o "$tmp/checksums.txt.bundle"
   cosign verify-blob \
-    --certificate "$tmp/checksums.txt.pem" \
-    --signature "$tmp/checksums.txt.sig" \
+    --bundle "$tmp/checksums.txt.bundle" \
     --certificate-identity-regexp "https://github.com/$REPO/.+" \
     --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
     "$tmp/checksums.txt" \
