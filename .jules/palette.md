@@ -50,6 +50,6 @@
 ## 2026-07-31 - [Time Element Semantics]
 **Learning:** When rendering relative timestamps in HTML, generic `<span>` elements lack machine readability. Using semantic `<time>` elements with `datetime` and `title` attributes makes the time machine-readable and natively exposes the absolute timestamp via browser tooltips without requiring custom UI components.
 **Action:** Always replace generic span elements used for timestamps with semantic time tags (`<time datetime="..." title="...">`) in HTML templates.
-## 2026-08-06 - Expose form errors in document title
-**Learning:** Screen readers do not reliably announce inline ARIA error attributes upon page reload or initial render if the document title doesn't indicate the error state. A visually obvious inline error isn't enough for non-visual users on form submission failures.
-**Action:** Always expose form validation error states by prefixing the document `<title>` tag with "Error - " to ensure assistive technology immediately announces the error state without requiring the user to navigate the DOM.
+## 2026-08-08 - [Test Optional Parameter Branches]
+**Learning:** When adding an optional parameter with a default value to an existing function, asserting only the new path (the overridden parameter case) is insufficient and leads to PR rejection. Both the fallback/default branch and the overridden branch must be explicitly tested.
+**Action:** Always write unit tests covering both the default behavior and the explicitly passed parameter behavior when introducing optional arguments to functions.

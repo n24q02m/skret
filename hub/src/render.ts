@@ -117,12 +117,12 @@ const FAVICON =
 
 const FOOTER = `<footer><a href="https://skret.n24q02m.com">skret docs</a></footer>`;
 
-function page(inner: string, title: string = "skret vault"): string {
+function page(inner: string): string {
   return (
     `<!doctype html><html lang="en"><head><meta charset="utf-8">` +
     `<meta name="viewport" content="width=device-width,initial-scale=1">` +
     `<link rel="icon" href="${FAVICON}">` +
-    `<title>${esc(title)}</title><style>${STYLE}</style></head>` +
+    `<title>skret vault</title><style>${STYLE}</style></head>` +
     `<body><main>${inner}</main>${FOOTER}</body></html>`
   );
 }
@@ -163,13 +163,11 @@ export function renderDashboard(manifests: Manifest[], now: number = Date.now())
 export function renderLogin(error?: string): string {
   const msg = error ? `<p class="err" id="login-error" role="alert">${esc(error)}</p>` : "";
   const aria = error ? ` aria-invalid="true" aria-describedby="login-error"` : "";
-  const title = error ? "Error - skret vault" : "skret vault";
   return page(
     `<h1>skret vault</h1>${msg}` +
       `<form method="POST" action="/login">` +
       `<label for="password" class="sr-only">Relay password</label>` +
       `<input type="password" id="password" name="password" placeholder="relay password" autocomplete="current-password" autofocus required${aria}>` +
       `<button type="submit">Enter</button></form>`,
-    title,
   );
 }
