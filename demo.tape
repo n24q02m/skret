@@ -14,6 +14,13 @@ Set WindowBar Colorful
 
 Hide
 Type "export PS1='$ '" Enter
+# Record from an empty directory, not the repository checkout. The checkout
+# root carries the repository's own .skret.yaml, so `skret init` below would
+# hit its "already exists" branch, and every command after it would run
+# against the repository's manifest instead of the one this demo shows being
+# created. `Output demo.gif` above is resolved by vhs, not by this shell, so
+# the rendered file still lands in the checkout root.
+Type "cd $(mktemp -d)" Enter
 Type "clear" Enter
 Type "alias skret='skret'" Enter
 Show
