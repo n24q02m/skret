@@ -123,6 +123,24 @@ func TestFilterUnchanged_ChangedIncluded(t *testing.T) {
 	assert.Equal(t, "K1", out[0].Key)
 }
 
+func TestFilterUnchanged_EmptySecrets(t *testing.T) {
+	state := &SyncState{Hashes: map[string]string{"K1": hashSecret("v1")}}
+	out := state.FilterUnchanged(nil)
+	assert.Nil(t, out)
+
+	out = state.FilterUnchanged([]*provider.Secret{})
+	assert.Empty(t, out)
+}
+
+func TestUpdate_EmptySecrets(t *testing.T) {
+	state := &SyncState{}
+	state.Update(nil)
+	assert.Nil(t, state.Hashes)
+
+	state.Update([]*provider.Secret{})
+	assert.Nil(t, state.Hashes)
+}
+
 func TestUpdate_PopulatesHashes(t *testing.T) {
 	state := &SyncState{}
 	state.Update([]*provider.Secret{

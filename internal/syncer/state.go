@@ -130,6 +130,9 @@ func hashSecret(value string) string {
 // FilterUnchanged returns only the secrets whose hash differs from the state.
 // Secrets not present in the state are included (treated as new).
 func (s *SyncState) FilterUnchanged(secrets []*provider.Secret) []*provider.Secret {
+	if len(secrets) == 0 {
+		return secrets
+	}
 	out := make([]*provider.Secret, 0, len(secrets))
 	for _, sec := range secrets {
 		if s.Hashes[sec.Key] != hashSecret(sec.Value) {
@@ -141,6 +144,9 @@ func (s *SyncState) FilterUnchanged(secrets []*provider.Secret) []*provider.Secr
 
 // Update records the hashes of the given secrets in-place.
 func (s *SyncState) Update(secrets []*provider.Secret) {
+	if len(secrets) == 0 {
+		return
+	}
 	if s.Hashes == nil {
 		s.Hashes = map[string]string{}
 	}

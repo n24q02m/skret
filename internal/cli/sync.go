@@ -202,6 +202,9 @@ func (o *syncOptions) run(cmd *cobra.Command) error {
 // exactly (uppercased exclude entries matched against the final
 // KeyToEnvName output) so exclude behaves consistently across run/env/sync.
 func filterExcluded(secrets []*provider.Secret, pathPrefix string, exclude []string) []*provider.Secret {
+	if len(secrets) == 0 {
+		return secrets
+	}
 	if len(exclude) == 0 {
 		return secrets
 	}

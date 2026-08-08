@@ -581,6 +581,14 @@ func TestFilterExcluded(t *testing.T) {
 	assert.Equal(t, "api-key", out[1].Key)
 }
 
+func TestFilterExcluded_EmptySecrets(t *testing.T) {
+	out := filterExcluded(nil, "", []string{"EXCLUDE"})
+	assert.Nil(t, out)
+
+	out = filterExcluded([]*provider.Secret{}, "", []string{"EXCLUDE"})
+	assert.Empty(t, out)
+}
+
 func TestFilterExcluded_NoExclude_ReturnsSameSlice(t *testing.T) {
 	secrets := []*provider.Secret{{Key: "K", Value: "V"}}
 	out := filterExcluded(secrets, "", nil)

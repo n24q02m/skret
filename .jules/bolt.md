@@ -80,3 +80,7 @@
 ## 2026-08-04 - Skip Map Initialization on Empty Secrets in DetectEnvNameCollisions
 **Learning:** When `DetectEnvNameCollisions` is called with an empty list of secrets, the function would still unnecessarily allocate a map for `excludeSet` and check constraints before realizing there were no secrets to process.
 **Action:** Adding an early return (`if len(secrets) == 0 { return nil }`) at the top of `DetectEnvNameCollisions` skips these allocations and iterations entirely for empty inputs, reducing execution time from ~73 ns/op to ~3 ns/op.
+
+## 2026-08-08 - Skip Map Initialization on Empty Secrets in filterExcluded and SyncState
+**Learning:** Functions like `filterExcluded` and `SyncState.Update` unnecessarily allocate maps or slices when called with an empty list of secrets.
+**Action:** Adding an early return (`if len(secrets) == 0 { return }`) skips these allocations and iterations entirely for empty inputs.
