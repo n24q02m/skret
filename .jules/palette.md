@@ -51,6 +51,6 @@
 **Learning:** When rendering relative timestamps in HTML, generic `<span>` elements lack machine readability. Using semantic `<time>` elements with `datetime` and `title` attributes makes the time machine-readable and natively exposes the absolute timestamp via browser tooltips without requiring custom UI components.
 **Action:** Always replace generic span elements used for timestamps with semantic time tags (`<time datetime="..." title="...">`) in HTML templates.
 
-## 2026-08-04 - [Empty States for Tables]
-**Learning:** Empty tables with just headers and no rows provide poor UX and leave users wondering if data failed to load or if it is intentionally empty. Using an empty `<tbody>` is bad.
-**Action:** Always add an actionable empty state row to tables when the dataset is empty, using `colspan="X"` to ensure the empty state semantically spans all columns and maintains layout integrity.
+## 2026-08-08 - [Handling Obsolete PRs]
+**Learning:** If a PR is superseded or closed as obsolete due to conflicts or porting, acknowledge the instruction and drop the rejected changes. Ensure the learning pattern (e.g., empty state tables) is recorded in the journal to prevent re-proposing the same change.
+**Action:** When a PR is rejected or superseded, reset the codebase to drop the changes, record the learning constraint in the journal, and submit the journal update using the same branch name to close the review loop cleanly.

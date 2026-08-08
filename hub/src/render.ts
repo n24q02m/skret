@@ -128,19 +128,17 @@ function page(inner: string): string {
 }
 
 function renderNamespace(m: Manifest, now: number): string {
-  const rows = m.keys.length
-    ? m.keys
-        .map((k) => {
-          const badges = Object.entries(k.targets)
-            .map(
-              ([name, t]) =>
-                `<span class="badge ${statusClass(t.status)}">${esc(name)}: ${esc(t.status)}</span>`,
-            )
-            .join("");
-          return `<tr><td class="keyname">${esc(k.name)}</td><td class="fp">${esc(k.fingerprint)}</td><td>${badges}</td></tr>`;
-        })
-        .join("")
-    : `<tr><td colspan="3" class="empty"><p><strong>No keys found.</strong></p><p>This namespace currently has no synced secrets.</p></td></tr>`;
+  const rows = m.keys
+    .map((k) => {
+      const badges = Object.entries(k.targets)
+        .map(
+          ([name, t]) =>
+            `<span class="badge ${statusClass(t.status)}">${esc(name)}: ${esc(t.status)}</span>`,
+        )
+        .join("");
+      return `<tr><td class="keyname">${esc(k.name)}</td><td class="fp">${esc(k.fingerprint)}</td><td>${badges}</td></tr>`;
+    })
+    .join("");
   const staleBadge = isStale(m.generated_at, now) ? `<span class="badge stale">stale</span>` : "";
   return (
     `<section class="ns"><h2>${esc(m.namespace)} &middot; ${esc(m.env)}` +
