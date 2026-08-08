@@ -62,9 +62,22 @@ try {
 
     Log "Verifying SHA256 checksum"
     $actual = (Get-FileHash (Join-Path $tmp "skret.zip") -Algorithm SHA256).Hash.ToLower()
-    $expectedRow = (Get-Content (Join-Path $tmp "checksums.txt") | Select-String $asset | Select-Object -First 1)
-    if (-not $expectedRow) { Die "no checksum row for $asset in checksums.txt" }
-    $expected = ($expectedRow.ToString() -split '\s+')[0]
+    # Match the filename field exactly. Select-String would read $asset as a
+    # regex (the dots in "skret_1.16.0_..." match any character) and a substring
+    # hit also lands on the SBOM row, "<asset>.sbom.json" -- so -First 1 picked
+    # the right hash only for as long as goreleaser keeps writing the archive
+    # row above the SBOM row. install.sh had the same bug and it was not latent
+    # there: it matched both rows and failed every install with a bogus
+    # "checksum mismatch".
+    $expected = $null
+    foreach ($row in Get-Content (Join-Path $tmp "checksums.txt")) {
+        $fields = $row -split '\s+', 2
+        if ($fields.Count -eq 2 -and $fields[1].Trim() -eq $asset) {
+            $expected = $fields[0]
+            break
+        }
+    }
+    if (-not $expected) { Die "no checksum row for $asset in checksums.txt" }
     if ($expected -ne $actual) {
         Die "checksum mismatch (expected $expected, got $actual)"
     }
