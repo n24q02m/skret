@@ -121,6 +121,10 @@ func KeyToEnvName(key, pathPrefix string) string {
 // wrong secret value with no indication. Excluded names are ignored. Duplicate
 // occurrences of the SAME key are not a collision (last-write-wins dedup).
 func DetectEnvNameCollisions(secrets []*provider.Secret, pathPrefix string, exclude []string) error {
+	if len(secrets) == 0 {
+		return nil
+	}
+
 	var excludeSet map[string]bool
 	if len(exclude) > 0 {
 		excludeSet = make(map[string]bool, len(exclude))

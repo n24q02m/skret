@@ -66,3 +66,12 @@ func BenchmarkBuildEnv_WideDependency(b *testing.B) {
 		_ = exec.BuildEnv(secrets, nil, "", nil)
 	}
 }
+
+func BenchmarkDetectEnvNameCollisions_EmptySecrets(b *testing.B) {
+	exclude := []string{"API_KEY"}
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_ = exec.DetectEnvNameCollisions(nil, "", exclude)
+	}
+}

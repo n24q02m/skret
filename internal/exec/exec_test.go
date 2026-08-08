@@ -196,6 +196,10 @@ func TestBuildEnv_EmptyExcludeMap(t *testing.T) {
 }
 
 func TestDetectEnvNameCollisions(t *testing.T) {
+	t.Run("empty secrets -> nil", func(t *testing.T) {
+		assert.NoError(t, skexec.DetectEnvNameCollisions(nil, "", nil))
+	})
+
 	t.Run("distinct keys collide -> error", func(t *testing.T) {
 		secrets := []*provider.Secret{
 			{Key: "api-key", Value: "v1"},
