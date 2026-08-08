@@ -108,15 +108,31 @@ history on every run.
 
 After a release completes:
 
+The signature covers `checksums.txt`, not each archive individually — `.goreleaser.yaml`
+signs with `artifacts: checksum`. So verification is two steps: check the signature on
+`checksums.txt`, then check your archive against that now-trusted file. There are no
+per-archive `.cert` / `.sig` files to download; the one signature artifact is
+`checksums.txt.bundle`.
+
 ```bash
 # Check the latest release
 gh release view --repo n24q02m/skret
 
-# Verify cosign signature
+# Download the archive plus the two files needed to verify it
+gh release download vVERSION --repo n24q02m/skret \
+  -p 'skret_VERSION_linux_amd64.tar.gz' -p 'checksums.txt' -p 'checksums.txt.bundle'
+
+# 1. Verify the signature on checksums.txt.
+# The identity is the CD workflow at the ref it ran from, which differs between a
+# stable release (refs/tags/vVERSION) and a prerelease cut by workflow_dispatch
+# (refs/heads/main) -- the regexp below accepts either.
 cosign verify-blob \
-  --certificate skret_VERSION_linux_amd64.tar.gz.cert \
-  --signature skret_VERSION_linux_amd64.tar.gz.sig \
+  --bundle checksums.txt.bundle \
   --certificate-identity-regexp="https://github.com/n24q02m/skret" \
   --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
-  skret_VERSION_linux_amd64.tar.gz
+  checksums.txt
+
+# 2. Verify the archive against the checksums file you just proved authentic.
+# --ignore-missing skips the entries for artifacts you did not download.
+sha256sum --check --ignore-missing checksums.txt
 ```

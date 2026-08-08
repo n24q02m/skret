@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [main]
     types: [opened, synchronize, reopened, edited, ready_for_review]
+  # The installer-smoke job below gates itself on `workflow_dispatch` or a v* tag.
+  # Without this trigger neither could ever fire -- and CI does not run on tags --
+  # so that job had never executed once, which is how the installers stayed broken
+  # from 2026-05-26 to 1.16.0. Keep this trigger or the gate is decorative.
+  workflow_dispatch:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
