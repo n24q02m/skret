@@ -57,11 +57,23 @@ homebrew_casks:
     generate_completions_from_executable:
       args: [completion]
       shell_parameter_format: cobra
-      # Pinned, not left to the cobra default. That default includes "pwsh",
-      # and `skret completion pwsh` exits 8 with `unknown shell "pwsh"` - the
-      # command spells it "powershell". Naming the four shells skret actually
-      # accepts keeps the generator off a name that fails.
-      shells: [bash, zsh, fish, powershell]
+      # Three shells, not four: PowerShell completions cannot be generated here
+      # at all, because the two sides disagree on the name and neither accepts
+      # the other's spelling.
+      #
+      #   Homebrew  SUPPORTED_SHELLS = [:bash, :zsh, :fish, :pwsh]
+      #             (Library/Homebrew/cask/artifact/generated_completion.rb)
+      #   skret     "completion: unknown shell %q (available: bash, zsh, fish,
+      #             powershell)" (internal/cli/root.go)
+      #
+      # Naming "powershell" to satisfy skret made brew reject the whole cask --
+      # `brew install n24q02m/tap/skret` failed with "Cask 'skret' definition is
+      # invalid: 'generate_completions_from_executable' does not support
+      # shell(s): powershell". Naming "pwsh" to satisfy brew would instead make
+      # the generator run `skret completion pwsh`, which exits 8. PowerShell
+      # users get completions from the scoop manifest or by running
+      # `skret completion powershell` themselves.
+      shells: [bash, zsh, fish]
     commit_author:
       name: goreleaser-bot
       email: bot@goreleaser.com
