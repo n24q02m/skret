@@ -68,3 +68,6 @@
 ## 2026-08-03 - Single-pass HTML escaping on hot paths
 **Learning:** Chained `String.prototype.replace()` calls for HTML escaping create multiple intermediate string allocations, significantly impacting performance on rendering hot paths in the Cloudflare Workers environment.
 **Action:** Replace chained `.replace()` calls with a single-pass regular expression and a dictionary map lookup (e.g., `s.replace(/[...]/g, (m) => map[m] || m)`) to minimize allocations and improve rendering throughput.
+## 2026-08-06 - Micro-optimizations on Cold Paths
+**Learning:** Optimizing cold paths (like `b64urlEncode` which executes once per session mint/verify) with micro-optimizations (e.g., single-pass string replacement instead of chained `.replace()` calls) is not worthwhile without a measurable impact.
+**Action:** Strictly avoid micro-optimizations on cold paths. Optimizations must target genuine hot paths, provide measurable impact (backed by benchmarks/tests), preserve code readability, and include explicit source code comments explaining the performance gain.
