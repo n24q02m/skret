@@ -50,3 +50,6 @@
 ## 2026-07-31 - [Time Element Semantics]
 **Learning:** When rendering relative timestamps in HTML, generic `<span>` elements lack machine readability. Using semantic `<time>` elements with `datetime` and `title` attributes makes the time machine-readable and natively exposes the absolute timestamp via browser tooltips without requiring custom UI components.
 **Action:** Always replace generic span elements used for timestamps with semantic time tags (`<time datetime="..." title="...">`) in HTML templates.
+## 2026-08-07 - [Form Errors in Document Titles]
+**Learning:** UX/Accessibility Pattern (Form Errors): Exposing form validation error states in the document `<title>` tag (e.g., prefixing the title with 'Error - ') in addition to using inline ARIA attributes ensures screen readers immediately announce the error state to the user upon page reload or form submission.
+**Action:** Always expose form validation error states in the document `<title>` tag in addition to using inline ARIA attributes.
