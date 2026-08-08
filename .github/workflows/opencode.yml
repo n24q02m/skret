@@ -11,6 +11,13 @@ on:
   pull_request_target:
     types: [opened]
 
+# Default every job to read-only; the three jobs below each widen this to
+# exactly what they write. Without a top-level block the workflow inherits
+# whatever the repository default is, which is a larger grant than any job
+# here asks for.
+permissions:
+  contents: read
+
 jobs:
   # Anyone (including the owner) can summon the agent with /oc on an issue or PR.
   # It may also record a new rule into .github/review-learnings.md on request.
