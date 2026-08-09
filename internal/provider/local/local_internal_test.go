@@ -11,9 +11,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestSave_WriteError tests the write error path in save()
-// by removing the temp directory after the provider is created.
-func TestSave_WriteError(t *testing.T) {
+// Renamed from TestSave_WriteError, which is not what it asserts: it deletes
+// the containing directory, so save() fails at os.CreateTemp and never reaches
+// tmp.Write. The old name made save()'s write path look tested when the
+// coverage profile shows that block at 0 -- exactly the false comfort the
+// per-package floor is meant to stop hiding.
+func TestSave_CreateTempError(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, ".secrets.yaml")
 	require.NoError(t, os.WriteFile(path, []byte("version: \"1\"\nsecrets:\n  K: v"), 0o600))

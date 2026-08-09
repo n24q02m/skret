@@ -25,7 +25,8 @@ Cloud-provider secret manager CLI wrapper. Go 1.26.
 ## Rules
 
 - Commits: only `fix:` and `feat:` prefixes
-- Test coverage: >=90% on `internal/`, >=95% on `pkg/`
+- Test coverage: >=90% averaged over `internal/`, >=95% on `pkg/`, and >=85% on
+  every single `internal/` package (an average hides one rotten package)
 - Secret values MUST NEVER appear in logs, errors, or test output
 - All provider calls accept `context.Context`
 - Errors wrap with `fmt.Errorf("operation %q: %w", key, err)`
