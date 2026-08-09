@@ -104,14 +104,33 @@ scoops:
     # manifest there.
     skip_upload: "auto"
 
-dockers:
-  - image_templates:
-      - "ghcr.io/n24q02m/skret:{{ .Version }}"
-      - "ghcr.io/n24q02m/skret:latest"
+# dockers_v2 replaces the deprecated dockers/docker_manifests pair; it becomes
+# plain `dockers` in GoReleaser v3. It always goes through docker buildx, which
+# is why cd.yml now sets up qemu and a buildx builder before this runs.
+#
+# Neither of the two old build_flag_templates carried over, and neither is
+# missing. `--pull` cannot change anything when the base is pinned by digest
+# (FROM alpine@sha256:... resolves to one immutable blob), and the
+# --label=org.opencontainers.image.source flag only restated the LABEL the
+# Dockerfile already carries.
+dockers_v2:
+  - images:
+      - "ghcr.io/n24q02m/skret"
+    tags:
+      - "{{ .Version }}"
+      # A prerelease must not take :latest -- the same line release.prerelease
+      # holds on the GitHub release and skip_upload holds on the tap and the
+      # bucket. The old dockers block had no such guard and pushed :latest on
+      # every tag, so a beta silently moved the tag that a bare `docker run
+      # ghcr.io/n24q02m/skret` and every unpinned FROM resolve to. An empty tag
+      # is dropped, so a stable release still gets it.
+      - "{{ if not .Prerelease }}latest{{ end }}"
     dockerfile: Dockerfile
-    build_flag_templates:
-      - "--pull"
-      - "--label=org.opencontainers.image.source=https://github.com/n24q02m/skret"
+    # The arm64 binary has always been built and archived; it just never
+    # reached a container, because the old dockers block was single-arch.
+    platforms:
+      - linux/amd64
+      - linux/arm64
 
 sboms:
   - artifacts: archive

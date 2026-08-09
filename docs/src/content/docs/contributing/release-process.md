@@ -64,7 +64,8 @@ workflow_dispatch (cd.yml: "release" job)
   -> PSR: analyze commits, bump version, update CHANGELOG, create + push tag
   -> cd.yml: "goreleaser" job (same run, needs: release)
     -> GoReleaser: build 6 binaries, create GitHub Release
-    -> Docker: push ghcr.io/n24q02m/skret:<version>
+    -> Docker: push ghcr.io/n24q02m/skret:<version> as one linux/amd64 +
+       linux/arm64 manifest; :latest moves only on a stable release
     -> Homebrew: update tap formula
     -> Scoop: update bucket manifest
     -> Cosign: sign artifacts (keyless, GitHub OIDC)
@@ -87,6 +88,9 @@ GoReleaser produces binaries for:
 | macOS | arm64 | `skret_VERSION_darwin_arm64.tar.gz` |
 | Windows | amd64 | `skret_VERSION_windows_amd64.zip` |
 | Windows | arm64 | `skret_VERSION_windows_arm64.zip` |
+
+The container image reuses the two Linux binaries above rather than rebuilding
+them, so `docker pull ghcr.io/n24q02m/skret` resolves on both architectures.
 
 ## CHANGELOG
 
