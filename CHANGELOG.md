@@ -4,6 +4,85 @@ All notable changes to this project will be documented in this file.
 
 <!-- version list -->
 
+## v1.17.0-beta.1 (2026-08-09)
+
+### Bug Fixes
+
+- A failed signature check warns and installs anyway
+  ([#658](https://github.com/n24q02m/skret/pull/658),
+  [`7e32f7b`](https://github.com/n24q02m/skret/commit/7e32f7b5cbe67c713954f609247b59ef0190f829))
+
+- Brew install fails because the cask asks for an unsupported shell
+  ([#649](https://github.com/n24q02m/skret/pull/649),
+  [`39dee33`](https://github.com/n24q02m/skret/commit/39dee33e248f0ab15c0739202b37c9c704825986))
+
+- Browse screen stacks two keybind lines ([#651](https://github.com/n24q02m/skret/pull/651),
+  [`ac7327a`](https://github.com/n24q02m/skret/commit/ac7327a8d9e31a5b8ea6e5c2a0fd7c07a50f1aff))
+
+- Count login attempts in a durable object, the binding does not hold
+  ([#664](https://github.com/n24q02m/skret/pull/664),
+  [`2b7f53d`](https://github.com/n24q02m/skret/commit/2b7f53d3d0fc80d983061e8b038f227071eb98bc))
+
+- Demo.gif PRs open with a token that cannot trigger CI
+  ([#656](https://github.com/n24q02m/skret/pull/656),
+  [`a21e119`](https://github.com/n24q02m/skret/commit/a21e1191240bdf4da820b94b8ffc71924197c519))
+
+- Drop the no-op alias that opens the demo GIF ([#648](https://github.com/n24q02m/skret/pull/648),
+  [`e6d2465`](https://github.com/n24q02m/skret/commit/e6d2465c798cd5181ec5ed73815ad4190658cc97))
+
+- Gate coverage per package, not just on the average
+  ([#661](https://github.com/n24q02m/skret/pull/661),
+  [`a1f531a`](https://github.com/n24q02m/skret/commit/a1f531a462644628e9e14946fd6949bbb795ce6b))
+
+- Healthz reports healthy while the KV the dashboard needs is down
+  ([#657](https://github.com/n24q02m/skret/pull/657),
+  [`0177aff`](https://github.com/n24q02m/skret/commit/0177aff415df7a64a7875070a09fc9c332bc4b3f))
+
+- Make install.sh executable so a checkout can run it
+  ([#647](https://github.com/n24q02m/skret/pull/647),
+  [`0e49ffe`](https://github.com/n24q02m/skret/commit/0e49ffe96122fe44a13486e7093f9df178ccba9f))
+
+- Migrate the release image to dockers_v2 and stop betas taking :latest
+  ([#665](https://github.com/n24q02m/skret/pull/665),
+  [`6eac456`](https://github.com/n24q02m/skret/commit/6eac456448a21602d4a50bebb56164ecabe541a6))
+
+- Nothing asserted the two headers #597 was opened to add
+  ([#653](https://github.com/n24q02m/skret/pull/653),
+  [`f1c549d`](https://github.com/n24q02m/skret/commit/f1c549dd2bed2a6b6fe5cb49a2f1373d4ced92e6))
+
+- Re-render the demo when the demo changes, not when the workflow does
+  ([#662](https://github.com/n24q02m/skret/pull/662),
+  [`56779b4`](https://github.com/n24q02m/skret/commit/56779b49479ff2d9e7683e1bbce83c765229702a))
+
+- Release verification is broken on every install path
+  ([#646](https://github.com/n24q02m/skret/pull/646),
+  [`a28e58f`](https://github.com/n24q02m/skret/commit/a28e58fec3afd75ac7f902e933daedbc7a6693b7))
+
+- Restore Direct binary row into the README install table
+  ([#646](https://github.com/n24q02m/skret/pull/646),
+  [`a28e58f`](https://github.com/n24q02m/skret/commit/a28e58fec3afd75ac7f902e933daedbc7a6693b7))
+
+- Scope the empty-input guard entry to the function it was measured on
+  ([#663](https://github.com/n24q02m/skret/pull/663),
+  [`393a2cd`](https://github.com/n24q02m/skret/commit/393a2cd96309cdd4a6e567da63717635b49a31ac))
+
+- Verify releases against checksums.txt.bundle, not absent .pem/.sig
+  ([#646](https://github.com/n24q02m/skret/pull/646),
+  [`a28e58f`](https://github.com/n24q02m/skret/commit/a28e58fec3afd75ac7f902e933daedbc7a6693b7))
+
+- Windows installer picks the checksum row by position, not by name
+  ([#652](https://github.com/n24q02m/skret/pull/652),
+  [`cc65fdf`](https://github.com/n24q02m/skret/commit/cc65fdf7d72347e8bc36aeef7bd90d644c377bbf))
+
+### Features
+
+- Rate limit the two routes a stranger can reach ([#660](https://github.com/n24q02m/skret/pull/660),
+  [`463b7e0`](https://github.com/n24q02m/skret/commit/463b7e023673aae49fc535ac664a63ea9346d3e6))
+
+- Regenerate demo.gif ([#650](https://github.com/n24q02m/skret/pull/650),
+  [`f52d25e`](https://github.com/n24q02m/skret/commit/f52d25ea6069dd3097e368807557cd0e773633e9))
+
+
 ## v1.16.0 (2026-08-08)
 
 
