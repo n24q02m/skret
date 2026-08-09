@@ -4,6 +4,12 @@ export interface Env {
   VAULT_KV: KVNamespace;
   SKRET_HUB_TOKEN: string;
   RELAY_PASSWORD: string;
+  // Guards on the two routes a stranger can reach: POST /login (one shared
+  // password, no user, no lockout) and POST /api/manifest (one bearer token).
+  // Required, not optional: a deploy that drops the bindings should break
+  // loudly at the first login rather than quietly serve an unlimited one.
+  LOGIN_LIMIT: RateLimit;
+  INGEST_LIMIT: RateLimit;
   // B2 cron sync worker: the SyncContainer Durable Object namespace plus the
   // secrets forwarded into the container process (see index.ts SYNC_ENV_KEYS).
   // The sync creds are optional because the dashboard/ingest request paths
