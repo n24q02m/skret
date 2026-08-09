@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 <!-- version list -->
 
+## v1.17.1-beta.1 (2026-08-09)
+
+### Bug Fixes
+
+- Nothing checks the installers when a release actually happens
+  ([#666](https://github.com/n24q02m/skret/pull/666),
+  [`f9265df`](https://github.com/n24q02m/skret/commit/f9265df4e1fd5acaf6330e9acaee3bba3a3778bc))
+
+
 ## v1.17.0 (2026-08-09)
 
 
