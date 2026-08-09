@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 <!-- version list -->
 
+## v1.17.1-beta.2 (2026-08-09)
+
+### Bug Fixes
+
+- Publish each tag from exactly one CD run ([#667](https://github.com/n24q02m/skret/pull/667),
+  [`d6e0948`](https://github.com/n24q02m/skret/commit/d6e0948c7b813e36bd8bf03e1a6fb45276865b95))
+
+
 ## v1.17.1-beta.1 (2026-08-09)
 
 ### Bug Fixes
