@@ -194,8 +194,20 @@ jobs:
     name: Installer smoke test (${{ matrix.os }})
     # Gate behind workflow_dispatch for PRs: the scripts hit the live GitHub API
     # for the latest release tag, and we do not want a PR's CI to block on external
-    # reachability or hit rate limits on every push. Run on demand or on tag.
-    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
+    # reachability or hit rate limits on every push.
+    #
+    # This used to also read `|| startsWith(github.ref, 'refs/tags/v')`, which was
+    # never once true: this workflow has no tag trigger (see the `on:` block), so
+    # the condition could not fire. Worse than dead -- it read as "releases are
+    # covered" to anyone auditing the gate, which is exactly the belief that let
+    # the installers stay broken from 2026-05-26 through 1.16.0.
+    #
+    # Release coverage now lives in cd.yml's own installer-smoke job, which runs
+    # after the assets are actually published and pins the exact tag. What stays
+    # here is the on-demand bed plus the stubbed-cosign failure-path assertions
+    # below, which prove the installer refuses a bad signature and need no
+    # freshly-published release to do it.
+    if: github.event_name == 'workflow_dispatch'
     needs: [build]
     strategy:
       fail-fast: false
