@@ -20,6 +20,14 @@ map of every namespace's keys + per-target presence status.
 | `GET /` | session cookie | the dashboard map |
 | `GET /healthz` | none | uptime check: probes `VAULT_KV`, `200 {ok:true,kv:"ok"}` or `503 {ok:false,kv:"error"}` |
 
+`POST /login` (5/min per client IP) and `POST /api/manifest` (30/min) are rate
+limited via Workers Rate Limiting bindings; over the limit is `429`. The counter
+is per Cloudflare location, so it brakes single-source guessing rather than
+imposing a global cap — put a zone WAF rate-limiting rule in front if you need
+that. Both bindings are declared in `wrangler.jsonc` and
+`wrangler.deploy.template.jsonc`, and `Env` requires them: a deploy that drops
+them fails at the first login instead of quietly serving an unlimited one.
+
 ## BYO deploy (bring your own infra)
 
 Committed `wrangler.jsonc` and `wrangler.deploy.template.jsonc` carry only

@@ -13,9 +13,17 @@ export async function handleRequest(req: Request, env: Env): Promise<Response> {
     return handleHealthz(env);
   }
   if (req.method === "POST" && pathname === "/api/manifest") {
+    if (!(await allow(env.INGEST_LIMIT, req))) {
+      return rateLimited("rate limited");
+    }
     return handleIngest(req, env);
   }
   if (req.method === "POST" && pathname === "/login") {
+    // Ahead of reading the form and comparing the password, so a flood costs
+    // nothing but the limiter call.
+    if (!(await allow(env.LOGIN_LIMIT, req))) {
+      return html(renderLogin("too many attempts -- wait a minute"), 429);
+    }
     return handleLogin(req, env);
   }
   if (req.method === "POST" && pathname === "/logout") {
@@ -25,6 +33,34 @@ export async function handleRequest(req: Request, env: Env): Promise<Response> {
     return handleDashboard(req, env);
   }
   return notFound();
+}
+
+// Both limits key on the client IP Cloudflare stamps onto every inbound
+// request. Two things this deliberately is not:
+//
+//   - Not a global quota. The Rate Limiting binding counts per Cloudflare
+//     location, so an attacker spread across PoPs gets a fresh bucket at
+//     each one. It is a brake on single-source guessing, which is the
+//     realistic threat against a single shared password. A global cap
+//     belongs in a zone WAF rate-limiting rule, and that needs a
+//     zone-scoped token the CD deploy token deliberately does not carry
+//     (see wrangler.deploy.template.jsonc).
+//   - Not a replacement for the password. It buys time; it does not make
+//     guessing impossible.
+//
+// A request with no CF-Connecting-IP -- only reachable off Cloudflare's
+// edge, e.g. in tests -- shares one bucket instead of escaping the limit.
+async function allow(limiter: RateLimit, req: Request): Promise<boolean> {
+  const key = req.headers.get("CF-Connecting-IP") ?? "no-ip";
+  const { success } = await limiter.limit({ key });
+  return success;
+}
+
+function rateLimited(body: string): Response {
+  return new Response(body, {
+    status: 429,
+    headers: { "Content-Type": "text/plain", "Retry-After": "60", ...SECURITY_HEADERS },
+  });
 }
 
 // The key /healthz reads. It is never written, so the probe is a miss by

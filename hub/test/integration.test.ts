@@ -20,6 +20,10 @@ function cookieFrom(res: Response): string {
   return setCookie.split(";")[0]; // "session=<token>"
 }
 
+// Each POST /login carries its own CF-Connecting-IP. Without one they all
+// share the limiter's "no-ip" bucket, and since LOGIN_LIMIT allows 5/min
+// these four sit one test away from failing for a reason that has nothing
+// to do with what they assert.
 describe("dashboard flow", () => {
   it("GET / with no cookie shows the login form, not data", async () => {
     const res = await SELF.fetch("https://hub.test/");
@@ -32,7 +36,7 @@ describe("dashboard flow", () => {
   it("POST /login with wrong password returns 401 login form", async () => {
     const res = await SELF.fetch("https://hub.test/login", {
       method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      headers: { "Content-Type": "application/x-www-form-urlencoded", "CF-Connecting-IP": "198.51.100.11" },
       body: "password=nope",
     });
     expect(res.status).toBe(401);
@@ -51,7 +55,7 @@ describe("dashboard flow", () => {
     // 2. login (redirect + Set-Cookie)
     const loginRes = await SELF.fetch("https://hub.test/login", {
       method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      headers: { "Content-Type": "application/x-www-form-urlencoded", "CF-Connecting-IP": "198.51.100.12" },
       body: "password=test-relay-password",
       redirect: "manual",
     });
@@ -77,7 +81,7 @@ describe("dashboard flow", () => {
   it("POST /login with a malformed body returns 400, not 500", async () => {
     const res = await SELF.fetch("https://hub.test/login", {
       method: "POST",
-      headers: { "Content-Type": "multipart/form-data; boundary=x" },
+      headers: { "Content-Type": "multipart/form-data; boundary=x", "CF-Connecting-IP": "198.51.100.13" },
       body: "not-a-valid-multipart-body",
     });
     expect(res.status).toBe(400);
@@ -87,7 +91,7 @@ describe("dashboard flow", () => {
   it("POST /logout clears the session cookie and redirects to /", async () => {
     const loginRes = await SELF.fetch("https://hub.test/login", {
       method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      headers: { "Content-Type": "application/x-www-form-urlencoded", "CF-Connecting-IP": "198.51.100.14" },
       body: "password=test-relay-password",
       redirect: "manual",
     });
