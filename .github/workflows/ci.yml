@@ -183,6 +183,51 @@ jobs:
         run: |
           .\install.ps1 -Quiet
           & "$env:LOCALAPPDATA\Programs\skret\skret.exe" --version
+      # The signature check was worthless for months precisely because nothing
+      # ever exercised its failure path -- it warned and installed anyway, and
+      # no test could tell that apart from a passing check. Stub a cosign that
+      # always fails, assert the installer now refuses, and assert the
+      # documented escape hatch still gets through.
+      - name: Installer refuses a bad signature (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          stub="$RUNNER_TEMP/stub"
+          mkdir -p "$stub"
+          printf '#!/bin/sh\necho "stub cosign: forced failure" >&2\nexit 1\n' > "$stub/cosign"
+          chmod +x "$stub/cosign"
+          export PATH="$stub:$PATH"
+          rm -f "$HOME/.local/bin/skret"
+          if ./install.sh --user --quiet; then
+            echo "FAIL: install.sh installed despite a failing signature check"
+            exit 1
+          fi
+          if [ -e "$HOME/.local/bin/skret" ]; then
+            echo "FAIL: install.sh aborted but left a binary behind"
+            exit 1
+          fi
+          SKRET_INSECURE_SKIP_VERIFY=1 ./install.sh --user --quiet
+          "$HOME/.local/bin/skret" --version
+      - name: Installer refuses a bad signature (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $stub = Join-Path $env:RUNNER_TEMP "stub"
+          New-Item -ItemType Directory -Force -Path $stub | Out-Null
+          $bat = Join-Path $stub "cosign.bat"
+          Set-Content -Path $bat -Value '@echo stub cosign: forced failure 1>&2'
+          Add-Content -Path $bat -Value '@exit /b 1'
+          $env:PATH = "$stub;$env:PATH"
+          $exe = "$env:LOCALAPPDATA\Programs\skret\skret.exe"
+          Remove-Item $exe -Force -ErrorAction SilentlyContinue
+          # A child process, not dot-sourcing: install.ps1's Die calls exit, which
+          # would end this step's own shell and mark it green.
+          & pwsh -NoProfile -File .\install.ps1 -Quiet
+          if ($LASTEXITCODE -eq 0) { throw "FAIL: install.ps1 installed despite a failing signature check" }
+          if (Test-Path $exe) { throw "FAIL: install.ps1 aborted but left a binary behind" }
+          $env:SKRET_INSECURE_SKIP_VERIFY = "1"
+          & pwsh -NoProfile -File .\install.ps1 -Quiet
+          if ($LASTEXITCODE -ne 0) { throw "FAIL: SKRET_INSECURE_SKIP_VERIFY did not allow the install" }
+          & $exe --version
       # The homebrew tap ships a cask now, and casks have no `brew test`
       # equivalent - the formula's smoke assertion could not be migrated. This
       # leg covers the same ground automatically instead of on demand, and it

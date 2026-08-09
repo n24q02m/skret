@@ -6,6 +6,8 @@
 #   -Version <tag>   install a specific release tag (default: latest)
 #   -Prefix <path>   install target dir (default: $env:LOCALAPPDATA\Programs\skret)
 #   -Quiet           suppress progress output
+# Env:
+#   $env:SKRET_INSECURE_SKIP_VERIFY = "1"   install even if signature verification fails
 
 #Requires -Version 5.0
 [CmdletBinding()]
@@ -82,16 +84,30 @@ try {
         Die "checksum mismatch (expected $expected, got $actual)"
     }
 
+    # A failed signature check used to print a warning and install anyway, which
+    # gave the signature no security value at all: whoever can serve a tampered
+    # archive can serve a matching checksums.txt too, and the user just watches
+    # a yellow line scroll past. Verification failure is now fatal, with an
+    # escape hatch that has to be typed. "cosign not installed" stays a
+    # non-error -- the checksum above is mandatory either way.
     if (Get-Command cosign -ErrorAction SilentlyContinue) {
         Log "Verifying cosign Sigstore signature"
         Invoke-WebRequest $bundleUrl -OutFile (Join-Path $tmp "checksums.txt.bundle") -UseBasicParsing
+        # Discard stdout only, and deliberately no "2>&1": with
+        # $ErrorActionPreference = "Stop" that merge turns cosign's stderr into
+        # terminating ErrorRecords, and it would also hide the one diagnostic
+        # the user gets for a failure that now stops the install.
         & cosign verify-blob `
             --bundle (Join-Path $tmp "checksums.txt.bundle") `
             --certificate-identity-regexp "https://github.com/$Repo/.+" `
             --certificate-oidc-issuer "https://token.actions.githubusercontent.com" `
-            (Join-Path $tmp "checksums.txt") 2>&1 | Out-Null
+            (Join-Path $tmp "checksums.txt") > $null
         if ($LASTEXITCODE -ne 0) {
-            Log "WARN: cosign verify failed - continuing (checksum already matched)"
+            if ($env:SKRET_INSECURE_SKIP_VERIFY -eq "1") {
+                Log "WARN: signature verification FAILED - installing anyway because SKRET_INSECURE_SKIP_VERIFY=1"
+            } else {
+                Die "signature verification failed for $Version. The download does not carry a valid Sigstore signature from $Repo. Set `$env:SKRET_INSECURE_SKIP_VERIFY = '1' to install anyway."
+            }
         }
     } else {
         Log "cosign not installed - skipping signature check (checksum already verified)"

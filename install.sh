@@ -9,6 +9,8 @@
 #   --user            force user-mode install to ~/.local/bin (no sudo)
 #   --no-completion   skip shell completion install
 #   --quiet           suppress progress output
+# Env:
+#   SKRET_INSECURE_SKIP_VERIFY=1  install even if signature verification fails
 
 set -eu
 
@@ -27,7 +29,7 @@ while [ $# -gt 0 ]; do
     --no-completion) NO_COMPLETION=1; shift ;;
     --quiet) QUIET=1; shift ;;
     -h|--help)
-      sed -n '2,12p' "$0"
+      sed -n '2,14p' "$0"
       exit 0
       ;;
     *) echo "unknown flag: $1" >&2; exit 2 ;;
@@ -106,15 +108,30 @@ expected=$(awk -v a="$asset" '$2 == a {print $1}' "$tmp/checksums.txt")
 [ -n "$expected" ] || err "no checksum row for $asset"
 [ "$expected" = "$actual" ] || err "checksum mismatch (expected $expected, got $actual)"
 
+# A failed signature check used to print a warning and install anyway, which
+# gave the signature no security value at all: whoever can serve a tampered
+# archive can serve a matching checksums.txt too, and the user just watches a
+# yellow line scroll past. Verification failure is now fatal.
+#
+# The escape hatch is explicit and has to be typed. "cosign not installed" is
+# still not an error -- we do not force a toolchain on people, and the checksum
+# above is mandatory either way.
 if command -v cosign >/dev/null 2>&1; then
   log "Verifying cosign Sigstore signature"
   curl -fsSL "$bundle_url" -o "$tmp/checksums.txt.bundle"
-  cosign verify-blob \
-    --bundle "$tmp/checksums.txt.bundle" \
-    --certificate-identity-regexp "https://github.com/$REPO/.+" \
-    --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
-    "$tmp/checksums.txt" \
-    >/dev/null 2>&1 || log "WARN: cosign verify failed -continuing (checksum already matched)"
+  # stdout only is discarded: on failure cosign's reason goes to stderr and the
+  # user needs to see it.
+  if ! cosign verify-blob \
+      --bundle "$tmp/checksums.txt.bundle" \
+      --certificate-identity-regexp "https://github.com/$REPO/.+" \
+      --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+      "$tmp/checksums.txt" >/dev/null; then
+    if [ "${SKRET_INSECURE_SKIP_VERIFY:-}" = "1" ]; then
+      log "WARN: signature verification FAILED -installing anyway because SKRET_INSECURE_SKIP_VERIFY=1"
+    else
+      err "signature verification failed for $VERSION. The download does not carry a valid Sigstore signature from $REPO. Set SKRET_INSECURE_SKIP_VERIFY=1 to install anyway."
+    fi
+  fi
 else
   log "cosign not installed -skipping signature check (checksum already verified)"
 fi
