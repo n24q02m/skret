@@ -2,9 +2,11 @@ import { getContainer } from "@cloudflare/containers";
 import type { Env } from "./types";
 import { handleRequest, serverError } from "./router";
 
-// The Durable Object container class must be re-exported from the Worker entry
-// so the runtime can construct the SYNC binding.
+// Durable Object classes must be re-exported from the Worker entry so the
+// runtime can construct their bindings: SyncContainer for SYNC, LoginGate for
+// LOGIN_GATE.
 export { SyncContainer } from "./container";
+export { LoginGate } from "./gate";
 
 // Secrets forwarded from the Worker env into the sync container process. Unset
 // values are dropped so an optional-but-absent secret never injects a blank.

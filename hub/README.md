@@ -20,13 +20,27 @@ map of every namespace's keys + per-target presence status.
 | `GET /` | session cookie | the dashboard map |
 | `GET /healthz` | none | uptime check: probes `VAULT_KV`, `200 {ok:true,kv:"ok"}` or `503 {ok:false,kv:"error"}` |
 
-`POST /login` (5/min per client IP) and `POST /api/manifest` (30/min) are rate
-limited via Workers Rate Limiting bindings; over the limit is `429`. The counter
-is per Cloudflare location, so it brakes single-source guessing rather than
-imposing a global cap — put a zone WAF rate-limiting rule in front if you need
-that. Both bindings are declared in `wrangler.jsonc` and
+`POST /login` (5/min per client address) and `POST /api/manifest` (30/min) are
+rate limited; over the limit is `429`. The two are enforced differently, on
+purpose.
+
+Ingest relies on a Workers Rate Limiting binding alone. Cloudflare documents
+that binding as permissive and eventually consistent, each isolate checking its
+own cached count, and measured against this Worker a fresh connection per
+request walks past it entirely. Acceptable on a route whose credential is a
+high-entropy bearer token, where the exposure is cost and noise rather than a
+guessable secret.
+
+Login guards one shared password, so it cannot rely on that. The binding still
+runs first as a free filter, then a `LoginGate` Durable Object — one instance
+per client address, so one counter worldwide for that address — makes the
+5/min real. Bindings and Durable Object are declared in `wrangler.jsonc` and
 `wrangler.deploy.template.jsonc`, and `Env` requires them: a deploy that drops
 them fails at the first login instead of quietly serving an unlimited one.
+
+Neither is a cap across *all* addresses — a distributed attacker gets one
+counter per address. Put a zone WAF rate-limiting rule in front if you need
+that.
 
 ## BYO deploy (bring your own infra)
 
@@ -69,10 +83,12 @@ the custom domain from step 3 stays attached.
 
 ## Hardening (owner-side)
 
-`/login` has no in-code rate limit (the Worker is stateless, so there is
-nowhere to hold a counter across requests). The owner should add a
-Cloudflare WAF rate-limiting rule on `POST /login` (by IP or by path) to
-blunt password brute-force attempts.
+`/login` is rate limited in code — see Routes above — at 5 attempts a minute
+per client address, counted in a Durable Object so the limit holds whichever
+isolate or location serves the request. That bounds guessing from one address;
+it is not a cap across all of them. An owner who wants that, or who wants the
+guessing turned away before it reaches the Worker at all, should add a
+Cloudflare WAF rate-limiting rule on `POST /login` (by IP or by path).
 
 Point `skret hub push` at it via `.skret.yaml`:
 

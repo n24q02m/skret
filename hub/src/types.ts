@@ -1,4 +1,5 @@
 import type { SyncContainer } from "./container";
+import type { LoginGate } from "./gate";
 
 export interface Env {
   VAULT_KV: KVNamespace;
@@ -10,6 +11,9 @@ export interface Env {
   // loudly at the first login rather than quietly serve an unlimited one.
   LOGIN_LIMIT: RateLimit;
   INGEST_LIMIT: RateLimit;
+  // The counter that actually enforces the login limit; LOGIN_LIMIT is only
+  // the free first pass in front of it (see router.ts loginAllowed).
+  LOGIN_GATE: DurableObjectNamespace<LoginGate>;
   // B2 cron sync worker: the SyncContainer Durable Object namespace plus the
   // secrets forwarded into the container process (see index.ts SYNC_ENV_KEYS).
   // The sync creds are optional because the dashboard/ingest request paths
