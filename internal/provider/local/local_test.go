@@ -112,7 +112,11 @@ func TestLocal_Set(t *testing.T) {
 }
 
 func TestLocal_Set_InitializesMap(t *testing.T) {
-	// File with no secrets map to exercise the nil map path
+	// Note: this does NOT reach Set's `if p.data.Secrets == nil` branch, despite
+	// the name. load() normalises a missing or null `secrets:` to an empty map
+	// before any caller sees the provider, so that branch is unreachable through
+	// New and shows 0 in the coverage profile. What is asserted here is still
+	// worth asserting: Set works on a file that carries no secrets yet.
 	path := setupFile(t, "version: \"1\"\n")
 	p := newProvider(t, path)
 	defer p.Close()
@@ -360,6 +364,25 @@ func TestLocal_Fingerprint_ValueSensitive_OrderInsensitive(t *testing.T) {
 // TestLocal_Fingerprint_DetectsOnDiskEdit covers the `run --watch` scenario:
 // the file is edited out-of-band (not via Set), and Fingerprint must reflect it
 // by re-reading the file rather than serving the snapshot read at construction.
+// Fingerprint re-reads the file on every call, which makes it the one method
+// that can start failing on a provider that constructed perfectly well --
+// `run --watch` calls it in a loop, so a secrets file that becomes unreadable
+// mid-run has to surface as an error rather than a stale digest.
+func TestLocal_Fingerprint_ErrorsWhenFileBecomesUnreadable(t *testing.T) {
+	path := setupFile(t, "version: \"1\"\nsecrets:\n  K: v\n")
+	p := newProvider(t, path)
+	defer func() { _ = p.Close() }()
+
+	// A directory where the file was: unreadable on every OS, no chmod needed
+	// (which would be a no-op on Windows).
+	require.NoError(t, os.Remove(path))
+	require.NoError(t, os.Mkdir(path, 0o700))
+
+	fp, err := p.Fingerprint(context.Background(), "")
+	require.Error(t, err)
+	assert.Empty(t, fp)
+}
+
 func TestLocal_Fingerprint_DetectsOnDiskEdit(t *testing.T) {
 	path := setupFile(t, "version: \"1\"\nsecrets:\n  TOKEN: before")
 	p := newProvider(t, path)

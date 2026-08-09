@@ -75,7 +75,15 @@ jobs:
       - name: Run tests with coverage
         shell: bash
         run: |
-          go test -race -coverprofile=coverage.out -covermode=atomic ./internal/...
+          # Captured, not piped into tee: the per-package figures below are read
+          # from this output, and `go test | tee` would hand the step tee's exit
+          # code, turning a failing suite green. GitHub's bash sets pipefail, but
+          # this same script gets run by hand, where it does not.
+          if ! go test -race -coverprofile=coverage.out -covermode=atomic ./internal/... > internal-test.txt; then
+            cat internal-test.txt
+            exit 1
+          fi
+          cat internal-test.txt
           go test -race -coverprofile=coverage-pkg.out -covermode=atomic ./pkg/skret/...
       - name: Check internal coverage threshold
         if: matrix.os == 'ubuntu-latest'
@@ -87,6 +95,30 @@ jobs:
             echo "Internal coverage ${COVERAGE}% is below 90% threshold"
             exit 1
           fi
+      # The 90% above is an average over ./internal/..., and an average hides a
+      # single rotten package behind the healthy ones: internal/cli is large
+      # enough that a small package could fall to 50% without moving the
+      # aggregate off 90. This floor is per package, deliberately set below
+      # today's worst (89.1%, internal/provider/local) so it catches a package
+      # sliding rather than bikeshedding the packages that already pass.
+      - name: Check per-package coverage floor
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          below=$(awk -v floor=85 '
+            /coverage:/ {
+              c = ""
+              for (i = 1; i <= NF; i++) if ($i == "coverage:") c = $(i + 1)
+              if (c !~ /%$/) next          # "[no statements]" -- nothing to measure
+              sub(/%$/, "", c)
+              if (c + 0 < floor) printf "  %s  %s%%\n", $2, c
+            }' internal-test.txt)
+          if [ -n "$below" ]; then
+            echo "These packages are below the 85% per-package floor:"
+            echo "$below"
+            exit 1
+          fi
+          echo "Every internal package is at or above the 85% floor."
       - name: Check pkg/skret coverage threshold
         if: matrix.os == 'ubuntu-latest'
         shell: bash
