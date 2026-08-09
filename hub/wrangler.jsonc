@@ -12,9 +12,13 @@
   // Rate limits for the two routes a stranger can reach. namespace_id is a
   // per-Worker counter id, not an account resource, so unlike the KV id these
   // are real values and not placeholders. `period` accepts only 10 or 60.
-  // 5/min is generous for a human typing one shared password and hostile to a
-  // script; 30/min for ingest is far above `skret hub push`, which runs once a
-  // day on the cron.
+  // 30/min for ingest is far above `skret hub push`, which runs once a day on
+  // the cron.
+  //
+  // LOGIN_LIMIT is NOT what enforces the 5/min on the login form -- measured
+  // on the deployed Worker, a fresh connection per guess walks past it. The
+  // LoginGate Durable Object below is the real counter; this stays as the
+  // free first pass. See router.ts loginAllowed.
   "ratelimits": [
     { "name": "LOGIN_LIMIT", "namespace_id": "1001", "simple": { "limit": 5, "period": 60 } },
     { "name": "INGEST_LIMIT", "namespace_id": "1002", "simple": { "limit": 30, "period": 60 } }
@@ -33,9 +37,17 @@
     }
   ],
   "durable_objects": {
-    "bindings": [{ "name": "SYNC", "class_name": "SyncContainer" }]
+    "bindings": [
+      { "name": "SYNC", "class_name": "SyncContainer" },
+      { "name": "LOGIN_GATE", "class_name": "LoginGate" }
+    ]
   },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["SyncContainer"] }],
+  // A new class needs its own tag; v1 is already applied and must stay
+  // untouched, or the deploy is rejected as a rewritten migration history.
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["SyncContainer"] },
+    { "tag": "v2", "new_sqlite_classes": ["LoginGate"] }
+  ],
   "triggers": { "crons": ["0 3 * * *"] },
   "observability": { "enabled": true }
 }

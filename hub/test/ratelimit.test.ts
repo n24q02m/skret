@@ -1,6 +1,7 @@
-import { SELF } from "cloudflare:test";
+import { SELF, env, runInDurableObject } from "cloudflare:test";
 import { describe, it, expect } from "vitest";
 import { handleRequest } from "../src/router";
+import { LOGIN_ATTEMPTS, ATTEMPTS_KEY, type LoginGate } from "../src/gate";
 import type { Env } from "../src/types";
 
 // Split deliberately: the wiring ("is the binding actually on this route?")
@@ -33,9 +34,22 @@ function envWith(success: boolean, seen?: string[]): Env {
   return {
     LOGIN_LIMIT: limiter,
     INGEST_LIMIT: limiter,
+    // The real Durable Object namespace from miniflare, not a stub. Stubbing
+    // the thing that now enforces the limit would only assert that a stub got
+    // called -- and a stub is exactly what the binding turned out to behave
+    // like in production.
+    LOGIN_GATE: env.LOGIN_GATE,
     RELAY_PASSWORD: "test-relay-password",
     SKRET_HUB_TOKEN: "test-hub-token",
   } as unknown as Env;
+}
+
+function loginReq(ip: string): Request {
+  return new Request("https://hub.test/login", {
+    method: "POST",
+    headers: { "CF-Connecting-IP": ip, "Content-Type": "application/x-www-form-urlencoded" },
+    body: "password=definitely-wrong",
+  });
 }
 
 function post(path: string, headers: Record<string, string> = {}): Request {
@@ -58,6 +72,47 @@ describe("rate limiting", () => {
     // A bystander must still be able to log in, or one guessing run would lock
     // the dashboard for everyone -- a denial of service handed to the attacker.
     expect((await login("203.0.113.11")).status).toBe(401);
+  });
+
+  // The regression test for what #660 shipped. envWith(true) is a limiter that
+  // never refuses -- which is what the Rate Limiting binding does in
+  // production once each guess arrives on its own connection. Measured against
+  // the deployed Worker on 2026-08-09: 15 wrong passwords that way, all served
+  // by one location, drew zero 429s. The suite missed it because SELF.fetch
+  // runs every request through a single miniflare isolate, so the binding's
+  // per-isolate counter always accumulated there. Run this against the code
+  // before LoginGate and every status is 401.
+  it("holds the limit when the cheap limiter never refuses", async () => {
+    const permissive = envWith(true);
+    const attacker = "203.0.113.30";
+
+    const statuses: number[] = [];
+    for (let i = 0; i < LOGIN_ATTEMPTS + 1; i++) {
+      statuses.push((await handleRequest(loginReq(attacker), permissive)).status);
+    }
+
+    expect(statuses.slice(0, LOGIN_ATTEMPTS)).toEqual(Array(LOGIN_ATTEMPTS).fill(401));
+    expect(statuses[LOGIN_ATTEMPTS]).toBe(429);
+
+    // One counter per address, not one counter. Otherwise the fix would hand
+    // the attacker a way to lock the owner out.
+    expect((await handleRequest(loginReq("203.0.113.31"), permissive)).status).toBe(401);
+  });
+
+  // A refused attempt must not itself be recorded. If it were, a client that
+  // keeps hammering would keep pushing its own window forward and never
+  // recover -- turning a rate limit into a permanent lockout that an attacker
+  // can inflict on the owner's address just by never stopping.
+  it("does not extend the window with attempts it already refused", async () => {
+    const stub = env.LOGIN_GATE.get(env.LOGIN_GATE.idFromName("203.0.113.40"));
+
+    await runInDurableObject(stub, async (gate: LoginGate, state) => {
+      const verdicts: boolean[] = [];
+      for (let i = 0; i < LOGIN_ATTEMPTS + 3; i++) verdicts.push(await gate.attempt());
+
+      expect(verdicts.filter(Boolean)).toHaveLength(LOGIN_ATTEMPTS);
+      expect(await state.storage.get<number[]>(ATTEMPTS_KEY)).toHaveLength(LOGIN_ATTEMPTS);
+    });
   });
 
   it("charges the limiter the client address Cloudflare stamped on the request", async () => {

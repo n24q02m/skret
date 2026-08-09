@@ -19,9 +19,9 @@ export async function handleRequest(req: Request, env: Env): Promise<Response> {
     return handleIngest(req, env);
   }
   if (req.method === "POST" && pathname === "/login") {
-    // Ahead of reading the form and comparing the password, so a flood costs
-    // nothing but the limiter call.
-    if (!(await allow(env.LOGIN_LIMIT, req))) {
+    // Ahead of reading the form and comparing the password, so a flood never
+    // reaches the constant-time compare.
+    if (!(await loginAllowed(env, req))) {
       return html(renderLogin("too many attempts -- wait a minute"), 429);
     }
     return handleLogin(req, env);
@@ -35,25 +35,51 @@ export async function handleRequest(req: Request, env: Env): Promise<Response> {
   return notFound();
 }
 
-// Both limits key on the client IP Cloudflare stamps onto every inbound
-// request. Two things this deliberately is not:
+// The login limit, in two layers, because the cheap layer does not hold the
+// line it appears to.
 //
-//   - Not a global quota. The Rate Limiting binding counts per Cloudflare
-//     location, so an attacker spread across PoPs gets a fresh bucket at
-//     each one. It is a brake on single-source guessing, which is the
-//     realistic threat against a single shared password. A global cap
-//     belongs in a zone WAF rate-limiting rule, and that needs a
-//     zone-scoped token the CD deploy token deliberately does not carry
-//     (see wrangler.deploy.template.jsonc).
-//   - Not a replacement for the password. It buys time; it does not make
-//     guessing impossible.
+// LOGIN_LIMIT (the Rate Limiting binding) goes first and costs nothing: no
+// network call, and it turns away a client hammering down one connection
+// before anything else runs. It cannot BE the limit, though. Cloudflare
+// documents the binding as "permissive, eventually consistent, and
+// intentionally designed to not be used as an accurate accounting system",
+// with each isolate checking "its locally cached value". Measured against
+// this deployed Worker on 2026-08-09: 15 wrong passwords, a fresh TCP
+// connection each, all served by one location (cf-ray ...-HKG), produced
+// zero 429s -- while 6 requests down a single reused connection were refused
+// from the 4th. An attacker does not need to be distributed to walk past it;
+// a new connection per guess is enough. An earlier version of this comment
+// claimed the bucket was per location and that beating it took spreading
+// across PoPs. That was wrong, and it made the exposure look smaller than it
+// is.
 //
-// A request with no CF-Connecting-IP -- only reachable off Cloudflare's
-// edge, e.g. in tests -- shares one bucket instead of escaping the limit.
+// So LOGIN_GATE decides: one Durable Object per client address means one
+// counter worldwide for that address, which is what makes the documented
+// 5-a-minute actually true. It costs one Durable Object request per attempt
+// that gets past the binding. Worth paying on a login form guarding one
+// shared password; not worth it on /api/manifest, which keeps the cheap
+// limiter alone because its bearer token is a high-entropy secret -- the
+// exposure there is cost and noise, not a guessable credential.
+//
+// Neither layer replaces the password. They buy time; they do not make
+// guessing impossible. A global cap in front of the Worker would belong in a
+// zone WAF rate-limiting rule, which needs a zone-scoped token the CD deploy
+// token deliberately does not carry (see wrangler.deploy.template.jsonc).
+async function loginAllowed(env: Env, req: Request): Promise<boolean> {
+  if (!(await allow(env.LOGIN_LIMIT, req))) return false;
+  const gate = env.LOGIN_GATE.get(env.LOGIN_GATE.idFromName(clientKey(req)));
+  return gate.attempt();
+}
+
 async function allow(limiter: RateLimit, req: Request): Promise<boolean> {
-  const key = req.headers.get("CF-Connecting-IP") ?? "no-ip";
-  const { success } = await limiter.limit({ key });
+  const { success } = await limiter.limit({ key: clientKey(req) });
   return success;
+}
+
+// A request with no CF-Connecting-IP -- only reachable off Cloudflare's edge,
+// e.g. in tests -- shares one counter instead of escaping the limit.
+function clientKey(req: Request): string {
+  return req.headers.get("CF-Connecting-IP") ?? "no-ip";
 }
 
 function rateLimited(body: string): Response {

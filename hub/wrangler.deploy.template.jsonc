@@ -31,9 +31,15 @@
     }
   ],
   "durable_objects": {
-    "bindings": [{ "name": "SYNC", "class_name": "SyncContainer" }]
+    "bindings": [
+      { "name": "SYNC", "class_name": "SyncContainer" },
+      { "name": "LOGIN_GATE", "class_name": "LoginGate" }
+    ]
   },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["SyncContainer"] }],
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["SyncContainer"] },
+    { "tag": "v2", "new_sqlite_classes": ["LoginGate"] }
+  ],
   "triggers": { "crons": ["0 3 * * *"] },
   // Non-secret var forwarded into the sync container (via index.ts SYNC_ENV_KEYS)
   // so the cloudflare sync target's account id resolves from env, keeping both
