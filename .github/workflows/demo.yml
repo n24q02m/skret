@@ -4,8 +4,16 @@ on:
   push:
     branches: [main]
     paths:
+      # demo.tape only, deliberately. This file used to be in the list too, and
+      # a re-render is never byte-identical (the cursor blink alone shifts the
+      # frames), so every edit here opened a "regenerate demo.gif" PR -- 750 KB
+      # of binary into history for a picture nobody could tell apart. Changing
+      # how the workflow authenticates (#656) triggered exactly that (#659).
+      # demo.tape is what decides what the demo shows; this file is how it gets
+      # built. For the rarer case where a change here really does alter the
+      # render -- vhs version, font, terminal size -- run it by hand from the
+      # Actions tab.
       - "demo.tape"
-      - ".github/workflows/demo.yml"
   workflow_dispatch:
 
 permissions:
