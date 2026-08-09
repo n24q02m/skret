@@ -18,7 +18,7 @@ map of every namespace's keys + per-target presence status.
 | `POST /api/manifest` | `Authorization: Bearer $SKRET_HUB_TOKEN` | ingest a manifest |
 | `POST /login` | form `password` = `$RELAY_PASSWORD` | mint a signed session cookie |
 | `GET /` | session cookie | the dashboard map |
-| `GET /healthz` | none | uptime check |
+| `GET /healthz` | none | uptime check: probes `VAULT_KV`, `200 {ok:true,kv:"ok"}` or `503 {ok:false,kv:"error"}` |
 
 ## BYO deploy (bring your own infra)
 
