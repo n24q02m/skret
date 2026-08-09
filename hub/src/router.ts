@@ -10,7 +10,7 @@ export async function handleRequest(req: Request, env: Env): Promise<Response> {
   const { pathname } = new URL(req.url);
 
   if (req.method === "GET" && pathname === "/healthz") {
-    return json({ ok: true });
+    return handleHealthz(env);
   }
   if (req.method === "POST" && pathname === "/api/manifest") {
     return handleIngest(req, env);
@@ -25,6 +25,35 @@ export async function handleRequest(req: Request, env: Env): Promise<Response> {
     return handleDashboard(req, env);
   }
   return notFound();
+}
+
+// The key /healthz reads. It is never written, so the probe is a miss by
+// design -- a miss still requires the binding to resolve and KV to answer,
+// which is the whole question being asked.
+const HEALTH_PROBE_KEY = "healthz:probe";
+
+// /healthz used to answer a static {ok:true}. That is not a health signal:
+// this Worker's only dependency is VAULT_KV, so a wrong namespace id or a
+// KV outage takes GET / down while /healthz keeps telling the monitor
+// everything is fine.
+//
+// It probes with get(), not list(), even though getAllManifests() lists.
+// On the KV free plan a read costs against 100,000/day but a list costs
+// against 1,000/day -- a monitor polling once a minute is 1,440 lists,
+// so the "obvious" list-based probe would exhaust the list quota and start
+// failing the dashboard it exists to watch. A get on a missing key
+// exercises the same binding and the same round trip for 1/100th of the
+// budget.
+//
+// The failure body says "error" and never the exception: this route has no
+// auth, so it must not narrate account internals to anyone who curls it.
+async function handleHealthz(env: Env): Promise<Response> {
+  try {
+    await env.VAULT_KV.get(HEALTH_PROBE_KEY);
+  } catch {
+    return json({ ok: false, kv: "error" }, 503);
+  }
+  return json({ ok: true, kv: "ok" });
 }
 
 async function handleLogin(req: Request, env: Env): Promise<Response> {
