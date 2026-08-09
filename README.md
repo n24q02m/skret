@@ -110,7 +110,7 @@ Verify the install and check the version:
 skret --version
 ```
 
-The `install.sh` and `install.ps1` scripts verify SHA256 checksums and (if `cosign` is available) the Sigstore signature before placing the binary. Source both scripts at [skret.n24q02m.com/install.sh](https://skret.n24q02m.com/install.sh) and [skret.n24q02m.com/install.ps1](https://skret.n24q02m.com/install.ps1) before piping to a shell if you prefer — both are short, POSIX-pure or PowerShell 5+.
+The `install.sh` and `install.ps1` scripts verify SHA256 checksums and (if `cosign` is available) the Sigstore signature before placing the binary. Either check failing aborts the install; set `SKRET_INSECURE_SKIP_VERIFY=1` to install past a signature failure anyway. Source both scripts at [skret.n24q02m.com/install.sh](https://skret.n24q02m.com/install.sh) and [skret.n24q02m.com/install.ps1](https://skret.n24q02m.com/install.ps1) before piping to a shell if you prefer — both are short, POSIX-pure or PowerShell 5+.
 
 ## Quick start
 
