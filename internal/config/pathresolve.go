@@ -62,7 +62,10 @@ func ResolvePath(raw string) (string, bool) {
 		if start == -1 {
 			return "/" + normalized, true
 		}
-		return normalized[start:], true
+		if normalized[start] == '/' {
+			return normalized[start:], true
+		}
+		return "/" + normalized[start:], true
 	}
 	return raw, true
 }
