@@ -25,3 +25,24 @@ func TestResolvePath(t *testing.T) {
 		})
 	}
 }
+
+func TestResolvePath_CoverageEdges(t *testing.T) {
+	cases := []struct {
+		name        string
+		raw         string
+		wantPath    string
+		wantMangled bool
+	}{
+		{"mangled consecutive slashes ignores empty segment", `C:/foo//myapp/dev`, `/myapp/dev`, true},
+		{"single segment mangled passthrough", `C:\myapp`, `C:\myapp`, true},
+		{"backslash index substitution", `C:\foo\myapp\dev`, `/foo/myapp/dev`, true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got, mangled := ResolvePath(c.raw)
+			if got != c.wantPath || mangled != c.wantMangled {
+				t.Fatalf("ResolvePath(%q) = (%q,%v), want (%q,%v)", c.raw, got, mangled, c.wantPath, c.wantMangled)
+			}
+		})
+	}
+}
