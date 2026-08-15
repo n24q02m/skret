@@ -42,12 +42,6 @@ func ResolvePath(raw string) (string, bool) {
 		}
 	}
 
-	// Mirror strings.Split logic by checking the first segment (before any slash).
-	if lastIdx > 0 && isSSMPathSegment(raw[:lastIdx]) {
-		validSegments++
-		lastIdx = -1
-	}
-
 	if validSegments >= 2 {
 		tail := raw[lastIdx+1:]
 		if strings.IndexByte(tail, '\\') == -1 {
