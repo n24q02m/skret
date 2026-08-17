@@ -41,31 +41,20 @@ func ResolvePath(raw string) (string, bool) {
 			}
 		}
 
-		var seg string
-		if idx == -1 {
-			seg = raw[:end]
-		} else {
-			seg = raw[idx+1 : end]
-		}
+		// Note: idx == -1 is mathematically unreachable because raw[1] == ':'
+		// prevents any substring starting from index 0 from being a valid segment.
+		seg := raw[idx+1 : end]
 
 		if !isSSMPathSegment(seg) {
 			break
 		}
 		count++
 
-		if idx == -1 {
-			end = 0
-			break
-		}
 		end = idx
 	}
 
 	if count >= 2 {
-		res := strings.ReplaceAll(raw[end:], `\`, "/")
-		if res[0] != '/' {
-			res = "/" + res
-		}
-		return res, true
+		return strings.ReplaceAll(raw[end:], `\`, "/"), true
 	}
 	return raw, true
 }
