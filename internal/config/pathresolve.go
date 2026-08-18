@@ -45,9 +45,6 @@ func ResolvePath(raw string) (string, bool) {
 	}
 
 	if count >= 2 {
-		if idx == -1 {
-			return "/" + norm, true
-		}
 		return norm[idx:], true
 	}
 	return raw, true
