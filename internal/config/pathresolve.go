@@ -29,14 +29,35 @@ func ResolvePath(raw string) (string, bool) {
 		return raw, false
 	}
 
-	segs := strings.Split(strings.ReplaceAll(raw, `\`, "/"), "/")
-	end := len(segs)
-	start := end
-	for start > 0 && isSSMPathSegment(segs[start-1]) {
-		start--
+	norm := strings.ReplaceAll(raw, `\`, "/")
+	count := 0
+	lastIdx := len(norm)
+
+	// Zero-allocation manual reverse parsing loop.
+	// Replaces strings.Split/strings.Join to eliminate slice allocation
+	// and intermediate string constructions on this parsing path.
+	for lastIdx > 0 {
+		idx := strings.LastIndexByte(norm[:lastIdx], '/')
+		var seg string
+		if idx == -1 {
+			seg = norm[:lastIdx]
+		} else {
+			seg = norm[idx+1 : lastIdx]
+		}
+
+		if !isSSMPathSegment(seg) {
+			break
+		}
+
+		count++
+		lastIdx = max(0, idx)
 	}
-	if end-start >= 2 {
-		return "/" + strings.Join(segs[start:end], "/"), true
+
+	if count >= 2 {
+		// strings.TrimLeft safely handles both single and consecutive slashes
+		// (emulating strings.Join behavior) by removing all leading delimiters
+		// exactly up to the start of the valid SSM identifier segments.
+		return "/" + strings.TrimLeft(norm[lastIdx:], "/"), true
 	}
 	return raw, true
 }
