@@ -50,14 +50,13 @@ func ResolvePath(raw string) (string, bool) {
 		}
 
 		count++
-		if idx == -1 {
-			lastIdx = 0
-			break
-		}
 		lastIdx = idx
 	}
 
 	if count >= 2 {
+		if lastIdx == -1 {
+			lastIdx = 0
+		}
 		// strings.TrimLeft safely handles both single and consecutive slashes
 		// (emulating strings.Join behavior) by removing all leading delimiters
 		// exactly up to the start of the valid SSM identifier segments.
