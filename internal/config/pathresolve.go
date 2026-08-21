@@ -32,7 +32,6 @@ func ResolvePath(raw string) (string, bool) {
 	norm := strings.ReplaceAll(raw, `\`, "/")
 	idx := len(norm)
 	segmentsFound := 0
-	startIdx := -1
 
 	for idx > 0 {
 		slashIdx := strings.LastIndexByte(norm[:idx], '/')
@@ -41,21 +40,14 @@ func ResolvePath(raw string) (string, bool) {
 			break
 		}
 		segmentsFound++
-		startIdx = slashIdx
-		if slashIdx == -1 {
-			break
-		}
 		idx = slashIdx
 	}
 
 	if segmentsFound >= 2 {
-		var slice string
-		if startIdx == -1 {
-			slice = norm
-		} else {
-			slice = norm[startIdx:]
+		if idx == -1 {
+			idx = 0
 		}
-		return "/" + strings.TrimLeft(slice, "/"), true
+		return "/" + strings.TrimLeft(norm[idx:], "/"), true
 	}
 	return raw, true
 }
