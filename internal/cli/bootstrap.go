@@ -196,8 +196,12 @@ func resolveBootstrapConfig(opts *GlobalOpts) (*config.ResolvedConfig, error) {
 // non-empty segment (e.g. /myapp/prod -> prod). Only [a-zA-Z0-9_-] is kept so
 // the result is a valid IAM user/policy name suffix.
 func sanitizeProject(path string) string {
-	segs := strings.Split(strings.Trim(path, "/"), "/")
-	last := segs[len(segs)-1]
+	trimmed := strings.Trim(path, "/")
+	lastIdx := strings.LastIndexByte(trimmed, '/')
+	last := trimmed
+	if lastIdx != -1 {
+		last = trimmed[lastIdx+1:]
+	}
 	var b strings.Builder
 	for _, r := range last {
 		switch {
