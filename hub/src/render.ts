@@ -155,7 +155,7 @@ function renderNamespace(m: Manifest, now: number): string {
     `<section class="ns"><h2>${esc(m.namespace)} &middot; ${esc(m.env)}` +
     ` <time class="meta" datetime="${esc(m.generated_at)}" title="${esc(m.generated_at)}">synced ${esc(relativeTime(m.generated_at, now))}</time>${staleBadge}</h2>` +
     `<div class="summary">${esc(summary(m))}</div>` +
-    `<div class="tablewrap"><table><thead><tr><th scope="col">Key</th><th scope="col">Fingerprint</th><th scope="col">Targets</th></tr></thead>` +
+    `<div class="tablewrap" tabindex="0" role="region" aria-label="Keys for ${esc(m.namespace)}"><table><thead><tr><th scope="col">Key</th><th scope="col">Fingerprint</th><th scope="col">Targets</th></tr></thead>` +
     `<tbody>${rows}</tbody></table></div></section>`
   );
 }
