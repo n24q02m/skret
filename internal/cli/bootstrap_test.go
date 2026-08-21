@@ -360,6 +360,7 @@ func TestBootstrapCmd_ExplicitConfigMissing_HardError(t *testing.T) {
 func TestSanitizeProject(t *testing.T) {
 	assert.Equal(t, "prod", sanitizeProject("/myapp/prod"))
 	assert.Equal(t, "prod", sanitizeProject("/myapp/prod/"))
+	assert.Equal(t, "prod", sanitizeProject("prod"))
 	assert.Equal(t, "demoenv", sanitizeProject("/demo/demo.env!"))
 	// A path with no name characters falls back to filepath.Base.
 	assert.Equal(t, filepath.Base("/"), sanitizeProject("/"))
