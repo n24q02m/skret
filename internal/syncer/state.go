@@ -1,6 +1,7 @@
 package syncer
 
 import (
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -21,6 +22,112 @@ type SyncState struct {
 	ID      string            `json:"id"`
 	Hashes  map[string]string `json:"hashes"`
 	Updated time.Time         `json:"updated"`
+
+	OperationID string                `json:"operation_id,omitempty"`
+	StartedAt   *time.Time            `json:"started_at,omitempty"`
+	CompletedAt *time.Time            `json:"completed_at,omitempty"`
+	LastSuccess *time.Time            `json:"last_success,omitempty"`
+	Outcomes    map[string]KeyOutcome `json:"outcomes,omitempty"`
+}
+
+type OutcomeStatus string
+
+const (
+	OutcomePending             OutcomeStatus = "pending"
+	OutcomeSucceeded           OutcomeStatus = "succeeded"
+	OutcomeNeedsReconciliation OutcomeStatus = "needs_reconciliation"
+)
+
+type KeyOutcome struct {
+	Status    OutcomeStatus `json:"status"`
+	UpdatedAt time.Time     `json:"updated_at"`
+}
+
+var ErrOperationMismatch = errors.New("sync operation mismatch")
+
+// NewOperationID returns a non-secret identifier for one sync attempt.
+func NewOperationID() (string, error) {
+	var raw [16]byte
+	if _, err := rand.Read(raw[:]); err != nil {
+		return "", fmt.Errorf("generate sync operation id: %w", err)
+	}
+	return "op-" + hex.EncodeToString(raw[:]), nil
+}
+
+func (s *SyncState) BeginOperation(operationID string, secrets []*provider.Secret, started time.Time) error {
+	if strings.TrimSpace(operationID) == "" {
+		return fmt.Errorf("sync operation id is required")
+	}
+	if s.Outcomes == nil {
+		s.Outcomes = make(map[string]KeyOutcome)
+	}
+	if s.OperationID != "" && s.CompletedAt == nil {
+		for key, outcome := range s.Outcomes {
+			if outcome.Status == OutcomePending {
+				outcome.Status = OutcomeNeedsReconciliation
+				outcome.UpdatedAt = started
+				s.Outcomes[key] = outcome
+			}
+		}
+	}
+	s.OperationID = operationID
+	s.StartedAt = timePtr(started)
+	s.CompletedAt = nil
+	for _, secret := range secrets {
+		if secret == nil {
+			return fmt.Errorf("sync operation contains nil secret")
+		}
+		s.Outcomes[secret.Key] = KeyOutcome{Status: OutcomePending, UpdatedAt: started}
+	}
+	return nil
+}
+
+func (s *SyncState) RecordSuccess(operationID string, secrets []*provider.Secret, completed time.Time) error {
+	if err := s.checkOperation(operationID); err != nil {
+		return err
+	}
+	if s.Outcomes == nil {
+		s.Outcomes = make(map[string]KeyOutcome)
+	}
+	for _, secret := range secrets {
+		if secret == nil {
+			return fmt.Errorf("sync operation contains nil secret")
+		}
+		s.Outcomes[secret.Key] = KeyOutcome{Status: OutcomeSucceeded, UpdatedAt: completed}
+	}
+	s.Update(secrets)
+	s.CompletedAt = timePtr(completed)
+	s.LastSuccess = timePtr(completed)
+	return nil
+}
+
+func (s *SyncState) RecordNeedsReconciliation(operationID string, secrets []*provider.Secret, completed time.Time) error {
+	if err := s.checkOperation(operationID); err != nil {
+		return err
+	}
+	if s.Outcomes == nil {
+		s.Outcomes = make(map[string]KeyOutcome)
+	}
+	for _, secret := range secrets {
+		if secret == nil {
+			return fmt.Errorf("sync operation contains nil secret")
+		}
+		s.Outcomes[secret.Key] = KeyOutcome{Status: OutcomeNeedsReconciliation, UpdatedAt: completed}
+	}
+	s.CompletedAt = timePtr(completed)
+	return nil
+}
+
+func (s *SyncState) checkOperation(operationID string) error {
+	if operationID == "" || operationID != s.OperationID {
+		return fmt.Errorf("%w: got %q, want %q", ErrOperationMismatch, operationID, s.OperationID)
+	}
+	return nil
+}
+
+func timePtr(value time.Time) *time.Time {
+	copy := value
+	return &copy
 }
 
 // StatePathFor returns the on-disk path for the given target+id.

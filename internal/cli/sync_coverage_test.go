@@ -985,6 +985,47 @@ func TestSyncOptions_Run_DryRun_DotenvWritesNoFile(t *testing.T) {
 	assert.True(t, os.IsNotExist(err))
 }
 
+func TestSyncOptions_Run_SkipUnchangedPersistsOperationLifecycle(t *testing.T) {
+	home := t.TempDir()
+	if runtime.GOOS == "windows" {
+		t.Setenv("USERPROFILE", home)
+	} else {
+		t.Setenv("HOME", home)
+	}
+
+	dir := setupSyncRepoWithSecrets(t, map[string]string{"ALPHA": "1"})
+	withDotenvTarget(t, dir, "out.env", false)
+
+	runSyncCmd(t, dir, []string{"--skip-unchanged"})
+
+	state, err := syncer.LoadSyncState("dotenv", "out.env")
+	require.NoError(t, err)
+	assert.NotEmpty(t, state.OperationID)
+	require.NotNil(t, state.LastSuccess)
+	assert.Equal(t, syncer.OutcomeSucceeded, state.Outcomes["ALPHA"].Status)
+}
+
+func TestSyncOptions_Run_SkipUnchangedFailurePersistsReconciliation(t *testing.T) {
+	home := t.TempDir()
+	if runtime.GOOS == "windows" {
+		t.Setenv("USERPROFILE", home)
+	} else {
+		t.Setenv("HOME", home)
+	}
+
+	dir := setupSyncRepoWithSecrets(t, map[string]string{"ALPHA": "1"})
+	require.NoError(t, os.Mkdir(filepath.Join(dir, "blocked_dir"), 0o755))
+	withDotenvTarget(t, dir, "blocked_dir", false)
+
+	require.Error(t, runSyncCmdErr(t, dir, []string{"--skip-unchanged"}))
+
+	state, err := syncer.LoadSyncState("dotenv", "blocked_dir")
+	require.NoError(t, err)
+	assert.Equal(t, syncer.OutcomeNeedsReconciliation, state.Outcomes["ALPHA"].Status)
+	assert.Nil(t, state.LastSuccess)
+	assert.Empty(t, state.Hashes)
+}
+
 // --- Wave 2 T4: sync exit-code classification (fix I2) ---
 
 func TestSyncOptions_Run_ExitClass_Dotenv_IsGenericError(t *testing.T) {

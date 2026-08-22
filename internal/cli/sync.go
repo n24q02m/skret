@@ -8,6 +8,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/n24q02m/skret/internal/config"
 	"github.com/n24q02m/skret/internal/provider"
@@ -128,6 +129,7 @@ func (o *syncOptions) run(cmd *cobra.Command) error {
 		// target; a rotated-then-deleted key must reach FilterAbsent to be
 		// seen as absent and rewritten.
 		var state *syncer.SyncState
+		var operationID string
 		if o.skipUnchanged && !noOv {
 			stateID := targetStateID(s, tc)
 			state, err = syncer.LoadSyncState(s.Name(), stateID)
@@ -165,12 +167,33 @@ func (o *syncOptions) run(cmd *cobra.Command) error {
 			continue
 		}
 
+		if state != nil && len(toSync) > 0 {
+			operationID, err = syncer.NewOperationID()
+			if err != nil {
+				return skret.NewError(skret.ExitGenericError, "sync: create operation", err)
+			}
+			if err := state.BeginOperation(operationID, toSync, time.Now().UTC()); err != nil {
+				return skret.NewError(skret.ExitGenericError, "sync: begin operation", err)
+			}
+			if err := syncer.SaveSyncState(state); err != nil {
+				return skret.NewError(skret.ExitGenericError, "sync: save state failed", err)
+			}
+		}
 		if err := s.Sync(ctx, toSync); err != nil {
 			// dotenv writes a local file only -- a failure there is I/O, not
 			// network. github/cloudflare stay ExitNetworkError (audit I2).
 			exitCode := skret.ExitNetworkError
 			if tc.Type == "dotenv" {
 				exitCode = skret.ExitGenericError
+			}
+			if state != nil && operationID != "" {
+				journalErr := state.RecordNeedsReconciliation(operationID, toSync, time.Now().UTC())
+				if journalErr == nil {
+					journalErr = syncer.SaveSyncState(state)
+				}
+				if journalErr != nil {
+					return skret.NewError(exitCode, fmt.Sprintf("sync failed for %s; state journal failed", s.Name()), journalErr)
+				}
 			}
 			return skret.NewError(exitCode, fmt.Sprintf("sync failed for %s", s.Name()), err)
 		}
@@ -180,8 +203,12 @@ func (o *syncOptions) run(cmd *cobra.Command) error {
 			cmd.PrintErrf("Synced %d secrets to %s\n", len(toSync), s.Name())
 		}
 
-		if o.skipUnchanged && !noOv && state != nil {
-			state.Update(toSync)
+		if state != nil {
+			if operationID != "" {
+				if err := state.RecordSuccess(operationID, toSync, time.Now().UTC()); err != nil {
+					return skret.NewError(skret.ExitGenericError, "sync: record success", err)
+				}
+			}
 			if err := syncer.SaveSyncState(state); err != nil {
 				return skret.NewError(skret.ExitGenericError, "sync: save state failed", err)
 			}

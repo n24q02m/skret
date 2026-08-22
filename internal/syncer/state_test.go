@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/n24q02m/skret/internal/provider"
 	"github.com/stretchr/testify/assert"
@@ -278,4 +279,70 @@ func TestSaveSyncState_PathTraversal(t *testing.T) {
 	require.Len(t, entries, 1)
 	assert.True(t, strings.HasSuffix(entries[0].Name(), ".json"))
 	assert.NotContains(t, entries[0].Name(), "..")
+}
+func TestSyncState_OperationSuccessRecordsLifecycle(t *testing.T) {
+	started := time.Date(2026, 8, 22, 9, 0, 0, 0, time.UTC)
+	finished := started.Add(2 * time.Second)
+	secrets := []*provider.Secret{
+		{Key: "K1", Value: "v1"},
+		{Key: "K2", Value: "v2"},
+	}
+	state := &SyncState{Target: "dotenv", ID: ".env"}
+
+	require.NoError(t, state.BeginOperation("op-1", secrets, started))
+	assert.Equal(t, OutcomePending, state.Outcomes["K1"].Status)
+	assert.Equal(t, OutcomePending, state.Outcomes["K2"].Status)
+
+	require.NoError(t, state.RecordSuccess("op-1", secrets, finished))
+	assert.Equal(t, "op-1", state.OperationID)
+	require.NotNil(t, state.StartedAt)
+	require.NotNil(t, state.CompletedAt)
+	require.NotNil(t, state.LastSuccess)
+	assert.Equal(t, started, *state.StartedAt)
+	assert.Equal(t, finished, *state.CompletedAt)
+	assert.Equal(t, finished, *state.LastSuccess)
+	assert.Equal(t, OutcomeSucceeded, state.Outcomes["K1"].Status)
+	assert.Equal(t, hashSecret("v1"), state.Hashes["K1"])
+}
+
+func TestSyncState_OperationFailureNeedsReconciliation(t *testing.T) {
+	now := time.Date(2026, 8, 22, 9, 5, 0, 0, time.UTC)
+	secrets := []*provider.Secret{{Key: "K1", Value: "v1"}}
+	state := &SyncState{Target: "github", ID: "o/r"}
+
+	require.NoError(t, state.BeginOperation("op-2", secrets, now))
+	require.NoError(t, state.RecordNeedsReconciliation("op-2", secrets, now.Add(time.Second)))
+
+	assert.Equal(t, OutcomeNeedsReconciliation, state.Outcomes["K1"].Status)
+	assert.Empty(t, state.Hashes)
+	assert.Nil(t, state.LastSuccess)
+	require.NotNil(t, state.CompletedAt)
+	assert.Equal(t, now.Add(time.Second), *state.CompletedAt)
+}
+
+func TestSyncState_RejectsStaleOperationResult(t *testing.T) {
+	now := time.Date(2026, 8, 22, 9, 10, 0, 0, time.UTC)
+	secrets := []*provider.Secret{{Key: "K1", Value: "v1"}}
+	state := &SyncState{Target: "cloudflare", ID: "worker/w"}
+
+	require.NoError(t, state.BeginOperation("op-current", secrets, now))
+	err := state.RecordSuccess("op-stale", secrets, now.Add(time.Second))
+	require.ErrorIs(t, err, ErrOperationMismatch)
+	assert.Equal(t, OutcomePending, state.Outcomes["K1"].Status)
+	assert.Empty(t, state.Hashes)
+}
+
+func TestSyncState_BeginOperationSupersedesInterruptedOperation(t *testing.T) {
+	first := time.Date(2026, 8, 22, 9, 15, 0, 0, time.UTC)
+	second := first.Add(time.Minute)
+	secrets := []*provider.Secret{{Key: "K1", Value: "v1"}}
+	state := &SyncState{Target: "dotenv", ID: ".env"}
+
+	require.NoError(t, state.BeginOperation("op-interrupted", secrets, first))
+	require.NoError(t, state.BeginOperation("op-retry", secrets, second))
+
+	assert.Equal(t, "op-retry", state.OperationID)
+	require.NotNil(t, state.StartedAt)
+	assert.Equal(t, second, *state.StartedAt)
+	assert.Equal(t, OutcomePending, state.Outcomes["K1"].Status)
 }
