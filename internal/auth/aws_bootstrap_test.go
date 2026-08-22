@@ -154,8 +154,9 @@ func TestProvision_HappyPath_CreatesUserAndScopedPolicy(t *testing.T) {
 	assert.ElementsMatch(t, []string{
 		"ssm:GetParameter", "ssm:GetParameters", "ssm:GetParametersByPath",
 		"ssm:GetParameterHistory", "ssm:PutParameter", "ssm:DeleteParameter",
+		"ssm:AddTagsToResource",
 	}, ssmStmt.Action)
-	assert.Len(t, ssmStmt.Action, 6)
+	assert.Len(t, ssmStmt.Action, 7)
 	assert.Equal(
 		t,
 		fmt.Sprintf("arn:aws:ssm:%s:%s:parameter/myapp/prod/*", testRegion, testAccount),

@@ -220,6 +220,7 @@ func buildPolicy(region, account, path string) (string, error) {
 				"Action": []string{
 					"ssm:GetParameter", "ssm:GetParameters", "ssm:GetParametersByPath",
 					"ssm:GetParameterHistory", "ssm:PutParameter", "ssm:DeleteParameter",
+					"ssm:AddTagsToResource",
 				},
 				"Resource": resource,
 			},
