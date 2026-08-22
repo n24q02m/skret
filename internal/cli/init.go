@@ -79,7 +79,7 @@ func (o *initOptions) run(cmd *cobra.Command) error {
 	regionChanged := initFlagChanged(cmd, "region", o.region)
 	fileChanged := initFlagChanged(cmd, "file", o.file)
 	configChanged := o.force || providerChanged || pathChanged || regionChanged || fileChanged
-	if exists && !providerChanged {
+	if exists && !o.force && !providerChanged {
 		envName := cfg.DefaultEnv
 		if envName == "" {
 			envName = "prod"
@@ -151,6 +151,7 @@ func (o *initOptions) run(cmd *cobra.Command) error {
 	}
 
 	if exists && bytes.Equal(existingData, data) {
+		updateGitignore(cmd, filepath.Join(cwd, ".gitignore"))
 		cmd.PrintErrf("%s unchanged\n", config.ConfigFileName)
 		return nil
 	}
@@ -159,11 +160,7 @@ func (o *initOptions) run(cmd *cobra.Command) error {
 		return fmt.Errorf("init: write config: %w", err)
 	}
 
-	// Update .gitignore
-	gitignorePath := filepath.Join(cwd, ".gitignore")
-	if err := appendGitignore(gitignorePath); err != nil {
-		cmd.PrintErrf("Warning: could not update .gitignore: %v\n", err)
-	}
+	updateGitignore(cmd, filepath.Join(cwd, ".gitignore"))
 
 	if exists {
 		cmd.PrintErrf("Created/updated %s\n", config.ConfigFileName)
@@ -297,6 +294,12 @@ func writeConfigAtomically(path string, data, existing []byte, exists bool) erro
 		return fmt.Errorf("replace config: %w", err)
 	}
 	return nil
+}
+
+func updateGitignore(cmd *cobra.Command, path string) {
+	if err := appendGitignore(path); err != nil {
+		cmd.PrintErrf("Warning: could not update .gitignore: %v\n", err)
+	}
 }
 
 func appendGitignore(path string) error {

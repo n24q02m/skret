@@ -202,3 +202,30 @@ func TestSetupExistingLocalConfigUsesRetainedProvider(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, original, got)
 }
+
+func TestSetupForceUsesReplacementProvider(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".git"), 0o755))
+	orig, _ := os.Getwd()
+	defer os.Chdir(orig)
+	require.NoError(t, os.Chdir(dir))
+
+	require.NoError(t, os.WriteFile(".skret.yaml", []byte("version: \"1\"\ndefault_env: dev\nenvironments:\n  dev:\n    provider: local\n    file: .secrets.dev.yaml\n"), 0o600))
+
+	origTTY := isInteractiveStdin
+	defer func() { isInteractiveStdin = origTTY }()
+	isInteractiveStdin = func() bool { return false }
+
+	origHook := setupAuthHook
+	defer func() { setupAuthHook = origHook }()
+	var authProvider string
+	setupAuthHook = func(provider, _ string, _ map[string]string) error {
+		authProvider = provider
+		return nil
+	}
+
+	cmd := NewRootCmd()
+	cmd.SetArgs([]string{"setup", "--force", "--yes"})
+	require.NoError(t, cmd.Execute())
+	assert.Equal(t, "aws", authProvider, "force replacement must authenticate the replacement provider")
+}

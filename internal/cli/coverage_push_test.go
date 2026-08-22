@@ -144,6 +144,29 @@ func TestInitOptions_Run_MergesExistingConfigWithoutForce(t *testing.T) {
 	assert.NotContains(t, text, "path: /existing/prod")
 }
 
+func TestInitOptions_Run_RepairsGitignoreForExistingConfig(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(dir+"/.git", 0o755))
+	origDir, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	defer os.Chdir(origDir)
+
+	original := []byte("version: \"1\"\ndefault_env: prod\nenvironments:\n  prod:\n    provider: aws\n    path: /existing/prod\n    region: us-east-1\n")
+	require.NoError(t, os.WriteFile(".skret.yaml", original, 0o600))
+	require.NoError(t, os.WriteFile(".gitignore", []byte(""), 0o600))
+
+	cmd := newInitCmd()
+	cmd.SetArgs(nil)
+	require.NoError(t, cmd.Execute())
+
+	gotConfig, err := os.ReadFile(".skret.yaml")
+	require.NoError(t, err)
+	assert.Equal(t, original, gotConfig)
+	gotIgnore, err := os.ReadFile(".gitignore")
+	require.NoError(t, err)
+	assert.Contains(t, string(gotIgnore), ".secrets.*.yaml")
+	assert.Contains(t, string(gotIgnore), ".secrets.*.yml")
+}
 func TestInitOptions_Run_DryRunDoesNotWrite(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.MkdirAll(dir+"/.git", 0o755))
