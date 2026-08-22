@@ -71,3 +71,13 @@ func TestResolvePath_Coverage(t *testing.T) {
 	// Therefore, the loop will ALWAYS break at `if !isSSMPathSegment(seg) { break }` when `idx == -1`.
 	// The `if idx == -1 { break }` right after `segments++` is ACTUALLY UNREACHABLE because `!isSSMPathSegment(seg)` will always trigger first!
 }
+
+func TestResolvePath_Coverage2(t *testing.T) {
+	// Let's add a test to ensure we hit idx == -1.
+	// Since isSSMPathSegment always returns false for the first segment (which contains :),
+	// this segment won't be counted in `segments`, but `segStart = 0` WILL be executed.
+	got, mangled := ResolvePath("C:myapp")
+	if got != "C:myapp" || mangled != true {
+		t.Fatalf("ResolvePath(\"C:myapp\") = (%q,%v)", got, mangled)
+	}
+}
