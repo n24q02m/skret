@@ -42,7 +42,12 @@ export default {
       if (v) envVars[k] = v;
     }
     const container = getContainer(env.SYNC);
-    await container.beginRun();
-    await container.start({ envVars });
+    const runId = await container.beginRun();
+    try {
+      await container.start({ envVars });
+    } catch (error) {
+      await container.markStartFailure(runId);
+      throw error;
+    }
   },
 };

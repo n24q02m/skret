@@ -39,8 +39,10 @@ export type SyncRunClassification =
   | "started"
   | "clean_exit"
   | "nonzero_exit"
-  | "runtime_signal";
+  | "runtime_signal"
+  | "start_failure";
 export type SyncRunStopReason = "exit" | "runtime_signal";
+export type SyncRunReason = SyncRunStopReason | "start_failure";
 
 export interface SyncRunRecord {
   runId: string;
@@ -52,7 +54,7 @@ export interface SyncRunRecord {
   status: SyncRunStatus;
   classification: SyncRunClassification;
   exitCode: number | null;
-  reason: SyncRunStopReason | null;
+  reason: SyncRunReason | null;
 }
 
 export interface Manifest {

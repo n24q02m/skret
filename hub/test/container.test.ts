@@ -4,6 +4,8 @@ import { SyncContainer } from "../src/container";
 import {
   SYNC_ACTIVE_RUN_KEY,
   SYNC_LAST_SUCCESS_KEY,
+  SYNC_RUN_PREFIX,
+  completeSyncRun,
   syncRunKey,
 } from "../src/store";
 import worker from "../src/index";
@@ -95,7 +97,10 @@ function fakeEnv(secrets: Partial<Env>) {
   const start = vi.fn(async (_options?: unknown) => {
     order.push("start");
   });
-  const stub = { beginRun, start };
+  const markStartFailure = vi.fn(async (runId: string) => {
+    await container.markStartFailure(runId);
+  });
+  const stub = { beginRun, markStartFailure, start };
   const SYNC = {
     idFromName: () => ({}),
     get: () => stub,
@@ -166,6 +171,30 @@ describe("scheduled()", () => {
     expect(start).toHaveBeenCalledTimes(1);
     expect(await storage.get<string>(SYNC_ACTIVE_RUN_KEY)).toBe(firstRunId);
   });
+  it("marks a failed start terminal and clears the active pointer before rethrowing", async () => {
+    const { env, start, storage } = fakeEnv({});
+    const startError = new Error("container start failed");
+    start.mockRejectedValueOnce(startError);
+
+    await expect(worker.scheduled({} as ScheduledController, env)).rejects.toBe(startError);
+    const runKey = [...storage.values.keys()].find((key) => key.startsWith(SYNC_RUN_PREFIX));
+    expect(runKey).toEqual(expect.any(String));
+    const runId = (runKey as string).slice(SYNC_RUN_PREFIX.length);
+    const record = await storage.get<SyncRunRecord>(syncRunKey(runId));
+    expect(record).toMatchObject({
+      runId,
+      status: "failed",
+      classification: "start_failure",
+      endedAt: expect.any(String),
+      exitCode: null,
+      reason: "start_failure",
+    });
+    expect(await storage.get<string>(SYNC_ACTIVE_RUN_KEY)).toBeUndefined();
+    expect(await storage.get<string>(SYNC_LAST_SUCCESS_KEY)).toBeUndefined();
+
+    await worker.scheduled({} as ScheduledController, env);
+    expect(start).toHaveBeenCalledTimes(2);
+  });
 
   it("omits unset sync secrets from envVars", async () => {
     const { env, start } = fakeEnv({
@@ -218,6 +247,37 @@ describe("durable sync run records", () => {
     });
     expect(await storage.get<string>(SYNC_LAST_SUCCESS_KEY)).toBe(runId);
     expect(await storage.get<string>(SYNC_ACTIVE_RUN_KEY)).toBeUndefined();
+  });
+
+  it("does not let a replayed older clean run regress last success", async () => {
+    const { container, storage } = fakeEnv({});
+    const firstRunId = await container.beginRun();
+    await completeSyncRun(
+      storage,
+      firstRunId,
+      "2026-08-22T00:00:10.000Z",
+      0,
+      "exit",
+    );
+    const secondRunId = await container.beginRun();
+    await completeSyncRun(
+      storage,
+      secondRunId,
+      "2026-08-22T00:00:20.000Z",
+      0,
+      "exit",
+    );
+    expect(await storage.get<string>(SYNC_LAST_SUCCESS_KEY)).toBe(secondRunId);
+
+    await completeSyncRun(
+      storage,
+      firstRunId,
+      "2026-08-22T00:00:10.000Z",
+      0,
+      "exit",
+    );
+
+    expect(await storage.get<string>(SYNC_LAST_SUCCESS_KEY)).toBe(secondRunId);
   });
 
   it("finalizes a nonzero exit as failure without replacing last success", async () => {

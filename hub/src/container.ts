@@ -3,6 +3,7 @@ import type { Env, SyncRunMetadata } from "./types";
 import {
   SYNC_ACTIVE_RUN_KEY,
   completeSyncRun,
+  failStartedSyncRun,
   putStartedSyncRun,
 } from "./store";
 
@@ -20,6 +21,12 @@ export class SyncContainer extends Container<Env> {
     const runId = crypto.randomUUID();
     await putStartedSyncRun(this.ctx.storage, runId, new Date().toISOString(), metadata);
     return runId;
+  }
+
+  // A rejected start has no lifecycle callback to finalize the run. Mark it
+  // terminal without recording the thrown error or any container output.
+  async markStartFailure(runId: string): Promise<void> {
+    await failStartedSyncRun(this.ctx.storage, runId, new Date().toISOString());
   }
 
   // Container.start() only acknowledges that the process was launched. This

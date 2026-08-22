@@ -139,11 +139,7 @@ export async function completeSyncRun(
     if (!started) return undefined;
 
     if (started.status !== "started") {
-      if (started.status === "succeeded" && started.classification === "clean_exit") {
-        await transaction.put(SYNC_LAST_SUCCESS_KEY, runId);
-      }
-      const activeRunId = await transaction.get<string>(SYNC_ACTIVE_RUN_KEY);
-      if (activeRunId === runId) await transaction.delete(SYNC_ACTIVE_RUN_KEY);
+      await repairTerminalRun(transaction, started, runId);
       return started;
     }
 
@@ -160,11 +156,99 @@ export async function completeSyncRun(
       reason,
     };
     await transaction.put(key, finished);
-    if (cleanExit) await transaction.put(SYNC_LAST_SUCCESS_KEY, runId);
-    const activeRunId = await transaction.get<string>(SYNC_ACTIVE_RUN_KEY);
-    if (activeRunId === runId) await transaction.delete(SYNC_ACTIVE_RUN_KEY);
+    if (cleanExit) await advanceLastSuccess(transaction, finished);
+    await clearActiveRun(transaction, runId);
     return finished;
   });
+}
+
+export async function failStartedSyncRun(
+  storage: SyncRunStorage,
+  runId: string,
+  endedAt: string,
+): Promise<SyncRunRecord | undefined> {
+  const key = syncRunKey(runId);
+  return storage.transaction(async (transaction) => {
+    const started = await transaction.get<SyncRunRecord>(key);
+    if (!started) return undefined;
+
+    if (started.status !== "started") {
+      await repairTerminalRun(transaction, started, runId);
+      return started;
+    }
+
+    const failed: SyncRunRecord = {
+      runId: started.runId,
+      imageDigest: started.imageDigest,
+      configFingerprint: started.configFingerprint,
+      targetCount: started.targetCount,
+      startedAt: started.startedAt,
+      endedAt,
+      status: "failed",
+      classification: "start_failure",
+      exitCode: null,
+      reason: "start_failure",
+    };
+    await transaction.put(key, failed);
+    await clearActiveRun(transaction, runId);
+    return failed;
+  });
+}
+
+async function repairTerminalRun(
+  storage: SyncRunStorageOperation,
+  record: SyncRunRecord,
+  runId: string,
+): Promise<void> {
+  if (isCleanSuccess(record)) await advanceLastSuccess(storage, record);
+  await clearActiveRun(storage, runId);
+}
+
+async function clearActiveRun(
+  storage: SyncRunStorageOperation,
+  runId: string,
+): Promise<void> {
+  const activeRunId = await storage.get<string>(SYNC_ACTIVE_RUN_KEY);
+  if (activeRunId === runId) await storage.delete(SYNC_ACTIVE_RUN_KEY);
+}
+
+async function advanceLastSuccess(
+  storage: SyncRunStorageOperation,
+  candidate: SyncRunRecord,
+): Promise<void> {
+  if (!isCleanSuccess(candidate)) return;
+  const currentRunId = await storage.get<string>(SYNC_LAST_SUCCESS_KEY);
+  if (!currentRunId) {
+    await storage.put(SYNC_LAST_SUCCESS_KEY, candidate.runId);
+    return;
+  }
+  if (currentRunId === candidate.runId) return;
+
+  const current = await storage.get<SyncRunRecord>(syncRunKey(currentRunId));
+  if (!isCleanSuccess(current) || isCompletionNewer(candidate, current)) {
+    await storage.put(SYNC_LAST_SUCCESS_KEY, candidate.runId);
+  }
+}
+
+function isCleanSuccess(record: SyncRunRecord | undefined): record is SyncRunRecord {
+  return (
+    record !== undefined &&
+    record.status === "succeeded" &&
+    record.classification === "clean_exit" &&
+    record.exitCode === 0 &&
+    record.reason === "exit" &&
+    record.endedAt !== null &&
+    record.endedAt.length > 0
+  );
+}
+
+function isCompletionNewer(candidate: SyncRunRecord, current: SyncRunRecord): boolean {
+  const candidateTime = Date.parse(candidate.endedAt ?? "");
+  const currentTime = Date.parse(current.endedAt ?? "");
+  if (Number.isFinite(candidateTime) && Number.isFinite(currentTime)) {
+    return candidateTime > currentTime;
+  }
+  return (candidate.endedAt ?? "") > (current.endedAt ?? "");
 }
 
 function normalizeString(value: string | null | undefined): string | null {
