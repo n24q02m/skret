@@ -12,10 +12,23 @@ export const SYNC_RUN_PREFIX = "sync:run:";
 export const SYNC_ACTIVE_RUN_KEY = "sync:active-run";
 export const SYNC_LAST_SUCCESS_KEY = "sync:last-success";
 
-export interface SyncRunStorage {
+export interface SyncRunStorageOperation {
   get<T>(key: string): Promise<T | undefined>;
   put<T>(key: string, value: T): Promise<void>;
   delete(key: string): Promise<boolean>;
+}
+
+export interface SyncRunStorage extends SyncRunStorageOperation {
+  transaction<T>(
+    closure: (transaction: SyncRunStorageOperation) => Promise<T>,
+  ): Promise<T>;
+}
+
+export class SyncRunAlreadyActiveError extends Error {
+  constructor() {
+    super("sync run already active");
+    this.name = "SyncRunAlreadyActiveError";
+  }
 }
 
 export function manifestKey(ns: string, env: string): string {
@@ -68,26 +81,37 @@ export async function putStartedSyncRun(
     exitCode: null,
     reason: null,
   };
-  await storage.put(syncRunKey(runId), record);
-  await storage.put(SYNC_ACTIVE_RUN_KEY, runId);
-  return record;
+
+  return storage.transaction(async (transaction) => {
+    const activeRunId = await transaction.get<string>(SYNC_ACTIVE_RUN_KEY);
+    if (activeRunId) {
+      const activeRun = await transaction.get<SyncRunRecord>(syncRunKey(activeRunId));
+      if (activeRun?.status === "started") {
+        throw new SyncRunAlreadyActiveError();
+      }
+      await transaction.delete(SYNC_ACTIVE_RUN_KEY);
+    }
+    await transaction.put(syncRunKey(runId), record);
+    await transaction.put(SYNC_ACTIVE_RUN_KEY, runId);
+    return record;
+  });
 }
 
 export async function getSyncRun(
-  storage: SyncRunStorage,
+  storage: SyncRunStorageOperation,
   runId: string,
 ): Promise<SyncRunRecord | undefined> {
   return storage.get<SyncRunRecord>(syncRunKey(runId));
 }
 
 export async function getLastSuccessRunId(
-  storage: SyncRunStorage,
+  storage: SyncRunStorageOperation,
 ): Promise<string | undefined> {
   return storage.get<string>(SYNC_LAST_SUCCESS_KEY);
 }
 
 export async function getLastSuccessSyncRun(
-  storage: SyncRunStorage,
+  storage: SyncRunStorageOperation,
 ): Promise<SyncRunRecord | undefined> {
   const runId = await getLastSuccessRunId(storage);
   return runId ? getSyncRun(storage, runId) : undefined;
@@ -101,9 +125,6 @@ export async function completeSyncRun(
   reason: SyncRunStopReason,
 ): Promise<SyncRunRecord | undefined> {
   const key = syncRunKey(runId);
-  const started = await storage.get<SyncRunRecord>(key);
-  if (!started || started.status !== "started") return undefined;
-
   const cleanExit = reason === "exit" && exitCode === 0;
   const status: SyncRunStatus = cleanExit ? "succeeded" : "failed";
   const classification: SyncRunClassification =
@@ -112,22 +133,38 @@ export async function completeSyncRun(
       : cleanExit
         ? "clean_exit"
         : "nonzero_exit";
-  const finished: SyncRunRecord = {
-    runId: started.runId,
-    imageDigest: started.imageDigest,
-    configFingerprint: started.configFingerprint,
-    targetCount: started.targetCount,
-    startedAt: started.startedAt,
-    endedAt,
-    status,
-    classification,
-    exitCode,
-    reason,
-  };
-  await storage.put(key, finished);
-  if (cleanExit) await storage.put(SYNC_LAST_SUCCESS_KEY, runId);
-  await storage.delete(SYNC_ACTIVE_RUN_KEY);
-  return finished;
+
+  return storage.transaction(async (transaction) => {
+    const started = await transaction.get<SyncRunRecord>(key);
+    if (!started) return undefined;
+
+    if (started.status !== "started") {
+      if (started.status === "succeeded" && started.classification === "clean_exit") {
+        await transaction.put(SYNC_LAST_SUCCESS_KEY, runId);
+      }
+      const activeRunId = await transaction.get<string>(SYNC_ACTIVE_RUN_KEY);
+      if (activeRunId === runId) await transaction.delete(SYNC_ACTIVE_RUN_KEY);
+      return started;
+    }
+
+    const finished: SyncRunRecord = {
+      runId: started.runId,
+      imageDigest: started.imageDigest,
+      configFingerprint: started.configFingerprint,
+      targetCount: started.targetCount,
+      startedAt: started.startedAt,
+      endedAt,
+      status,
+      classification,
+      exitCode,
+      reason,
+    };
+    await transaction.put(key, finished);
+    if (cleanExit) await transaction.put(SYNC_LAST_SUCCESS_KEY, runId);
+    const activeRunId = await transaction.get<string>(SYNC_ACTIVE_RUN_KEY);
+    if (activeRunId === runId) await transaction.delete(SYNC_ACTIVE_RUN_KEY);
+    return finished;
+  });
 }
 
 function normalizeString(value: string | null | undefined): string | null {

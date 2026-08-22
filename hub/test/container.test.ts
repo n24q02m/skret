@@ -9,27 +9,54 @@ import {
 import worker from "../src/index";
 import type { Env, SyncRunMetadata, SyncRunRecord } from "../src/types";
 
-type TestStorage = {
-  values: Map<string, unknown>;
+type TestStorageOperation = {
   get<T>(key: string): Promise<T | undefined>;
   put<T>(key: string, value: T): Promise<void>;
   delete(key: string): Promise<boolean>;
 };
 
+type TestStorage = TestStorageOperation & {
+  values: Map<string, unknown>;
+  failNextPutKey?: string;
+  transaction<T>(closure: (transaction: TestStorageOperation) => Promise<T>): Promise<T>;
+};
+
 function fakeStorage(): TestStorage {
   const values = new Map<string, unknown>();
-  return {
+  let transactionTail = Promise.resolve();
+  const storage = {
     values,
+    failNextPutKey: undefined as string | undefined,
     async get<T>(key: string): Promise<T | undefined> {
       return values.get(key) as T | undefined;
     },
     async put<T>(key: string, value: T): Promise<void> {
+      if (storage.failNextPutKey === key) {
+        storage.failNextPutKey = undefined;
+        throw new Error(`injected storage failure for ${key}`);
+      }
       values.set(key, value);
     },
     async delete(key: string): Promise<boolean> {
       return values.delete(key);
     },
+    async transaction<T>(
+      closure: (transaction: TestStorageOperation) => Promise<T>,
+    ): Promise<T> {
+      const previous = transactionTail;
+      let release!: () => void;
+      transactionTail = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      await previous;
+      try {
+        return await closure(storage);
+      } finally {
+        release();
+      }
+    },
   };
+  return storage;
 }
 
 function fakeContainer(storage: TestStorage): SyncContainer {
@@ -127,6 +154,19 @@ describe("scheduled()", () => {
     expect(await storage.get<string>(SYNC_LAST_SUCCESS_KEY)).toBeUndefined();
   });
 
+  it("rejects an overlapping scheduled run without replacing the active run", async () => {
+    const { env, start, storage } = fakeEnv({});
+    await worker.scheduled({} as ScheduledController, env);
+    const firstRunId = await storage.get<string>(SYNC_ACTIVE_RUN_KEY);
+
+    await expect(worker.scheduled({} as ScheduledController, env)).rejects.toThrow(
+      "already active",
+    );
+
+    expect(start).toHaveBeenCalledTimes(1);
+    expect(await storage.get<string>(SYNC_ACTIVE_RUN_KEY)).toBe(firstRunId);
+  });
+
   it("omits unset sync secrets from envVars", async () => {
     const { env, start } = fakeEnv({
       SKRET_HUB_TOKEN: "hub-tok",
@@ -214,6 +254,24 @@ describe("durable sync run records", () => {
       reason: "runtime_signal",
     });
     expect(await storage.get<string>(SYNC_LAST_SUCCESS_KEY)).toBeUndefined();
+  });
+
+  it("repairs terminal pointers when a completion write fails partway through", async () => {
+    const { container, storage } = fakeEnv({});
+    const runId = await container.beginRun();
+    storage.failNextPutKey = SYNC_LAST_SUCCESS_KEY;
+
+    await expect(container.onStop({ exitCode: 0, reason: "exit" })).rejects.toThrow(
+      "injected storage failure",
+    );
+    expect((await storage.get<SyncRunRecord>(syncRunKey(runId)))?.status).toBe("succeeded");
+    expect(await storage.get<string>(SYNC_LAST_SUCCESS_KEY)).toBeUndefined();
+    expect(await storage.get<string>(SYNC_ACTIVE_RUN_KEY)).toBe(runId);
+
+    await container.onStop({ exitCode: 0, reason: "exit" });
+
+    expect(await storage.get<string>(SYNC_LAST_SUCCESS_KEY)).toBe(runId);
+    expect(await storage.get<string>(SYNC_ACTIVE_RUN_KEY)).toBeUndefined();
   });
 
   it("stores and logs metadata only, never forwarded secret values", async () => {
