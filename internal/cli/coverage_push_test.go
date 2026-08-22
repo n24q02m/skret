@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -114,6 +115,127 @@ func TestInitOptions_Run_ForceOverwrite(t *testing.T) {
 	err := o.run(cmd)
 	require.NoError(t, err)
 	assert.Contains(t, buf.String(), "Created")
+}
+
+func TestInitOptions_Run_MergesExistingConfigWithoutForce(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(dir+"/.git", 0o755))
+	origDir, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	defer os.Chdir(origDir)
+
+	original := []byte("version: \"1\"\nproject: keep-me\ndefault_env: prod\nenvironments:\n  dev:\n    provider: local\n    file: .secrets.dev.yaml\n  prod:\n    provider: aws\n    path: /existing/prod\n    region: us-east-1\nrequired:\n  - API_KEY\nexclude:\n  - DEBUG_*\nsync:\n  targets:\n    - type: github\n      repo: n24q02m/example\n      no_overwrite: true\n")
+	require.NoError(t, os.WriteFile(".skret.yaml", original, 0o600))
+
+	cmd := newInitCmd()
+	cmd.SetArgs([]string{"--provider=aws", "--path=/updated/prod", "--region=eu-west-1"})
+	require.NoError(t, cmd.Execute())
+
+	got, err := os.ReadFile(".skret.yaml")
+	require.NoError(t, err)
+	text := string(got)
+	assert.Contains(t, text, "project: keep-me")
+	assert.Contains(t, text, "file: .secrets.dev.yaml")
+	assert.Contains(t, text, "path: /updated/prod")
+	assert.Contains(t, text, "region: eu-west-1")
+	assert.Contains(t, text, "- API_KEY")
+	assert.Contains(t, text, "- DEBUG_*")
+	assert.Contains(t, text, "no_overwrite: true")
+	assert.NotContains(t, text, "path: /existing/prod")
+}
+
+func TestInitOptions_Run_DryRunDoesNotWrite(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(dir+"/.git", 0o755))
+	origDir, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	defer os.Chdir(origDir)
+
+	original := []byte("version: \"1\"\ndefault_env: prod\nenvironments:\n  prod:\n    provider: aws\n    path: /existing/prod\n    region: us-east-1\n")
+	require.NoError(t, os.WriteFile(".skret.yaml", original, 0o600))
+
+	cmd := newInitCmd()
+	var errOut bytes.Buffer
+	cmd.SetErr(&errOut)
+	cmd.SetArgs([]string{"--path=/updated/prod", "--dry-run"})
+	require.NoError(t, cmd.Execute())
+
+	got, err := os.ReadFile(".skret.yaml")
+	require.NoError(t, err)
+	assert.Equal(t, original, got)
+	assert.Contains(t, errOut.String(), "dry-run")
+	assert.Contains(t, errOut.String(), "/updated/prod")
+}
+
+func TestInitOptions_Run_BacksUpBeforeReplacement(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(dir+"/.git", 0o755))
+	origDir, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	defer os.Chdir(origDir)
+
+	original := []byte("version: \"1\"\ndefault_env: prod\nenvironments:\n  prod:\n    provider: aws\n    path: /existing/prod\n    region: us-east-1\n")
+	require.NoError(t, os.WriteFile(".skret.yaml", original, 0o600))
+
+	cmd := newInitCmd()
+	cmd.SetArgs([]string{"--path=/updated/prod"})
+	require.NoError(t, cmd.Execute())
+
+	backup, err := os.ReadFile(".skret.yaml.bak")
+	require.NoError(t, err)
+	assert.Equal(t, original, backup)
+	updated, err := os.ReadFile(".skret.yaml")
+	require.NoError(t, err)
+	assert.Contains(t, string(updated), "path: /updated/prod")
+}
+
+func TestInitOptions_Run_SeedsMissingProdEnvironment(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(dir+"/.git", 0o755))
+	origDir, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	defer os.Chdir(origDir)
+
+	require.NoError(t, os.WriteFile(".skret.yaml", []byte("version: \"1\"\ndefault_env: dev\nenvironments:\n  dev:\n    provider: local\n    file: .secrets.dev.yaml\n"), 0o600))
+
+	cmd := newInitCmd()
+	cmd.SetArgs([]string{"--path=/new/prod"})
+	require.NoError(t, cmd.Execute())
+
+	got, err := os.ReadFile(".skret.yaml")
+	require.NoError(t, err)
+	text := string(got)
+	assert.Contains(t, text, "provider: aws")
+	assert.Contains(t, text, "path: /new/prod")
+}
+
+func TestInitOptions_Run_RejectsBackupSymlink(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(dir+"/.git", 0o755))
+	origDir, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	defer os.Chdir(origDir)
+
+	original := []byte("version: \"1\"\ndefault_env: prod\nenvironments:\n  prod:\n    provider: aws\n    path: /existing/prod\n    region: us-east-1\n")
+	require.NoError(t, os.WriteFile(".skret.yaml", original, 0o600))
+	outside := filepath.Join(dir, "outside.txt")
+	require.NoError(t, os.WriteFile(outside, []byte("sentinel"), 0o600))
+	if err := os.Symlink(outside, ".skret.yaml.bak"); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	cmd := newInitCmd()
+	cmd.SetArgs([]string{"--path=/updated/prod"})
+	err := cmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "symlink")
+
+	got, readErr := os.ReadFile(outside)
+	require.NoError(t, readErr)
+	assert.Equal(t, []byte("sentinel"), got)
+	current, readErr := os.ReadFile(".skret.yaml")
+	require.NoError(t, readErr)
+	assert.Equal(t, original, current)
 }
 
 // --- rollback command paths ---
