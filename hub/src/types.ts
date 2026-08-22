@@ -28,6 +28,33 @@ export interface Env {
   SKRET_HUB_URL?: string;
 }
 
+export interface SyncRunMetadata {
+  imageDigest?: string | null;
+  configFingerprint?: string | null;
+  targetCount?: number | null;
+}
+
+export type SyncRunStatus = "started" | "succeeded" | "failed";
+export type SyncRunClassification =
+  | "started"
+  | "clean_exit"
+  | "nonzero_exit"
+  | "runtime_signal";
+export type SyncRunStopReason = "exit" | "runtime_signal";
+
+export interface SyncRunRecord {
+  runId: string;
+  imageDigest: string | null;
+  configFingerprint: string | null;
+  targetCount: number | null;
+  startedAt: string;
+  endedAt: string | null;
+  status: SyncRunStatus;
+  classification: SyncRunClassification;
+  exitCode: number | null;
+  reason: SyncRunStopReason | null;
+}
+
 export interface Manifest {
   namespace: string;
   env: string;

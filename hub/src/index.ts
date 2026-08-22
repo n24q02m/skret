@@ -41,6 +41,8 @@ export default {
       const v = (env as unknown as Record<string, string | undefined>)[k];
       if (v) envVars[k] = v;
     }
-    await getContainer(env.SYNC).start({ envVars });
+    const container = getContainer(env.SYNC);
+    await container.beginRun();
+    await container.start({ envVars });
   },
 };
