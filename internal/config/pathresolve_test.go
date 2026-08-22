@@ -34,10 +34,10 @@ func TestIsSSMPathSegment(t *testing.T) {
 		{"myapp", true},
 		{"prod", true},
 		{"dev", true},
-		{"", false}, // coverage for s == ""
+		{"", false},      // coverage for s == ""
 		{"MyApp", false}, // coverage for s[0] < 'a'
 		{"{app}", false}, // coverage for s[0] > 'z'
-		{"a@b", false}, // coverage for inner loop fail
+		{"a@b", false},   // coverage for inner loop fail
 		{"myapp-prod_2", true},
 	}
 	for _, c := range cases {
