@@ -77,6 +77,23 @@ would write and exits without writing anything or saving sync state.`,
 }
 
 func (o *syncOptions) run(cmd *cobra.Command) error {
+	sc, err := loadSyncConfig(o.global)
+	if err != nil {
+		return skret.NewError(skret.ExitConfigError, "sync: load config failed", err)
+	}
+
+	targets, err := o.resolveTargets(sc)
+	if err != nil {
+		return err
+	}
+	syncers, err := syncer.Build(targets)
+	if err != nil {
+		return skret.NewError(skret.ExitConfigError, "sync: build targets", err)
+	}
+	if err := syncer.ValidateTargetIdentities(targets); err != nil {
+		return skret.NewError(skret.ExitConfigError, "sync: validate targets", err)
+	}
+
 	resolved, p, err := loadProvider(o.global)
 	if err != nil {
 		return err
@@ -93,20 +110,6 @@ func (o *syncOptions) run(cmd *cobra.Command) error {
 
 	if len(secrets) == 0 {
 		cmd.PrintErrln("No secrets found to sync. Use 'skret set' to add a secret.")
-	}
-
-	sc, err := loadSyncConfig(o.global)
-	if err != nil {
-		return skret.NewError(skret.ExitConfigError, "sync: load config failed", err)
-	}
-
-	targets, err := o.resolveTargets(sc)
-	if err != nil {
-		return err
-	}
-	syncers, err := syncer.Build(targets)
-	if err != nil {
-		return skret.NewError(skret.ExitConfigError, "sync: build targets", err)
 	}
 
 	results := make([]SyncResult, 0, len(syncers))

@@ -647,6 +647,28 @@ func appendSyncTarget(t *testing.T, dir, block string) {
 	require.NoError(t, err)
 }
 
+func TestSyncOptions_Run_RejectsDuplicateTargetsBeforeProviderLoad(t *testing.T) {
+	dir := setupSyncRepoWithSecrets(t, map[string]string{})
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".skret.yaml"), []byte(`version: "1"
+default_env: dev
+environments:
+  dev:
+    provider: unknown
+    file: secrets.yaml
+sync:
+  targets:
+    - type: github
+      repo: Owner/Repo
+    - type: github
+      repo: owner/repo
+`), 0o644))
+	t.Setenv("GITHUB_TOKEN", "test-token")
+
+	err := runSyncCmdErr(t, dir, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "identity collision")
+}
+
 // withGithubTarget declares a github sync.targets entry pointed at baseURL
 // (an httptest server, via the base_url passthrough added in Task 2/3), so
 // the test never needs a real GitHub API or an env-var seam.
