@@ -66,6 +66,13 @@ class WorkflowPolicyTests(unittest.TestCase):
         )[0]
         self.assertIn("version: v2.17.1", goreleaser)
         self.assertNotIn("version: latest", goreleaser)
+    def test_syft_action_uses_pinned_binary_version(self) -> None:
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        syft_action = workflow.split("anchore/sbom-action/download-syft", 1)[1].split(
+            "\n      - uses:", 1
+        )[0]
+        self.assertIn("syft-version: v1.51.0", syft_action)
+
 
 if __name__ == "__main__":
     unittest.main()
