@@ -3,21 +3,24 @@ package auth
 import (
 	"bufio"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"strings"
-
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	iamtypes "github.com/aws/aws-sdk-go-v2/service/iam/types"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
+	"io"
+	"net/url"
+	"strings"
 )
 
 // IAMClient is the subset of IAM the bootstrap flow uses (seam for tests).
 type IAMClient interface {
 	GetUser(context.Context, *iam.GetUserInput, ...func(*iam.Options)) (*iam.GetUserOutput, error)
+	GetUserPolicy(context.Context, *iam.GetUserPolicyInput, ...func(*iam.Options)) (*iam.GetUserPolicyOutput, error)
 	CreateUser(context.Context, *iam.CreateUserInput, ...func(*iam.Options)) (*iam.CreateUserOutput, error)
 	PutUserPolicy(context.Context, *iam.PutUserPolicyInput, ...func(*iam.Options)) (*iam.PutUserPolicyOutput, error)
 	ListAccessKeys(context.Context, *iam.ListAccessKeysInput, ...func(*iam.Options)) (*iam.ListAccessKeysOutput, error)
@@ -40,11 +43,28 @@ type BootstrapOpts struct {
 // BootstrapResult is returned to store/print. SecretKey is shown once; callers
 // MUST NOT log it. No other field holds a secret.
 type BootstrapResult struct {
-	Account     string
-	UserName    string
-	PolicyName  string
-	AccessKeyID string
-	SecretKey   string
+	Account           string
+	UserName          string
+	PolicyName        string
+	PolicyFingerprint string
+	AccessKeyID       string
+	SecretKey         string
+}
+
+// PolicyConflictError means an existing IAM identity is bound to a different
+// namespace policy. Bootstrap refuses to overwrite it.
+type PolicyConflictError struct {
+	UserName            string
+	PolicyName          string
+	ExpectedFingerprint string
+	ExistingFingerprint string
+}
+
+func (e *PolicyConflictError) Error() string {
+	return fmt.Sprintf(
+		"BOOTSTRAP_POLICY_CONFLICT: policy %q on IAM user %q does not match the requested namespace (expected %s, existing %s); remediation: choose a unique --project/--user-name or reconcile the existing IAM policy before retrying",
+		e.PolicyName, e.UserName, e.ExpectedFingerprint, e.ExistingFingerprint,
+	)
 }
 
 // BootstrapFlow provisions a scoped, least-privilege IAM user + access key from
@@ -86,6 +106,31 @@ func (f *BootstrapFlow) Provision(ctx context.Context, o BootstrapOpts) (*Bootst
 		return nil, err
 	}
 	policyName := "skret-" + o.Project
+	expectedFingerprint, err := policyFingerprint(policy)
+	if err != nil {
+		return nil, err
+	}
+	existingPolicy, err := f.IAM.GetUserPolicy(ctx, &iam.GetUserPolicyInput{
+		UserName: &user, PolicyName: &policyName,
+	})
+	if err == nil && existingPolicy.PolicyDocument != nil {
+		existingFingerprint, fingerprintErr := policyFingerprint(aws.ToString(existingPolicy.PolicyDocument))
+		if fingerprintErr != nil {
+			return nil, fingerprintErr
+		}
+		if existingFingerprint != expectedFingerprint {
+			return nil, &PolicyConflictError{
+				UserName: user, PolicyName: policyName,
+				ExpectedFingerprint: expectedFingerprint,
+				ExistingFingerprint: existingFingerprint,
+			}
+		}
+	} else if err != nil {
+		var nse *iamtypes.NoSuchEntityException
+		if !errors.As(err, &nse) {
+			return nil, fmt.Errorf("bootstrap: get policy %q: %w", policyName, err)
+		}
+	}
 	if _, err := f.IAM.PutUserPolicy(ctx, &iam.PutUserPolicyInput{
 		UserName: &user, PolicyName: &policyName, PolicyDocument: &policy,
 	}); err != nil {
@@ -105,11 +150,12 @@ func (f *BootstrapFlow) Provision(ctx context.Context, o BootstrapOpts) (*Bootst
 		return nil, fmt.Errorf("bootstrap: create access key: %w", err)
 	}
 	return &BootstrapResult{
-		Account:     account,
-		UserName:    user,
-		PolicyName:  policyName,
-		AccessKeyID: aws.ToString(out.AccessKey.AccessKeyId),
-		SecretKey:   aws.ToString(out.AccessKey.SecretAccessKey),
+		Account:           account,
+		UserName:          user,
+		PolicyName:        policyName,
+		PolicyFingerprint: expectedFingerprint,
+		AccessKeyID:       aws.ToString(out.AccessKey.AccessKeyId),
+		SecretKey:         aws.ToString(out.AccessKey.SecretAccessKey),
 	}, nil
 }
 
@@ -139,6 +185,24 @@ func PromptBootstrapCredentials(ctx context.Context, in io.Reader) (*BootstrapCr
 	}
 	sess := promptLine(ctx, r, "AWS Session Token (optional, blank = skip): ")
 	return &BootstrapCredentials{AccessKeyID: akid, SecretAccessKey: sak, SessionToken: sess}, nil
+}
+
+func policyFingerprint(policyDocument string) (string, error) {
+	decoded, err := url.QueryUnescape(policyDocument)
+	if err != nil {
+		return "", fmt.Errorf("bootstrap: decode policy document: %w", err)
+	}
+
+	var document any
+	if err := json.Unmarshal([]byte(decoded), &document); err != nil {
+		return "", fmt.Errorf("bootstrap: parse policy document: %w", err)
+	}
+	canonical, err := json.Marshal(document)
+	if err != nil {
+		return "", fmt.Errorf("bootstrap: canonicalize policy document: %w", err)
+	}
+	sum := sha256.Sum256(canonical)
+	return hex.EncodeToString(sum[:]), nil
 }
 
 // buildPolicy returns the least-privilege inline policy JSON: the exact SSM

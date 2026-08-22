@@ -2,9 +2,11 @@ package cli
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
@@ -67,6 +69,11 @@ func newBootstrapCmd(opts *GlobalOpts) *cobra.Command {
 			"The created skret user key is stored in the credential cache for future use.",
 		Example: "  skret bootstrap --path=/myapp/prod --region=ap-southeast-1",
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			format := bootstrapOutputFormat(cmd)
+			if format != "table" && format != "json" {
+				return skret.NewError(skret.ExitValidationError,
+					fmt.Sprintf("bootstrap: unknown --format %q (table, json)", format), nil)
+			}
 			// Resolve path/region/profile/project: explicit flags win, else fall
 			// back to the resolved config. A provider is deliberately NOT built —
 			// the skret user may not exist yet, so we only need the config values.
@@ -137,13 +144,39 @@ func newBootstrapCmd(opts *GlobalOpts) *cobra.Command {
 			if !printOnly {
 				if err := bootstrapStore().Save(&auth.Credential{
 					Provider: "aws", Method: "access-key", Token: res.SecretKey,
-					Metadata: map[string]string{"access_key_id": res.AccessKeyID},
+					Metadata: map[string]string{
+						"access_key_id":      res.AccessKeyID,
+						"policy_fingerprint": res.PolicyFingerprint,
+					},
 				}); err != nil {
 					return skret.NewError(skret.ExitConfigError, "bootstrap: store credential failed", err)
 				}
 			}
 
 			out := cmd.OutOrStdout()
+			if format == "json" {
+				return json.NewEncoder(out).Encode(struct {
+					Account           string `json:"account"`
+					UserName          string `json:"user_name"`
+					PolicyName        string `json:"policy_name"`
+					PolicyFingerprint string `json:"policy_fingerprint"`
+					AccessKeyID       string `json:"access_key_id"`
+					Scope             string `json:"scope"`
+					Stored            bool   `json:"stored"`
+				}{
+					Account:           res.Account,
+					UserName:          res.UserName,
+					PolicyName:        res.PolicyName,
+					PolicyFingerprint: res.PolicyFingerprint,
+					AccessKeyID:       res.AccessKeyID,
+					Scope:             path,
+					Stored:            !printOnly,
+				})
+			}
+			if format != "table" {
+				return skret.NewError(skret.ExitValidationError,
+					fmt.Sprintf("bootstrap: unknown --format %q (table, json)", format), nil)
+			}
 			fmt.Fprintf(out, "\nCreated IAM user %s in account %s\nPolicy %s scoped to %s\nAccess Key ID: %s\n",
 				res.UserName, res.Account, res.PolicyName, path, res.AccessKeyID)
 			if printOnly {
@@ -163,6 +196,16 @@ func newBootstrapCmd(opts *GlobalOpts) *cobra.Command {
 	cmd.Flags().BoolVar(&force, "force", false, "provision even if an aws credential is already stored")
 	cmd.Flags().BoolVar(&yes, "yes", false, "skip the confirmation prompt")
 	return cmd
+}
+
+func bootstrapOutputFormat(cmd *cobra.Command) string {
+	if flag := cmd.Flags().Lookup("format"); flag != nil {
+		return flag.Value.String()
+	}
+	if flag := cmd.InheritedFlags().Lookup("format"); flag != nil {
+		return flag.Value.String()
+	}
+	return "table"
 }
 
 // resolveBootstrapConfig resolves config the same way loadProvider does, but
@@ -192,21 +235,38 @@ func resolveBootstrapConfig(opts *GlobalOpts) (*config.ResolvedConfig, error) {
 	return config.Resolve(cfg, resolveOpts)
 }
 
-// sanitizeProject derives a default project name from the SSM path's last
-// non-empty segment (e.g. /myapp/prod -> prod). Only [a-zA-Z0-9_-] is kept so
-// the result is a valid IAM user/policy name suffix.
+// sanitizeProject derives a deterministic IAM-safe identity from the full
+// normalized namespace (e.g. /myapp/prod -> myapp-prod). The project suffix
+// is capped so the default skret-<project> user name remains within IAM's
+// 64-character limit while retaining a collision-resistant digest.
 func sanitizeProject(path string) string {
-	segs := strings.Split(strings.Trim(path, "/"), "/")
-	last := segs[len(segs)-1]
+	const maxProjectLength = 58
+
+	normalized := strings.Trim(path, "/")
 	var b strings.Builder
-	for _, r := range last {
+	separator := false
+	for _, r := range normalized {
 		switch {
 		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '_', r == '-':
 			b.WriteRune(r)
+			separator = false
+		default:
+			if b.Len() > 0 && !separator {
+				b.WriteByte('-')
+				separator = true
+			}
 		}
 	}
-	if b.Len() == 0 {
-		return filepath.Base(path)
+
+	project := strings.Trim(b.String(), "-")
+	if project == "" {
+		return "project"
 	}
-	return b.String()
+	if len(project) > maxProjectLength {
+		sum := sha256.Sum256([]byte(normalized))
+		suffix := "-" + hex.EncodeToString(sum[:])[:8]
+		prefixLength := maxProjectLength - len(suffix)
+		project = strings.TrimRight(project[:prefixLength], "-") + suffix
+	}
+	return project
 }
