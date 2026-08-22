@@ -59,5 +59,13 @@ class WorkflowPolicyTests(unittest.TestCase):
                 self.assertNotIn(marker, workflow, f"{marker} found in {relative_path}")
 
 
+    def test_goreleaser_uses_pinned_binary_version(self) -> None:
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        goreleaser = workflow.split("goreleaser/goreleaser-action", 1)[1].split(
+            "        env:", 1
+        )[0]
+        self.assertIn("version: v2.17.1", goreleaser)
+        self.assertNotIn("version: latest", goreleaser)
+
 if __name__ == "__main__":
     unittest.main()
