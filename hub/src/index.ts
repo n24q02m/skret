@@ -36,6 +36,11 @@ export default {
   // has started — the container runs `skret sync` + `skret hub push` then
   // exits on its own, so we deliberately do not await job completion.
   async scheduled(_controller: ScheduledController, env: Env): Promise<void> {
+    const hubToken = (env as unknown as Record<string, string | undefined>).SKRET_HUB_TOKEN;
+    if (!hubToken?.trim()) {
+      throw new Error("missing required Hub configuration: SKRET_HUB_TOKEN");
+    }
+
     const envVars: Record<string, string> = {};
     for (const k of SYNC_ENV_KEYS) {
       const v = (env as unknown as Record<string, string | undefined>)[k];
