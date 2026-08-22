@@ -1,8 +1,10 @@
+import subprocess
 import unittest
 from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+LEGACY_OPENCODE_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "opencode.yml"
 WORKFLOW = REPO_ROOT / ".github" / "workflows" / "cd.yml"
 
 
@@ -24,6 +26,28 @@ class WorkflowPolicyTests(unittest.TestCase):
         self.assertIn("actions/create-github-app-token", release)
         self.assertIn("\n  docs:", workflow)
         self.assertIn("\n  deploy-hub:", workflow)
+
+    def test_legacy_opencode_workflow_is_removed(self) -> None:
+        self.assertFalse(LEGACY_OPENCODE_WORKFLOW.exists())
+
+        tracked_workflows = subprocess.run(
+            ["git", "ls-files", "--", ".github/workflows"],
+            cwd=REPO_ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.splitlines()
+        for relative_path in tracked_workflows:
+            workflow_path = REPO_ROOT / relative_path
+            if not workflow_path.is_file():
+                continue
+            workflow = workflow_path.read_text(encoding="utf-8")
+            for marker in (
+                "anomalyco/opencode/github",
+                "OPENCODE_CONFIG_CONTENT",
+                "OC_PROXY_CONFIG",
+            ):
+                self.assertNotIn(marker, workflow, f"{marker} found in {relative_path}")
 
 
 if __name__ == "__main__":
