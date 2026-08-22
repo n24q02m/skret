@@ -51,9 +51,6 @@ func ResolvePath(raw string) (string, bool) {
 
 		segments++
 		tailStart = segStart
-		if idx == -1 {
-			break
-		}
 		currEnd = idx
 	}
 
