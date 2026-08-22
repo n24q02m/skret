@@ -238,17 +238,14 @@ function isCleanSuccess(record: SyncRunRecord | undefined): record is SyncRunRec
     record.exitCode === 0 &&
     record.reason === "exit" &&
     record.endedAt !== null &&
-    record.endedAt.length > 0
+    Number.isFinite(Date.parse(record.endedAt))
   );
 }
 
 function isCompletionNewer(candidate: SyncRunRecord, current: SyncRunRecord): boolean {
-  const candidateTime = Date.parse(candidate.endedAt ?? "");
-  const currentTime = Date.parse(current.endedAt ?? "");
-  if (Number.isFinite(candidateTime) && Number.isFinite(currentTime)) {
-    return candidateTime > currentTime;
-  }
-  return (candidate.endedAt ?? "") > (current.endedAt ?? "");
+  return (
+    Date.parse(candidate.endedAt ?? "") > Date.parse(current.endedAt ?? "")
+  );
 }
 
 function normalizeString(value: string | null | undefined): string | null {

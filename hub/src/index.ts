@@ -46,7 +46,16 @@ export default {
     try {
       await container.start({ envVars });
     } catch (error) {
-      await container.markStartFailure(runId);
+      try {
+        await container.markStartFailure(runId);
+      } catch {
+        try {
+          await container.markStartFailure(runId);
+        } catch {
+          // Preserve the original start error; later reconciliation handles
+          // a cleanup RPC that remains unavailable after one retry.
+        }
+      }
       throw error;
     }
   },

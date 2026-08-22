@@ -20,6 +20,7 @@ type TestStorageOperation = {
 type TestStorage = TestStorageOperation & {
   values: Map<string, unknown>;
   failNextPutKey?: string;
+  failNextTransactionCount?: number;
   transaction<T>(closure: (transaction: TestStorageOperation) => Promise<T>): Promise<T>;
 };
 
@@ -29,6 +30,7 @@ function fakeStorage(): TestStorage {
   const storage = {
     values,
     failNextPutKey: undefined as string | undefined,
+    failNextTransactionCount: 0,
     async get<T>(key: string): Promise<T | undefined> {
       return values.get(key) as T | undefined;
     },
@@ -52,6 +54,10 @@ function fakeStorage(): TestStorage {
       });
       await previous;
       try {
+        if (storage.failNextTransactionCount > 0) {
+          storage.failNextTransactionCount -= 1;
+          throw new Error("injected transaction failure");
+        }
         return await closure(storage);
       } finally {
         release();
@@ -109,6 +115,7 @@ function fakeEnv(secrets: Partial<Env>) {
     env: { SYNC, ...secrets } as unknown as Env,
     start,
     beginRun,
+    markStartFailure,
     storage,
     container,
     order,
@@ -196,6 +203,28 @@ describe("scheduled()", () => {
     expect(start).toHaveBeenCalledTimes(2);
   });
 
+  it("preserves a start error when cleanup retries fail without persisting its text", async () => {
+    const { env, start, markStartFailure, storage } = fakeEnv({});
+    const secret = "start-error-secret";
+    const startError = new Error(`container start failed: ${secret}`);
+    start.mockImplementationOnce(async () => {
+      storage.failNextTransactionCount = 2;
+      throw startError;
+    });
+
+    await expect(worker.scheduled({} as ScheduledController, env)).rejects.toBe(startError);
+
+    expect(markStartFailure).toHaveBeenCalledTimes(2);
+    const runKey = [...storage.values.keys()].find((key) => key.startsWith(SYNC_RUN_PREFIX));
+    expect(runKey).toEqual(expect.any(String));
+    const stored = JSON.stringify([...storage.values.values()]);
+    expect(stored).not.toContain(secret);
+    expect(stored).not.toContain(startError.message);
+    expect(await storage.get<string>(SYNC_ACTIVE_RUN_KEY)).toBe(
+      (runKey as string).slice(SYNC_RUN_PREFIX.length),
+    );
+  });
+
   it("omits unset sync secrets from envVars", async () => {
     const { env, start } = fakeEnv({
       SKRET_HUB_TOKEN: "hub-tok",
@@ -278,6 +307,38 @@ describe("durable sync run records", () => {
     );
 
     expect(await storage.get<string>(SYNC_LAST_SUCCESS_KEY)).toBe(secondRunId);
+  });
+
+  it("requires parseable completion timestamps for last-success repair", async () => {
+    const { container, storage } = fakeEnv({});
+    const invalidFirstRunId = await container.beginRun();
+    await completeSyncRun(storage, invalidFirstRunId, "not-a-timestamp", 0, "exit");
+    expect(await storage.get<string>(SYNC_LAST_SUCCESS_KEY)).toBeUndefined();
+
+    const validFirstRunId = await container.beginRun();
+    await completeSyncRun(
+      storage,
+      validFirstRunId,
+      "2026-08-22T00:00:10.000Z",
+      0,
+      "exit",
+    );
+    expect(await storage.get<string>(SYNC_LAST_SUCCESS_KEY)).toBe(validFirstRunId);
+
+    const invalidLaterRunId = await container.beginRun();
+    await completeSyncRun(storage, invalidLaterRunId, "also-not-a-timestamp", 0, "exit");
+    expect(await storage.get<string>(SYNC_LAST_SUCCESS_KEY)).toBe(validFirstRunId);
+
+    await storage.put(SYNC_LAST_SUCCESS_KEY, invalidLaterRunId);
+    const validSecondRunId = await container.beginRun();
+    await completeSyncRun(
+      storage,
+      validSecondRunId,
+      "2026-08-22T00:00:20.000Z",
+      0,
+      "exit",
+    );
+    expect(await storage.get<string>(SYNC_LAST_SUCCESS_KEY)).toBe(validSecondRunId);
   });
 
   it("finalizes a nonzero exit as failure without replacing last success", async () => {
