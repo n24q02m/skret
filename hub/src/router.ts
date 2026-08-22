@@ -1,4 +1,5 @@
-import type { Env } from "./types";
+import { getContainer } from "@cloudflare/containers";
+import type { Env, SyncHealth } from "./types";
 import { handleIngest } from "./ingest";
 import { checkPassword, mintSession, verifySession, SESSION_TTL } from "./auth";
 import { getAllManifests } from "./store";
@@ -113,9 +114,42 @@ async function handleHealthz(env: Env): Promise<Response> {
   try {
     await env.VAULT_KV.get(HEALTH_PROBE_KEY);
   } catch {
-    return json({ ok: false, kv: "error" }, 503);
+    return json({ ok: false, kv: "error", sync: null }, 503);
   }
-  return json({ ok: true, kv: "ok" });
+
+  let sync: SyncHealth | null = null;
+  try {
+    const health = await getContainer(env.SYNC).getSyncHealth();
+    sync = projectSyncHealth(health);
+  } catch {
+    // Sync freshness is informative; a transient RPC failure must not turn
+    // the unauthenticated health probe into an internal-error disclosure.
+  }
+  return json({ ok: true, kv: "ok", sync });
+}
+
+function projectSyncHealth(value: unknown): SyncHealth | null {
+  if (value === null || typeof value !== "object") return null;
+  const candidate = value as Partial<SyncHealth>;
+  if (typeof candidate.active !== "boolean") return null;
+
+  const lastSuccessAt =
+    typeof candidate.last_success_at === "string" &&
+    Number.isFinite(Date.parse(candidate.last_success_at))
+      ? candidate.last_success_at
+      : null;
+  const ageSeconds =
+    typeof candidate.age_seconds === "number" &&
+    Number.isFinite(candidate.age_seconds) &&
+    candidate.age_seconds >= 0
+      ? Math.floor(candidate.age_seconds)
+      : null;
+
+  return {
+    active: candidate.active,
+    last_success_at: lastSuccessAt,
+    age_seconds: ageSeconds,
+  };
 }
 
 async function handleLogin(req: Request, env: Env): Promise<Response> {

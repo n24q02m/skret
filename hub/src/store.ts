@@ -1,5 +1,6 @@
 import type {
   Manifest,
+  SyncHealth,
   SyncRunMetadata,
   SyncRunRecord,
   SyncRunStatus,
@@ -115,6 +116,27 @@ export async function getLastSuccessSyncRun(
 ): Promise<SyncRunRecord | undefined> {
   const runId = await getLastSuccessRunId(storage);
   return runId ? getSyncRun(storage, runId) : undefined;
+}
+export async function getSyncHealth(
+  storage: SyncRunStorageOperation,
+  now = new Date(),
+): Promise<SyncHealth> {
+  const activeRunId = await storage.get<string>(SYNC_ACTIVE_RUN_KEY);
+  const activeRun = activeRunId
+    ? await getSyncRun(storage, activeRunId)
+    : undefined;
+  const lastSuccess = await getLastSuccessSyncRun(storage);
+  const lastSuccessAt = isCleanSuccess(lastSuccess) ? lastSuccess.endedAt : null;
+  const endedAtMs = lastSuccessAt === null ? NaN : Date.parse(lastSuccessAt);
+  const ageSeconds = Number.isFinite(endedAtMs)
+    ? Math.max(0, Math.floor((now.getTime() - endedAtMs) / 1000))
+    : null;
+
+  return {
+    active: activeRun?.status === "started",
+    last_success_at: lastSuccessAt,
+    age_seconds: ageSeconds,
+  };
 }
 
 export async function completeSyncRun(

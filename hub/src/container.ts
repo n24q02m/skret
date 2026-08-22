@@ -1,9 +1,10 @@
 import { Container, type StopParams } from "@cloudflare/containers";
-import type { Env, SyncRunMetadata } from "./types";
+import type { Env, SyncHealth, SyncRunMetadata } from "./types";
 import {
   SYNC_ACTIVE_RUN_KEY,
   completeSyncRun,
   failStartedSyncRun,
+  getSyncHealth as readSyncHealth,
   putStartedSyncRun,
 } from "./store";
 
@@ -21,6 +22,12 @@ export class SyncContainer extends Container<Env> {
     const runId = crypto.randomUUID();
     await putStartedSyncRun(this.ctx.storage, runId, new Date().toISOString(), metadata);
     return runId;
+  }
+
+  // Public health reads receive only the coarse freshness projection. Detailed
+  // run records remain in Durable Object storage for authenticated operators.
+  async getSyncHealth(): Promise<SyncHealth> {
+    return readSyncHealth(this.ctx.storage);
   }
 
   // A rejected start has no lifecycle callback to finalize the run. Mark it

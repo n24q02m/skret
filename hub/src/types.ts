@@ -56,6 +56,11 @@ export interface SyncRunRecord {
   exitCode: number | null;
   reason: SyncRunReason | null;
 }
+export interface SyncHealth {
+  active: boolean;
+  last_success_at: string | null;
+  age_seconds: number | null;
+}
 
 export interface Manifest {
   namespace: string;

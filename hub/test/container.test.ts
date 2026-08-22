@@ -86,6 +86,66 @@ describe("SyncContainer", () => {
     expect(Object.getOwnPropertyNames(SyncContainer.prototype)).toContain("onStop");
   });
 });
+describe("sync health projection", () => {
+  it("returns an unknown freshness state when no clean success exists", async () => {
+    const { container } = fakeEnv({});
+
+    await expect(container.getSyncHealth()).resolves.toEqual({
+      active: false,
+      last_success_at: null,
+      age_seconds: null,
+    });
+  });
+
+  it("reports an active state only for a started run", async () => {
+    const { container } = fakeEnv({});
+    await container.beginRun();
+
+    await expect(container.getSyncHealth()).resolves.toEqual({
+      active: true,
+      last_success_at: null,
+      age_seconds: null,
+    });
+  });
+
+  it("reports clean-success age in non-negative seconds", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-22T00:01:40.000Z"));
+    try {
+      const { container, storage } = fakeEnv({});
+      const runId = await container.beginRun();
+      await completeSyncRun(
+        storage,
+        runId,
+        "2026-08-22T00:00:10.000Z",
+        0,
+        "exit",
+      );
+
+      await expect(container.getSyncHealth()).resolves.toEqual({
+        active: false,
+        last_success_at: "2026-08-22T00:00:10.000Z",
+        age_seconds: 90,
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not treat a stale terminal active pointer as active", async () => {
+    const { container, storage } = fakeEnv({});
+    const runId = await container.beginRun();
+    await completeSyncRun(storage, runId, "2026-08-22T00:00:10.000Z", 17, "exit");
+    await storage.put(SYNC_ACTIVE_RUN_KEY, runId);
+
+    await expect(container.getSyncHealth()).resolves.toMatchObject({
+      active: false,
+      last_success_at: null,
+      age_seconds: null,
+    });
+  });
+});
+
 
 // Build a fake env whose SYNC namespace resolves (getContainer just calls
 // idFromName + get) to a stub with lifecycle and `start` spies. This exercises
