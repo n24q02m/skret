@@ -2,13 +2,12 @@ name: CD
 
 # CD handles:
 #  - Release on workflow_dispatch (semantic-release -> tag -> goreleaser -> publish)
-#  - Docs deploy on push to main when docs/** changes (Cloudflare Pages)
+#  - Docs artifact build on push to main when docs/** changes
 #  - Vault hub Worker deploy on push to main when hub/** changes (Cloudflare Workers)
 #
 # Repo Secrets required:
 #   GITHUB_TOKEN             - built-in
 #   CI_APP_KEY               - n24q02m-ci GitHub App private key (for the release job)
-#   CLOUDFLARE_API_TOKEN     - CF Pages deploy
 #   CLOUDFLARE_ACCOUNT_ID    - CF account ID (also used by the vault hub deploy)
 #   TAP_GITHUB_TOKEN         - fine-grained PAT for tap repo updates
 #   HUB_CF_DEPLOY_TOKEN      - project-scoped CF token for the vault hub Worker (account Workers Scripts + KV write only; custom domain attached out-of-band, no zone perm); also used to push the sync container image to the Cloudflare managed registry -- verify it covers that scope, may need a Containers/Images permission added
@@ -245,17 +244,13 @@ jobs:
           scoop install skret
           skret --version
 
-  # ==================== Docs Deploy ====================
-  docs:
-    name: Deploy Docs to Cloudflare Pages
+  # ==================== Docs Artifact Build ====================
+  docs-build:
+    name: Build Docs Artifact
     if: |
       (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
       !startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
-    # No `deployments: write`. It arrived with a pnpm bump in #273 rather than
-    # with any code that needed it, and nothing in this job touches the GitHub
-    # Deployments API -- the publish step is cloudflare/wrangler-action, which
-    # talks to Cloudflare.
     permissions:
       contents: read
     steps:
@@ -281,12 +276,12 @@ jobs:
       - name: Build Astro Starlight site
         working-directory: docs
         run: pnpm astro build
-      - name: Deploy to Cloudflare Pages
-        uses: cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0 # v4.0.0
+      - name: Upload Docs artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy docs/dist --project-name=skret --branch=main
+          name: docs-dist
+          path: docs/dist
+          retention-days: 7
 
   # ==================== Vault Hub Deploy ====================
   deploy-hub:

@@ -21,10 +21,19 @@ class WorkflowPolicyTests(unittest.TestCase):
             "./skret sync --to=github",
         ):
             self.assertNotIn(marker, normalized)
-
         release = workflow.split("\n  release:", 1)[1].split("\n  goreleaser:", 1)[0]
         self.assertIn("actions/create-github-app-token", release)
-        self.assertIn("\n  docs:", workflow)
+        self.assertIn("\n  docs-build:", workflow)
+        self.assertIn("run: pnpm astro build", workflow)
+        self.assertIn("actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a", workflow)
+        self.assertIn("path: docs/dist", workflow)
+        self.assertIn("retention-days: 7", workflow)
+        for marker in (
+            "command: pages deploy",
+            "apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}",
+            "Deploy Docs to Cloudflare Pages",
+        ):
+            self.assertNotIn(marker, workflow)
         self.assertIn("\n  deploy-hub:", workflow)
 
     def test_legacy_opencode_workflow_is_removed(self) -> None:
