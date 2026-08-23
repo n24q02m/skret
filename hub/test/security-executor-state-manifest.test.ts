@@ -258,7 +258,7 @@ describe("security executor signed StateManifest authority", () => {
     }],
     ["mixed separator forward-slash traversal in Windows source root", async () => {
       const fixture = await manifestFixture({ document: { source_root: "C:\\skret/../state" } });
-      return { fixture, body: await migrationBody(fixture, { state_path: STATE_PATH }) };
+      return { fixture, body: await migrationBody(fixture, { state_path: "C:\\state\\state.json" }) };
     }],
     ["mixed separator forward-slash in Windows metadata path", async () => {
       const fixture = await manifestFixture();

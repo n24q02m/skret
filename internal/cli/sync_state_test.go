@@ -42,6 +42,43 @@ func writeCLISignedStateManifest(t *testing.T, root string, extraFiles map[strin
 	return manifestPath, hex.EncodeToString(publicKey), manifest
 }
 
+func writeCLIStateManifestWithURLSafeSignature(t *testing.T, root string, extraFiles map[string]string) (manifestPath, publicKeyHex string, manifest *syncer.StateManifest) {
+	t.Helper()
+	for name, contents := range extraFiles {
+		path := filepath.Join(root, name)
+		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o700))
+		require.NoError(t, os.WriteFile(path, []byte(contents), 0o600))
+	}
+
+	now := time.Now().UTC().Truncate(time.Second)
+	privateKey := ed25519.NewKeyFromSeed(make([]byte, ed25519.SeedSize))
+	publicKey := privateKey.Public().(ed25519.PublicKey)
+	var err error
+	manifest, err = syncer.BuildStateManifest(root, "operator", "hub", "cli-migration-nonce-0", now.Add(10*time.Minute), privateKey, now)
+	require.NoError(t, err)
+	foundURLSafeVariant := false
+	for attempt := range 256 {
+		if attempt > 0 {
+			manifest.Nonce = "cli-migration-nonce-" + strconv.Itoa(attempt)
+			canonical, canonicalErr := manifest.CanonicalSigningBytes()
+			require.NoError(t, canonicalErr)
+			manifest.Signature = ed25519.Sign(privateKey, canonical)
+		}
+		signature := base64.StdEncoding.EncodeToString(manifest.Signature)
+		if strings.ContainsAny(signature, "+/") {
+			foundURLSafeVariant = true
+			break
+		}
+	}
+	require.True(t, foundURLSafeVariant, "deterministic manifest signature must contain '+' or '/'")
+
+	manifestPath = filepath.Join(t.TempDir(), "state-manifest.json")
+	encoded, err := json.Marshal(manifest)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(manifestPath, encoded, 0o600))
+	return manifestPath, hex.EncodeToString(publicKey), manifest
+}
+
 func executeStateMigrationCLI(t *testing.T, args ...string) (stdout, stderr string, err error) {
 	t.Helper()
 	var out, errOut bytes.Buffer
@@ -169,14 +206,12 @@ func TestSyncStateMigrate_StrictManifestParsingFailsBeforeMutationOrSubmit(t *te
 	statePath := filepath.Join(root, "state.json")
 	original := []byte(`{"schema_version":1,"metadata":"opaque-cli-strict-value"}`)
 	require.NoError(t, os.WriteFile(statePath, original, 0o600))
-	manifestPath, publicKeyHex, manifest := writeCLISignedStateManifest(t, root, map[string]string{"state.json": string(original)})
+	manifestPath, publicKeyHex, manifest := writeCLIStateManifestWithURLSafeSignature(t, root, map[string]string{"state.json": string(original)})
 	journalPath := filepath.Join(root, "migration.journal.json")
 	validManifestBytes := mustReadCLIFile(t, manifestPath)
 
 	validSig := base64.StdEncoding.EncodeToString(manifest.Signature)
-	urlSafeSignature := append([]byte(nil), manifest.Signature...)
-	urlSafeSignature[0] = 0xff
-	urlSafeSig := base64.URLEncoding.EncodeToString(urlSafeSignature)
+	urlSafeSig := strings.NewReplacer("+", "-", "/", "_").Replace(validSig)
 	require.NotEqual(t, validSig, urlSafeSig)
 	rawSig := strings.TrimRight(validSig, "=")
 
@@ -277,6 +312,26 @@ func TestSyncStateMigrate_StrictManifestParsingFailsBeforeMutationOrSubmit(t *te
 			assert.Empty(t, stdout)
 			assert.NotContains(t, stderr, "opaque-cli-strict-value")
 			assert.NotContains(t, err.Error(), "opaque-cli-strict-value")
+			assert.Equal(t, original, mustReadCLIFile(t, statePath))
+			assert.NoFileExists(t, statePath+".v1")
+			assert.NoFileExists(t, journalPath)
+
+			stdoutExecute, stderrExecute, errExecute := executeStateMigrationCLI(t,
+				"sync-state", "migrate", "--to", "v2",
+				"--state-manifest", badManifestPath,
+				"--journal", journalPath,
+				"--state", statePath,
+				"--public-key", publicKeyHex,
+				"--role", manifest.Role,
+				"--audience", manifest.Audience,
+				"--operation-id", "op-cli-strict-execute",
+				"--execute",
+				"--format", "json",
+			)
+			require.Error(t, errExecute)
+			assert.Empty(t, stdoutExecute)
+			assert.NotContains(t, stderrExecute, "opaque-cli-strict-value")
+			assert.NotContains(t, errExecute.Error(), "opaque-cli-strict-value")
 			assert.Equal(t, original, mustReadCLIFile(t, statePath))
 			assert.NoFileExists(t, statePath+".v1")
 			assert.NoFileExists(t, journalPath)
