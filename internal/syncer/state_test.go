@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -208,6 +209,68 @@ func TestSaveSyncState_Atomic(t *testing.T) {
 	// .tmp file should not survive a successful SaveSyncState.
 	_, statErr := os.Stat(path + ".tmp")
 	assert.True(t, errors.Is(statErr, os.ErrNotExist))
+}
+
+func TestSaveSyncState_ConcurrentSaves(t *testing.T) {
+	withFakeHome(t)
+	const saves = 64
+
+	start := make(chan struct{})
+	errs := make(chan error, saves)
+	var wg sync.WaitGroup
+	for range saves {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			state := &SyncState{
+				Target: "github",
+				ID:     "owner/repo",
+				Hashes: map[string]string{"K": hashSecret("value")},
+			}
+			errs <- SaveSyncState(state)
+		}()
+	}
+	close(start)
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		require.NoError(t, err)
+	}
+
+	path, err := StatePathFor("github", "owner/repo")
+	require.NoError(t, err)
+	loaded, err := LoadSyncState("github", "owner/repo")
+	require.NoError(t, err)
+	assert.Equal(t, hashSecret("value"), loaded.Hashes["K"])
+
+	entries, err := os.ReadDir(filepath.Dir(path))
+	require.NoError(t, err)
+	for _, entry := range entries {
+		assert.NotContains(t, entry.Name(), ".tmp", "temporary artifact survived: %s", entry.Name())
+	}
+}
+
+func TestSaveSyncState_RenameFailureCleansTemp(t *testing.T) {
+	withFakeHome(t)
+	state := &SyncState{
+		Target: "github",
+		ID:     "owner/repo",
+		Hashes: map[string]string{"K": hashSecret("value")},
+	}
+	path, err := StatePathFor(state.Target, state.ID)
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o700))
+	require.NoError(t, os.Mkdir(path, 0o700))
+
+	err = SaveSyncState(state)
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), "value")
+
+	entries, err := os.ReadDir(filepath.Dir(path))
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+	assert.Equal(t, filepath.Base(path), entries[0].Name())
+	assert.True(t, entries[0].IsDir())
 }
 
 // TestStatePathFor_BlocksPathTraversal verifies neither target nor id can

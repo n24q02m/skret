@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/n24q02m/skret/internal/provider"
@@ -263,9 +264,14 @@ func LoadSyncState(target, id string) (*SyncState, error) {
 	return &s, nil
 }
 
+var syncStateSaveMu sync.Mutex
+
 // SaveSyncState writes the state atomically. The directory is created with
 // 0700 and the file with 0600 so secret-name presence is owner-only readable.
 func SaveSyncState(s *SyncState) error {
+	syncStateSaveMu.Lock()
+	defer syncStateSaveMu.Unlock()
+
 	path, err := StatePathFor(s.Target, s.ID)
 	if err != nil {
 		return err
@@ -278,13 +284,40 @@ func SaveSyncState(s *SyncState) error {
 	if err != nil {
 		return fmt.Errorf("marshal sync state: %w", err)
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o600); err != nil {
-		return fmt.Errorf("write sync state %q: %w", tmp, err)
+
+	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return fmt.Errorf("create sync state temp: %w", err)
 	}
-	if err := os.Rename(tmp, path); err != nil {
-		return fmt.Errorf("rename sync state %q -> %q: %w", tmp, path, err)
+	tmpPath := tmp.Name()
+	keepTemp := false
+	defer func() {
+		_ = tmp.Close()
+		if !keepTemp {
+			_ = os.Remove(tmpPath)
+		}
+	}()
+
+	if err := tmp.Chmod(0o600); err != nil {
+		return fmt.Errorf("chmod sync state temp: %w", err)
 	}
+	n, err := tmp.Write(data)
+	if err != nil {
+		return fmt.Errorf("write sync state: %w", err)
+	}
+	if n != len(data) {
+		return fmt.Errorf("write sync state: short write (%d/%d bytes)", n, len(data))
+	}
+	if err := tmp.Sync(); err != nil {
+		return fmt.Errorf("sync sync state: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("close sync state: %w", err)
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		return fmt.Errorf("rename sync state: %w", err)
+	}
+	keepTemp = true
 	return nil
 }
 
