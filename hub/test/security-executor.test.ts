@@ -19,7 +19,8 @@ import securityExecutor, {
 const NOW = Date.now();
 const AUDIENCE = "skret-security-executor";
 const ROLE = "operator";
-const MANIFEST_DIGEST = `sha256:${"a".repeat(64)}`;
+let MANIFEST_DIGEST = "";
+let STATE_MANIFEST_PUBLIC_KEY = new Uint8Array();
 const SOURCE_HASH = "b".repeat(64);
 const CALLER_CONTEXT = `sha256:${"c".repeat(64)}`;
 type ReplayNamespace = NonNullable<SecurityExecutorEnv["EXECUTOR_REPLAY"]>;
@@ -68,7 +69,52 @@ async function keyPair(): Promise<{ privateKey: CryptoKey; publicKey: Uint8Array
   return { privateKey: pair.privateKey, publicKey: new Uint8Array(exported as ArrayBuffer) };
 }
 
-function migrationBody(overrides: Record<string, unknown> = {}): Uint8Array {
+function canonicalManifestBytes(document: Record<string, unknown>): Uint8Array {
+  return new TextEncoder().encode(
+    JSON.stringify(document).replace(/[<>&\u2028\u2029]/gu, (character) => {
+      const escapes: Record<string, string> = {
+        "<": "\\u003c",
+        ">": "\\u003e",
+        "&": "\\u0026",
+        "\u2028": "\\u2028",
+        "\u2029": "\\u2029",
+      };
+      return escapes[character];
+    }),
+  );
+}
+
+interface DefaultManifestFixture {
+  readonly bytes: Uint8Array;
+}
+
+let defaultManifestPromise: Promise<DefaultManifestFixture> | undefined;
+
+function defaultManifestFixture(): Promise<DefaultManifestFixture> {
+  defaultManifestPromise ??= (async () => {
+    const { privateKey, publicKey } = await keyPair();
+    STATE_MANIFEST_PUBLIC_KEY = Uint8Array.from(publicKey);
+    const document = {
+      version: 1,
+      role: ROLE,
+      audience: AUDIENCE,
+      source_root: "C:\\skret\\state",
+      files: [{ path: "state.json", size: 128, sha256: SOURCE_HASH }],
+      nonce: "manifest-nonce-001",
+      expires_at: new Date(Date.now() + 5 * 60 * 1_000).toISOString().replace(".000Z", "Z"),
+    };
+    const canonical = canonicalManifestBytes(document);
+    const signature = await crypto.subtle.sign("Ed25519", privateKey, canonical);
+    MANIFEST_DIGEST = `sha256:${await sha256Hex(canonical)}`;
+    return {
+      bytes: new TextEncoder().encode(JSON.stringify({ ...document, signature: toBase64(new Uint8Array(signature)) })),
+    };
+  })();
+  return defaultManifestPromise;
+}
+
+async function migrationBody(overrides: Record<string, unknown> = {}): Promise<Uint8Array> {
+  const fixture = await defaultManifestFixture();
   return new TextEncoder().encode(
     JSON.stringify({
       operation_id: "migration-20260824-001",
@@ -78,12 +124,14 @@ function migrationBody(overrides: Record<string, unknown> = {}): Uint8Array {
       target: "v2",
       source_hash: SOURCE_HASH,
       source_size: 128,
+      state_manifest: toBase64(fixture.bytes),
       ...overrides,
     }),
   );
 }
 
-async function makeEnvelope(privateKey: CryptoKey, body = migrationBody(), overrides: Record<string, unknown> = {}) {
+async function makeEnvelope(privateKey: CryptoKey, body?: Uint8Array, overrides: Record<string, unknown> = {}) {
+  body ??= await migrationBody();
   const envelope: Record<string, unknown> = {
     version: 1,
     audience: AUDIENCE,
@@ -126,6 +174,7 @@ function envFor(publicKey: Uint8Array, namespace: unknown, overrides: Partial<Se
     EXECUTOR_EXPECTED_AUDIENCE: AUDIENCE,
     EXECUTOR_EXPECTED_ROLE: ROLE,
     EXECUTOR_PUBLIC_KEY: toBase64(publicKey),
+    EXECUTOR_STATE_MANIFEST_PUBLIC_KEY: toBase64(STATE_MANIFEST_PUBLIC_KEY),
     EXECUTOR_RESPONSE_KEY: toBase64(RESPONSE_KEY_BYTES),
     EXECUTOR_REPLAY: namespace as SecurityExecutorEnv["EXECUTOR_REPLAY"],
     ...overrides,
@@ -191,7 +240,7 @@ describe.sequential("security executor Worker", () => {
 
   it("rejects wrong role and invalid signatures without execution", async () => {
     const { publicKey, privateKey } = await keyPair();
-    const wrongRole = await makeEnvelope(privateKey, migrationBody(), { role: "reader" });
+    const wrongRole = await makeEnvelope(privateKey, await migrationBody(), { role: "reader" });
     const tampered = await makeEnvelope(privateKey);
     tampered.signature = toBase64(new Uint8Array(64));
     const { namespace, consume } = namespaceFor();
@@ -209,7 +258,7 @@ describe.sequential("security executor Worker", () => {
   it("rejects duplicate migration metadata keys before execution", async () => {
     const { publicKey, privateKey } = await keyPair();
     const body = new TextEncoder().encode(
-      new TextDecoder().decode(migrationBody()).replace('"source_size":128', '"source_size":128,"source_size":256'),
+      new TextDecoder().decode(await migrationBody()).replace('"source_size":128', '"source_size":128,"source_size":256'),
     );
     const { namespace } = namespaceFor();
     const envelope = await makeEnvelope(privateKey, body, { nonce: "nonce-duplicate-source-size" });
@@ -283,7 +332,7 @@ describe.sequential("security executor Worker", () => {
 
   it("accepts the exact metadata request and returns only encrypted metadata acknowledgement", async () => {
     const { publicKey, privateKey } = await keyPair();
-    const body = migrationBody();
+    const body = await migrationBody();
     const envelope = await makeEnvelope(privateKey, body);
     const { namespace } = namespaceFor();
     const response = await securityExecutor.fetch(request(JSON.stringify(envelope)), envFor(publicKey, namespace));
@@ -322,13 +371,13 @@ describe.sequential("security executor Worker", () => {
     const { namespace } = namespaceFor();
     const env = envFor(publicKey, namespace);
     const cases = [
-      migrationBody({ extra: true }),
-      migrationBody({ target: "v1" }),
-      migrationBody({ state_path: "C:\\skret\\state\\..\\secret.json" }),
-      migrationBody({ manifest_digest: "sha256:bad" }),
-      migrationBody({ source_hash: "not-a-digest" }),
-      migrationBody({ source_size: -1 }),
-      migrationBody({ source_size: Number.MAX_SAFE_INTEGER + 1 }),
+      await migrationBody({ extra: true }),
+      await migrationBody({ target: "v1" }),
+      await migrationBody({ state_path: "C:\\skret\\state\\..\\secret.json" }),
+      await migrationBody({ manifest_digest: "sha256:bad" }),
+      await migrationBody({ source_hash: "not-a-digest" }),
+      await migrationBody({ source_size: -1 }),
+      await migrationBody({ source_size: Number.MAX_SAFE_INTEGER + 1 }),
     ];
 
     for (const [index, body] of cases.entries()) {

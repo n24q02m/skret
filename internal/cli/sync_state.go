@@ -165,7 +165,7 @@ func (o *syncStateMigrateOptions) run(cmd *cobra.Command) error {
 		}
 	}
 
-	manifest, err := readCLIStateManifest(o.stateManifest)
+	manifest, stateManifestBytes, err := readCLIStateManifestWithBytes(o.stateManifest)
 	if err != nil {
 		return syncStateMigrateError("read state manifest", err)
 	}
@@ -248,6 +248,7 @@ func (o *syncStateMigrateOptions) run(cmd *cobra.Command) error {
 			operatorSession,
 			signingKey,
 			manifestDigest,
+			stateManifestBytes,
 			role,
 			audience,
 			o.operationID,
@@ -269,20 +270,25 @@ func (o *syncStateMigrateOptions) run(cmd *cobra.Command) error {
 }
 
 func readCLIStateManifest(path string) (*syncer.StateManifest, error) {
+	manifest, _, err := readCLIStateManifestWithBytes(path)
+	return manifest, err
+}
+
+func readCLIStateManifestWithBytes(path string) (*syncer.StateManifest, []byte, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	var manifest syncer.StateManifest
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	if err := decoder.Decode(&manifest); err != nil {
-		return nil, errors.New("invalid state manifest JSON")
+		return nil, nil, errors.New("invalid state manifest JSON")
 	}
 	var extra interface{}
 	if err := decoder.Decode(&extra); err != io.EOF {
-		return nil, errors.New("state manifest contains trailing data")
+		return nil, nil, errors.New("state manifest contains trailing data")
 	}
-	return &manifest, nil
+	return &manifest, data, nil
 }
 
 func readCLIStateMigrationPublicKey(value string) (ed25519.PublicKey, error) {
@@ -474,13 +480,16 @@ type cliStateMigrationRequest struct {
 	Target         string `json:"target"`
 	SourceHash     string `json:"source_hash"`
 	SourceSize     int64  `json:"source_size"`
+	StateManifest  []byte `json:"state_manifest"`
 }
 
 func submitCLIStateMigrationRequest(
 	cmd *cobra.Command,
 	executorURL, operatorSession string,
 	signingKey ed25519.PrivateKey,
-	manifestDigest, role, audience, operationID, statePath, journalPath, target, sourceHash string,
+	manifestDigest string,
+	stateManifest []byte,
+	role, audience, operationID, statePath, journalPath, target, sourceHash string,
 	sourceSize int64,
 	now time.Time,
 ) ([]byte, error) {
@@ -496,6 +505,7 @@ func submitCLIStateMigrationRequest(
 		Target:         target,
 		SourceHash:     sourceHash,
 		SourceSize:     sourceSize,
+		StateManifest:  stateManifest,
 	})
 	if err != nil {
 		return nil, errors.New("encode executor migration request failed")

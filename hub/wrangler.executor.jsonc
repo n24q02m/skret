@@ -16,8 +16,9 @@
   "migrations": [
     { "tag": "v1", "new_sqlite_classes": ["SecurityExecutorReplay"] }
   ],
-  // Non-secret policy values are explicit. Public/response keys are expected
-  // as out-of-band raw-safe secrets and intentionally have no source values.
+  // Non-secret policy values are explicit. Envelope, StateManifest, and
+  // response keys are expected as out-of-band raw-safe secrets and
+  // intentionally have no source values.
   "vars": {
     "EXECUTOR_EXPECTED_AUDIENCE": "skret-security-executor",
     "EXECUTOR_EXPECTED_ROLE": "operator"

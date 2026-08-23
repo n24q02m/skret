@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/ed25519"
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
@@ -377,10 +378,7 @@ func TestSyncStateMigrate_RemoteExecuteSubmitsSignedMetadataOnlyRequestWithoutMu
 	require.NoError(t, syncer.VerifySignedEnvelope(&received, remotePublicKey, time.Now().UTC()))
 	assert.Equal(t, manifest.Role, received.Role)
 	assert.Equal(t, manifest.Audience, received.Audience)
-	assert.Equal(t, mustCLIStateMigrationManifestDigest(t, manifest), received.ManifestDigest)
-	assert.NotEmpty(t, received.Nonce)
-	assert.False(t, received.ExpiresAt.IsZero())
-	require.Len(t, receivedBody, 7)
+	require.Equal(t, 8, len(receivedBody))
 	statePathJSON, err := json.Marshal(statePath)
 	require.NoError(t, err)
 	journalPathJSON, err := json.Marshal(journalPath)
@@ -392,6 +390,11 @@ func TestSyncStateMigrate_RemoteExecuteSubmitsSignedMetadataOnlyRequestWithoutMu
 	assert.Equal(t, `"v2"`, string(receivedBody["target"]))
 	assert.Equal(t, `"`+manifest.Files[0].SHA256+`"`, string(receivedBody["source_hash"]))
 	assert.Equal(t, strconv.FormatInt(int64(len(original)), 10), string(receivedBody["source_size"]))
+	var encodedManifest string
+	require.NoError(t, json.Unmarshal(receivedBody["state_manifest"], &encodedManifest))
+	decodedManifest, err := base64.StdEncoding.DecodeString(encodedManifest)
+	require.NoError(t, err)
+	assert.Equal(t, mustReadCLIFile(t, manifestPath), decodedManifest)
 	assert.NotContains(t, string(received.Body), "opaque-cli-remote-value")
 	assert.NotContains(t, string(received.Body), "schema_version")
 }

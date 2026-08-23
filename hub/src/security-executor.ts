@@ -18,8 +18,9 @@ import {
 export const SECURITY_EXECUTOR_SERVICE = "skret-security-executor";
 export const SECURITY_EXECUTOR_REPLAY_BINDING = "EXECUTOR_REPLAY";
 export const SECURITY_EXECUTOR_REPLAY_OBJECT_NAME = "security-executor-replay";
-export const MAX_METADATA_MIGRATION_BODY_BYTES = 16 * 1024;
+export const MAX_METADATA_MIGRATION_BODY_BYTES = 256 * 1024;
 export const MAX_METADATA_MIGRATION_SOURCE_SIZE = 2 ** 40;
+export const MAX_STATE_MANIFEST_BYTES = 256 * 1024;
 export const METADATA_ACK_AAD_PREFIX = "skret/security-executor/metadata-ack/v1";
 
 const ED25519_PUBLIC_KEY_BYTES = 32;
@@ -27,13 +28,16 @@ const AES_GCM_KEY_BYTES = 32;
 const AES_GCM_IV_BYTES = 12;
 const MAX_CONFIG_TEXT_LENGTH = 256;
 const MAX_METADATA_TEXT_LENGTH = 4_096;
+const MAX_STATE_MANIFEST_TTL_MS = 15 * 60 * 1000;
 const OPERATION_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
 const SHA256_DIGEST_PATTERN = /^sha256:[a-f0-9]{64}$/u;
 const SHA256_HEX_PATTERN = /^[a-f0-9]{64}$/u;
+const STANDARD_BASE64_PATTERN = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/u;
 const CONFIG_HEX_PATTERN = /^[0-9a-fA-F]+$/u;
 const CONTROL_CHARACTER_PATTERN = /[\u0000-\u001f\u007f]/u;
-const WINDOWS_ABSOLUTE_PATH_PATTERN = /^[A-Za-z]:[\\/]/u;
-const UNC_ABSOLUTE_PATH_PATTERN = /^\\\\[^\\/]+[\\/][^\\/]+/u;
+const WINDOWS_CANONICAL_ABSOLUTE_PATH_PATTERN = /^[A-Za-z]:\\(?:[^\\]+(?:\\[^\\]+)*)?$/u;
+const UNC_CANONICAL_ABSOLUTE_PATH_PATTERN = /^\\\\[^\\/]+\\[^\\/]+(?:\\[^\\]+)*$/u;
+const POSIX_CANONICAL_ABSOLUTE_PATH_PATTERN = /^\/(?:[^/]+(?:\/[^/]+)*)?$/u;
 const SECURITY_HEADERS: Record<string, string> = {
   "Cache-Control": "no-store",
   "X-Content-Type-Options": "nosniff",
@@ -61,6 +65,7 @@ export interface SecurityExecutorEnv {
   readonly EXECUTOR_EXPECTED_AUDIENCE?: string;
   readonly EXECUTOR_EXPECTED_ROLE?: string;
   readonly EXECUTOR_PUBLIC_KEY?: string;
+  readonly EXECUTOR_STATE_MANIFEST_PUBLIC_KEY?: string;
   readonly EXECUTOR_RESPONSE_KEY?: string;
 }
 
@@ -72,6 +77,7 @@ interface MetadataMigrationRequest {
   readonly target: "v2";
   readonly source_hash: string;
   readonly source_size: number;
+  readonly state_manifest: Uint8Array;
 }
 
 /**
@@ -150,15 +156,28 @@ export async function buildSecurityExecutorOptions(
   const expectedAudience = readConfigText(env.EXECUTOR_EXPECTED_AUDIENCE);
   const expectedRole = readConfigText(env.EXECUTOR_EXPECTED_ROLE);
   const publicKey = decodeConfiguredBytes(env.EXECUTOR_PUBLIC_KEY, ED25519_PUBLIC_KEY_BYTES);
+  const stateManifestPublicKey = decodeConfiguredBytes(
+    env.EXECUTOR_STATE_MANIFEST_PUBLIC_KEY,
+    ED25519_PUBLIC_KEY_BYTES,
+  );
   const responseKeyBytes = decodeConfiguredBytes(env.EXECUTOR_RESPONSE_KEY, AES_GCM_KEY_BYTES);
   const replayNamespace = env.EXECUTOR_REPLAY;
-  if (!expectedAudience || !expectedRole || !publicKey || !responseKeyBytes || !hasReplayNamespace(replayNamespace)) {
+  if (
+    !expectedAudience ||
+    !expectedRole ||
+    !publicKey ||
+    !stateManifestPublicKey ||
+    !responseKeyBytes ||
+    !hasReplayNamespace(replayNamespace)
+  ) {
     return null;
   }
 
   let responseKey: CryptoKey;
+  let stateManifestKey: CryptoKey;
   try {
     responseKey = await crypto.subtle.importKey("raw", responseKeyBytes, "AES-GCM", false, ["encrypt"]);
+    stateManifestKey = await crypto.subtle.importKey("raw", stateManifestPublicKey, "Ed25519", false, ["verify"]);
   } catch {
     return null;
   }
@@ -168,7 +187,7 @@ export async function buildSecurityExecutorOptions(
     expectedRole,
     publicKey,
     replayStore: createReplayStoreAdapter(replayNamespace),
-    execute: (body, envelope) => executeMetadataMigration(body, envelope, responseKey),
+    execute: (body, envelope) => executeMetadataMigration(body, envelope, responseKey, stateManifestKey),
   };
 }
 
@@ -216,9 +235,13 @@ async function executeMetadataMigration(
   body: Uint8Array,
   envelope: ExecutorEnvelope,
   responseKey: CryptoKey,
+  stateManifestKey: CryptoKey,
 ): Promise<Uint8Array> {
   const metadata = parseMetadataMigrationRequest(body, envelope);
   if (!metadata) throw new Error("invalid migration metadata");
+  if (!(await verifyStateManifestAuthority(metadata, envelope, stateManifestKey))) {
+    throw new Error("invalid state manifest authority");
+  }
 
   const plaintext = new TextEncoder().encode(
     JSON.stringify({
@@ -281,6 +304,7 @@ function parseMetadataMigrationRequest(
     "target",
     "source_hash",
     "source_size",
+    "state_manifest",
   ];
   const keys = Object.keys(parsed);
   if (keys.length !== expectedFields.length || expectedFields.some((field) => !Object.prototype.hasOwnProperty.call(parsed, field))) {
@@ -294,6 +318,7 @@ function parseMetadataMigrationRequest(
   const target = parsed.target;
   const sourceHash = parsed.source_hash;
   const sourceSize = parsed.source_size;
+  const stateManifest = decodeStateManifestBase64(parsed.state_manifest);
   if (
     typeof operationID !== "string" ||
     !OPERATION_ID_PATTERN.test(operationID) ||
@@ -310,7 +335,8 @@ function parseMetadataMigrationRequest(
     typeof sourceSize !== "number" ||
     !Number.isSafeInteger(sourceSize) ||
     sourceSize < 0 ||
-    sourceSize > MAX_METADATA_MIGRATION_SOURCE_SIZE
+    sourceSize > MAX_METADATA_MIGRATION_SOURCE_SIZE ||
+    stateManifest === null
   ) {
     return null;
   }
@@ -323,7 +349,323 @@ function parseMetadataMigrationRequest(
     target,
     source_hash: sourceHash,
     source_size: sourceSize,
+    state_manifest: stateManifest,
   };
+}
+
+interface ParsedStateManifestFile {
+  readonly path: string;
+  readonly size: number;
+  readonly sha256: string;
+}
+
+interface ParsedStateManifest {
+  readonly role: string;
+  readonly audience: string;
+  readonly source_root: string;
+  readonly files: ParsedStateManifestFile[];
+  readonly signature: Uint8Array;
+  readonly canonicalBytes: Uint8Array;
+  readonly digest: string;
+  readonly expiresAtMs: number;
+}
+
+async function verifyStateManifestAuthority(
+  metadata: MetadataMigrationRequest,
+  envelope: ExecutorEnvelope,
+  stateManifestKey: CryptoKey,
+): Promise<boolean> {
+  const manifest = await parseStateManifest(metadata.state_manifest, envelope, Date.now());
+  if (!manifest || manifest.digest !== envelope.manifest_digest || manifest.digest !== metadata.manifest_digest) return false;
+
+  const matchingRows = manifest.files.filter((file) => file.path === relativeManifestPath(manifest.source_root, metadata.state_path));
+  if (matchingRows.length !== 1) return false;
+  const row = matchingRows[0];
+  if (
+    joinManifestPath(manifest.source_root, row.path) !== metadata.state_path ||
+    row.sha256 !== metadata.source_hash ||
+    row.size !== metadata.source_size
+  ) {
+    return false;
+  }
+
+  try {
+    return await crypto.subtle.verify("Ed25519", stateManifestKey, manifest.signature, manifest.canonicalBytes);
+  } catch {
+    return false;
+  }
+}
+
+async function parseStateManifest(
+  bytes: Uint8Array,
+  envelope: ExecutorEnvelope,
+  now: number,
+): Promise<ParsedStateManifest | null> {
+  if (
+    bytes.byteLength === 0 ||
+    bytes.byteLength > MAX_STATE_MANIFEST_BYTES ||
+    (bytes.byteLength >= 3 && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf)
+  ) {
+    return null;
+  }
+
+  let text: string;
+  let parsed: unknown;
+  try {
+    text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(bytes);
+    if (hasDuplicateJsonKeys(text)) return null;
+    parsed = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  if (!isRecord(parsed)) return null;
+
+  const expectedFields = ["version", "role", "audience", "source_root", "files", "nonce", "expires_at", "signature"];
+  const keys = Object.keys(parsed);
+  if (keys.length !== expectedFields.length || expectedFields.some((field) => !Object.prototype.hasOwnProperty.call(parsed, field))) {
+    return null;
+  }
+
+  const role = parsed.role;
+  const audience = parsed.audience;
+  const sourceRoot = parsed.source_root;
+  const nonce = parsed.nonce;
+  const expiresAt = parseStateManifestRFC3339(parsed.expires_at);
+  const signature = decodeStandardBase64(parsed.signature, 64);
+  if (
+    parsed.version !== 1 ||
+    typeof role !== "string" ||
+    !validStateManifestText(role) ||
+    role !== envelope.role ||
+    typeof audience !== "string" ||
+    !validStateManifestText(audience) ||
+    audience !== envelope.audience ||
+    typeof sourceRoot !== "string" ||
+    !validCanonicalAbsolutePath(sourceRoot, true) ||
+    typeof nonce !== "string" ||
+    !validStateManifestText(nonce) ||
+    !expiresAt ||
+    expiresAt.expiresAtMs <= now ||
+    expiresAt.expiresAtMs - now > MAX_STATE_MANIFEST_TTL_MS ||
+    signature === null ||
+    !Array.isArray(parsed.files) ||
+    parsed.files.length === 0
+  ) {
+    return null;
+  }
+
+  const files: ParsedStateManifestFile[] = [];
+  let previousPath = "";
+  for (const value of parsed.files) {
+    if (!isRecord(value)) return null;
+    const rowKeys = Object.keys(value);
+    if (
+      rowKeys.length !== 3 ||
+      !Object.prototype.hasOwnProperty.call(value, "path") ||
+      !Object.prototype.hasOwnProperty.call(value, "size") ||
+      !Object.prototype.hasOwnProperty.call(value, "sha256")
+    ) {
+      return null;
+    }
+    const path = value.path;
+    const size = value.size;
+    const sha256 = value.sha256;
+    if (
+      typeof path !== "string" ||
+      !validStateManifestRelativePath(path) ||
+      (previousPath !== "" && compareUTF8(previousPath, path) >= 0) ||
+      typeof size !== "number" ||
+      !Number.isSafeInteger(size) ||
+      size < 0 ||
+      typeof sha256 !== "string" ||
+      !SHA256_HEX_PATTERN.test(sha256)
+    ) {
+      return null;
+    }
+    files.push({ path, size, sha256 });
+    previousPath = path;
+  }
+
+  const signingDocument = {
+    version: 1,
+    role,
+    audience,
+    source_root: sourceRoot,
+    files,
+    nonce,
+    expires_at: expiresAt.canonical,
+  };
+  const canonicalBytes = canonicalStateManifestBytes(signingDocument);
+  let digest: string;
+  try {
+    digest = `sha256:${await sha256Hex(canonicalBytes)}`;
+  } catch {
+    return null;
+  }
+  return {
+    role,
+    audience,
+    source_root: sourceRoot,
+    files,
+    signature,
+    canonicalBytes,
+    digest,
+    expiresAtMs: expiresAt.expiresAtMs,
+  };
+}
+
+function decodeStateManifestBase64(value: unknown): Uint8Array | null {
+  return decodeStandardBase64(value, undefined, MAX_STATE_MANIFEST_BYTES);
+}
+
+function decodeStandardBase64(value: unknown, expectedLength?: number, maxLength?: number): Uint8Array | null {
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    !STANDARD_BASE64_PATTERN.test(value) ||
+    (maxLength !== undefined && value.length > Math.ceil(maxLength / 3) * 4)
+  ) {
+    return null;
+  }
+  let binary: string;
+  try {
+    binary = atob(value);
+  } catch {
+    return null;
+  }
+  const decoded = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+  if (toBase64(decoded) !== value || (expectedLength !== undefined && decoded.byteLength !== expectedLength)) return null;
+  if (maxLength !== undefined && decoded.byteLength > maxLength) return null;
+  return decoded;
+}
+
+function validStateManifestText(value: string): boolean {
+  return value.length > 0 && value.length <= MAX_METADATA_TEXT_LENGTH && value.trim() === value && !CONTROL_CHARACTER_PATTERN.test(value);
+}
+
+function validStateManifestRelativePath(value: string): boolean {
+  if (
+    value.length === 0 ||
+    value.length > MAX_METADATA_TEXT_LENGTH ||
+    value.trim() !== value ||
+    value.startsWith("/") ||
+    value.endsWith("/") ||
+    value.includes("\\") ||
+    value.includes(":") ||
+    CONTROL_CHARACTER_PATTERN.test(value)
+  ) {
+    return false;
+  }
+  const components = value.split("/");
+  return components.every((component) => component.length > 0 && component !== "." && component !== "..");
+}
+
+function validCanonicalAbsolutePath(value: string, allowRoot: boolean): boolean {
+  if (
+    value.length === 0 ||
+    value.length > MAX_METADATA_TEXT_LENGTH ||
+    value.trim() !== value ||
+    CONTROL_CHARACTER_PATTERN.test(value)
+  ) {
+    return false;
+  }
+  if (POSIX_CANONICAL_ABSOLUTE_PATH_PATTERN.test(value)) {
+    if (value === "/") return allowRoot;
+    return value.split("/").slice(1).every((component) => component.length > 0 && component !== "." && component !== "..");
+  }
+  if (WINDOWS_CANONICAL_ABSOLUTE_PATH_PATTERN.test(value)) {
+    const components = value.slice(3).split("\\");
+    return (components.length === 1 && components[0] === "") || components.every((component) => component.length > 0 && component !== "." && component !== "..");
+  }
+  if (UNC_CANONICAL_ABSOLUTE_PATH_PATTERN.test(value)) {
+    return value.slice(2).split("\\").every((component) => component.length > 0 && component !== "." && component !== "..");
+  }
+  return false;
+}
+
+function joinManifestPath(root: string, relative: string): string {
+  if (root.startsWith("/")) return `${root === "/" ? "" : root}/${relative}`;
+  const separator = root.endsWith("\\") ? "" : "\\";
+  return `${root}${separator}${relative.replaceAll("/", "\\")}`;
+}
+
+function relativeManifestPath(root: string, absolute: string): string {
+  if (root.startsWith("/")) {
+    const prefix = `${root === "/" ? "" : root}/`;
+    if (!absolute.startsWith(prefix)) return "";
+    return absolute.slice(prefix.length);
+  }
+  const prefix = `${root}${root.endsWith("\\") ? "" : "\\"}`;
+  if (!absolute.startsWith(prefix)) return "";
+  return absolute.slice(prefix.length).replaceAll("\\", "/");
+}
+
+function compareUTF8(left: string, right: string): number {
+  const leftBytes = new TextEncoder().encode(left);
+  const rightBytes = new TextEncoder().encode(right);
+  const length = Math.min(leftBytes.length, rightBytes.length);
+  for (let index = 0; index < length; index += 1) {
+    if (leftBytes[index] !== rightBytes[index]) return leftBytes[index] - rightBytes[index];
+  }
+  return leftBytes.length - rightBytes.length;
+}
+
+interface ParsedStateManifestExpiry {
+  readonly expiresAtMs: number;
+  readonly canonical: string;
+}
+
+function parseStateManifestRFC3339(value: unknown): ParsedStateManifestExpiry | null {
+  if (typeof value !== "string") return null;
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,9}))?(Z|([+-])(\d{2}):(\d{2}))$/u.exec(value);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const hour = Number(match[4]);
+  const minute = Number(match[5]);
+  const second = Number(match[6]);
+  const fraction = match[7] ?? "";
+  const nanoseconds = Number((fraction + "000000000").slice(0, 9));
+  const milliseconds = Math.floor(nanoseconds / 1_000_000);
+  const date = new Date(0);
+  date.setUTCFullYear(year, month - 1, day);
+  date.setUTCHours(hour, minute, second, milliseconds);
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day ||
+    date.getUTCHours() !== hour ||
+    date.getUTCMinutes() !== minute ||
+    date.getUTCSeconds() !== second ||
+    date.getUTCMilliseconds() !== milliseconds
+  ) {
+    return null;
+  }
+  const offsetSign = match[9] === "-" ? -1 : 1;
+  const offsetHours = Number(match[10] ?? "0");
+  const offsetMinutes = Number(match[11] ?? "0");
+  if (offsetHours > 23 || offsetMinutes > 59) return null;
+  const expiresAtMs = date.getTime() - offsetSign * (offsetHours * 60 + offsetMinutes) * 60_000;
+  if (!Number.isFinite(expiresAtMs)) return null;
+  const canonicalFraction = String(nanoseconds).padStart(9, "0").replace(/0+$/u, "");
+  const canonicalBase = new Date(expiresAtMs).toISOString().slice(0, 19);
+  return {
+    expiresAtMs,
+    canonical: `${canonicalBase}${canonicalFraction ? `.${canonicalFraction}` : ""}Z`,
+  };
+}
+
+function canonicalStateManifestBytes(document: Record<string, unknown>): Uint8Array {
+  const canonicalEscapes: Record<string, string> = {
+    "<": "\\u003c",
+    ">": "\\u003e",
+    "&": "\\u0026",
+    "\u2028": "\\u2028",
+    "\u2029": "\\u2029",
+  };
+  const encoded = JSON.stringify(document).replace(/[<>&\u2028\u2029]/gu, (character) => canonicalEscapes[character]);
+  return new TextEncoder().encode(encoded);
 }
 
 type JsonScanResult = {
@@ -427,21 +769,7 @@ function skipJsonWhitespace(text: string, start: number): number {
 }
 
 function validMetadataPath(value: string): boolean {
-  if (
-    value.length === 0 ||
-    value.length > MAX_METADATA_TEXT_LENGTH ||
-    value.trim() !== value ||
-    CONTROL_CHARACTER_PATTERN.test(value) ||
-    value.endsWith("/") ||
-    value.endsWith("\\")
-  ) {
-    return false;
-  }
-  if (!(value.startsWith("/") || WINDOWS_ABSOLUTE_PATH_PATTERN.test(value) || UNC_ABSOLUTE_PATH_PATTERN.test(value))) {
-    return false;
-  }
-  const components = value.replaceAll("\\", "/").split("/");
-  return !components.some((component) => component === "." || component === "..");
+  return validCanonicalAbsolutePath(value, false);
 }
 
 function readConfigText(value: unknown): string | null {
@@ -492,6 +820,11 @@ function hasReplayNamespace(value: unknown): value is DurableObjectNamespace<Sec
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+async function sha256Hex(bytes: Uint8Array): Promise<string> {
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+  return Array.from(digest, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 function toBase64(bytes: Uint8Array): string {
