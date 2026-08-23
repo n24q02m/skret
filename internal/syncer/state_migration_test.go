@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -452,6 +453,115 @@ func TestStateMigration_RecoverySecuresRestoredBackup(t *testing.T) {
 		assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
 	}
 }
+func TestStateMigration_RecoveryDoesNotOverwriteAppearedSource(t *testing.T) {
+	_, statePath, journalPath, manifest, _, _, now, original := stateMigrationFixture(t)
+	manifestDigest := stateMigrationManifestDigest(t, manifest)
+	desired := stateMigrationV2Bytes(t, original, manifestDigest)
+	backupPath := statePath + ".v1"
+	tempPath := filepath.Join(filepath.Dir(statePath), ".state.json.v2-crash")
+	require.NoError(t, os.Rename(statePath, backupPath))
+	require.NoError(t, os.WriteFile(tempPath, desired, 0o600))
+	writeStateMigrationJournal(t, journalPath, StateMigrationJournal{
+		Version:        StateMigrationJournalVersion,
+		OperationID:    "op-state-migration-race",
+		ManifestDigest: manifestDigest,
+		SourcePath:     statePath,
+		BackupPath:     backupPath,
+		TempPath:       tempPath,
+		JournalPath:    journalPath,
+		SourceHash:     stateMigrationHash(original),
+		SourceSize:     int64(len(original)),
+		DesiredHash:    stateMigrationHash(desired),
+		DesiredSize:    int64(len(desired)),
+		Phase:          StateMigrationPhaseBackupRenamed,
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	})
+
+	originalHook := stateMigrationBeforeRecoveryCommit
+	defer func() { stateMigrationBeforeRecoveryCommit = originalHook }()
+	stateMigrationBeforeRecoveryCommit = func(journal *StateMigrationJournal) error {
+		return os.WriteFile(journal.SourcePath, []byte("appeared-state"), 0o600)
+	}
+
+	err := RecoverStateMigration(journalPath, now.Add(time.Minute))
+	require.Error(t, err)
+	assert.Equal(t, []byte("appeared-state"), mustReadFile(t, statePath))
+	assert.Equal(t, original, mustReadFile(t, backupPath))
+	assert.Equal(t, desired, mustReadFile(t, tempPath))
+}
+func TestStateMigration_PostRenameBackupMismatchRestoresWithoutOverwriting(t *testing.T) {
+	_, statePath, journalPath, manifest, publicKey, _, now, _ := stateMigrationFixture(t)
+	originalPersist := stateMigrationPersistJournal
+	defer func() { stateMigrationPersistJournal = originalPersist }()
+	var calls int
+	stateMigrationPersistJournal = func(journal *StateMigrationJournal) error {
+		calls++
+		if calls != 2 {
+			return persistMigrationJournal(journal)
+		}
+		if err := persistMigrationJournal(journal); err != nil {
+			return err
+		}
+		return os.WriteFile(journal.BackupPath, []byte("changed-backup"), 0o600)
+	}
+
+	err := MigrateStateFileV1ToV2(statePath, journalPath, manifest, publicKey, "operator", "hub", "op-state-migration-backup-mismatch", now)
+	require.Error(t, err)
+	assert.Equal(t, []byte("changed-backup"), mustReadFile(t, statePath))
+	assert.Equal(t, []byte("changed-backup"), mustReadFile(t, statePath+".v1"))
+	assert.Empty(t, migrationTempFiles(t, filepath.Dir(statePath)))
+
+	stateMigrationPersistJournal = originalPersist
+	require.ErrorIs(t, RecoverStateMigration(journalPath, now.Add(time.Minute)), ErrStateMigrationNeedsReconciliation)
+	assert.Equal(t, []byte("changed-backup"), mustReadFile(t, statePath))
+	assert.Equal(t, []byte("changed-backup"), mustReadFile(t, statePath+".v1"))
+}
+func TestStateMigration_SerializesSaveSyncState(t *testing.T) {
+	withFakeHome(t)
+	_, statePath, journalPath, manifest, publicKey, _, now, _ := stateMigrationFixture(t)
+	originalPersist := stateMigrationPersistJournal
+	defer func() { stateMigrationPersistJournal = originalPersist }()
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	var once sync.Once
+	stateMigrationPersistJournal = func(journal *StateMigrationJournal) error {
+		once.Do(func() {
+			close(entered)
+			<-release
+		})
+		return persistMigrationJournal(journal)
+	}
+
+	migrateDone := make(chan error, 1)
+	go func() {
+		migrateDone <- MigrateStateFileV1ToV2(statePath, journalPath, manifest, publicKey, "operator", "hub", "op-state-migration-lock", now)
+	}()
+	select {
+	case <-entered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("migration did not reach journal persistence")
+	}
+
+	saveStarted := make(chan struct{})
+	saveDone := make(chan error, 1)
+	go func() {
+		close(saveStarted)
+		saveDone <- SaveSyncState(&SyncState{Target: "synthetic", ID: "lock", Hashes: map[string]string{}})
+	}()
+	<-saveStarted
+	select {
+	case err := <-saveDone:
+		t.Fatalf("SaveSyncState ran concurrently with migration: %v", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	close(release)
+	require.NoError(t, <-migrateDone)
+	require.NoError(t, <-saveDone)
+}
+
+
 
 func migrationTempFiles(t *testing.T, dir string) []string {
 	t.Helper()
