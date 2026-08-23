@@ -1,0 +1,10 @@
+{
+  "executor_service": "skret-security-executor",
+  "hub_worker": "skret-hub",
+  "required_deploy_order": ["skret-security-executor", "skret-hub"],
+  "executor_readback_required_before_hub_ready": true,
+  "hub_ready_without_executor_readback": false,
+  "hub_deploy_allowed": false,
+  "hub_deploy_blocker": "executor_readback_required",
+  "source_only": true
+}

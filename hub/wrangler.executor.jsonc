@@ -3,6 +3,8 @@
 {
   "name": "skret-security-executor",
   "main": "src/security-executor.ts",
+  "workers_dev": false,
+  "preview_urls": false,
   "compatibility_date": "2026-06-14",
   "durable_objects": {
     "bindings": [
@@ -20,5 +22,8 @@
     "EXECUTOR_EXPECTED_AUDIENCE": "skret-security-executor",
     "EXECUTOR_EXPECTED_ROLE": "operator"
   },
-  "observability": { "enabled": true }
+  "observability": { "enabled": true },
+  // One bounded batch per invocation; source-only until the Worker and its
+  // replay Durable Object are deployed and read back in this order.
+  "triggers": { "crons": ["*/15 * * * *"] }
 }

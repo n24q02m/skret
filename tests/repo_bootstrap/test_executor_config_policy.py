@@ -9,6 +9,7 @@ HUB_CONFIGS = (
     REPO_ROOT / "hub" / "wrangler.deploy.template.jsonc",
 )
 EXECUTOR_CONFIG = REPO_ROOT / "hub" / "wrangler.executor.jsonc"
+DEPLOYMENT_ORDER = REPO_ROOT / "hub" / "deployment-order.json"
 
 
 def parse_jsonc(path: Path) -> dict:
@@ -53,6 +54,32 @@ class ExecutorConfigPolicyTests(unittest.TestCase):
                 [{"binding": "EXECUTOR", "service": "skret-security-executor"}],
                 str(path),
             )
+
+    def test_executor_is_not_publicly_exposed(self) -> None:
+        config = parse_jsonc(EXECUTOR_CONFIG)
+        self.assertFalse(config["workers_dev"])
+        self.assertFalse(config["preview_urls"])
+        self.assertNotIn("routes", config)
+
+    def test_executor_sweep_trigger_is_bounded_and_configured(self) -> None:
+        config = parse_jsonc(EXECUTOR_CONFIG)
+        self.assertEqual(config["triggers"], {"crons": ["*/15 * * * *"]})
+
+    def test_hub_readiness_requires_source_only_executor_deploy_order(self) -> None:
+        order = json.loads(DEPLOYMENT_ORDER.read_text(encoding="utf-8"))
+        self.assertEqual(
+            order,
+            {
+                "executor_service": "skret-security-executor",
+                "hub_worker": "skret-hub",
+                "required_deploy_order": ["skret-security-executor", "skret-hub"],
+                "executor_readback_required_before_hub_ready": True,
+                "hub_ready_without_executor_readback": False,
+                "hub_deploy_allowed": False,
+                "hub_deploy_blocker": "executor_readback_required",
+                "source_only": True,
+            },
+        )
 
     def test_executor_config_declares_replay_binding_and_migration(self) -> None:
         config = parse_jsonc(EXECUTOR_CONFIG)

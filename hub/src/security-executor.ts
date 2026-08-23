@@ -1,5 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
 import {
+  DEFAULT_EXECUTOR_REPLAY_SWEEP_LIMIT,
   DurableExecutorReplayStore,
   ExecutorReplayInvalidRequestError,
   ExecutorReplayRejectedError,
@@ -18,7 +19,7 @@ export const SECURITY_EXECUTOR_SERVICE = "skret-security-executor";
 export const SECURITY_EXECUTOR_REPLAY_BINDING = "EXECUTOR_REPLAY";
 export const SECURITY_EXECUTOR_REPLAY_OBJECT_NAME = "security-executor-replay";
 export const MAX_METADATA_MIGRATION_BODY_BYTES = 16 * 1024;
-export const MAX_METADATA_MIGRATION_SOURCE_SIZE = 1 << 40;
+export const MAX_METADATA_MIGRATION_SOURCE_SIZE = 2 ** 40;
 export const METADATA_ACK_AAD_PREFIX = "skret/security-executor/metadata-ack/v1";
 
 const ED25519_PUBLIC_KEY_BYTES = 32;
@@ -45,6 +46,14 @@ export type SecurityExecutorReplayStatus = "accepted" | "rejected" | "invalid" |
 
 export interface SecurityExecutorReplayResult {
   readonly status: SecurityExecutorReplayStatus;
+}
+
+export type SecurityExecutorReplaySweepStatus = "swept" | "invalid" | "unavailable";
+
+export interface SecurityExecutorReplaySweepResult {
+  readonly status: SecurityExecutorReplaySweepStatus;
+  readonly removed?: number;
+  readonly nextAfter?: string | null;
 }
 
 export interface SecurityExecutorEnv {
@@ -82,6 +91,20 @@ export class SecurityExecutorReplay extends DurableObject<SecurityExecutorEnv> {
       return { status: "accepted" };
     } catch (error) {
       if (error instanceof ExecutorReplayRejectedError) return { status: "rejected" };
+      if (error instanceof ExecutorReplayInvalidRequestError) return { status: "invalid" };
+      return { status: "unavailable" };
+    }
+  }
+
+  async sweep(
+    now = Date.now(),
+    limit = DEFAULT_EXECUTOR_REPLAY_SWEEP_LIMIT,
+    startAfter?: string | null,
+  ): Promise<SecurityExecutorReplaySweepResult> {
+    try {
+      const result = await new DurableExecutorReplayStore(this.ctx.storage).sweep(now, limit, startAfter);
+      return { status: "swept", removed: result.removed, nextAfter: result.nextAfter };
+    } catch (error) {
       if (error instanceof ExecutorReplayInvalidRequestError) return { status: "invalid" };
       return { status: "unavailable" };
     }
@@ -159,9 +182,35 @@ export async function handleSecurityExecutorRequest(request: Request, env: Secur
   }
 }
 
-const worker = { fetch: handleSecurityExecutorRequest };
+const worker = {
+  fetch: handleSecurityExecutorRequest,
+  async scheduled(_controller: ScheduledController, env: SecurityExecutorEnv): Promise<void> {
+    const namespace = env?.EXECUTOR_REPLAY;
+    if (!hasReplayNamespace(namespace)) throw new Error("executor replay sweep unavailable");
 
+    try {
+      const stub = namespace.getByName(SECURITY_EXECUTOR_REPLAY_OBJECT_NAME);
+      const result = await stub.sweep(Date.now(), DEFAULT_EXECUTOR_REPLAY_SWEEP_LIMIT);
+      const removed = result?.removed;
+      const nextAfter = result?.nextAfter;
+      if (
+        !result ||
+        typeof result !== "object" ||
+        result.status !== "swept" ||
+        typeof removed !== "number" ||
+        !Number.isSafeInteger(removed) ||
+        removed < 0 ||
+        (nextAfter !== null && typeof nextAfter !== "string")
+      ) {
+        throw new Error("invalid replay sweep result");
+      }
+    } catch {
+      throw new Error("executor replay sweep unavailable");
+    }
+  },
+};
 export default worker;
+
 
 async function executeMetadataMigration(
   body: Uint8Array,
@@ -217,6 +266,7 @@ function parseMetadataMigrationRequest(
   let parsed: unknown;
   try {
     text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(body);
+    if (hasDuplicateJsonKeys(text)) return null;
     parsed = JSON.parse(text);
   } catch {
     return null;
@@ -274,6 +324,106 @@ function parseMetadataMigrationRequest(
     source_hash: sourceHash,
     source_size: sourceSize,
   };
+}
+
+type JsonScanResult = {
+  readonly next: number;
+  readonly duplicate: boolean;
+};
+
+function hasDuplicateJsonKeys(text: string): boolean {
+  return scanJsonValue(text, 0)?.duplicate ?? false;
+}
+
+function scanJsonValue(text: string, start: number): JsonScanResult | null {
+  const index = skipJsonWhitespace(text, start);
+  const character = text[index];
+  if (character === "{") return scanJsonObject(text, index);
+  if (character === "[") return scanJsonArray(text, index);
+  if (character === '"') {
+    const next = scanJsonString(text, index);
+    return next === null ? null : { next, duplicate: false };
+  }
+
+  for (const literal of ["true", "false", "null"]) {
+    if (text.startsWith(literal, index)) return { next: index + literal.length, duplicate: false };
+  }
+
+  let next = index;
+  while (next < text.length && !' \t\r\n,]}'.includes(text[next])) next += 1;
+  return next === index ? null : { next, duplicate: false };
+}
+
+function scanJsonObject(text: string, start: number): JsonScanResult | null {
+  let index = start + 1;
+  const keys = new Set<string>();
+  index = skipJsonWhitespace(text, index);
+  if (text[index] === "}") return { next: index + 1, duplicate: false };
+
+  while (index < text.length) {
+    const keyStart = index;
+    const keyEnd = scanJsonString(text, keyStart);
+    if (keyEnd === null) return null;
+    let key: unknown;
+    try {
+      key = JSON.parse(text.slice(keyStart, keyEnd));
+    } catch {
+      return null;
+    }
+    if (typeof key !== "string") return null;
+    if (keys.has(key)) return { next: keyEnd, duplicate: true };
+    keys.add(key);
+
+    index = skipJsonWhitespace(text, keyEnd);
+    if (text[index] !== ":") return null;
+    const value = scanJsonValue(text, index + 1);
+    if (value === null) return null;
+    if (value.duplicate) return value;
+
+    index = skipJsonWhitespace(text, value.next);
+    if (text[index] === "}") return { next: index + 1, duplicate: false };
+    if (text[index] !== ",") return null;
+    index = skipJsonWhitespace(text, index + 1);
+  }
+  return null;
+}
+
+function scanJsonArray(text: string, start: number): JsonScanResult | null {
+  let index = skipJsonWhitespace(text, start + 1);
+  if (text[index] === "]") return { next: index + 1, duplicate: false };
+
+  while (index < text.length) {
+    const value = scanJsonValue(text, index);
+    if (value === null) return null;
+    if (value.duplicate) return value;
+    index = skipJsonWhitespace(text, value.next);
+    if (text[index] === "]") return { next: index + 1, duplicate: false };
+    if (text[index] !== ",") return null;
+    index = skipJsonWhitespace(text, index + 1);
+  }
+  return null;
+}
+
+function scanJsonString(text: string, start: number): number | null {
+  if (text[start] !== '"') return null;
+  let index = start + 1;
+  while (index < text.length) {
+    const code = text.charCodeAt(index);
+    if (code < 0x20) return null;
+    if (text[index] === '"') return index + 1;
+    if (text[index] === "\\") {
+      index += 2;
+      continue;
+    }
+    index += 1;
+  }
+  return null;
+}
+
+function skipJsonWhitespace(text: string, start: number): number {
+  let index = start;
+  while (index < text.length && ' \t\r\n'.includes(text[index])) index += 1;
+  return index;
 }
 
 function validMetadataPath(value: string): boolean {

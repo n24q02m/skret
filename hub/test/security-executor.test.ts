@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  DEFAULT_EXECUTOR_REPLAY_SWEEP_LIMIT,
   ExecutorReplayInvalidRequestError,
   ExecutorReplayRejectedError,
   ExecutorReplayStoreUnavailableError,
@@ -7,7 +8,9 @@ import {
 import { PRIVATE_EXECUTOR_CALLER_CONTEXT_HEADER, PRIVATE_EXECUTOR_PATH } from "../src/private-executor-handler";
 import securityExecutor, {
   MAX_METADATA_MIGRATION_BODY_BYTES,
+  MAX_METADATA_MIGRATION_SOURCE_SIZE,
   METADATA_ACK_AAD_PREFIX,
+  SecurityExecutorReplay,
   createReplayStoreAdapter,
   handleSecurityExecutorRequest,
   type SecurityExecutorEnv,
@@ -108,10 +111,12 @@ function request(body: BodyInit | null, init: RequestInit & { url?: string } = {
 
 function namespaceFor(status: string = "accepted") {
   const consume = vi.fn(async () => ({ status }));
+  const sweep = vi.fn(async () => ({ status: "swept", removed: 0, nextAfter: null }));
   return {
     consume,
+    sweep,
     namespace: {
-      getByName: vi.fn(() => ({ consume })),
+      getByName: vi.fn(() => ({ consume, sweep })),
     },
   };
 }
@@ -127,7 +132,7 @@ function envFor(publicKey: Uint8Array, namespace: unknown, overrides: Partial<Se
   };
 }
 
-describe("security executor Worker", () => {
+describe.sequential("security executor Worker", () => {
   it("fails closed when any required dependency is absent or malformed", async () => {
     const { publicKey, privateKey } = await keyPair();
     const envelope = await makeEnvelope(privateKey);
@@ -196,6 +201,84 @@ describe("security executor Worker", () => {
     expect((await worker.fetch(request(JSON.stringify(wrongRole)), env)).status).toBe(403);
     expect((await worker.fetch(request(JSON.stringify(tampered)), env)).status).toBe(400);
     expect(consume).not.toHaveBeenCalled();
+  });
+  it("uses an arithmetic 1 TiB source-size bound", () => {
+    expect(MAX_METADATA_MIGRATION_SOURCE_SIZE).toBe(2 ** 40);
+  });
+
+  it("rejects duplicate migration metadata keys before execution", async () => {
+    const { publicKey, privateKey } = await keyPair();
+    const body = new TextEncoder().encode(
+      new TextDecoder().decode(migrationBody()).replace('"source_size":128', '"source_size":128,"source_size":256'),
+    );
+    const { namespace } = namespaceFor();
+    const envelope = await makeEnvelope(privateKey, body, { nonce: "nonce-duplicate-source-size" });
+
+    const response = await handleSecurityExecutorRequest(request(JSON.stringify(envelope)), envFor(publicKey, namespace));
+
+    expect([400, 502]).toContain(response.status);
+    expect(await response.text()).toBe("");
+  });
+
+  it("sweeps one bounded replay batch from the scheduled hook", async () => {
+    const { publicKey } = await keyPair();
+    const { namespace, sweep } = namespaceFor();
+
+    await securityExecutor.scheduled({} as ScheduledController, envFor(publicKey, namespace));
+
+    expect(sweep).toHaveBeenCalledWith(expect.any(Number), DEFAULT_EXECUTOR_REPLAY_SWEEP_LIMIT);
+  });
+
+  it("fails closed when the scheduled replay sweep binding or result is unavailable", async () => {
+    const { publicKey } = await keyPair();
+
+    await expect(
+      securityExecutor.scheduled({} as ScheduledController, envFor(publicKey, undefined)),
+    ).rejects.toThrow("executor replay sweep unavailable");
+
+    const malformedNamespace = {
+      getByName: vi.fn(() => ({ sweep: vi.fn(async () => ({ status: "unexpected", secret: "must-not-leak" })) })),
+    };
+    await expect(
+      securityExecutor.scheduled({} as ScheduledController, envFor(publicKey, malformedNamespace)),
+    ).rejects.toThrow("executor replay sweep unavailable");
+  });
+
+  it("maps a bounded Durable Object sweep to value-free status", async () => {
+    const key = `private:executor-replay:${"d".repeat(64)}`;
+    const transactionRecord = { digest: `sha256:${"e".repeat(64)}`, expiresAt: NOW - 1 };
+    const transaction = {
+      list: vi.fn(async () => new Map([[key, transactionRecord]])),
+      delete: vi.fn(async () => true),
+    };
+    const storage = {
+      transaction: vi.fn(async (callback: (value: typeof transaction) => Promise<unknown>) => callback(transaction)),
+    };
+    const replay = Object.create(SecurityExecutorReplay.prototype) as SecurityExecutorReplay;
+    Object.defineProperty(replay, "ctx", { value: { storage } });
+
+    const result = await replay.sweep(NOW, 2);
+
+    expect(result).toEqual({ status: "swept", removed: 1, nextAfter: null });
+    expect(transaction.list).toHaveBeenCalledWith({
+      prefix: "private:executor-replay:",
+      limit: 2,
+    });
+    expect(transaction.delete).toHaveBeenCalledWith(key);
+  });
+
+  it("maps invalid or unavailable Durable Object sweeps without leaking details", async () => {
+    const invalidReplay = Object.create(SecurityExecutorReplay.prototype) as SecurityExecutorReplay;
+    Object.defineProperty(invalidReplay, "ctx", {
+      value: { storage: { transaction: vi.fn(async () => { throw new Error("secret storage detail"); }) } },
+    });
+
+    const invalid = await invalidReplay.sweep(NOW, 0);
+    expect(invalid).toEqual({ status: "invalid" });
+
+    const unavailable = await invalidReplay.sweep(NOW, 1);
+    expect(unavailable).toEqual({ status: "unavailable" });
+    expect(JSON.stringify(unavailable)).not.toContain("secret storage detail");
   });
 
   it("accepts the exact metadata request and returns only encrypted metadata acknowledgement", async () => {
