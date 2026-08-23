@@ -30,11 +30,10 @@ type syncOptions struct {
 }
 
 // SyncResult is the --format json payload for one successfully synced
-// target. syncer.Syncer only reports success/failure for a whole batch (no
-// target implements a per-key added/updated/deleted breakdown -- dotenv
-// rewrites its file wholesale and has no notion of either), so Synced is
-// the same count sync's table/stderr line already reports, not a speculative
-// finer-grained one. --dry-run targets are not included: they write nothing.
+// target. Batch-only targets report the full batch count; durable operations
+// for per-key targets report the same count only after every key is
+// acknowledged and the operation state is finalized and saved. --dry-run
+// targets are not included: they write nothing.
 type SyncResult struct {
 	Source string `json:"source"`
 	Target string `json:"target"`
@@ -191,24 +190,56 @@ func (o *syncOptions) run(cmd *cobra.Command) error {
 				return skret.NewError(skret.ExitGenericError, "sync: save state failed", err)
 			}
 		}
-		if err := s.Sync(ctx, toSync); err != nil {
-			// dotenv writes a local file only -- a failure there is I/O, not
-			// network. github/cloudflare stay ExitNetworkError (audit I2).
-			exitCode := skret.ExitNetworkError
-			if tc.Type == "dotenv" {
-				exitCode = skret.ExitGenericError
-			}
-			if state != nil && operationID != "" {
-				journalErr := state.RecordNeedsReconciliation(operationID, toSync, time.Now().UTC())
-				if journalErr == nil {
-					journalErr = syncer.SaveSyncState(state)
-				}
-				if journalErr != nil {
-					return skret.NewError(exitCode, fmt.Sprintf("sync failed for %s; state journal failed", s.Name()), journalErr)
+		durablePerKey := false
+		if state != nil && operationID != "" {
+			if keyer, ok := s.(syncer.PerKeySyncer); ok {
+				durablePerKey = true
+				if err := syncPerKeyOperation(ctx, keyer, state, operationID, toSync); err != nil {
+					exitCode := skret.ExitNetworkError
+					if tc.Type == "dotenv" {
+						exitCode = skret.ExitGenericError
+					}
+					return skret.NewError(exitCode, fmt.Sprintf("sync failed for %s", s.Name()), err)
 				}
 			}
-			return skret.NewError(exitCode, fmt.Sprintf("sync failed for %s", s.Name()), err)
 		}
+		if !durablePerKey {
+			if err := s.Sync(ctx, toSync); err != nil {
+				// dotenv writes a local file only -- a failure there is I/O, not
+				// network. github/cloudflare stay ExitNetworkError (audit I2).
+				exitCode := skret.ExitNetworkError
+				if tc.Type == "dotenv" {
+					exitCode = skret.ExitGenericError
+				}
+				if state != nil && operationID != "" {
+					journalErr := state.RecordNeedsReconciliation(operationID, toSync, time.Now().UTC())
+					if journalErr == nil {
+						journalErr = syncer.SaveSyncState(state)
+					}
+					if journalErr != nil {
+						return skret.NewError(exitCode, fmt.Sprintf("sync failed for %s; state journal failed", s.Name()), journalErr)
+					}
+				}
+				return skret.NewError(exitCode, fmt.Sprintf("sync failed for %s", s.Name()), err)
+			}
+		}
+
+		// Durable state must be finalized and persisted before reporting target
+		// success. Per-key targets already journaled each acknowledgement and
+		// finalized in syncPerKeyOperation.
+		if state != nil {
+			if operationID != "" && !durablePerKey {
+				if err := state.RecordSuccess(operationID, toSync, time.Now().UTC()); err != nil {
+					return skret.NewError(skret.ExitGenericError, "sync: record success", err)
+				}
+			}
+			if !durablePerKey {
+				if err := syncer.SaveSyncState(state); err != nil {
+					return skret.NewError(skret.ExitGenericError, "sync: save state failed", err)
+				}
+			}
+		}
+
 		if o.format == "json" {
 			result := SyncResult{Source: resolved.Path, Target: s.Name(), Synced: len(toSync)}
 			if o.rotate {
@@ -220,17 +251,6 @@ func (o *syncOptions) run(cmd *cobra.Command) error {
 		} else {
 			cmd.PrintErrf("Synced %d secrets to %s\n", len(toSync), s.Name())
 		}
-
-		if state != nil {
-			if operationID != "" {
-				if err := state.RecordSuccess(operationID, toSync, time.Now().UTC()); err != nil {
-					return skret.NewError(skret.ExitGenericError, "sync: record success", err)
-				}
-			}
-			if err := syncer.SaveSyncState(state); err != nil {
-				return skret.NewError(skret.ExitGenericError, "sync: save state failed", err)
-			}
-		}
 	}
 
 	if o.format == "json" {
@@ -241,6 +261,48 @@ func (o *syncOptions) run(cmd *cobra.Command) error {
 		fmt.Fprintln(cmd.OutOrStdout(), string(data))
 	}
 
+	return nil
+}
+
+// syncPerKeyOperation writes and journals one target key at a time. A failed
+// key is marked for reconciliation and stops the operation, leaving every
+// unattempted key pending. Each successful acknowledgement is persisted before
+// the next provider call so a process interruption cannot turn an earlier
+// provider success into an unjournaled global result.
+func syncPerKeyOperation(
+	ctx context.Context,
+	target syncer.PerKeySyncer,
+	state *syncer.SyncState,
+	operationID string,
+	secrets []*provider.Secret,
+) error {
+	for _, secret := range secrets {
+		if err := target.SyncKey(ctx, secret); err != nil {
+			now := time.Now().UTC()
+			if journalErr := state.RecordKeyNeedsReconciliation(operationID, secret, now); journalErr != nil {
+				return fmt.Errorf("record key reconciliation: %w", journalErr)
+			}
+			if journalErr := syncer.SaveSyncState(state); journalErr != nil {
+				return fmt.Errorf("save key reconciliation: %w", journalErr)
+			}
+			return err
+		}
+
+		now := time.Now().UTC()
+		if err := state.RecordKeySuccess(operationID, secret, now); err != nil {
+			return fmt.Errorf("record key success: %w", err)
+		}
+		if err := syncer.SaveSyncState(state); err != nil {
+			return fmt.Errorf("save key success: %w", err)
+		}
+	}
+
+	if err := state.FinalizeOperation(operationID, time.Now().UTC()); err != nil {
+		return fmt.Errorf("finalize operation: %w", err)
+	}
+	if err := syncer.SaveSyncState(state); err != nil {
+		return fmt.Errorf("save finalized operation: %w", err)
+	}
 	return nil
 }
 

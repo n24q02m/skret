@@ -24,6 +24,26 @@ type CloudflareSyncer struct {
 	httpClient *http.Client
 }
 
+// cloudflareWorkerSyncer adapts the existing worker target to the optional
+// one-key capability without making Cloudflare Pages appear per-key capable.
+// The embedded target preserves the existing Sync, ExistingKeys, and Name
+// behavior for callers that use the long-standing CloudflareSyncer type.
+type cloudflareWorkerSyncer struct {
+	*CloudflareSyncer
+}
+
+func (c *cloudflareWorkerSyncer) SyncKey(ctx context.Context, secret *provider.Secret) error {
+	if c == nil || c.CloudflareSyncer == nil {
+		return fmt.Errorf("cloudflare: worker target is nil")
+	}
+	if secret == nil {
+		return fmt.Errorf("cloudflare: secret is nil")
+	}
+	return c.putWorkerSecret(ctx, SecretName(secret.Key), secret.Value)
+}
+
+var _ PerKeySyncer = (*cloudflareWorkerSyncer)(nil)
+
 // NewCloudflare builds a Cloudflare syncer. baseURL defaults to the public API.
 func NewCloudflare(accountID, worker, pages, token, baseURL string) Syncer {
 	if baseURL == "" {
@@ -197,5 +217,9 @@ func newCloudflareFromConfig(tc TargetConfig) (Syncer, error) {
 	if tc.Token == "" {
 		return nil, fmt.Errorf("cloudflare: CLOUDFLARE_API_TOKEN is required")
 	}
-	return NewCloudflare(account, worker, pages, tc.Token, field(tc, "base_url")), nil
+	target := NewCloudflare(account, worker, pages, tc.Token, field(tc, "base_url"))
+	if worker != "" {
+		return &cloudflareWorkerSyncer{CloudflareSyncer: target.(*CloudflareSyncer)}, nil
+	}
+	return target, nil
 }

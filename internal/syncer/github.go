@@ -30,6 +30,8 @@ type GitHubSyncer struct {
 	httpClient *http.Client
 }
 
+var _ PerKeySyncer = (*GitHubSyncer)(nil)
+
 // NewGitHub creates a GitHub Actions secrets syncer.
 func NewGitHub(owner, repo, token, baseURL string) Syncer {
 	if baseURL == "" {
@@ -47,6 +49,17 @@ func NewGitHub(owner, repo, token, baseURL string) Syncer {
 }
 
 func (g *GitHubSyncer) Name() string { return "github" }
+
+// SyncKey writes exactly one Actions secret while preserving the same
+// encryption, authentication, name normalization, and retry behavior as
+// Sync. It is used by durable operation journaling so a successful provider
+// response can be acknowledged before the next key is attempted.
+func (g *GitHubSyncer) SyncKey(ctx context.Context, secret *provider.Secret) error {
+	if secret == nil {
+		return fmt.Errorf("github: secret is nil")
+	}
+	return g.Sync(ctx, []*provider.Secret{secret})
+}
 
 func (g *GitHubSyncer) Sync(ctx context.Context, secrets []*provider.Secret) error {
 	if len(secrets) == 0 {
