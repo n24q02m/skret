@@ -25,23 +25,14 @@ func scanStateManifestRoot(root string) ([]StateManifestFile, error) {
 		return nil, stateManifestError("invalid source root")
 	}
 
-	rootFile, err := openWindowsStateManifestHandle(root)
+	stableRoot, err := openWindowsStateManifestRoot(root, expectedRoot)
 	if err != nil {
-		return nil, stateManifestError("source root scan failed")
+		return nil, err
 	}
-	defer rootFile.Close()
-
-	openedRoot, err := rootFile.Stat()
-	if err != nil || openedRoot == nil || unsafeStateManifestMode(openedRoot.Mode()) || !openedRoot.IsDir() || !os.SameFile(expectedRoot, openedRoot) {
-		return nil, stateManifestError("source root changed during scan")
-	}
-	rootFinalPath, err := windowsStateManifestFinalPath(rootFile)
-	if err != nil || rootFinalPath == "" {
-		return nil, stateManifestError("source root scan failed")
-	}
+	defer stableRoot.Close()
 
 	files := make([]StateManifestFile, 0)
-	if err := scanWindowsStateManifestDirectory(rootFile, rootFinalPath, "", rootFinalPath, &files); err != nil {
+	if err := scanWindowsStateManifestDirectory(stableRoot.root, stableRoot.finalPath, "", stableRoot.finalPath, &files); err != nil {
 		return nil, err
 	}
 	if len(files) == 0 {
@@ -49,6 +40,115 @@ func scanStateManifestRoot(root string) ([]StateManifestFile, error) {
 	}
 	sort.Slice(files, func(i, j int) bool { return files[i].Path < files[j].Path })
 	return files, nil
+}
+
+type windowsStateManifestRoot struct {
+	root      *os.File
+	finalPath string
+	handles   []*os.File
+}
+
+func (root *windowsStateManifestRoot) Close() error {
+	if root == nil {
+		return nil
+	}
+	var firstErr error
+	for index := len(root.handles) - 1; index >= 0; index-- {
+		if err := root.handles[index].Close(); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	root.handles = nil
+	root.root = nil
+	return firstErr
+}
+
+func openWindowsStateManifestRoot(root string, expectedRoot os.FileInfo) (stable *windowsStateManifestRoot, err error) {
+	if expectedRoot == nil || unsafeStateManifestMode(expectedRoot.Mode()) || !expectedRoot.IsDir() {
+		return nil, stateManifestError("invalid source root")
+	}
+	volumeRoot, components, err := windowsStateManifestPathComponents(root)
+	if err != nil {
+		return nil, stateManifestError("invalid source root")
+	}
+
+	stable = &windowsStateManifestRoot{}
+	defer func() {
+		if err != nil {
+			_ = stable.Close()
+		}
+	}()
+
+	volumeHandle, err := openWindowsStateManifestHandle(volumeRoot)
+	if err != nil {
+		return nil, stateManifestError("source root scan failed")
+	}
+	stable.handles = append(stable.handles, volumeHandle)
+	volumeInfo, err := volumeHandle.Stat()
+	if err != nil || volumeInfo == nil || unsafeStateManifestMode(volumeInfo.Mode()) || !volumeInfo.IsDir() {
+		return nil, stateManifestError("invalid source root")
+	}
+	parent := volumeHandle
+	parentFinalPath, err := windowsStateManifestFinalPath(parent)
+	if err != nil || parentFinalPath == "" {
+		return nil, stateManifestError("source root scan failed")
+	}
+
+	for _, component := range components {
+		childPath := filepath.Join(parentFinalPath, component)
+		child, childErr := openWindowsStateManifestHandle(childPath)
+		if childErr != nil {
+			return nil, stateManifestError("source root scan failed")
+		}
+		childInfo, statErr := child.Stat()
+		if statErr != nil || childInfo == nil || unsafeStateManifestMode(childInfo.Mode()) {
+			_ = child.Close()
+			return nil, stateManifestError("unsafe source roots are not allowed")
+		}
+		expectedChild, lstatErr := os.Lstat(childPath)
+		if lstatErr != nil || expectedChild == nil || unsafeStateManifestMode(expectedChild.Mode()) ||
+			!os.SameFile(expectedChild, childInfo) {
+			_ = child.Close()
+			return nil, stateManifestError("source root changed during scan")
+		}
+		childFinalPath, finalPathErr := windowsStateManifestFinalPath(child)
+		if finalPathErr != nil || !windowsStateManifestPathWithinRoot(parentFinalPath, childFinalPath) {
+			_ = child.Close()
+			return nil, stateManifestError("source root changed during scan")
+		}
+		stable.handles = append(stable.handles, child)
+		parent = child
+		parentFinalPath = childFinalPath
+	}
+
+	openedRoot, err := parent.Stat()
+	if err != nil || openedRoot == nil || unsafeStateManifestMode(openedRoot.Mode()) ||
+		!openedRoot.IsDir() || !os.SameFile(expectedRoot, openedRoot) {
+		return nil, stateManifestError("source root changed during scan")
+	}
+	stable.root = parent
+	stable.finalPath = parentFinalPath
+	return stable, nil
+}
+
+func windowsStateManifestPathComponents(root string) (string, []string, error) {
+	cleaned := filepath.Clean(strings.ReplaceAll(root, "/", "\\"))
+	volume := filepath.VolumeName(cleaned)
+	if volume == "" {
+		return "", nil, os.ErrInvalid
+	}
+	volumeRoot := strings.TrimRight(volume, "\\") + "\\"
+	remainder := strings.TrimLeft(cleaned[len(volume):], "\\")
+	if remainder == "" {
+		return volumeRoot, nil, nil
+	}
+	parts := strings.Split(remainder, "\\")
+	for _, part := range parts {
+		if part == "" || part == "." || part == ".." {
+			return "", nil, os.ErrInvalid
+		}
+	}
+	return volumeRoot, parts, nil
 }
 
 func openWindowsStateManifestHandle(path string) (*os.File, error) {
@@ -186,6 +286,7 @@ func windowsStateManifestFinalPath(file *os.File) (string, error) {
 		size = length + 1
 	}
 }
+
 
 func windowsStateManifestPathWithinRoot(rootFinalPath, candidateFinalPath string) bool {
 	rootFinalPath = strings.TrimRight(strings.ReplaceAll(rootFinalPath, "/", "\\"), "\\")

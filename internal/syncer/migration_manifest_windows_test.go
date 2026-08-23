@@ -95,6 +95,24 @@ func TestWindowsOpenedDirectoryHandleDoesNotFollowPathReplacement(t *testing.T) 
 }
 
 
+func TestWindowsStableRootHandleRejectsAncestorJunctionSwap(t *testing.T) {
+	base := t.TempDir()
+	parent := filepath.Join(base, "parent")
+	movedParent := filepath.Join(base, "parent-moved")
+	root := filepath.Join(parent, "state")
+	require.NoError(t, os.MkdirAll(root, 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "file"), []byte("state"), 0o600))
+
+	expectedRoot, err := os.Lstat(root)
+	require.NoError(t, err)
+	require.NoError(t, os.Rename(parent, movedParent))
+	createWindowsJunction(t, parent, movedParent)
+
+	_, err = openWindowsStateManifestRoot(root, expectedRoot)
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), movedParent)
+}
+
 func createWindowsJunction(t *testing.T, junction, target string) {
 	t.Helper()
 	command := exec.Command("cmd.exe", "/d", "/c", "mklink", "/J", junction, target)
