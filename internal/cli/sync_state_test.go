@@ -174,8 +174,27 @@ func TestSyncStateMigrate_StrictManifestParsingFailsBeforeMutationOrSubmit(t *te
 	validManifestBytes := mustReadCLIFile(t, manifestPath)
 
 	validSig := base64.StdEncoding.EncodeToString(manifest.Signature)
-	urlSafeSig := base64.URLEncoding.EncodeToString(manifest.Signature)
+	urlSafeSignature := append([]byte(nil), manifest.Signature...)
+	urlSafeSignature[0] = 0xff
+	urlSafeSig := base64.URLEncoding.EncodeToString(urlSafeSignature)
+	require.NotEqual(t, validSig, urlSafeSig)
 	rawSig := strings.TrimRight(validSig, "=")
+
+	_, signingPrivateKey, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	signingKeyFixtures := []struct {
+		name string
+		data []byte
+	}{
+		{name: "raw signing key", data: signingPrivateKey},
+		{name: "hex signing key", data: []byte(hex.EncodeToString(signingPrivateKey))},
+	}
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests++
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
 
 	cases := []struct {
 		name       string
@@ -200,9 +219,27 @@ func TestSyncStateMigrate_StrictManifestParsingFailsBeforeMutationOrSubmit(t *te
 			},
 		},
 		{
+			name: "case variant field at root",
+			manifestFn: func() []byte {
+				return []byte(strings.Replace(string(validManifestBytes), `"version":1`, `"Version":1`, 1))
+			},
+		},
+		{
+			name: "case variant signature field at root",
+			manifestFn: func() []byte {
+				return []byte(strings.Replace(string(validManifestBytes), `"signature":`, `"Signature":`, 1))
+			},
+		},
+		{
 			name: "unknown field in nested files object",
 			manifestFn: func() []byte {
 				return []byte(strings.Replace(string(validManifestBytes), `"size":`, `"unknown_file_field":true,"size":`, 1))
+			},
+		},
+		{
+			name: "case variant field in nested files object",
+			manifestFn: func() []byte {
+				return []byte(strings.Replace(string(validManifestBytes), `"path":`, `"Path":`, 1))
 			},
 		},
 		{
@@ -234,7 +271,6 @@ func TestSyncStateMigrate_StrictManifestParsingFailsBeforeMutationOrSubmit(t *te
 				"--role", manifest.Role,
 				"--audience", manifest.Audience,
 				"--operation-id", "op-cli-strict",
-				"--execute",
 				"--format", "json",
 			)
 			require.Error(t, err)
@@ -245,29 +281,39 @@ func TestSyncStateMigrate_StrictManifestParsingFailsBeforeMutationOrSubmit(t *te
 			assert.NoFileExists(t, statePath+".v1")
 			assert.NoFileExists(t, journalPath)
 
-			// Verify remote-execute also rejects invalid manifest before contacting remote
-			stdoutRemote, stderrRemote, errRemote := executeStateMigrationCLI(t,
-				"sync-state", "migrate", "--to", "v2",
-				"--state-manifest", badManifestPath,
-				"--journal", journalPath,
-				"--state", statePath,
-				"--public-key", publicKeyHex,
-				"--role", manifest.Role,
-				"--audience", manifest.Audience,
-				"--operation-id", "op-cli-strict-remote",
-				"--executor-url", "http://127.0.0.1:1",
-				"--operator-session", "session=opaque",
-				"--signing-key", publicKeyHex,
-				"--remote-execute",
-				"--format", "json",
-			)
-			require.Error(t, errRemote)
-			assert.Empty(t, stdoutRemote)
-			assert.NotContains(t, stderrRemote, "opaque-cli-strict-value")
-			assert.NotContains(t, errRemote.Error(), "opaque-cli-strict-value")
-			assert.Equal(t, original, mustReadCLIFile(t, statePath))
-			assert.NoFileExists(t, statePath+".v1")
-			assert.NoFileExists(t, journalPath)
+			for _, keyFixture := range signingKeyFixtures {
+				t.Run(keyFixture.name, func(t *testing.T) {
+					signingKeyPath := filepath.Join(t.TempDir(), "operator-signing-key")
+					require.NoError(t, os.WriteFile(signingKeyPath, keyFixture.data, 0o600))
+					requests = 0
+
+					// Verify remote-execute also rejects invalid manifest before
+					// contacting the httptest executor or mutating local state.
+					stdoutRemote, stderrRemote, errRemote := executeStateMigrationCLI(t,
+						"sync-state", "migrate", "--to", "v2",
+						"--state-manifest", badManifestPath,
+						"--journal", journalPath,
+						"--state", statePath,
+						"--public-key", publicKeyHex,
+						"--role", manifest.Role,
+						"--audience", manifest.Audience,
+						"--operation-id", "op-cli-strict-remote",
+						"--executor-url", server.URL,
+						"--operator-session", "session=opaque",
+						"--signing-key", signingKeyPath,
+						"--remote-execute",
+						"--format", "json",
+					)
+					require.Error(t, errRemote)
+					assert.Empty(t, stdoutRemote)
+					assert.NotContains(t, stderrRemote, "opaque-cli-strict-value")
+					assert.NotContains(t, errRemote.Error(), "opaque-cli-strict-value")
+					assert.Zero(t, requests)
+					assert.Equal(t, original, mustReadCLIFile(t, statePath))
+					assert.NoFileExists(t, statePath+".v1")
+					assert.NoFileExists(t, journalPath)
+				})
+			}
 		})
 	}
 }

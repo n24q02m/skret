@@ -283,6 +283,9 @@ func readCLIStateManifestWithBytes(path string) (*syncer.StateManifest, []byte, 
 	if err := detectJSONDuplicateKeys(data); err != nil {
 		return nil, nil, err
 	}
+	if err := validateCLIStateManifestWireKeys(data); err != nil {
+		return nil, nil, err
+	}
 	var manifest syncer.StateManifest
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
@@ -297,6 +300,57 @@ func readCLIStateManifestWithBytes(path string) (*syncer.StateManifest, []byte, 
 		return nil, nil, err
 	}
 	return &manifest, data, nil
+}
+
+func validateCLIStateManifestWireKeys(data []byte) error {
+	var root map[string]json.RawMessage
+	if err := json.Unmarshal(data, &root); err != nil {
+		return errors.New("invalid state manifest JSON")
+	}
+	if err := validateCLIStateManifestWireObject(root, false); err != nil {
+		return err
+	}
+
+	var files []json.RawMessage
+	if err := json.Unmarshal(root["files"], &files); err != nil {
+		return errors.New("invalid state manifest JSON")
+	}
+	for _, rawFile := range files {
+		var file map[string]json.RawMessage
+		if err := json.Unmarshal(rawFile, &file); err != nil {
+			return errors.New("invalid state manifest JSON")
+		}
+		if err := validateCLIStateManifestWireObject(file, true); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateCLIStateManifestWireObject(object map[string]json.RawMessage, file bool) error {
+	expected := 8
+	if file {
+		expected = 3
+	}
+	if len(object) != expected {
+		return errors.New("state manifest contains invalid JSON object keys")
+	}
+	for key := range object {
+		if file {
+			switch key {
+			case "path", "size", "sha256":
+			default:
+				return errors.New("state manifest contains invalid JSON object keys")
+			}
+			continue
+		}
+		switch key {
+		case "version", "role", "audience", "source_root", "files", "nonce", "expires_at", "signature":
+		default:
+			return errors.New("state manifest contains invalid JSON object keys")
+		}
+	}
+	return nil
 }
 
 func detectJSONDuplicateKeys(data []byte) error {

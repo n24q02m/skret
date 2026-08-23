@@ -11,7 +11,7 @@
   - Adds `state_manifest` as a `[]byte` JSON field; Go JSON encoding emits standard base64 with no line breaks.
   - Continues to compute `manifest_digest` from canonical `StateManifest.CanonicalSigningBytes`, so raw formatting/signature bytes cannot replace the canonical digest authority.
   - Leaves local dry-run and explicit local `--execute` behavior unchanged; remote execution still performs no local mutation and emits metadata-only output.
-  - Hardens `readCLIStateManifestWithBytes` with token-based duplicate-key detection for nested JSON, `DisallowUnknownFields`, and strict canonical standard-base64 signature validation (88 characters, standard alphabet, valid padding, canonical re-encode equality) without exposing values, while preserving exact raw file bytes for remote submission.
+  - Hardens `readCLIStateManifestWithBytes` with exact case-sensitive root/file-row wire-key validation (including missing/unknown aliases), token-based duplicate-key detection for nested JSON, `DisallowUnknownFields`, and strict canonical standard-base64 signature validation (88 characters, standard alphabet, valid padding, canonical re-encode equality) without exposing values, while preserving exact raw file bytes for remote submission.
 - `hub/src/security-executor.ts`
   - Requires `EXECUTOR_STATE_MANIFEST_PUBLIC_KEY` in the executor build options and fails closed on missing/malformed/import-failing values. The envelope signer key and AES response key remain separate out-of-band values.
   - Bounds the migration body and embedded manifest at 256 KiB; oversized input is rejected before JSON/manifest authority decoding. The private handler's existing 1 MiB envelope boundary remains in force.
@@ -22,7 +22,7 @@
   - Requires the canonical digest to equal both envelope and body `manifest_digest`, and requires `state_path` to equal source-root plus the exact row while `source_hash`/`source_size` equal that row. No local filesystem, provider, KMS, or migration write is reachable from the executor authority.
   - Returns only the existing encrypted metadata acknowledgement; signed manifest bytes and paths are never projected in plaintext.
 - `hub/test/security-executor-state-manifest.test.ts`
-  - Adds signed valid/tampered fixtures and coverage for missing/malformed state key, signature/byte tampering, role/audience and digest mismatches, path/row/hash/size mismatches, expiry/TTL, nonce, sorted rows, duplicate keys, oversized bodies, mixed Windows/UNC forward-slash traversal, drive/UNC root rejection when `allowRoot=false`, encrypted-only response, and value-free failures.
+  - Adds signed valid/tampered fixtures and coverage for missing/malformed state key, signature/byte tampering, role/audience and digest mismatches, path/row/hash/size mismatches, expiry/TTL, nonce, sorted rows, duplicate keys, oversized bodies, mixed Windows/UNC forward-slash traversal (with the source-root case keeping `state_path` canonical), drive/UNC root rejection when `allowRoot=false`, encrypted-only response, and value-free failures.
 - `hub/test/security-executor.test.ts`
   - Updates the existing executor fixtures to carry a dynamically signed manifest while preserving the prior replay, envelope, acknowledgement, and boundary contracts.
 - `hub/wrangler.executor.jsonc` and `tests/repo_bootstrap/test_executor_config_policy.py`
@@ -32,7 +32,7 @@
 
 - TDD red: the new signed-manifest Vitest file initially failed all 17 cases against the pre-authority executor (valid request returned `400`; missing state-key fail-closed and malformed-authority cases did not have the new contract).
 - Green: `pnpm exec vitest run test/security-executor.test.ts test/security-executor-state-manifest.test.ts test/private-executor-handler.test.ts test/executor-envelope-verifier.test.ts test/executor-replay-store.test.ts test/operator-executor-proxy.test.ts --maxWorkers=1` — 91 tests passed (23 state-manifest tests).
-- CLI: `go test ./internal/cli -run 'TestSyncStateMigrate_' -count=1` — pass (including duplicate root/nested keys, unknown root/nested fields, unpadded/url-safe base64 signature, and traversal rejection).
+- CLI: `go test ./internal/cli -run '^TestSyncStateMigrate_' -count=1` — pass (including exact-case root and nested alias rejection in dry-run, duplicate root/nested keys, unknown root/nested fields, canonical unpadded/url-safe base64 rejection, and remote preflight rejection with raw and hex Ed25519 private signing keys before any request or local mutation).
 - Hub typecheck: `pnpm typecheck` — exit 0.
 - Config policy: `python -m unittest tests.repo_bootstrap.test_executor_config_policy -v` — 5 tests passed.
 - Ordinary Hub dry-run: `pnpm dryrun` — exit 0; the existing `env.EXECUTOR` service binding was read back and Wrangler exited at `--dry-run`.
