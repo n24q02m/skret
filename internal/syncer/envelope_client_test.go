@@ -149,25 +149,30 @@ func TestEnvelopeClientSubmit_UsesFixedHubPathAndVerifiesEnvelope(t *testing.T) 
 	var seenPath string
 	var seenMethod string
 	var seenContentType string
+	var seenCookie string
 	var seenEnvelope SignedEnvelope
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		seenPath = r.URL.Path
 		seenMethod = r.Method
 		seenContentType = r.Header.Get("Content-Type")
+		seenCookie = r.Header.Get("Cookie")
 		data, readErr := io.ReadAll(r.Body)
 		require.NoError(t, readErr)
 		require.NoError(t, json.Unmarshal(data, &seenEnvelope))
 		require.NoError(t, VerifySignedEnvelope(&seenEnvelope, publicKey, now))
+		assert.Empty(t, r.Header.Get("Authorization"))
+		assert.NotContains(t, string(data), "session=synthetic-envelope-cookie")
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"accepted":true}`))
 	}))
 	defer server.Close()
 
 	client := &EnvelopeClient{
-		BaseURL:    server.URL,
-		Signer:     privateKey,
-		HTTPClient: server.Client(),
-		Clock:      func() time.Time { return now },
+		BaseURL:               server.URL,
+		Signer:                privateKey,
+		OperatorSessionCookie: "session=synthetic-envelope-cookie",
+		HTTPClient:            server.Client(),
+		Clock:                 func() time.Time { return now },
 	}
 	response, err := client.Submit(t.Context(), manifestDigest, "operator", "hub", "nonce-submit", now.Add(time.Minute), body)
 	require.NoError(t, err)
@@ -175,6 +180,7 @@ func TestEnvelopeClientSubmit_UsesFixedHubPathAndVerifiesEnvelope(t *testing.T) 
 	assert.Equal(t, "/operator/executor-envelope", seenPath)
 	assert.Equal(t, http.MethodPost, seenMethod)
 	assert.Equal(t, "application/json", seenContentType)
+	assert.Equal(t, "session=synthetic-envelope-cookie", seenCookie)
 	assert.Equal(t, "nonce-submit", seenEnvelope.Nonce)
 }
 
@@ -192,7 +198,7 @@ func TestEnvelopeClientSubmit_RejectsRedirectingBaseURLs(t *testing.T) {
 		"https://user:password@example.test",
 	} {
 		t.Run(rawBaseURL, func(t *testing.T) {
-			client := &EnvelopeClient{BaseURL: rawBaseURL, Signer: privateKey, Clock: func() time.Time { return now }}
+			client := &EnvelopeClient{BaseURL: rawBaseURL, Signer: privateKey, OperatorSessionCookie: "session=synthetic-envelope-cookie", Clock: func() time.Time { return now }}
 			_, err := client.Submit(t.Context(), validDigest, "operator", "hub", "nonce", now.Add(time.Minute), []byte("payload"))
 			require.Error(t, err)
 			assert.NotContains(t, err.Error(), "password")
@@ -217,7 +223,7 @@ func TestEnvelopeClientSubmit_BoundsSuccessfulResponseAndHidesErrorBody(t *testi
 			_, _ = w.Write(bytes.Repeat([]byte("x"), MaxEnvelopeResponseBytes+1))
 		}))
 		defer server.Close()
-		client := &EnvelopeClient{BaseURL: server.URL, Signer: privateKey, HTTPClient: server.Client(), Clock: func() time.Time { return now }}
+		client := &EnvelopeClient{BaseURL: server.URL, Signer: privateKey, OperatorSessionCookie: "session=synthetic-envelope-cookie", HTTPClient: server.Client(), Clock: func() time.Time { return now }}
 		_, err := client.Submit(t.Context(), manifestDigest, "operator", "hub", "nonce", now.Add(time.Minute), requestBody)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "response")
@@ -231,7 +237,7 @@ func TestEnvelopeClientSubmit_BoundsSuccessfulResponseAndHidesErrorBody(t *testi
 			_, _ = w.Write([]byte(responseBody))
 		}))
 		defer server.Close()
-		client := &EnvelopeClient{BaseURL: server.URL, Signer: privateKey, HTTPClient: server.Client(), Clock: func() time.Time { return now }}
+		client := &EnvelopeClient{BaseURL: server.URL, Signer: privateKey, OperatorSessionCookie: "session=synthetic-envelope-cookie", HTTPClient: server.Client(), Clock: func() time.Time { return now }}
 		_, err := client.Submit(t.Context(), manifestDigest, "operator", "hub", "nonce", now.Add(time.Minute), requestBody)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "502")
@@ -256,9 +262,50 @@ func TestEnvelopeClientSubmit_DoesNotFollowRedirectsToAnotherPath(t *testing.T) 
 	}))
 	defer server.Close()
 
-	client := &EnvelopeClient{BaseURL: server.URL, Signer: privateKey, HTTPClient: server.Client(), Clock: func() time.Time { return now }}
+	client := &EnvelopeClient{BaseURL: server.URL, Signer: privateKey, OperatorSessionCookie: "session=synthetic-envelope-cookie", HTTPClient: server.Client(), Clock: func() time.Time { return now }}
 	_, err = client.Submit(t.Context(), "sha256:"+strings.Repeat("a", 64), "operator", "hub", "nonce", now.Add(time.Minute), []byte("payload"))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "307")
 	assert.False(t, redirected)
+}
+func TestEnvelopeClientSubmit_RejectsMissingOperatorSessionCookieBeforeNetwork(t *testing.T) {
+	now := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
+	_, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	validDigest := "sha256:" + strings.Repeat("a", 64)
+
+	for _, tc := range []struct {
+		name   string
+		cookie string
+	}{
+		{name: "absent", cookie: ""},
+		{name: "blank", cookie: " \t\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			requests := 0
+			client := &EnvelopeClient{
+				BaseURL:              "http://example.test",
+				Signer:               privateKey,
+				OperatorSessionCookie: tc.cookie,
+				HTTPClient: &http.Client{
+					Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+						requests++
+						return nil, io.ErrClosedPipe
+					}),
+				},
+				Clock: func() time.Time { return now },
+			}
+
+			_, err := client.Submit(t.Context(), validDigest, "operator", "hub", "nonce", now.Add(time.Minute), []byte("payload"))
+			require.Error(t, err)
+			assert.Equal(t, "envelope: operator session cookie is required", err.Error())
+			assert.Equal(t, 0, requests)
+		})
+	}
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return f(request)
 }

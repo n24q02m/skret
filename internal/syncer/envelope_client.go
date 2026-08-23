@@ -178,10 +178,11 @@ func VerifySignedEnvelope(envelope *ExecutorEnvelope, publicKey ed25519.PublicKe
 // be the Hub origin (no path, query, fragment, or userinfo). HTTPClient and
 // Clock are injectable for deterministic offline tests.
 type EnvelopeClient struct {
-	BaseURL    string
-	Signer     ed25519.PrivateKey
-	HTTPClient *http.Client
-	Clock      func() time.Time
+	BaseURL               string
+	Signer                ed25519.PrivateKey
+	OperatorSessionCookie string
+	HTTPClient            *http.Client
+	Clock                 func() time.Time
 }
 
 // NewEnvelopeClient constructs a client using the default HTTP client and
@@ -202,6 +203,9 @@ func (c *EnvelopeClient) Submit(
 ) ([]byte, error) {
 	if c == nil {
 		return nil, errors.New("envelope: missing client")
+	}
+	if strings.TrimSpace(c.OperatorSessionCookie) == "" {
+		return nil, errors.New("envelope: operator session cookie is required")
 	}
 	now := time.Now()
 	if c.Clock != nil {
@@ -224,6 +228,7 @@ func (c *EnvelopeClient) Submit(
 		return nil, errors.New("envelope: request creation failed")
 	}
 	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Cookie", c.OperatorSessionCookie)
 
 	httpClient := c.HTTPClient
 	if httpClient == nil {
