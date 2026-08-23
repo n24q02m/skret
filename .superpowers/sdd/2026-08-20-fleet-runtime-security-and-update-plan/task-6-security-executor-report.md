@@ -43,6 +43,7 @@ Hub readiness is deliberately **not** claimed: `hub/deployment-order.json` requi
 - Ordinary Hub dry-run: `pnpm dryrun` — exit 0; `env.EXECUTOR` remains the declared service binding and Wrangler exited at `--dry-run`.
 - Executor dry-run: `pnpm exec wrangler deploy --dry-run --config wrangler.executor.jsonc` — exit 0; replay Durable Object and non-secret vars were read back, and Wrangler exited at `--dry-run`.
 - Whitespace: `git diff --check` — no output.
+- Follow-up clock-fixture stabilization: `pnpm exec vitest run test/private-executor-handler.test.ts test/security-executor.test.ts test/executor-envelope-verifier.test.ts test/executor-replay-store.test.ts test/operator-executor-proxy.test.ts --maxWorkers=1` — 68 tests passed; the dynamic expiry fixture now removes the `.000Z` canonicalization boundary flake.
 
 - **Source/deployment ordering residual:** the executor Worker has not been deployed or read back. The existing Hub-only `deploy-hub` job therefore cannot be treated as executor-ready; the manifest keeps `hub_deploy_allowed: false`, and the workflow guard exits before install/push/deploy unless the explicit authenticated readback contract is present and matches. No provider, production, public, or Cloudflare mutation was performed.
 - **Secret/config residual:** `EXECUTOR_PUBLIC_KEY` and `EXECUTOR_RESPONSE_KEY` remain out-of-band secrets and are intentionally absent from committed Wrangler config. `SKRET_EXECUTOR_READBACK_JSON` is an external deployment/readback input; its value is never printed.
