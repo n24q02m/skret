@@ -319,9 +319,9 @@ func TestStateMigration_RejectsTraversalAndInvalidJournalWithoutMutation(t *test
 		DesiredHash:    strings.Repeat("a", 64),
 		DesiredSize:    1,
 
-		Phase:          StateMigrationPhasePrepared,
-		CreatedAt:      now,
-		UpdatedAt:      now,
+		Phase:     StateMigrationPhasePrepared,
+		CreatedAt: now,
+		UpdatedAt: now,
 	}
 	writeStateMigrationJournal(t, journalPath, badJournal)
 
@@ -565,9 +565,9 @@ func TestStateMigration_SerializesSaveSyncState(t *testing.T) {
 	require.NoError(t, <-saveDone)
 }
 
-
 func TestStateMigration_SourceBackupPreservationDoesNotDeleteReplacement(t *testing.T) {
 	_, statePath, journalPath, manifest, publicKey, _, now, original := stateMigrationFixture(t)
+	desired := stateMigrationV2Bytes(t, original, stateMigrationManifestDigest(t, manifest))
 	originalHook := stateMigrationBeforeSourceBackupRemove
 	defer func() { stateMigrationBeforeSourceBackupRemove = originalHook }()
 	stateMigrationBeforeSourceBackupRemove = func(journal *StateMigrationJournal) error {
@@ -581,9 +581,31 @@ func TestStateMigration_SourceBackupPreservationDoesNotDeleteReplacement(t *test
 	require.Error(t, err)
 	assert.Equal(t, []byte("replacement-source"), mustReadFile(t, statePath))
 	assert.Equal(t, original, mustReadFile(t, statePath+".v1"))
-	assert.Empty(t, migrationTempFiles(t, filepath.Dir(statePath)))
+	tempFiles := migrationTempFiles(t, filepath.Dir(statePath))
+	require.Len(t, tempFiles, 1)
+	assert.Equal(t, desired, mustReadFile(t, filepath.Join(filepath.Dir(statePath), tempFiles[0])))
 }
+func TestStateMigration_SourceBackupRemovalFailureRetainsRecoveryArtifacts(t *testing.T) {
+	_, statePath, journalPath, manifest, publicKey, _, now, original := stateMigrationFixture(t)
+	originalHook := stateMigrationBeforeSourceBackupRemoveFinal
+	defer func() { stateMigrationBeforeSourceBackupRemoveFinal = originalHook }()
+	stateMigrationBeforeSourceBackupRemoveFinal = func(journal *StateMigrationJournal) error {
+		if err := os.Remove(journal.SourcePath); err != nil {
+			return err
+		}
+		if err := os.Mkdir(journal.SourcePath, 0o700); err != nil {
+			return err
+		}
+		return os.WriteFile(filepath.Join(journal.SourcePath, "marker"), []byte("replacement"), 0o600)
+	}
 
+	err := MigrateStateFileV1ToV2(statePath, journalPath, manifest, publicKey, "operator", "hub", "op-state-migration-remove-failure", now)
+	require.Error(t, err)
+	assert.DirExists(t, statePath)
+	assert.Equal(t, original, mustReadFile(t, statePath+".v1"))
+	tempFiles := migrationTempFiles(t, filepath.Dir(statePath))
+	require.Len(t, tempFiles, 1)
+}
 
 func TestStateMigration_RejectsUnsafeAncestorBeforeRecoveryMutation(t *testing.T) {
 	root := t.TempDir()

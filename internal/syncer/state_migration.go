@@ -21,16 +21,16 @@ type StateMigrationPhase string
 type StateMigrationJournalPhase = StateMigrationPhase
 
 const (
-	StateMigrationPhasePrepared          StateMigrationPhase = "prepared"
-	StateMigrationPhaseBackupRenamed     StateMigrationPhase = "backup_renamed"
-	StateMigrationPhaseCommitted         StateMigrationPhase = "committed"
+	StateMigrationPhasePrepared            StateMigrationPhase = "prepared"
+	StateMigrationPhaseBackupRenamed       StateMigrationPhase = "backup_renamed"
+	StateMigrationPhaseCommitted           StateMigrationPhase = "committed"
 	StateMigrationPhaseNeedsReconciliation StateMigrationPhase = "needs_reconciliation"
 
 	// StateMigrationJournalPhase* aliases keep phase names discoverable without
 	// duplicating the serialized values.
-	StateMigrationJournalPhasePrepared          = StateMigrationPhasePrepared
-	StateMigrationJournalPhaseBackupRenamed     = StateMigrationPhaseBackupRenamed
-	StateMigrationJournalPhaseCommitted         = StateMigrationPhaseCommitted
+	StateMigrationJournalPhasePrepared            = StateMigrationPhasePrepared
+	StateMigrationJournalPhaseBackupRenamed       = StateMigrationPhaseBackupRenamed
+	StateMigrationJournalPhaseCommitted           = StateMigrationPhaseCommitted
 	StateMigrationJournalPhaseNeedsReconciliation = StateMigrationPhaseNeedsReconciliation
 )
 
@@ -38,9 +38,10 @@ var (
 	ErrStateMigrationNeedsReconciliation = errors.New("state migration needs reconciliation")
 	ErrStateMigrationInvalidJournal      = errors.New("state migration journal is invalid")
 
-	stateMigrationPersistJournal       = persistMigrationJournal
-	stateMigrationBeforeRecoveryCommit  func(*StateMigrationJournal) error
-	stateMigrationBeforeSourceBackupRemove func(*StateMigrationJournal) error
+	stateMigrationPersistJournal                = persistMigrationJournal
+	stateMigrationBeforeRecoveryCommit          func(*StateMigrationJournal) error
+	stateMigrationBeforeSourceBackupRemove      func(*StateMigrationJournal) error
+	stateMigrationBeforeSourceBackupRemoveFinal func(*StateMigrationJournal) error
 )
 
 // StateMigrationJournal contains only metadata needed to recover one local
@@ -213,10 +214,11 @@ func MigrateStateFileV1ToV2(
 	if err := secureMigrationFile(statePath); err != nil {
 		return fmt.Errorf("state migration: secure source: %w", err)
 	}
+	removeTemp = false
 	if err := preserveMigrationSourceExclusively(journal); err != nil {
 		return fmt.Errorf("state migration: preserve v1 backup: %w", err)
 	}
-	removeTemp = false
+
 	if err := secureMigrationFile(backupPath); err != nil {
 		return fmt.Errorf("state migration: secure v1 backup: %w", err)
 	}
@@ -456,7 +458,6 @@ func validateMigrationMutationAncestors(paths ...string) error {
 	}
 	return nil
 }
-
 
 func validateMigrationRequestPaths(statePath, journalPath string) error {
 	if err := validateMigrationPath(statePath); err != nil {
@@ -762,7 +763,13 @@ func preserveMigrationSourceExclusively(journal *StateMigrationJournal) error {
 	if err := validateMigrationMutationAncestors(journal.SourcePath); err != nil {
 		return err
 	}
+	if stateMigrationBeforeSourceBackupRemoveFinal != nil {
+		if err := stateMigrationBeforeSourceBackupRemoveFinal(journal); err != nil {
+			return err
+		}
+	}
 	if err := os.Remove(journal.SourcePath); err != nil {
+		return fmt.Errorf("state migration: remove preserved source: %w", err)
 	}
 	return nil
 }
@@ -870,7 +877,6 @@ func restoreMigrationSourceFromBackup(journal *StateMigrationJournal) error {
 	keep = true
 	return nil
 }
-
 
 func markMigrationNeedsReconciliation(journal *StateMigrationJournal, now time.Time) error {
 	journal.Phase = StateMigrationPhaseNeedsReconciliation

@@ -4,6 +4,7 @@ package syncer
 
 import (
 	"fmt"
+	"runtime"
 
 	"golang.org/x/sys/windows"
 )
@@ -43,7 +44,11 @@ func hardenMigrationFilePermissions(path string) error {
 		acl,
 		nil,
 	); err != nil {
+		runtime.KeepAlive(owner)
+		runtime.KeepAlive(descriptor)
 		return fmt.Errorf("set owner-only ACL: %w", err)
 	}
+	runtime.KeepAlive(owner)
+	runtime.KeepAlive(descriptor)
 	return nil
 }
