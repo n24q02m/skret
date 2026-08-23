@@ -374,7 +374,7 @@ func revalidateStateManifestDirectories(directories map[string]os.FileInfo) erro
 	return nil
 }
 
-func scanStateManifestRoot(root string) ([]StateManifestFile, error) {
+func scanStateManifestRootPortable(root string) ([]StateManifestFile, error) {
 	files := make([]StateManifestFile, 0)
 	directories := make(map[string]os.FileInfo)
 	err := filepath.WalkDir(root, func(currentPath string, entry os.DirEntry, walkErr error) error {

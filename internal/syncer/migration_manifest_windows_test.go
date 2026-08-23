@@ -36,14 +36,70 @@ func TestBuildStateManifest_RejectsWindowsJunctionRootsAndEntries(t *testing.T) 
 	require.Error(t, err)
 	assert.NotContains(t, err.Error(), target)
 }
+func TestWindowsFinalPathContainmentUsesCaseInsensitiveComponentBoundary(t *testing.T) {
+	root := `\\?\C:\State`
+	assert.True(t, windowsStateManifestPathWithinRoot(root, `\\?\c:\state\child\file`))
+	assert.True(t, windowsStateManifestPathWithinRoot(root, root))
+	assert.False(t, windowsStateManifestPathWithinRoot(root, `\\?\C:\State-escape\file`))
+	assert.False(t, windowsStateManifestPathWithinRoot(root, `\\?\C:\State2\file`))
+}
+
+func TestWindowsScannerRejectsJunctionEntryBeforeEnumeration(t *testing.T) {
+	root := t.TempDir()
+	target := filepath.Join(root, "outside")
+	junction := filepath.Join(root, "child")
+	require.NoError(t, os.MkdirAll(target, 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(target, "outside-state"), []byte("outside"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "inside-state"), []byte("inside"), 0o600))
+	createWindowsJunction(t, junction, target)
+
+	_, err := scanStateManifestRoot(root)
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), target)
+}
+
+func TestWindowsScannerUsesOpenedDirectoryHandle(t *testing.T) {
+	root := t.TempDir()
+	child := filepath.Join(root, "child")
+	require.NoError(t, os.MkdirAll(child, 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(child, "state"), []byte("state"), 0o600))
+
+	files, err := scanStateManifestRoot(root)
+	require.NoError(t, err)
+	require.Equal(t, []StateManifestFile{{
+		Path:   filepath.ToSlash(filepath.Join("child", "state")),
+		Size:   int64(len("state")),
+		SHA256: "4ba69735ca53765ed6a709edb56c6ea236b7193a3b29a6b390c346f0f4340e4e",
+	}}, files)
+}
+func TestWindowsOpenedDirectoryHandleDoesNotFollowPathReplacement(t *testing.T) {
+	root := t.TempDir()
+	child := filepath.Join(root, "child")
+	moved := filepath.Join(root, "child-moved")
+	outside := filepath.Join(root, "outside")
+	require.NoError(t, os.MkdirAll(child, 0o700))
+	require.NoError(t, os.MkdirAll(outside, 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(child, "inside-state"), []byte("inside"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(outside, "outside-state"), []byte("outside"), 0o600))
+
+	opened, err := openWindowsStateManifestHandle(child)
+	require.NoError(t, err)
+	defer opened.Close()
+	require.NoError(t, os.Rename(child, moved))
+	createWindowsJunction(t, child, outside)
+
+	entries, err := opened.ReadDir(-1)
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+	assert.Equal(t, "inside-state", entries[0].Name())
+}
+
 
 func createWindowsJunction(t *testing.T, junction, target string) {
 	t.Helper()
 	command := exec.Command("cmd.exe", "/d", "/c", "mklink", "/J", junction, target)
 	command.Stdout = io.Discard
 	command.Stderr = io.Discard
-	if err := command.Run(); err != nil {
-		t.Skipf("junction creation unavailable: %v", err)
-	}
+	require.NoError(t, command.Run())
 	t.Cleanup(func() { _ = os.Remove(junction) })
 }
