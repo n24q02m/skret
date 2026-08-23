@@ -8,6 +8,7 @@ PASS for the bounded offline signed state-manifest slice. The Windows path-reope
 - `77bec3f` — `fix: harden migration manifest traversal`
 - `3ac3597` — `fix: harden Windows migration manifest traversal`
 - `3e37fa8` — `fix: bind Windows manifest roots through stable ancestors`
+- `47e7a29` — `fix: handle extended UNC manifest roots`
 
 ## Focused test evidence
 
@@ -18,6 +19,8 @@ PASS for the bounded offline signed state-manifest slice. The Windows path-reope
 - Green before the Windows P1: `go test ./internal/syncer -run 'Test(StateManifest|BuildStateManifest|VerifyStateManifest|HashStateManifestFile|RevalidateStateManifestDirectories)' -count=1` — PASS.
 - Windows P1 TDD red: `go test ./internal/syncer -run 'TestWindows(FinalPathContainment|Scanner)' -count=1 -v` failed before the platform scanner with undefined final-path containment helper.
 - Stable-ancestor TDD red: `go test ./internal/syncer -run TestWindowsStableRootHandleRejectsAncestorJunctionSwap -count=1 -v` failed before the chain helper with an undefined `openWindowsStateManifestRoot`.
+- Extended-UNC TDD red: `go test ./internal/syncer -run TestWindowsStateManifestPathComponentsHandlesExtendedUNC -count=1 -v` failed before the parser special case because `\\?\UNC\server\share\state` was split at `\\?\UNC\`.
+- Extended-UNC focused green: the same command — PASS for `\\?\UNC\` and `\\.\UNC\` forms, with server/share retained in the volume root.
 - Stable-ancestor focused green: `go test ./internal/syncer -run 'TestWindows(StableRootHandle|FinalPathContainment|Scanner|OpenedDirectoryHandle)' -count=1` — PASS; a parent renamed and replaced with a junction to the moved original was rejected even though the root identity matched the pre-swap identity.
 - Windows focused green: `go test ./internal/syncer -run 'Test(StateManifest|BuildStateManifest|VerifyStateManifest|HashStateManifestFile|RevalidateStateManifestDirectories|Windows)' -count=1` — PASS.
 - Windows opened-handle replacement proof: `TestWindowsOpenedDirectoryHandleDoesNotFollowPathReplacement` — PASS; after the original directory path was replaced by a real junction, `ReadDir` on the already-open handle returned only the original entry.
