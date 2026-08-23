@@ -340,7 +340,7 @@ func TestSyncStateMigrate_RemoteExecuteSubmitsSignedMetadataOnlyRequestWithoutMu
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPost, r.Method)
 		assert.Equal(t, "/operator/executor-envelope", r.URL.Path)
-		assert.Equal(t, "session=opaque-operator-session", r.Header.Get("Cookie"))
+		assert.Equal(t, "session=opaque-operator-session; audit=keep", r.Header.Get("Cookie"))
 		require.NoError(t, json.NewDecoder(r.Body).Decode(&received))
 		require.NoError(t, json.Unmarshal(received.Body, &receivedBody))
 		w.Header().Set("Content-Type", "application/json")
@@ -358,7 +358,7 @@ func TestSyncStateMigrate_RemoteExecuteSubmitsSignedMetadataOnlyRequestWithoutMu
 		"--audience", manifest.Audience,
 		"--operation-id", "op-cli-remote",
 		"--executor-url", server.URL,
-		"--operator-session", "session=opaque-operator-session",
+		"--operator-session", "session=opaque-operator-session; audit=keep",
 		"--signing-key", signingKeyPath,
 		"--remote-execute",
 		"--format", "json",

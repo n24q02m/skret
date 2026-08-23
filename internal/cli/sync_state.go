@@ -159,9 +159,9 @@ func (o *syncStateMigrateOptions) run(cmd *cobra.Command) error {
 		if err != nil {
 			return syncStateMigrateError("read signing key", err)
 		}
-		operatorSession = strings.TrimSpace(o.operatorSession)
+		operatorSession = o.operatorSession
 		if operatorSession == "" {
-			operatorSession = strings.TrimSpace(os.Getenv("SKRET_OPERATOR_SESSION_COOKIE"))
+			operatorSession = os.Getenv("SKRET_OPERATOR_SESSION_COOKIE")
 		}
 	}
 
@@ -500,8 +500,8 @@ func submitCLIStateMigrationRequest(
 	if err != nil {
 		return nil, errors.New("encode executor migration request failed")
 	}
-	client := syncer.NewEnvelopeClient(strings.TrimSpace(executorURL), signingKey)
-	client.OperatorSessionCookie = strings.TrimSpace(operatorSession)
+	client := syncer.NewEnvelopeClient(executorURL, signingKey)
+	client.OperatorSessionCookie = operatorSession
 	client.Clock = func() time.Time { return now }
 	return client.Submit(
 		cmd.Context(),
