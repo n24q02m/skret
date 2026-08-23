@@ -24,6 +24,7 @@ type SyncState struct {
 	Updated time.Time         `json:"updated"`
 
 	OperationID string                `json:"operation_id,omitempty"`
+	Phase       OperationPhase        `json:"phase,omitempty"`
 	Intent      string                `json:"intent,omitempty"`
 	StartedAt   *time.Time            `json:"started_at,omitempty"`
 	CompletedAt *time.Time            `json:"completed_at,omitempty"`
@@ -39,9 +40,18 @@ const (
 	OutcomeNeedsReconciliation OutcomeStatus = "needs_reconciliation"
 )
 
+type OperationPhase string
+
+const (
+	OperationPhasePending             OperationPhase = "pending"
+	OperationPhaseSucceeded           OperationPhase = "succeeded"
+	OperationPhaseNeedsReconciliation OperationPhase = "needs_reconciliation"
+)
+
 type KeyOutcome struct {
-	Status    OutcomeStatus `json:"status"`
-	UpdatedAt time.Time     `json:"updated_at"`
+	Status      OutcomeStatus `json:"status"`
+	OperationID string        `json:"operation_id,omitempty"`
+	UpdatedAt   time.Time     `json:"updated_at"`
 }
 
 var ErrOperationMismatch = errors.New("sync operation mismatch")
@@ -69,27 +79,40 @@ func (s *SyncState) beginOperation(operationID, intent string, secrets []*provid
 	if strings.TrimSpace(operationID) == "" {
 		return fmt.Errorf("sync operation id is required")
 	}
-	if s.Outcomes == nil {
-		s.Outcomes = make(map[string]KeyOutcome)
-	}
-	if s.OperationID != "" && s.CompletedAt == nil {
-		for key, outcome := range s.Outcomes {
-			if outcome.Status == OutcomePending {
-				outcome.Status = OutcomeNeedsReconciliation
-				outcome.UpdatedAt = started
-				s.Outcomes[key] = outcome
-			}
-		}
-	}
-	s.OperationID = operationID
-	s.Intent = intent
-	s.StartedAt = timePtr(started)
-	s.CompletedAt = nil
 	for _, secret := range secrets {
 		if secret == nil {
 			return fmt.Errorf("sync operation contains nil secret")
 		}
-		s.Outcomes[secret.Key] = KeyOutcome{Status: OutcomePending, UpdatedAt: started}
+	}
+	if s.Outcomes == nil {
+		s.Outcomes = make(map[string]KeyOutcome)
+	}
+	if s.operationPending() {
+		previousOperationID := s.OperationID
+		for key, outcome := range s.Outcomes {
+			if outcome.Status != OutcomePending ||
+				(outcome.OperationID != "" && outcome.OperationID != previousOperationID) {
+				continue
+			}
+			outcome.Status = OutcomeNeedsReconciliation
+			if outcome.OperationID == "" {
+				outcome.OperationID = previousOperationID
+			}
+			outcome.UpdatedAt = started
+			s.Outcomes[key] = outcome
+		}
+	}
+	s.OperationID = operationID
+	s.Phase = OperationPhasePending
+	s.Intent = intent
+	s.StartedAt = timePtr(started)
+	s.CompletedAt = nil
+	for _, secret := range secrets {
+		s.Outcomes[secret.Key] = KeyOutcome{
+			Status:      OutcomePending,
+			OperationID: operationID,
+			UpdatedAt:   started,
+		}
 	}
 	return nil
 }
@@ -98,16 +121,27 @@ func (s *SyncState) RecordSuccess(operationID string, secrets []*provider.Secret
 	if err := s.checkOperation(operationID); err != nil {
 		return err
 	}
-	if s.Outcomes == nil {
-		s.Outcomes = make(map[string]KeyOutcome)
-	}
 	for _, secret := range secrets {
 		if secret == nil {
 			return fmt.Errorf("sync operation contains nil secret")
 		}
-		s.Outcomes[secret.Key] = KeyOutcome{Status: OutcomeSucceeded, UpdatedAt: completed}
 	}
-	s.Update(secrets)
+	if s.Outcomes == nil {
+		s.Outcomes = make(map[string]KeyOutcome)
+	}
+	owned := make([]*provider.Secret, 0, len(secrets))
+	for _, secret := range secrets {
+		outcome, ok := s.Outcomes[secret.Key]
+		if !ok || outcome.OperationID != operationID {
+			continue
+		}
+		outcome.Status = OutcomeSucceeded
+		outcome.UpdatedAt = completed
+		s.Outcomes[secret.Key] = outcome
+		owned = append(owned, secret)
+	}
+	s.Update(owned)
+	s.Phase = OperationPhaseSucceeded
 	s.CompletedAt = timePtr(completed)
 	s.LastSuccess = timePtr(completed)
 	return nil
@@ -117,17 +151,31 @@ func (s *SyncState) RecordNeedsReconciliation(operationID string, secrets []*pro
 	if err := s.checkOperation(operationID); err != nil {
 		return err
 	}
-	if s.Outcomes == nil {
-		s.Outcomes = make(map[string]KeyOutcome)
-	}
 	for _, secret := range secrets {
 		if secret == nil {
 			return fmt.Errorf("sync operation contains nil secret")
 		}
-		s.Outcomes[secret.Key] = KeyOutcome{Status: OutcomeNeedsReconciliation, UpdatedAt: completed}
 	}
+	if s.Outcomes == nil {
+		s.Outcomes = make(map[string]KeyOutcome)
+	}
+	for _, secret := range secrets {
+		outcome, ok := s.Outcomes[secret.Key]
+		if !ok || outcome.OperationID != operationID {
+			continue
+		}
+		outcome.Status = OutcomeNeedsReconciliation
+		outcome.UpdatedAt = completed
+		s.Outcomes[secret.Key] = outcome
+	}
+	s.Phase = OperationPhaseNeedsReconciliation
 	s.CompletedAt = timePtr(completed)
 	return nil
+}
+
+func (s *SyncState) operationPending() bool {
+	return s.OperationID != "" &&
+		(s.Phase == OperationPhasePending || (s.Phase == "" && s.CompletedAt == nil))
 }
 
 func (s *SyncState) checkOperation(operationID string) error {

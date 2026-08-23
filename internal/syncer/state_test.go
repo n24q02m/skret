@@ -314,6 +314,8 @@ func TestSyncState_OperationFailureNeedsReconciliation(t *testing.T) {
 	require.NoError(t, state.RecordNeedsReconciliation("op-2", secrets, now.Add(time.Second)))
 
 	assert.Equal(t, OutcomeNeedsReconciliation, state.Outcomes["K1"].Status)
+	assert.Equal(t, OperationPhaseNeedsReconciliation, state.Phase)
+	assert.Equal(t, "op-2", state.Outcomes["K1"].OperationID)
 	assert.Empty(t, state.Hashes)
 	assert.Nil(t, state.LastSuccess)
 	require.NotNil(t, state.CompletedAt)
@@ -328,7 +330,9 @@ func TestSyncState_RejectsStaleOperationResult(t *testing.T) {
 	require.NoError(t, state.BeginOperation("op-current", secrets, now))
 	err := state.RecordSuccess("op-stale", secrets, now.Add(time.Second))
 	require.ErrorIs(t, err, ErrOperationMismatch)
+	assert.Equal(t, OperationPhasePending, state.Phase)
 	assert.Equal(t, OutcomePending, state.Outcomes["K1"].Status)
+	assert.Equal(t, "op-current", state.Outcomes["K1"].OperationID)
 	assert.Empty(t, state.Hashes)
 }
 
@@ -345,4 +349,89 @@ func TestSyncState_BeginOperationSupersedesInterruptedOperation(t *testing.T) {
 	require.NotNil(t, state.StartedAt)
 	assert.Equal(t, second, *state.StartedAt)
 	assert.Equal(t, OutcomePending, state.Outcomes["K1"].Status)
+}
+func TestSyncState_OperationPhaseAndOwnership(t *testing.T) {
+	started := time.Date(2026, 8, 23, 9, 0, 0, 0, time.UTC)
+	finished := started.Add(time.Second)
+	secrets := []*provider.Secret{{Key: "K1", Value: "v1"}}
+	state := &SyncState{Target: "dotenv", ID: ".env"}
+
+	require.NoError(t, state.BeginOperation("op-1", secrets, started))
+	assert.Equal(t, OperationPhasePending, state.Phase)
+	assert.Equal(t, "op-1", state.Outcomes["K1"].OperationID)
+
+	require.NoError(t, state.RecordSuccess("op-1", secrets, finished))
+	assert.Equal(t, OperationPhaseSucceeded, state.Phase)
+	assert.Equal(t, "op-1", state.Outcomes["K1"].OperationID)
+}
+
+func TestSyncState_InterruptedPendingOutcomesRetainOwnership(t *testing.T) {
+	first := time.Date(2026, 8, 23, 9, 5, 0, 0, time.UTC)
+	second := first.Add(time.Minute)
+	secrets := []*provider.Secret{
+		{Key: "K1", Value: "v1"},
+		{Key: "K2", Value: "v2"},
+	}
+	state := &SyncState{Target: "dotenv", ID: ".env"}
+
+	require.NoError(t, state.BeginOperation("op-first", secrets, first))
+	require.NoError(t, state.BeginOperation("op-second", secrets[1:], second))
+
+	assert.Equal(t, OperationPhasePending, state.Phase)
+	assert.Equal(t, OutcomeNeedsReconciliation, state.Outcomes["K1"].Status)
+	assert.Equal(t, "op-first", state.Outcomes["K1"].OperationID)
+	assert.Equal(t, OutcomePending, state.Outcomes["K2"].Status)
+	assert.Equal(t, "op-second", state.Outcomes["K2"].OperationID)
+}
+
+func TestSyncState_RecordOnlyUpdatesCurrentKeyOwnership(t *testing.T) {
+	now := time.Date(2026, 8, 23, 9, 10, 0, 0, time.UTC)
+	state := &SyncState{Target: "dotenv", ID: ".env"}
+	current := []*provider.Secret{{Key: "current", Value: "current"}}
+	stale := &provider.Secret{Key: "stale", Value: "stale"}
+
+	require.NoError(t, state.BeginOperation("op-current", current, now))
+	state.Outcomes["stale"] = KeyOutcome{
+		Status:    OutcomePending,
+		OperationID: "op-old",
+		UpdatedAt: now,
+	}
+
+	require.NoError(t, state.RecordSuccess("op-current", []*provider.Secret{current[0], stale}, now.Add(time.Second)))
+
+	assert.Equal(t, OutcomeSucceeded, state.Outcomes["current"].Status)
+	assert.Equal(t, "op-current", state.Outcomes["current"].OperationID)
+	assert.Equal(t, OutcomePending, state.Outcomes["stale"].Status)
+	assert.Equal(t, "op-old", state.Outcomes["stale"].OperationID)
+	assert.NotContains(t, state.Hashes, "stale")
+}
+
+func TestSyncState_OperationMetadataRoundtripAndLegacyJSON(t *testing.T) {
+	withFakeHome(t)
+	started := time.Date(2026, 8, 23, 9, 15, 0, 0, time.UTC)
+	state := &SyncState{Target: "dotenv", ID: ".env"}
+	secrets := []*provider.Secret{{Key: "K1", Value: "v1"}}
+	require.NoError(t, state.BeginOperationWithIntent("op-rotate", OperationIntentRotate, secrets, started))
+	require.NoError(t, SaveSyncState(state))
+
+	loaded, err := LoadSyncState("dotenv", ".env")
+	require.NoError(t, err)
+	assert.Equal(t, OperationPhasePending, loaded.Phase)
+	assert.Equal(t, OperationIntentRotate, loaded.Intent)
+	assert.Equal(t, "op-rotate", loaded.Outcomes["K1"].OperationID)
+	path, err := StatePathFor("dotenv", ".env")
+	require.NoError(t, err)
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.NotContains(t, string(data), "v1")
+
+	path, err = StatePathFor("github", "owner/repo")
+	require.NoError(t, err)
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o700))
+	require.NoError(t, os.WriteFile(path, []byte(`{"target":"github","id":"owner/repo","hashes":{},"outcomes":{"K1":{"status":"succeeded","updated_at":"2026-08-23T09:15:00Z"}}}`), 0o600))
+
+	legacy, err := LoadSyncState("github", "owner/repo")
+	require.NoError(t, err)
+	assert.Empty(t, legacy.Phase)
+	assert.Empty(t, legacy.Outcomes["K1"].OperationID)
 }
