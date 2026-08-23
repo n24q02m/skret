@@ -38,8 +38,9 @@ var (
 	ErrStateMigrationNeedsReconciliation = errors.New("state migration needs reconciliation")
 	ErrStateMigrationInvalidJournal      = errors.New("state migration journal is invalid")
 
-	stateMigrationPersistJournal      = persistMigrationJournal
-	stateMigrationBeforeRecoveryCommit func(*StateMigrationJournal) error
+	stateMigrationPersistJournal       = persistMigrationJournal
+	stateMigrationBeforeRecoveryCommit  func(*StateMigrationJournal) error
+	stateMigrationBeforeSourceBackupRemove func(*StateMigrationJournal) error
 )
 
 // StateMigrationJournal contains only metadata needed to recover one local
@@ -90,6 +91,9 @@ func MigrateStateFileV1ToV2(
 		return err
 	}
 	if err := validateStateMigrationOperationID(operationID); err != nil {
+		return err
+	}
+	if err := validateMigrationMutationAncestors(statePath, statePath+".v1", journalPath); err != nil {
 		return err
 	}
 
@@ -182,6 +186,9 @@ func MigrateStateFileV1ToV2(
 	if err := tempFile.Close(); err != nil {
 		return fmt.Errorf("state migration: close temporary file: %w", err)
 	}
+	if err := secureMigrationFile(tempPath); err != nil {
+		return fmt.Errorf("state migration: secure temporary file: %w", err)
+	}
 
 	journal := &StateMigrationJournal{
 		Version:        StateMigrationJournalVersion,
@@ -203,14 +210,14 @@ func MigrateStateFileV1ToV2(
 		return err
 	}
 
-	if err := os.Chmod(statePath, 0o600); err != nil {
+	if err := secureMigrationFile(statePath); err != nil {
 		return fmt.Errorf("state migration: secure source: %w", err)
 	}
-	if err := os.Rename(statePath, backupPath); err != nil {
+	if err := preserveMigrationSourceExclusively(journal); err != nil {
 		return fmt.Errorf("state migration: preserve v1 backup: %w", err)
 	}
 	removeTemp = false
-	if err := os.Chmod(backupPath, 0o600); err != nil {
+	if err := secureMigrationFile(backupPath); err != nil {
 		return fmt.Errorf("state migration: secure v1 backup: %w", err)
 	}
 	journal.Phase = StateMigrationPhaseBackupRenamed
@@ -226,6 +233,9 @@ func MigrateStateFileV1ToV2(
 		return fmt.Errorf("state migration: commit v2 state: %w", err)
 	}
 	removeTemp = false
+	if err := validateCommittedMigrationFiles(journal); err != nil {
+		return err
+	}
 	journal.Phase = StateMigrationPhaseCommitted
 	journal.UpdatedAt = now.UTC()
 	if err := stateMigrationPersistJournal(journal); err != nil {
@@ -248,6 +258,9 @@ func RecoverStateMigration(journalPath string, now time.Time) error {
 		return err
 	}
 	if err := validateMigrationJournal(journal, journalPath); err != nil {
+		return err
+	}
+	if err := validateMigrationMutationAncestors(journal.SourcePath, journal.BackupPath, journal.TempPath, journal.JournalPath); err != nil {
 		return err
 	}
 	if journal.Phase == StateMigrationPhaseNeedsReconciliation {
@@ -285,6 +298,9 @@ func RecoverStateMigration(journalPath string, now time.Time) error {
 			if err := secureMigrationFile(journal.BackupPath); err != nil {
 				return err
 			}
+			if err := validateCommittedMigrationFiles(journal); err != nil {
+				return err
+			}
 			journal.Phase = StateMigrationPhaseCommitted
 			journal.UpdatedAt = now.UTC()
 			return persistMigrationJournal(journal)
@@ -317,6 +333,9 @@ func RecoverStateMigration(journalPath string, now time.Time) error {
 			if err := secureMigrationFile(journal.BackupPath); err != nil {
 				return err
 			}
+			if err := validateCommittedMigrationFiles(journal); err != nil {
+				return err
+			}
 			journal.Phase = StateMigrationPhaseCommitted
 			journal.UpdatedAt = now.UTC()
 			return persistMigrationJournal(journal)
@@ -331,6 +350,9 @@ func RecoverStateMigration(journalPath string, now time.Time) error {
 			if err := removeMigrationFileIfExact(journal.TempPath, journal.DesiredHash, journal.DesiredSize); err != nil {
 				return err
 			}
+			if err := validateCommittedMigrationFiles(journal); err != nil {
+				return err
+			}
 			journal.Phase = StateMigrationPhaseCommitted
 			journal.UpdatedAt = now.UTC()
 			return persistMigrationJournal(journal)
@@ -341,6 +363,9 @@ func RecoverStateMigration(journalPath string, now time.Time) error {
 			}
 			if err := commitMigrationTempExclusively(journal.TempPath, journal.SourcePath); err != nil {
 				return fmt.Errorf("state migration: recover v2 commit: %w", err)
+			}
+			if err := validateCommittedMigrationFiles(journal); err != nil {
+				return err
 			}
 			journal.Phase = StateMigrationPhaseCommitted
 			journal.UpdatedAt = now.UTC()
@@ -409,6 +434,29 @@ func validateMigrationPath(path string) error {
 	}
 	return nil
 }
+func validateMigrationMutationAncestors(paths ...string) error {
+	seen := make(map[string]struct{}, len(paths))
+	for _, path := range paths {
+		current := filepath.Dir(path)
+		for {
+			if _, ok := seen[current]; ok {
+				break
+			}
+			seen[current] = struct{}{}
+			info, err := os.Lstat(current)
+			if err != nil || !info.IsDir() || unsafeStateManifestMode(info.Mode()) {
+				return errors.New("state migration: unsafe path ancestor")
+			}
+			parent := filepath.Dir(current)
+			if parent == current {
+				break
+			}
+			current = parent
+		}
+	}
+	return nil
+}
+
 
 func validateMigrationRequestPaths(statePath, journalPath string) error {
 	if err := validateMigrationPath(statePath); err != nil {
@@ -552,6 +600,9 @@ func persistMigrationJournal(journal *StateMigrationJournal) error {
 	if err := file.Close(); err != nil {
 		return fmt.Errorf("state migration: close journal: %w", err)
 	}
+	if err := secureMigrationFile(tempPath); err != nil {
+		return fmt.Errorf("state migration: secure journal temporary file: %w", err)
+	}
 	if err := os.Rename(tempPath, journal.JournalPath); err != nil {
 		return fmt.Errorf("state migration: commit journal: %w", err)
 	}
@@ -662,6 +713,9 @@ func (info migrationFileInfo) matches(hash string, size int64) bool {
 }
 
 func removeMigrationFileIfExact(path, expectedHash string, expectedSize int64) error {
+	if err := validateMigrationMutationAncestors(path); err != nil {
+		return err
+	}
 	info, err := inspectMigrationFile(path)
 	if err != nil {
 		return err
@@ -674,7 +728,49 @@ func removeMigrationFileIfExact(path, expectedHash string, expectedSize int64) e
 	}
 	return nil
 }
+func preserveMigrationSourceExclusively(journal *StateMigrationJournal) error {
+	if err := validateMigrationMutationAncestors(journal.SourcePath, journal.BackupPath); err != nil {
+		return err
+	}
+	source, err := inspectMigrationFile(journal.SourcePath)
+	if err != nil {
+		return err
+	}
+	if !source.matches(journal.SourceHash, journal.SourceSize) {
+		return errors.New("state migration: source changed before preservation")
+	}
+	if exists, err := migrationPathExists(journal.BackupPath); err != nil {
+		return err
+	} else if exists {
+		return errors.New("state migration: v1 backup already exists")
+	}
+	if err := linkMigrationExclusively(journal.SourcePath, journal.BackupPath); err != nil {
+		return err
+	}
+	if stateMigrationBeforeSourceBackupRemove != nil {
+		if err := stateMigrationBeforeSourceBackupRemove(journal); err != nil {
+			return err
+		}
+	}
+	current, err := inspectMigrationFile(journal.SourcePath)
+	if err != nil {
+		return err
+	}
+	if !current.matches(journal.SourceHash, journal.SourceSize) {
+		return errors.New("state migration: source changed during preservation")
+	}
+	if err := validateMigrationMutationAncestors(journal.SourcePath); err != nil {
+		return err
+	}
+	if err := os.Remove(journal.SourcePath); err != nil {
+	}
+	return nil
+}
+
 func validateMigrationBackupAfterRename(journal *StateMigrationJournal) error {
+	if err := validateMigrationMutationAncestors(journal.SourcePath, journal.BackupPath, journal.TempPath); err != nil {
+		return err
+	}
 	backup, err := inspectMigrationFile(journal.BackupPath)
 	if err != nil {
 		return err
@@ -690,13 +786,13 @@ func validateMigrationBackupAfterRename(journal *StateMigrationJournal) error {
 	if err := linkMigrationExclusively(journal.BackupPath, journal.SourcePath); err != nil {
 		return fmt.Errorf("state migration: restore changed source: %w", err)
 	}
-	if err := removeMigrationFileIfExact(journal.TempPath, journal.DesiredHash, journal.DesiredSize); err != nil {
-		return err
-	}
 	return errors.New("state migration: source or backup changed during migration")
 }
 
 func linkMigrationExclusively(sourcePath, destinationPath string) error {
+	if err := validateMigrationMutationAncestors(sourcePath, destinationPath); err != nil {
+		return err
+	}
 	if err := os.Link(sourcePath, destinationPath); err != nil {
 		return fmt.Errorf("state migration: exclusive link: %w", err)
 	}
@@ -716,6 +812,9 @@ func commitMigrationTempExclusively(tempPath, sourcePath string) error {
 func secureMigrationFile(path string) error {
 	if err := os.Chmod(path, 0o600); err != nil {
 		return fmt.Errorf("state migration: secure recovery file: %w", err)
+	}
+	if err := hardenMigrationFilePermissions(path); err != nil {
+		return fmt.Errorf("state migration: harden file permissions: %w", err)
 	}
 	return nil
 }
@@ -762,6 +861,9 @@ func restoreMigrationSourceFromBackup(journal *StateMigrationJournal) error {
 	if err := file.Close(); err != nil {
 		return fmt.Errorf("state migration: close recovery temporary file: %w", err)
 	}
+	if err := secureMigrationFile(tempPath); err != nil {
+		return fmt.Errorf("state migration: secure recovery temporary file: %w", err)
+	}
 	if err := commitMigrationTempExclusively(tempPath, journal.SourcePath); err != nil {
 		return fmt.Errorf("state migration: restore preserved v1: %w", err)
 	}
@@ -791,6 +893,37 @@ func committedMigrationMatches(path, statePath, operationID, manifestDigest stri
 		return false, nil
 	}
 	return committedMigrationMatchesJournal(journal)
+}
+
+func validateCommittedMigrationFiles(journal *StateMigrationJournal) error {
+	if journal == nil {
+		return ErrStateMigrationInvalidJournal
+	}
+	if err := validateMigrationMutationAncestors(journal.SourcePath, journal.BackupPath, journal.TempPath); err != nil {
+		return err
+	}
+	source, err := inspectMigrationFile(journal.SourcePath)
+	if err != nil {
+		return err
+	}
+	if !source.matches(journal.DesiredHash, journal.DesiredSize) {
+		return errors.New("state migration: committed source changed")
+	}
+	backup, err := inspectMigrationFile(journal.BackupPath)
+	if err != nil {
+		return err
+	}
+	if !backup.matches(journal.SourceHash, journal.SourceSize) {
+		return errors.New("state migration: preserved v1 changed")
+	}
+	temp, err := inspectMigrationFile(journal.TempPath)
+	if err != nil {
+		return err
+	}
+	if temp.exists {
+		return errors.New("state migration: committed temporary file remains")
+	}
+	return nil
 }
 
 func committedMigrationMatchesJournal(journal *StateMigrationJournal) (bool, error) {
