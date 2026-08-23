@@ -1,6 +1,7 @@
 import { getContainer } from "@cloudflare/containers";
 import type { Env, SyncHealth } from "./types";
 import { handleIngest } from "./ingest";
+import { handleExecutorEnvelope } from "./operator-executor-proxy";
 import { checkPassword, mintSession, verifySession, SESSION_TTL } from "./auth";
 import { getAllManifests } from "./store";
 import { renderDashboard, renderLogin } from "./render";
@@ -18,6 +19,9 @@ export async function handleRequest(req: Request, env: Env): Promise<Response> {
       return rateLimited("rate limited");
     }
     return handleIngest(req, env);
+  }
+  if (pathname === "/operator/executor-envelope") {
+    return handleExecutorEnvelope(req, env);
   }
   if (req.method === "POST" && pathname === "/login") {
     // Ahead of reading the form and comparing the password, so a flood never

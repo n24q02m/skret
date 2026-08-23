@@ -1,3 +1,4 @@
+import type { Fetcher } from "@cloudflare/workers-types";
 import type { SyncContainer } from "./container";
 import type { LoginGate } from "./gate";
 
@@ -19,6 +20,10 @@ export interface Env {
   // The sync creds are optional because the dashboard/ingest request paths
   // never read them — only scheduled() does, when it boots the container.
   SYNC: DurableObjectNamespace<SyncContainer>;
+  // Paired private security executor. Ordinary Hub requests may be deployed
+  // without this binding, but the operator proxy must fail closed when it is
+  // absent rather than report a false success.
+  EXECUTOR?: Fetcher;
   GITHUB_TOKEN?: string;
   CLOUDFLARE_API_TOKEN?: string;
   CLOUDFLARE_ACCOUNT_ID?: string;
