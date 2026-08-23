@@ -189,6 +189,8 @@ func TestGitHubSyncer_RetriesGETAndPUT(t *testing.T) {
 	defer srv.Close()
 
 	g := NewGitHub("owner", "repo", "token", srv.URL).(*GitHubSyncer)
+	var closed atomic.Int32
+	g.httpClient = retryTestClient(srv, &closed)
 	gotKey, gotID, err := g.getPublicKey(context.Background())
 	require.NoError(t, err)
 	assert.Equal(t, pubKeyB64, gotKey)
@@ -198,6 +200,7 @@ func TestGitHubSyncer_RetriesGETAndPUT(t *testing.T) {
 	require.NoError(t, g.putSecret(context.Background(), "NAME", "value", &recipientKey, "id"))
 	assert.Equal(t, int32(2), getAttempts.Load())
 	assert.Equal(t, int32(2), putAttempts.Load())
+	assert.Equal(t, int32(4), closed.Load())
 }
 
 func TestGitHubSyncer_RetriesExistingKeysGET(t *testing.T) {
@@ -247,17 +250,22 @@ func TestCloudflareSyncer_RetriesPUTPATCHAndGET(t *testing.T) {
 	}))
 	defer srv.Close()
 
+	var closed atomic.Int32
+	client := retryTestClient(srv, &closed)
 	worker := NewCloudflare("account", "worker", "", "token", srv.URL).(*CloudflareSyncer)
+	worker.httpClient = client
 	require.NoError(t, worker.Sync(context.Background(), []*provider.Secret{{Key: "NAME", Value: "value"}}))
 	names, err := worker.ExistingKeys(context.Background())
 	require.NoError(t, err)
 	assert.Equal(t, []string{"NAME"}, names)
 
 	pages := NewCloudflare("account", "", "pages", "token", srv.URL).(*CloudflareSyncer)
+	pages.httpClient = client
 	require.NoError(t, pages.Sync(context.Background(), []*provider.Secret{{Key: "NAME", Value: "value"}}))
 	assert.Equal(t, int32(2), putAttempts.Load())
 	assert.Equal(t, int32(2), patchAttempts.Load())
 	assert.Equal(t, int32(2), getAttempts.Load())
+	assert.Equal(t, int32(6), closed.Load())
 }
 
 func TestHTTPStatusErrorHasNoWrappedBody(t *testing.T) {

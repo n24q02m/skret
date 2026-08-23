@@ -161,7 +161,7 @@ func (g *GitHubSyncer) putSecret(ctx context.Context, name, value string, recipi
 	reqURL := u.String()
 
 	body := fmt.Sprintf(`{"encrypted_value":%q,"key_id":%q}`, encValue, keyID)
-	_, err = doWithRetry(ctx, g.httpClient, func() (*http.Request, error) {
+	resp, err := doWithRetry(ctx, g.httpClient, func() (*http.Request, error) {
 		req, err := http.NewRequestWithContext(ctx, http.MethodPut, reqURL, strings.NewReader(body))
 		if err != nil {
 			return nil, fmt.Errorf("github: create request: %w", err)
@@ -174,6 +174,7 @@ func (g *GitHubSyncer) putSecret(ctx context.Context, name, value string, recipi
 	if err != nil {
 		return fmt.Errorf("github: request: %w", err)
 	}
+	defer resp.Body.Close()
 	return nil
 }
 

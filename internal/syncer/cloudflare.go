@@ -88,7 +88,7 @@ func (c *CloudflareSyncer) putWorkerSecret(ctx context.Context, name, value stri
 	if err != nil {
 		return fmt.Errorf("cloudflare: marshal %q: %w", name, err)
 	}
-	_, err = doWithRetry(ctx, c.httpClient, func() (*http.Request, error) {
+	resp, err := doWithRetry(ctx, c.httpClient, func() (*http.Request, error) {
 		req, err := http.NewRequestWithContext(ctx, http.MethodPut, u.String(), strings.NewReader(string(body)))
 		if err != nil {
 			return nil, fmt.Errorf("cloudflare: create request: %w", err)
@@ -100,6 +100,7 @@ func (c *CloudflareSyncer) putWorkerSecret(ctx context.Context, name, value stri
 	if err != nil {
 		return fmt.Errorf("cloudflare: set %q: %w", name, err)
 	}
+	defer resp.Body.Close()
 	return nil
 }
 
@@ -127,7 +128,7 @@ func (c *CloudflareSyncer) syncPages(ctx context.Context, secrets []*provider.Se
 		return fmt.Errorf("cloudflare: parse base url: %w", err)
 	}
 	u = u.JoinPath("accounts", c.accountID, "pages", "projects", c.pages)
-	_, err = doWithRetry(ctx, c.httpClient, func() (*http.Request, error) {
+	resp, err := doWithRetry(ctx, c.httpClient, func() (*http.Request, error) {
 		req, err := http.NewRequestWithContext(ctx, http.MethodPatch, u.String(), strings.NewReader(string(body)))
 		if err != nil {
 			return nil, fmt.Errorf("cloudflare: create request: %w", err)
@@ -139,6 +140,7 @@ func (c *CloudflareSyncer) syncPages(ctx context.Context, secrets []*provider.Se
 	if err != nil {
 		return fmt.Errorf("cloudflare: patch pages: %w", err)
 	}
+	defer resp.Body.Close()
 	return nil
 }
 
