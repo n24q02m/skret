@@ -2,30 +2,54 @@
 
 ## Status
 
-PASS for the source-only `sync-state migrate` CLI slice. The command verifies a signed, value-free state manifest and exact source row/hash before a dry-run result; `--execute` delegates the verified local transaction to `syncer.MigrateStateFileV1ToV2`, preserving the `.v1` backup and committed journal. No provider, KMS, Hub, executor, deployment, candidate, production, public, or release mutation was performed.
+PASS for the source-only `sync-state migrate` CLI slice and its optional
+authenticated executor-envelope submission route. The command verifies a
+signed, value-free state manifest and exact source row/hash before either the
+existing offline local migration or a metadata-only remote submission. Remote
+mode never mutates local state, backup, or journal files. No provider, KMS,
+Hub, executor, deployment, candidate, production, public, or release mutation
+was performed.
 
-## Commit
+## Commits
 
 - `8d9bbb5` — `feat: add sync-state migration CLI`
+- `b796367` — `feat: route state migration through executor envelope`
 
 ## Implemented
 
-- Registered `sync-state migrate` under the Cobra root.
-- Added `--to` (only `v2`), required manifest/journal/public-key inputs, optional exact manifest-row `--state`, role/audience/operation identity, `--execute`, and table/JSON output.
-- Accepted Ed25519 public keys as direct hex or regular files containing raw or hex key bytes.
-- Loaded and verified the signed manifest, resolved state only through an exact manifest file row under the signed source root, rejected traversal and ambiguous rows, and checked source size/hash without emitting file contents.
-- Kept dry-run non-mutating and value-free. Execute output exposes only phase, paths, sizes, and SHA-256 metadata; it does not print state fields or values.
-- Covered registration, required/invalid flags, key-file inputs, single-row inference, dry-run non-mutation, successful migration with backup/journal, committed-operation idempotence, manifest mismatch before mutation, traversal, and ambiguous-row rejection.
+- Preserved `--execute` as the verified offline/local
+  `MigrateStateFileV1ToV2` path and documented that it does not submit a
+  remote request.
+- Added explicit `--remote-execute` plus `--executor-url`,
+  `--operator-session`, and `--signing-key` flags. Remote mode requires
+  explicit role, audience, operation identity, manifest/public-key inputs,
+  Hub origin, session cookie, and Ed25519 private signing key.
+- Added raw/hex private-key file parsing without echoing key, cookie, request
+  body, or state values. `SKRET_OPERATOR_SESSION_COOKIE` is used only when
+  `--operator-session` is omitted.
+- Built a deterministic metadata-only migration body binding operation ID,
+  canonical state/journal paths, manifest digest, target, and source hash/size.
+  Submission uses a fresh random nonce and short expiry through the existing
+  `syncer.EnvelopeClient`, which enforces the fixed
+  `/operator/executor-envelope` route and forwards the operator session cookie.
+- Remote output reports only submission phase and response hash/size; remote
+  errors do not include response bodies. Remote success and error fixtures
+  assert no local state, `.v1` backup, or journal mutation.
 
 ## TDD and focused verification
 
-- Red: `go test ./internal/cli -run 'Test(RootCmd_RegistersSyncStateMigrate|SyncStateMigrate)' -count=1` failed before implementation with the expected missing `sync-state` command/registration errors.
-- Green: `go test ./internal/cli -run 'Test(RootCmd_RegistersSyncStateMigrate|SyncStateMigrate|SyncCmd)' -count=1` — PASS (`ok github.com/n24q02m/skret/internal/cli`, 10.984s).
-- Green migration API compatibility: `go test ./internal/syncer -run 'Test(StateMigration|MigrateState|RecoverState)' -count=1` — PASS (`ok github.com/n24q02m/skret/internal/syncer`, 7.034s).
-- `gofmt -w internal/cli/sync_state.go internal/cli/sync_state_test.go internal/cli/root.go` — PASS.
-- `git diff --check` — PASS.
+- Red: after adding the remote tests, focused CLI compilation failed with the
+  expected missing `readCLIStateMigrationPrivateKey` implementation.
+- Green: `go test ./internal/cli -run 'Test(RootCmd_RegistersSyncStateMigrate|SyncStateMigrate|ReadCLIStateMigrationPrivateKey)' -count=1` — PASS (`ok github.com/n24q02m/skret/internal/cli`, 10.563s).
+- Green envelope compatibility: `go test ./internal/syncer -run 'Test(BuildSignedEnvelope|EnvelopeClient|VerifySignedEnvelope)' -count=1` — PASS (`ok github.com/n24q02m/skret/internal/syncer`, 2.745s).
+- `gofmt -w internal/cli/sync_state.go internal/cli/sync_state_test.go` — PASS.
+- `git diff --check -- internal/cli/sync_state.go internal/cli/sync_state_test.go` — PASS.
 
 ## Residuals and gates
 
-- The source tree has no executor-backed envelope submission wiring for this command. `--execute` therefore performs only the verified local migration; it does not claim remote executor execution. Authenticated Hub routing, short-lived executor identity, envelope submission, replay handling, provider acknowledgement, deployment, candidate, production, and release gates remain outside this slice.
+- The source tree now has CLI-side authenticated envelope submission, but no
+  production Hub executor-envelope router or executor runtime was wired by this
+  slice. The route therefore remains a source-only integration seam backed by
+  httptest fixtures; provider acknowledgement, executor-side replay handling,
+  deployment, candidate, production, and release gates remain outside scope.
 - No private evidence was added by this task.
