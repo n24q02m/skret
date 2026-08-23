@@ -8,6 +8,10 @@ const MAX_SWEEP_LIMIT = 1_000;
  * source; the ordinary Hub router intentionally has no call path to it.
  */
 export const EXECUTOR_REPLAY_PREFIX = "private:executor-replay:";
+const EXECUTOR_REPLAY_KEY_PATTERN = new RegExp(
+  `^${EXECUTOR_REPLAY_PREFIX}[a-f0-9]{${SHA256_HEX_LENGTH}}$`,
+  "u",
+);
 export const DEFAULT_EXECUTOR_REPLAY_SWEEP_LIMIT = 100;
 
 const INVALID_REPLAY_REQUEST = "invalid replay request";
@@ -205,7 +209,7 @@ function validateSweepCursor(startAfter: unknown): void {
   if (
     startAfter !== undefined &&
     startAfter !== null &&
-    (typeof startAfter !== "string" || !startAfter.startsWith(EXECUTOR_REPLAY_PREFIX))
+    (typeof startAfter !== "string" || !EXECUTOR_REPLAY_KEY_PATTERN.test(startAfter))
   ) {
     throw new ExecutorReplayInvalidRequestError();
   }

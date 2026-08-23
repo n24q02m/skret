@@ -214,6 +214,21 @@ describe("DurableExecutorReplayStore", () => {
       { prefix: EXECUTOR_REPLAY_PREFIX, limit: 1, startAfter: expiredKey },
     ]);
   });
+  it("rejects malformed sweep cursors before touching storage", async () => {
+    const storage = new FakeDurableStorage();
+    const store = storeFor(storage);
+    const invalidCursors = [
+      `${EXECUTOR_REPLAY_PREFIX}not-a-digest`,
+      `${EXECUTOR_REPLAY_PREFIX}${"A".repeat(64)}`,
+      `${EXECUTOR_REPLAY_PREFIX}${"a".repeat(63)}`,
+      `private:other:${"a".repeat(64)}`,
+    ];
+
+    for (const cursor of invalidCursors) {
+      await expect(store.sweep(NOW, 1, cursor)).rejects.toThrow("invalid replay request");
+    }
+    expect(storage.transactionOptions.length).toBe(0);
+  });
 
   it("allows exactly one winner when identical consumes race", async () => {
     const storage = new FakeDurableStorage();
