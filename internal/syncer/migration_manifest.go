@@ -333,24 +333,28 @@ func canonicalizeStateManifestRoot(raw string) (string, error) {
 	if !filepath.IsAbs(canonical) {
 		return "", stateManifestError("invalid source root")
 	}
-	if err := rejectStateManifestSymlinkAncestors(canonical); err != nil {
+	if err := rejectStateManifestUnsafeAncestors(canonical); err != nil {
 		return "", err
 	}
 	info, err := os.Lstat(canonical)
-	if err != nil || info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+	if err != nil || unsafeStateManifestMode(info.Mode()) || !info.IsDir() {
 		return "", stateManifestError("invalid source root")
 	}
 	return canonical, nil
 }
 
-func rejectStateManifestSymlinkAncestors(root string) error {
+func unsafeStateManifestMode(mode os.FileMode) bool {
+	return mode&(os.ModeSymlink|os.ModeIrregular) != 0
+}
+
+func rejectStateManifestUnsafeAncestors(root string) error {
 	for current := root; ; current = filepath.Dir(current) {
 		info, err := os.Lstat(current)
 		if err != nil {
 			return stateManifestError("invalid source root")
 		}
-		if info.Mode()&os.ModeSymlink != 0 {
-			return stateManifestError("symlink source roots are not allowed")
+		if unsafeStateManifestMode(info.Mode()) {
+			return stateManifestError("unsafe source roots are not allowed")
 		}
 		parent := filepath.Dir(current)
 		if parent == current {
@@ -359,26 +363,43 @@ func rejectStateManifestSymlinkAncestors(root string) error {
 	}
 }
 
+func revalidateStateManifestDirectories(directories map[string]os.FileInfo) error {
+	for path, expected := range directories {
+		actual, err := os.Lstat(path)
+		if err != nil || expected == nil || unsafeStateManifestMode(actual.Mode()) ||
+			!actual.IsDir() || !os.SameFile(expected, actual) {
+			return stateManifestError("source directories changed during scan")
+		}
+	}
+	return nil
+}
+
 func scanStateManifestRoot(root string) ([]StateManifestFile, error) {
 	files := make([]StateManifestFile, 0)
+	directories := make(map[string]os.FileInfo)
 	err := filepath.WalkDir(root, func(currentPath string, entry os.DirEntry, walkErr error) error {
 		if walkErr != nil || entry == nil {
 			return stateManifestError("source root scan failed")
 		}
-		if entry.Type()&os.ModeSymlink != 0 {
-			return stateManifestError("symlink entries are not allowed")
+		info, err := entry.Info()
+		if err != nil {
+			return stateManifestError("source root scan failed")
+		}
+		if unsafeStateManifestMode(entry.Type()) || unsafeStateManifestMode(info.Mode()) {
+			return stateManifestError("unsafe source entries are not allowed")
 		}
 		if currentPath == root {
-			if !entry.IsDir() {
+			if !info.IsDir() {
 				return stateManifestError("invalid source root")
 			}
+			directories[currentPath] = info
 			return nil
 		}
-		if entry.IsDir() {
+		if info.IsDir() {
+			directories[currentPath] = info
 			return nil
 		}
-		info, err := entry.Info()
-		if err != nil || !info.Mode().IsRegular() {
+		if !info.Mode().IsRegular() {
 			return stateManifestError("non-regular entries are not allowed")
 		}
 		relative, err := filepath.Rel(root, currentPath)
@@ -389,7 +410,7 @@ func scanStateManifestRoot(root string) ([]StateManifestFile, error) {
 		if !validStateManifestPath(normalized) {
 			return stateManifestError("invalid file path")
 		}
-		size, digest, err := hashStateManifestFile(currentPath)
+		size, digest, err := hashStateManifestFile(currentPath, info)
 		if err != nil {
 			return err
 		}
@@ -399,6 +420,9 @@ func scanStateManifestRoot(root string) ([]StateManifestFile, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := revalidateStateManifestDirectories(directories); err != nil {
+		return nil, err
+	}
 	if len(files) == 0 {
 		return nil, stateManifestError("source root is empty")
 	}
@@ -406,10 +430,18 @@ func scanStateManifestRoot(root string) ([]StateManifestFile, error) {
 	return files, nil
 }
 
-func hashStateManifestFile(path string) (int64, string, error) {
+func hashStateManifestFile(path string, expected os.FileInfo) (int64, string, error) {
+	if expected == nil || unsafeStateManifestMode(expected.Mode()) || !expected.Mode().IsRegular() {
+		return 0, "", stateManifestError("file changed during scan")
+	}
 	file, err := os.Open(path)
 	if err != nil {
 		return 0, "", stateManifestError("file read failed")
+	}
+	openedInfo, statErr := file.Stat()
+	if statErr != nil || !os.SameFile(expected, openedInfo) {
+		_ = file.Close()
+		return 0, "", stateManifestError("file changed during scan")
 	}
 	digest := sha256.New()
 	size, copyErr := io.Copy(digest, file)

@@ -217,3 +217,52 @@ func TestBuildStateManifest_RejectsEmptyRootsAndSymlinkEntries(t *testing.T) {
 		require.Error(t, err)
 	})
 }
+func TestStateManifestUnsafeMode_RejectsSymlinkAndIrregular(t *testing.T) {
+	tests := []struct {
+		name string
+		mode os.FileMode
+	}{
+		{name: "symlink", mode: os.ModeSymlink},
+		{name: "irregular", mode: os.ModeIrregular},
+		{name: "combined", mode: os.ModeSymlink | os.ModeIrregular},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.True(t, unsafeStateManifestMode(tc.mode))
+		})
+	}
+	assert.False(t, unsafeStateManifestMode(0o600))
+	assert.False(t, unsafeStateManifestMode(os.ModeDir|0o700))
+}
+
+func TestHashStateManifestFile_RejectsReplacementIdentity(t *testing.T) {
+	root := t.TempDir()
+	originalPath := filepath.Join(root, "state.original")
+	replacementPath := filepath.Join(root, "state")
+	require.NoError(t, os.WriteFile(originalPath, []byte("original-secret"), 0o600))
+	require.NoError(t, os.WriteFile(replacementPath, []byte("replacement-secret"), 0o600))
+	expected, err := os.Lstat(originalPath)
+	require.NoError(t, err)
+
+	_, _, err = hashStateManifestFile(replacementPath, expected)
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), "original-secret")
+	assert.NotContains(t, err.Error(), "replacement-secret")
+}
+
+func TestRevalidateStateManifestDirectories_RejectsReplacementIdentity(t *testing.T) {
+	root := t.TempDir()
+	originalPath := filepath.Join(root, "directory.original")
+	replacementPath := filepath.Join(root, "directory")
+	require.NoError(t, os.Mkdir(originalPath, 0o700))
+	require.NoError(t, os.Mkdir(replacementPath, 0o700))
+	expected, err := os.Lstat(originalPath)
+	require.NoError(t, err)
+
+	err = revalidateStateManifestDirectories(map[string]os.FileInfo{
+		replacementPath: expected,
+	})
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), originalPath)
+	assert.NotContains(t, err.Error(), replacementPath)
+}
