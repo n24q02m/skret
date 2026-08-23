@@ -37,6 +37,8 @@ const (
 var (
 	ErrStateMigrationNeedsReconciliation = errors.New("state migration needs reconciliation")
 	ErrStateMigrationInvalidJournal      = errors.New("state migration journal is invalid")
+
+	stateMigrationPersistJournal = persistMigrationJournal
 )
 
 // StateMigrationJournal contains only metadata needed to recover one local
@@ -194,16 +196,23 @@ func MigrateStateFileV1ToV2(
 		CreatedAt:      now.UTC(),
 		UpdatedAt:      now.UTC(),
 	}
-	if err := persistMigrationJournal(journal); err != nil {
+	if err := stateMigrationPersistJournal(journal); err != nil {
 		return err
 	}
 
+	if err := os.Chmod(statePath, 0o600); err != nil {
+		return fmt.Errorf("state migration: secure source: %w", err)
+	}
 	if err := os.Rename(statePath, backupPath); err != nil {
 		return fmt.Errorf("state migration: preserve v1 backup: %w", err)
 	}
+	removeTemp = false
+	if err := os.Chmod(backupPath, 0o600); err != nil {
+		return fmt.Errorf("state migration: secure v1 backup: %w", err)
+	}
 	journal.Phase = StateMigrationPhaseBackupRenamed
 	journal.UpdatedAt = now.UTC()
-	if err := persistMigrationJournal(journal); err != nil {
+	if err := stateMigrationPersistJournal(journal); err != nil {
 		return err
 	}
 
@@ -213,7 +222,7 @@ func MigrateStateFileV1ToV2(
 	removeTemp = false
 	journal.Phase = StateMigrationPhaseCommitted
 	journal.UpdatedAt = now.UTC()
-	if err := persistMigrationJournal(journal); err != nil {
+	if err := stateMigrationPersistJournal(journal); err != nil {
 		return err
 	}
 	return nil
@@ -257,11 +266,20 @@ func RecoverStateMigration(journalPath string, now time.Time) error {
 	switch journal.Phase {
 	case StateMigrationPhasePrepared:
 		if committedOK {
+			if err := secureMigrationFile(journal.SourcePath); err != nil {
+				return err
+			}
+			if err := secureMigrationFile(journal.BackupPath); err != nil {
+				return err
+			}
 			journal.Phase = StateMigrationPhaseCommitted
 			journal.UpdatedAt = now.UTC()
 			return persistMigrationJournal(journal)
 		}
 		if sourceOK && !backup.exists && desiredOK {
+			if err := secureMigrationFile(journal.SourcePath); err != nil {
+				return err
+			}
 			if err := removeMigrationFileIfExact(journal.TempPath, journal.DesiredHash, journal.DesiredSize); err != nil {
 				return err
 			}
@@ -280,11 +298,20 @@ func RecoverStateMigration(journalPath string, now time.Time) error {
 
 	case StateMigrationPhaseBackupRenamed:
 		if committedOK {
+			if err := secureMigrationFile(journal.SourcePath); err != nil {
+				return err
+			}
+			if err := secureMigrationFile(journal.BackupPath); err != nil {
+				return err
+			}
 			journal.Phase = StateMigrationPhaseCommitted
 			journal.UpdatedAt = now.UTC()
 			return persistMigrationJournal(journal)
 		}
 		if !source.exists && backupOK && desiredOK {
+			if err := secureMigrationFile(journal.BackupPath); err != nil {
+				return err
+			}
 			if err := os.Rename(journal.TempPath, journal.SourcePath); err != nil {
 				return fmt.Errorf("state migration: recover v2 commit: %w", err)
 			}
@@ -296,6 +323,12 @@ func RecoverStateMigration(journalPath string, now time.Time) error {
 
 	case StateMigrationPhaseCommitted:
 		if committedOK {
+			if err := secureMigrationFile(journal.SourcePath); err != nil {
+				return err
+			}
+			if err := secureMigrationFile(journal.BackupPath); err != nil {
+				return err
+			}
 			return nil
 		}
 		return markMigrationNeedsReconciliation(journal, now)
@@ -614,11 +647,21 @@ func removeMigrationFileIfExact(path, expectedHash string, expectedSize int64) e
 	}
 	return nil
 }
+func secureMigrationFile(path string) error {
+	if err := os.Chmod(path, 0o600); err != nil {
+		return fmt.Errorf("state migration: secure recovery file: %w", err)
+	}
+	return nil
+}
+
 func restoreMigrationSourceFromBackup(journal *StateMigrationJournal) error {
 	if exists, err := migrationPathExists(journal.SourcePath); err != nil {
 		return err
 	} else if exists {
 		return errors.New("state migration: source appeared during recovery")
+	}
+	if err := secureMigrationFile(journal.BackupPath); err != nil {
+		return err
 	}
 	backup, err := readRegularMigrationFile(journal.BackupPath)
 	if err != nil {

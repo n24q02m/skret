@@ -9,6 +9,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -338,6 +339,118 @@ func TestStateMigration_RejectsInvalidJournalSchemaAndHashWithoutMutation(t *tes
 	require.ErrorIs(t, err, ErrStateMigrationInvalidJournal)
 	assert.Equal(t, original, mustReadFile(t, statePath))
 	assert.NoFileExists(t, statePath+".v1")
+}
+func TestStateMigration_PostBackupJournalFailureRetainsTempForRecovery(t *testing.T) {
+	_, statePath, journalPath, manifest, publicKey, _, now, original := stateMigrationFixture(t)
+	originalPersist := stateMigrationPersistJournal
+	defer func() { stateMigrationPersistJournal = originalPersist }()
+	var calls int
+	stateMigrationPersistJournal = func(journal *StateMigrationJournal) error {
+		calls++
+		if calls == 2 {
+			return errors.New("synthetic journal persistence failure")
+		}
+		return persistMigrationJournal(journal)
+	}
+
+	err := MigrateStateFileV1ToV2(statePath, journalPath, manifest, publicKey, "operator", "hub", "op-state-migration-post-backup-failure", now)
+	require.Error(t, err)
+	assert.FileExists(t, statePath+".v1")
+	assert.NoFileExists(t, statePath)
+	tempFiles := migrationTempFiles(t, filepath.Dir(statePath))
+	require.Len(t, tempFiles, 1, "the v2 temp must remain recoverable after backup rename")
+	tempPath := filepath.Join(filepath.Dir(statePath), tempFiles[0])
+	assert.Equal(t, stateMigrationV2Bytes(t, original, stateMigrationManifestDigest(t, manifest)), mustReadFile(t, tempPath))
+
+	stateMigrationPersistJournal = originalPersist
+	err = RecoverStateMigration(journalPath, now.Add(time.Minute))
+	require.ErrorIs(t, err, ErrStateMigrationNeedsReconciliation)
+	assert.Equal(t, original, mustReadFile(t, statePath))
+	assert.Equal(t, original, mustReadFile(t, statePath+".v1"))
+	assert.NoFileExists(t, tempPath)
+}
+func TestStateMigration_TempRenameFailureRetainsTempForRecovery(t *testing.T) {
+	_, statePath, journalPath, manifest, publicKey, _, now, original := stateMigrationFixture(t)
+	originalPersist := stateMigrationPersistJournal
+	defer func() { stateMigrationPersistJournal = originalPersist }()
+	var calls int
+	stateMigrationPersistJournal = func(journal *StateMigrationJournal) error {
+		calls++
+		if calls == 2 {
+			require.NoError(t, os.Mkdir(statePath, 0o700))
+		}
+		return persistMigrationJournal(journal)
+	}
+
+	err := MigrateStateFileV1ToV2(statePath, journalPath, manifest, publicKey, "operator", "hub", "op-state-migration-temp-failure", now)
+	require.Error(t, err)
+	assert.DirExists(t, statePath)
+	assert.Equal(t, original, mustReadFile(t, statePath+".v1"))
+	tempFiles := migrationTempFiles(t, filepath.Dir(statePath))
+	require.Len(t, tempFiles, 1, "the v2 temp must remain after a failed temp rename")
+	tempPath := filepath.Join(filepath.Dir(statePath), tempFiles[0])
+
+	stateMigrationPersistJournal = originalPersist
+	err = RecoverStateMigration(journalPath, now.Add(time.Minute))
+	require.Error(t, err)
+	assert.FileExists(t, tempPath)
+	require.NoError(t, os.RemoveAll(statePath))
+	require.NoError(t, RecoverStateMigration(journalPath, now.Add(2*time.Minute)))
+	assert.Equal(t, stateMigrationV2Bytes(t, original, stateMigrationManifestDigest(t, manifest)), mustReadFile(t, statePath))
+	assert.Equal(t, original, mustReadFile(t, statePath+".v1"))
+	assert.NoFileExists(t, tempPath)
+}
+
+func TestStateMigration_SecuresPermissiveV1Backup(t *testing.T) {
+	_, statePath, journalPath, manifest, publicKey, _, now, _ := stateMigrationFixture(t)
+	require.NoError(t, os.Chmod(statePath, 0o644))
+	require.NoError(t, MigrateStateFileV1ToV2(statePath, journalPath, manifest, publicKey, "operator", "hub", "op-state-migration-mode", now))
+	if runtime.GOOS != "windows" {
+		info, err := os.Stat(statePath + ".v1")
+		require.NoError(t, err)
+		assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
+		info, err = os.Stat(statePath)
+		require.NoError(t, err)
+		assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
+	}
+}
+
+func TestStateMigration_RecoverySecuresRestoredBackup(t *testing.T) {
+	_, statePath, journalPath, manifest, _, _, now, original := stateMigrationFixture(t)
+	manifestDigest := stateMigrationManifestDigest(t, manifest)
+	desired := stateMigrationV2Bytes(t, original, manifestDigest)
+	backupPath := statePath + ".v1"
+	tempPath := filepath.Join(filepath.Dir(statePath), ".state.json.v2-crash")
+	require.NoError(t, os.Rename(statePath, backupPath))
+	require.NoError(t, os.Chmod(backupPath, 0o644))
+	require.NoError(t, os.WriteFile(tempPath, desired, 0o600))
+	writeStateMigrationJournal(t, journalPath, StateMigrationJournal{
+		Version:        StateMigrationJournalVersion,
+		OperationID:    "op-state-migration-restore-mode",
+		ManifestDigest: manifestDigest,
+		SourcePath:     statePath,
+		BackupPath:     backupPath,
+		TempPath:       tempPath,
+		JournalPath:    journalPath,
+		SourceHash:     stateMigrationHash(original),
+		SourceSize:     int64(len(original)),
+		DesiredHash:    stateMigrationHash(desired),
+		DesiredSize:    int64(len(desired)),
+		Phase:          StateMigrationPhasePrepared,
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	})
+
+	err := RecoverStateMigration(journalPath, now.Add(time.Minute))
+	require.ErrorIs(t, err, ErrStateMigrationNeedsReconciliation)
+	if runtime.GOOS != "windows" {
+		info, statErr := os.Stat(backupPath)
+		require.NoError(t, statErr)
+		assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
+		info, statErr = os.Stat(statePath)
+		require.NoError(t, statErr)
+		assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
+	}
 }
 
 func migrationTempFiles(t *testing.T, dir string) []string {
