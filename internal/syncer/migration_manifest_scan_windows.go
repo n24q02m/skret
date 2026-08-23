@@ -133,6 +133,24 @@ func openWindowsStateManifestRoot(root string, expectedRoot os.FileInfo) (stable
 
 func windowsStateManifestPathComponents(root string) (string, []string, error) {
 	cleaned := filepath.Clean(strings.ReplaceAll(root, "/", "\\"))
+	for _, prefix := range []string{`\\?\UNC\`, `\\.\UNC\`} {
+		if len(cleaned) < len(prefix) || !strings.EqualFold(cleaned[:len(prefix)], prefix) {
+			continue
+		}
+		parts := strings.Split(strings.TrimLeft(cleaned[len(prefix):], "\\"), "\\")
+		if len(parts) < 2 || parts[0] == "" || parts[1] == "" {
+			return "", nil, os.ErrInvalid
+		}
+		volumeRoot := prefix + parts[0] + "\\" + parts[1] + "\\"
+		components := parts[2:]
+		for _, part := range components {
+			if part == "" || part == "." || part == ".." {
+				return "", nil, os.ErrInvalid
+			}
+		}
+		return volumeRoot, components, nil
+	}
+
 	volume := filepath.VolumeName(cleaned)
 	if volume == "" {
 		return "", nil, os.ErrInvalid

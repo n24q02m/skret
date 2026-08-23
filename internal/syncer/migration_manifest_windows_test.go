@@ -43,6 +43,36 @@ func TestWindowsFinalPathContainmentUsesCaseInsensitiveComponentBoundary(t *test
 	assert.False(t, windowsStateManifestPathWithinRoot(root, `\\?\C:\State-escape\file`))
 	assert.False(t, windowsStateManifestPathWithinRoot(root, `\\?\C:\State2\file`))
 }
+func TestWindowsStateManifestPathComponentsHandlesExtendedUNC(t *testing.T) {
+	tests := []struct {
+		name       string
+		root       string
+		volumeRoot string
+		components []string
+	}{
+		{
+			name:       "extended UNC",
+			root:       `\\?\UNC\server\share\state`,
+			volumeRoot: `\\?\UNC\server\share\`,
+			components: []string{"state"},
+		},
+		{
+			name:       "device UNC",
+			root:       `\\.\UNC\server\share\state`,
+			volumeRoot: `\\.\UNC\server\share\`,
+			components: []string{"state"},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			volumeRoot, components, err := windowsStateManifestPathComponents(test.root)
+			require.NoError(t, err)
+			assert.Equal(t, test.volumeRoot, volumeRoot)
+			assert.Equal(t, test.components, components)
+		})
+	}
+}
+
 
 func TestWindowsScannerRejectsJunctionEntryBeforeEnumeration(t *testing.T) {
 	root := t.TempDir()
