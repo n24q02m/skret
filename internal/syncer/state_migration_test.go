@@ -490,6 +490,44 @@ func TestStateMigration_RecoveryDoesNotOverwriteAppearedSource(t *testing.T) {
 	assert.Equal(t, original, mustReadFile(t, backupPath))
 	assert.Equal(t, desired, mustReadFile(t, tempPath))
 }
+func TestStateMigration_RecoveryPreservesTempWhenSourceChangesBeforeCommit(t *testing.T) {
+	_, statePath, journalPath, manifest, _, _, now, original := stateMigrationFixture(t)
+	manifestDigest := stateMigrationManifestDigest(t, manifest)
+	desired := stateMigrationV2Bytes(t, original, manifestDigest)
+	backupPath := statePath + ".v1"
+	tempPath := filepath.Join(filepath.Dir(statePath), ".state.json.v2-crash")
+	require.NoError(t, os.Rename(statePath, backupPath))
+	require.NoError(t, os.WriteFile(statePath, desired, 0o600))
+	require.NoError(t, os.WriteFile(tempPath, desired, 0o600))
+	writeStateMigrationJournal(t, journalPath, StateMigrationJournal{
+		Version:        StateMigrationJournalVersion,
+		OperationID:    "op-state-migration-stale-snapshot",
+		ManifestDigest: manifestDigest,
+		SourcePath:     statePath,
+		BackupPath:     backupPath,
+		TempPath:       tempPath,
+		JournalPath:    journalPath,
+		SourceHash:     stateMigrationHash(original),
+		SourceSize:     int64(len(original)),
+		DesiredHash:    stateMigrationHash(desired),
+		DesiredSize:    int64(len(desired)),
+		Phase:          StateMigrationPhaseBackupRenamed,
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	})
+
+	originalHook := stateMigrationBeforeRecoveryCommit
+	defer func() { stateMigrationBeforeRecoveryCommit = originalHook }()
+	stateMigrationBeforeRecoveryCommit = func(journal *StateMigrationJournal) error {
+		return os.WriteFile(journal.SourcePath, []byte("changed-before-commit"), 0o600)
+	}
+
+	require.ErrorIs(t, RecoverStateMigration(journalPath, now.Add(time.Minute)), ErrStateMigrationNeedsReconciliation)
+	assert.Equal(t, []byte("changed-before-commit"), mustReadFile(t, statePath))
+	assert.Equal(t, original, mustReadFile(t, backupPath))
+	assert.Equal(t, desired, mustReadFile(t, tempPath))
+}
+
 func TestStateMigration_PostRenameBackupMismatchRestoresWithoutOverwriting(t *testing.T) {
 	_, statePath, journalPath, manifest, publicKey, _, now, original := stateMigrationFixture(t)
 	desired := stateMigrationV2Bytes(t, original, stateMigrationManifestDigest(t, manifest))
@@ -593,15 +631,12 @@ func TestStateMigration_SourceBackupRemovalFailureRetainsRecoveryArtifacts(t *te
 		if err := os.Remove(journal.SourcePath); err != nil {
 			return err
 		}
-		if err := os.Mkdir(journal.SourcePath, 0o700); err != nil {
-			return err
-		}
-		return os.WriteFile(filepath.Join(journal.SourcePath, "marker"), []byte("replacement"), 0o600)
+		return os.WriteFile(journal.SourcePath, []byte("replacement-final"), 0o600)
 	}
 
 	err := MigrateStateFileV1ToV2(statePath, journalPath, manifest, publicKey, "operator", "hub", "op-state-migration-remove-failure", now)
 	require.Error(t, err)
-	assert.DirExists(t, statePath)
+	assert.Equal(t, []byte("replacement-final"), mustReadFile(t, statePath))
 	assert.Equal(t, original, mustReadFile(t, statePath+".v1"))
 	tempFiles := migrationTempFiles(t, filepath.Dir(statePath))
 	require.Len(t, tempFiles, 1)
