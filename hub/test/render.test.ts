@@ -122,7 +122,7 @@ describe("renderDashboard", () => {
   });
   it("wraps the table in a horizontally-scrollable container and lets long key names wrap", () => {
     const html = renderDashboard([m], FIXED_NOW);
-    expect(html).toContain('class="tablewrap"');
+    expect(html).toContain('class="tablewrap" tabindex="0" role="region" aria-label="Secrets table for /klprism/prod"');
     expect(html).toContain('class="keyname"');
   });
   describe("namespace with no keys", () => {
