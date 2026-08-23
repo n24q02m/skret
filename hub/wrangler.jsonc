@@ -42,6 +42,9 @@
       { "name": "LOGIN_GATE", "class_name": "LoginGate" }
     ]
   },
+  // Source-only service binding. The executor Worker has its own config and
+  // replay Durable Object; deployment/readback remains explicitly gated.
+  "services": [{ "binding": "EXECUTOR", "service": "skret-security-executor" }],
   // A new class needs its own tag; v1 is already applied and must stay
   // untouched, or the deploy is rejected as a rewritten migration history.
   "migrations": [

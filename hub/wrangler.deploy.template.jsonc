@@ -36,6 +36,9 @@
       { "name": "LOGIN_GATE", "class_name": "LoginGate" }
     ]
   },
+  // Keep the ordinary Hub binding aligned with wrangler.jsonc. The paired
+  // Worker config owns its replay Durable Object and remains source-only here.
+  "services": [{ "binding": "EXECUTOR", "service": "skret-security-executor" }],
   "migrations": [
     { "tag": "v1", "new_sqlite_classes": ["SyncContainer"] },
     { "tag": "v2", "new_sqlite_classes": ["LoginGate"] }

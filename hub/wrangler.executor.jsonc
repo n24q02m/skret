@@ -1,0 +1,24 @@
+// Source-only security executor Worker. Deployment, secret injection, and
+// production readback remain explicit residuals outside this repository slice.
+{
+  "name": "skret-security-executor",
+  "main": "src/security-executor.ts",
+  "compatibility_date": "2026-06-14",
+  "durable_objects": {
+    "bindings": [
+      { "name": "EXECUTOR_REPLAY", "class_name": "SecurityExecutorReplay" }
+    ]
+  },
+  // v1 is the first replay authority migration. Do not rewrite this tag after
+  // a real deployment; source-only dry-runs do not authorize a deployment.
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["SecurityExecutorReplay"] }
+  ],
+  // Non-secret policy values are explicit. Public/response keys are expected
+  // as out-of-band raw-safe secrets and intentionally have no source values.
+  "vars": {
+    "EXECUTOR_EXPECTED_AUDIENCE": "skret-security-executor",
+    "EXECUTOR_EXPECTED_ROLE": "operator"
+  },
+  "observability": { "enabled": true }
+}

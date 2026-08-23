@@ -45,11 +45,31 @@ was performed.
 - `gofmt -w internal/cli/sync_state.go internal/cli/sync_state_test.go` — PASS.
 - `git diff --check -- internal/cli/sync_state.go internal/cli/sync_state_test.go` — PASS.
 
+## Security executor source-only follow-up
+
+- Added the separate source-only `skret-security-executor` Worker entrypoint,
+  `SecurityExecutorReplay` Durable Object, RPC replay-status adapter, strict
+  raw-safe key/config validation, and AES-GCM metadata acknowledgement path.
+  The Worker accepts only the exact seven-field migration metadata body, never
+  performs migration/provider calls, and does not return plaintext paths/body or
+  source values.
+- Added `hub/wrangler.executor.jsonc` with the `EXECUTOR_REPLAY` binding and
+  first migration tag, plus matching ordinary Hub `EXECUTOR` service bindings
+  in both committed Hub configs. Vitest uses a local fail-closed service stub;
+  no remote service was contacted.
+- Focused source/config evidence:
+  `pnpm exec vitest run test/security-executor.test.ts` — PASS (11 tests);
+  `pnpm typecheck` — PASS; `python -m unittest
+  tests/repo_bootstrap/test_executor_config_policy.py -v` — PASS (2 tests);
+  `pnpm dryrun` and `pnpm exec wrangler deploy --dry-run --config
+  wrangler.executor.jsonc` — PASS. No deployment, provider call, KMS access,
+  or real remote migration was performed.
+
 ## Residuals and gates
 
-- The source tree now has CLI-side authenticated envelope submission, but no
-  production Hub executor-envelope router or executor runtime was wired by this
-  slice. The route therefore remains a source-only integration seam backed by
-  httptest fixtures; provider acknowledgement, executor-side replay handling,
-  deployment, candidate, production, and release gates remain outside scope.
-- No private evidence was added by this task.
+- Production deployment, live Hub-to-executor binding/readback, secret
+  injection, candidate/production promotion, provider acknowledgement, and
+  real host migration remain explicitly gated. The source/config parity checks
+  prove only committed wiring shape and dry-run compilation, not live routing.
+- Remote CLI output remains `submitted`, not committed. No private evidence was
+  added by this source-only follow-up.

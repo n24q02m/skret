@@ -1,0 +1,359 @@
+import { DurableObject } from "cloudflare:workers";
+import {
+  DurableExecutorReplayStore,
+  ExecutorReplayInvalidRequestError,
+  ExecutorReplayRejectedError,
+  ExecutorReplayStoreUnavailableError,
+  type ExecutorReplayScope,
+} from "./executor-replay-store";
+import type { ExecutorEnvelope } from "./executor-envelope-verifier";
+import {
+  handlePrivateExecutorEnvelope,
+  PRIVATE_EXECUTOR_PATH,
+  type PrivateExecutorHandlerOptions,
+  type PrivateExecutorReplayStore,
+} from "./private-executor-handler";
+
+export const SECURITY_EXECUTOR_SERVICE = "skret-security-executor";
+export const SECURITY_EXECUTOR_REPLAY_BINDING = "EXECUTOR_REPLAY";
+export const SECURITY_EXECUTOR_REPLAY_OBJECT_NAME = "security-executor-replay";
+export const MAX_METADATA_MIGRATION_BODY_BYTES = 16 * 1024;
+export const MAX_METADATA_MIGRATION_SOURCE_SIZE = 1 << 40;
+export const METADATA_ACK_AAD_PREFIX = "skret/security-executor/metadata-ack/v1";
+
+const ED25519_PUBLIC_KEY_BYTES = 32;
+const AES_GCM_KEY_BYTES = 32;
+const AES_GCM_IV_BYTES = 12;
+const MAX_CONFIG_TEXT_LENGTH = 256;
+const MAX_METADATA_TEXT_LENGTH = 4_096;
+const OPERATION_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
+const SHA256_DIGEST_PATTERN = /^sha256:[a-f0-9]{64}$/u;
+const SHA256_HEX_PATTERN = /^[a-f0-9]{64}$/u;
+const CONFIG_HEX_PATTERN = /^[0-9a-fA-F]+$/u;
+const CONTROL_CHARACTER_PATTERN = /[\u0000-\u001f\u007f]/u;
+const WINDOWS_ABSOLUTE_PATH_PATTERN = /^[A-Za-z]:[\\/]/u;
+const UNC_ABSOLUTE_PATH_PATTERN = /^\\\\[^\\/]+[\\/][^\\/]+/u;
+const SECURITY_HEADERS: Record<string, string> = {
+  "Cache-Control": "no-store",
+  "X-Content-Type-Options": "nosniff",
+  "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+  "X-Frame-Options": "DENY",
+  "Content-Security-Policy": "default-src 'none'; base-uri 'none'",
+};
+
+export type SecurityExecutorReplayStatus = "accepted" | "rejected" | "invalid" | "unavailable";
+
+export interface SecurityExecutorReplayResult {
+  readonly status: SecurityExecutorReplayStatus;
+}
+
+export interface SecurityExecutorEnv {
+  readonly EXECUTOR_REPLAY?: DurableObjectNamespace<SecurityExecutorReplay>;
+  readonly EXECUTOR_EXPECTED_AUDIENCE?: string;
+  readonly EXECUTOR_EXPECTED_ROLE?: string;
+  readonly EXECUTOR_PUBLIC_KEY?: string;
+  readonly EXECUTOR_RESPONSE_KEY?: string;
+}
+
+interface MetadataMigrationRequest {
+  readonly operation_id: string;
+  readonly state_path: string;
+  readonly journal_path: string;
+  readonly manifest_digest: string;
+  readonly target: "v2";
+  readonly source_hash: string;
+  readonly source_size: number;
+}
+
+/**
+ * Source-only Durable Object authority for executor replay. Only value-free
+ * status tokens cross the RPC boundary; the durable store persists a digest
+ * and expiry, never the signed body or metadata paths.
+ */
+export class SecurityExecutorReplay extends DurableObject<SecurityExecutorEnv> {
+  async consume(
+    scope: ExecutorReplayScope,
+    digest: string,
+    expiresAt: number,
+    now = Date.now(),
+  ): Promise<SecurityExecutorReplayResult> {
+    try {
+      await new DurableExecutorReplayStore(this.ctx.storage).consume(scope, digest, expiresAt, now);
+      return { status: "accepted" };
+    } catch (error) {
+      if (error instanceof ExecutorReplayRejectedError) return { status: "rejected" };
+      if (error instanceof ExecutorReplayInvalidRequestError) return { status: "invalid" };
+      return { status: "unavailable" };
+    }
+  }
+}
+
+/**
+ * Adapt the RPC-only Durable Object to the existing verifier's typed replay
+ * store. Unknown or thrown RPC results fail closed as unavailable and never
+ * cross the response boundary with their original error/value.
+ */
+export function createReplayStoreAdapter(
+  namespace: DurableObjectNamespace<SecurityExecutorReplay>,
+): PrivateExecutorReplayStore {
+  return {
+    async consume(scope, digest, expiresAt, now): Promise<void> {
+      let result: SecurityExecutorReplayResult;
+      try {
+        const stub = namespace.getByName(SECURITY_EXECUTOR_REPLAY_OBJECT_NAME);
+        result = await stub.consume(scope, digest, expiresAt, now);
+      } catch {
+        throw new ExecutorReplayStoreUnavailableError();
+      }
+
+      if (!result || typeof result !== "object") throw new ExecutorReplayStoreUnavailableError();
+      if (result.status === "accepted") return;
+      if (result.status === "rejected") throw new ExecutorReplayRejectedError();
+      if (result.status === "invalid") throw new ExecutorReplayInvalidRequestError();
+      throw new ExecutorReplayStoreUnavailableError();
+    },
+  };
+}
+
+/**
+ * Construct the private handler dependencies only after every required Worker
+ * binding/config value has passed strict shape validation. Secrets are parsed
+ * in memory and are never included in errors, logs, or response bodies.
+ */
+export async function buildSecurityExecutorOptions(
+  env: SecurityExecutorEnv,
+): Promise<PrivateExecutorHandlerOptions | null> {
+  if (!env || typeof env !== "object") return null;
+  const expectedAudience = readConfigText(env.EXECUTOR_EXPECTED_AUDIENCE);
+  const expectedRole = readConfigText(env.EXECUTOR_EXPECTED_ROLE);
+  const publicKey = decodeConfiguredBytes(env.EXECUTOR_PUBLIC_KEY, ED25519_PUBLIC_KEY_BYTES);
+  const responseKeyBytes = decodeConfiguredBytes(env.EXECUTOR_RESPONSE_KEY, AES_GCM_KEY_BYTES);
+  const replayNamespace = env.EXECUTOR_REPLAY;
+  if (!expectedAudience || !expectedRole || !publicKey || !responseKeyBytes || !hasReplayNamespace(replayNamespace)) {
+    return null;
+  }
+
+  let responseKey: CryptoKey;
+  try {
+    responseKey = await crypto.subtle.importKey("raw", responseKeyBytes, "AES-GCM", false, ["encrypt"]);
+  } catch {
+    return null;
+  }
+
+  return {
+    expectedAudience,
+    expectedRole,
+    publicKey,
+    replayStore: createReplayStoreAdapter(replayNamespace),
+    execute: (body, envelope) => executeMetadataMigration(body, envelope, responseKey),
+  };
+}
+
+export async function handleSecurityExecutorRequest(request: Request, env: SecurityExecutorEnv): Promise<Response> {
+  const options = await buildSecurityExecutorOptions(env);
+  if (!options) return emptyResponse(503);
+  try {
+    return await handlePrivateExecutorEnvelope(request, options);
+  } catch {
+    return emptyResponse(503);
+  }
+}
+
+const worker = { fetch: handleSecurityExecutorRequest };
+
+export default worker;
+
+async function executeMetadataMigration(
+  body: Uint8Array,
+  envelope: ExecutorEnvelope,
+  responseKey: CryptoKey,
+): Promise<Uint8Array> {
+  const metadata = parseMetadataMigrationRequest(body, envelope);
+  if (!metadata) throw new Error("invalid migration metadata");
+
+  const plaintext = new TextEncoder().encode(
+    JSON.stringify({
+      operation_id: metadata.operation_id,
+      target: metadata.target,
+      manifest_digest: metadata.manifest_digest,
+      source_hash: metadata.source_hash,
+      source_size: metadata.source_size,
+      status: "accepted",
+    }),
+  );
+  const iv = new Uint8Array(AES_GCM_IV_BYTES);
+  crypto.getRandomValues(iv);
+  const additionalData = new TextEncoder().encode(
+    `${METADATA_ACK_AAD_PREFIX}|${envelope.audience}|${envelope.role}|${envelope.manifest_digest}|${envelope.nonce}`,
+  );
+  let ciphertext: ArrayBuffer;
+  try {
+    ciphertext = await crypto.subtle.encrypt(
+      { name: "AES-GCM", iv, additionalData },
+      responseKey,
+      plaintext,
+    );
+  } catch {
+    throw new Error("metadata acknowledgement unavailable");
+  }
+
+  return new TextEncoder().encode(
+    JSON.stringify({
+      version: 1,
+      algorithm: "AES-GCM",
+      iv: encodeBase64Url(iv),
+      ciphertext: encodeBase64Url(new Uint8Array(ciphertext)),
+    }),
+  );
+}
+
+function parseMetadataMigrationRequest(
+  body: Uint8Array,
+  envelope: ExecutorEnvelope,
+): MetadataMigrationRequest | null {
+  if (body.byteLength === 0 || body.byteLength > MAX_METADATA_MIGRATION_BODY_BYTES) return null;
+
+  let text: string;
+  let parsed: unknown;
+  try {
+    text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(body);
+    parsed = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  if (text.length > MAX_METADATA_MIGRATION_BODY_BYTES || !isRecord(parsed)) return null;
+
+  const expectedFields = [
+    "operation_id",
+    "state_path",
+    "journal_path",
+    "manifest_digest",
+    "target",
+    "source_hash",
+    "source_size",
+  ];
+  const keys = Object.keys(parsed);
+  if (keys.length !== expectedFields.length || expectedFields.some((field) => !Object.prototype.hasOwnProperty.call(parsed, field))) {
+    return null;
+  }
+
+  const operationID = parsed.operation_id;
+  const statePath = parsed.state_path;
+  const journalPath = parsed.journal_path;
+  const manifestDigest = parsed.manifest_digest;
+  const target = parsed.target;
+  const sourceHash = parsed.source_hash;
+  const sourceSize = parsed.source_size;
+  if (
+    typeof operationID !== "string" ||
+    !OPERATION_ID_PATTERN.test(operationID) ||
+    typeof statePath !== "string" ||
+    !validMetadataPath(statePath) ||
+    typeof journalPath !== "string" ||
+    !validMetadataPath(journalPath) ||
+    typeof manifestDigest !== "string" ||
+    !SHA256_DIGEST_PATTERN.test(manifestDigest) ||
+    manifestDigest !== envelope.manifest_digest ||
+    target !== "v2" ||
+    typeof sourceHash !== "string" ||
+    !SHA256_HEX_PATTERN.test(sourceHash) ||
+    typeof sourceSize !== "number" ||
+    !Number.isSafeInteger(sourceSize) ||
+    sourceSize < 0 ||
+    sourceSize > MAX_METADATA_MIGRATION_SOURCE_SIZE
+  ) {
+    return null;
+  }
+
+  return {
+    operation_id: operationID,
+    state_path: statePath,
+    journal_path: journalPath,
+    manifest_digest: manifestDigest,
+    target,
+    source_hash: sourceHash,
+    source_size: sourceSize,
+  };
+}
+
+function validMetadataPath(value: string): boolean {
+  if (
+    value.length === 0 ||
+    value.length > MAX_METADATA_TEXT_LENGTH ||
+    value.trim() !== value ||
+    CONTROL_CHARACTER_PATTERN.test(value) ||
+    value.endsWith("/") ||
+    value.endsWith("\\")
+  ) {
+    return false;
+  }
+  if (!(value.startsWith("/") || WINDOWS_ABSOLUTE_PATH_PATTERN.test(value) || UNC_ABSOLUTE_PATH_PATTERN.test(value))) {
+    return false;
+  }
+  const components = value.replaceAll("\\", "/").split("/");
+  return !components.some((component) => component === "." || component === "..");
+}
+
+function readConfigText(value: unknown): string | null {
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    value.length > MAX_CONFIG_TEXT_LENGTH ||
+    value.trim() !== value ||
+    CONTROL_CHARACTER_PATTERN.test(value)
+  ) {
+    return null;
+  }
+  return value;
+}
+
+function decodeConfiguredBytes(value: unknown, expectedLength: number): Uint8Array | null {
+  if (typeof value !== "string" || value.length === 0 || value.trim() !== value) return null;
+
+  if (value.length === expectedLength * 2 && CONFIG_HEX_PATTERN.test(value)) {
+    const decoded = new Uint8Array(expectedLength);
+    for (let index = 0; index < expectedLength; index += 1) {
+      decoded[index] = Number.parseInt(value.slice(index * 2, index * 2 + 2), 16);
+    }
+    return decoded;
+  }
+  const normalized = value.replace(/-/gu, "+").replace(/_/gu, "/");
+  const unpadded = normalized.replace(/=+$/u, "");
+  if (!/^[A-Za-z0-9+/]*$/u.test(unpadded) || unpadded.length % 4 === 1) return null;
+  const padded = unpadded + "=".repeat((4 - (unpadded.length % 4)) % 4);
+  let binary: string;
+  try {
+    binary = atob(padded);
+  } catch {
+    return null;
+  }
+  const decoded = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+  if (decoded.byteLength !== expectedLength) return null;
+  const canonicalStandard = toBase64(decoded);
+  const canonicalStandardRaw = canonicalStandard.replace(/=+$/u, "");
+  const canonicalUrl = encodeBase64Url(decoded);
+  if (value !== canonicalStandard && value !== canonicalStandardRaw && value !== canonicalUrl) return null;
+  return decoded;
+}
+function hasReplayNamespace(value: unknown): value is DurableObjectNamespace<SecurityExecutorReplay> {
+  if (!value || typeof value !== "object" || !("getByName" in value)) return false;
+  return typeof value.getByName === "function";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function toBase64(bytes: Uint8Array): string {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
+function encodeBase64Url(bytes: Uint8Array): string {
+  return toBase64(bytes).replace(/\+/gu, "-").replace(/\//gu, "_").replace(/=+$/u, "");
+}
+
+function emptyResponse(status: number): Response {
+  return new Response(null, { status, headers: SECURITY_HEADERS });
+}
