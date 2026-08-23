@@ -91,6 +91,15 @@ function goJSONString(value: unknown): string {
   });
 }
 
+function canonicalExpiry(value: string): string {
+  const match = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.(\d{1,9}))?(?:Z|[+-]\d{2}:\d{2})$/u.exec(value);
+  if (!match) return value;
+  const nanoseconds = Number((match[1] ?? "").padEnd(9, "0"));
+  const fraction = String(nanoseconds).padStart(9, "0").replace(/0+$/u, "");
+  const instant = new Date(value);
+  return `${instant.toISOString().slice(0, 19)}${fraction ? `.${fraction}` : ""}Z`;
+}
+
 function canonicalBytes(envelope: ExecutorEnvelope): Uint8Array {
   return new TextEncoder().encode(
     goJSONString({
@@ -100,7 +109,7 @@ function canonicalBytes(envelope: ExecutorEnvelope): Uint8Array {
       manifest_digest: envelope.manifest_digest,
       body_digest: envelope.body_digest,
       nonce: envelope.nonce,
-      expires_at: envelope.expires_at,
+      expires_at: canonicalExpiry(envelope.expires_at),
       body: envelope.body,
     }),
   );
@@ -173,7 +182,7 @@ describe("verifyAndConsumeExecutorEnvelope", () => {
     expect(JSON.stringify([...storage.values.values()])).not.toContain(envelope.body);
   });
 
-  it("matches Go HTML-safe canonical JSON while preserving the received RFC3339 string", async () => {
+  it("matches Go RFC3339Nano canonicalization and HTML-safe JSON escaping", async () => {
     const { privateKey, publicKey } = await keyPair();
     const envelope = await makeEnvelope(privateKey, {
       audience: "hub<executor",
@@ -184,6 +193,19 @@ describe("verifyAndConsumeExecutorEnvelope", () => {
 
     await expect(verifyAndConsumeExecutorEnvelope(envelope, publicKey, storeFor(storage), NOW)).resolves.toEqual(BODY);
     expect(storage.transactionCalls).toBe(1);
+  });
+
+  it("accepts Go-signed offset and trailing-zero fractional expiries", async () => {
+    const { privateKey, publicKey } = await keyPair();
+    const expiresAt = "2026-08-23T14:05:00.123000+02:00";
+    const envelope = await makeEnvelope(privateKey, { expires_at: expiresAt });
+    const storage = new FakeDurableStorage();
+
+    await expect(verifyAndConsumeExecutorEnvelope(envelope, publicKey, storeFor(storage), NOW)).resolves.toEqual(BODY);
+    expect([...storage.values.values()]).toContainEqual({
+      digest: envelope.body_digest,
+      expiresAt: Date.parse(expiresAt),
+    });
   });
 
   it.each([

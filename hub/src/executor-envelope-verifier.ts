@@ -201,8 +201,8 @@ async function validateExecutorEnvelope(
   validateDigest(envelope.body_digest);
   validateScopeField(envelope.nonce);
 
-  const expiresAtMs = parseRFC3339(envelope.expires_at);
-  if (expiresAtMs <= now || expiresAtMs - now > MAX_EXECUTOR_ENVELOPE_TTL_MS) {
+  const expiresAt = parseRFC3339(envelope.expires_at);
+  if (expiresAt.expiresAtMs <= now || expiresAt.expiresAtMs - now > MAX_EXECUTOR_ENVELOPE_TTL_MS) {
     throw new ExecutorEnvelopeInvalidError();
   }
 
@@ -223,8 +223,8 @@ async function validateExecutorEnvelope(
     envelope,
     body,
     signature,
-    expiresAtMs,
-    canonicalBytes: canonicalSigningBytes(envelope),
+    expiresAtMs: expiresAt.expiresAtMs,
+    canonicalBytes: canonicalSigningBytes(envelope, expiresAt.canonicalExpiresAt),
   };
 }
 
@@ -274,7 +274,12 @@ function encodeStandardBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
-function parseRFC3339(value: unknown): number {
+interface ParsedExpiry {
+  readonly expiresAtMs: number;
+  readonly canonicalExpiresAt: string;
+}
+
+function parseRFC3339(value: unknown): ParsedExpiry {
   if (typeof value !== "string") throw new ExecutorEnvelopeInvalidError();
   const match = RFC3339_PATTERN.exec(value);
   if (!match) throw new ExecutorEnvelopeInvalidError();
@@ -286,7 +291,8 @@ function parseRFC3339(value: unknown): number {
   const minute = Number(match[5]);
   const second = Number(match[6]);
   const fraction = match[7] ?? "";
-  const milliseconds = Number((fraction + "000").slice(0, 3));
+  const nanoseconds = Number((fraction + "000000000").slice(0, 9));
+  const milliseconds = Math.floor(nanoseconds / 1_000_000);
   const date = new Date(0);
   date.setUTCFullYear(year, month - 1, day);
   date.setUTCHours(hour, minute, second, milliseconds);
@@ -306,12 +312,18 @@ function parseRFC3339(value: unknown): number {
   const offsetHours = Number(match[10] ?? "0");
   const offsetMinutes = Number(match[11] ?? "0");
   if (offsetHours > 23 || offsetMinutes > 59) throw new ExecutorEnvelopeInvalidError();
-  const timestamp = date.getTime() - offsetSign * (offsetHours * 60 + offsetMinutes) * 60_000;
-  if (!Number.isFinite(timestamp)) throw new ExecutorEnvelopeInvalidError();
-  return timestamp;
+  const expiresAtMs = date.getTime() - offsetSign * (offsetHours * 60 + offsetMinutes) * 60_000;
+  if (!Number.isFinite(expiresAtMs)) throw new ExecutorEnvelopeInvalidError();
+
+  const canonicalFraction = String(nanoseconds).padStart(9, "0").replace(/0+$/u, "");
+  const canonicalBase = new Date(expiresAtMs).toISOString().slice(0, 19);
+  return {
+    expiresAtMs,
+    canonicalExpiresAt: `${canonicalBase}${canonicalFraction ? `.${canonicalFraction}` : ""}Z`,
+  };
 }
 
-function canonicalSigningBytes(envelope: ExecutorEnvelope): Uint8Array {
+function canonicalSigningBytes(envelope: ExecutorEnvelope, expiresAt: string): Uint8Array {
   const document = {
     version: envelope.version,
     audience: envelope.audience,
@@ -319,7 +331,7 @@ function canonicalSigningBytes(envelope: ExecutorEnvelope): Uint8Array {
     manifest_digest: envelope.manifest_digest,
     body_digest: envelope.body_digest,
     nonce: envelope.nonce,
-    expires_at: envelope.expires_at,
+    expires_at: expiresAt,
     body: envelope.body,
   };
   const encoded = JSON.stringify(document).replace(/[<>&\u2028\u2029]/gu, (character) => CANONICAL_HTML_ESCAPES[character]);
