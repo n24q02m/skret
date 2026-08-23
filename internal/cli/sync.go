@@ -29,6 +29,10 @@ type syncOptions struct {
 	format        string
 }
 
+// saveSyncState is kept indirect so focused tests can exercise persistence
+// failures at each acknowledgement boundary without touching real targets.
+var saveSyncState = syncer.SaveSyncState
+
 // SyncResult is the --format json payload for one successfully synced
 // target. Batch-only targets report the full batch count; durable operations
 // for per-key targets report the same count only after every key is
@@ -190,13 +194,24 @@ func (o *syncOptions) run(cmd *cobra.Command) error {
 				return skret.NewError(skret.ExitGenericError, "sync: save state failed", err)
 			}
 		}
+		recoveredState := false
+		if state != nil && len(toSync) == 0 && syncStateNeedsRecovery(state) {
+			if err := state.FinalizeOperation(state.OperationID, time.Now().UTC()); err != nil {
+				return skret.NewError(skret.ExitGenericError, "sync: recover operation", err)
+			}
+			if err := syncer.SaveSyncState(state); err != nil {
+				return skret.NewError(skret.ExitGenericError, "sync: save recovered state", err)
+			}
+			recoveredState = true
+		}
 		durablePerKey := false
 		if state != nil && operationID != "" {
 			if keyer, ok := s.(syncer.PerKeySyncer); ok {
 				durablePerKey = true
 				if err := syncPerKeyOperation(ctx, keyer, state, operationID, toSync); err != nil {
 					exitCode := skret.ExitNetworkError
-					if tc.Type == "dotenv" {
+					var journalErr *syncJournalError
+					if errors.As(err, &journalErr) {
 						exitCode = skret.ExitGenericError
 					}
 					return skret.NewError(exitCode, fmt.Sprintf("sync failed for %s", s.Name()), err)
@@ -233,7 +248,7 @@ func (o *syncOptions) run(cmd *cobra.Command) error {
 					return skret.NewError(skret.ExitGenericError, "sync: record success", err)
 				}
 			}
-			if !durablePerKey {
+			if !durablePerKey && !recoveredState {
 				if err := syncer.SaveSyncState(state); err != nil {
 					return skret.NewError(skret.ExitGenericError, "sync: save state failed", err)
 				}
@@ -264,6 +279,35 @@ func (o *syncOptions) run(cmd *cobra.Command) error {
 	return nil
 }
 
+type syncJournalError struct {
+	err error
+}
+
+func (e *syncJournalError) Error() string { return e.err.Error() }
+
+func (e *syncJournalError) Unwrap() error { return e.err }
+
+func syncStateNeedsRecovery(state *syncer.SyncState) bool {
+	if state == nil || state.OperationID == "" {
+		return false
+	}
+	if state.Phase != syncer.OperationPhasePending &&
+		!(state.Phase == "" && state.CompletedAt == nil) {
+		return false
+	}
+	owned := 0
+	for _, outcome := range state.Outcomes {
+		if outcome.OperationID != state.OperationID {
+			continue
+		}
+		owned++
+		if outcome.Status != syncer.OutcomeSucceeded {
+			return false
+		}
+	}
+	return owned > 0
+}
+
 // syncPerKeyOperation writes and journals one target key at a time. A failed
 // key is marked for reconciliation and stops the operation, leaving every
 // unattempted key pending. Each successful acknowledgement is persisted before
@@ -280,28 +324,28 @@ func syncPerKeyOperation(
 		if err := target.SyncKey(ctx, secret); err != nil {
 			now := time.Now().UTC()
 			if journalErr := state.RecordKeyNeedsReconciliation(operationID, secret, now); journalErr != nil {
-				return fmt.Errorf("record key reconciliation: %w", journalErr)
+				return &syncJournalError{err: fmt.Errorf("record key reconciliation: %w", journalErr)}
 			}
-			if journalErr := syncer.SaveSyncState(state); journalErr != nil {
-				return fmt.Errorf("save key reconciliation: %w", journalErr)
+			if journalErr := saveSyncState(state); journalErr != nil {
+				return &syncJournalError{err: fmt.Errorf("save key reconciliation: %w", journalErr)}
 			}
 			return err
 		}
 
 		now := time.Now().UTC()
 		if err := state.RecordKeySuccess(operationID, secret, now); err != nil {
-			return fmt.Errorf("record key success: %w", err)
+			return &syncJournalError{err: fmt.Errorf("record key success: %w", err)}
 		}
-		if err := syncer.SaveSyncState(state); err != nil {
-			return fmt.Errorf("save key success: %w", err)
+		if err := saveSyncState(state); err != nil {
+			return &syncJournalError{err: fmt.Errorf("save key success: %w", err)}
 		}
 	}
 
 	if err := state.FinalizeOperation(operationID, time.Now().UTC()); err != nil {
-		return fmt.Errorf("finalize operation: %w", err)
+		return &syncJournalError{err: fmt.Errorf("finalize operation: %w", err)}
 	}
-	if err := syncer.SaveSyncState(state); err != nil {
-		return fmt.Errorf("save finalized operation: %w", err)
+	if err := saveSyncState(state); err != nil {
+		return &syncJournalError{err: fmt.Errorf("save finalized operation: %w", err)}
 	}
 	return nil
 }
