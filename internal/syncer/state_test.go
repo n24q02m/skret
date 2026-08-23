@@ -751,3 +751,81 @@ func TestSyncState_BeginOperationReconcilesPendingAfterPartialFailure(t *testing
 	assert.Equal(t, OutcomePending, state.Outcomes["K2"].Status)
 	assert.Equal(t, "op-second", state.Outcomes["K2"].OperationID)
 }
+
+func TestSyncState_RepeatedKeySuccessIsIdempotent(t *testing.T) {
+	started := time.Date(2026, 8, 23, 10, 55, 0, 0, time.UTC)
+	firstAck := started.Add(time.Second)
+	secondAck := started.Add(2 * time.Second)
+	secret := &provider.Secret{Key: "K1", Value: "v1"}
+	state := &SyncState{Target: "dotenv", ID: ".env"}
+
+	require.NoError(t, state.BeginOperation("op-idempotent-success", []*provider.Secret{secret}, started))
+	require.NoError(t, state.RecordKeySuccess("op-idempotent-success", secret, firstAck))
+	before, err := json.Marshal(state)
+	require.NoError(t, err)
+
+	secret.Value = "v2"
+	require.NoError(t, state.RecordKeySuccess("op-idempotent-success", secret, secondAck))
+	after, marshalErr := json.Marshal(state)
+	require.NoError(t, marshalErr)
+	assert.Equal(t, string(before), string(after))
+}
+
+func TestSyncState_RepeatedKeyNeedsReconciliationIsIdempotent(t *testing.T) {
+	started := time.Date(2026, 8, 23, 11, 0, 0, 0, time.UTC)
+	firstAck := started.Add(time.Second)
+	secondAck := started.Add(2 * time.Second)
+	secret := &provider.Secret{Key: "K1", Value: "v1"}
+	state := &SyncState{Target: "dotenv", ID: ".env"}
+
+	require.NoError(t, state.BeginOperation("op-idempotent-reconcile", []*provider.Secret{secret}, started))
+	require.NoError(t, state.RecordKeyNeedsReconciliation("op-idempotent-reconcile", secret, firstAck))
+	before, err := json.Marshal(state)
+	require.NoError(t, err)
+
+	secret.Value = "v2"
+	require.NoError(t, state.RecordKeyNeedsReconciliation("op-idempotent-reconcile", secret, secondAck))
+	after, marshalErr := json.Marshal(state)
+	require.NoError(t, marshalErr)
+	assert.Equal(t, string(before), string(after))
+}
+
+func TestSyncState_RepeatedFinalizeSuccessIsIdempotent(t *testing.T) {
+	started := time.Date(2026, 8, 23, 11, 5, 0, 0, time.UTC)
+	ack := started.Add(time.Second)
+	firstFinalize := started.Add(2 * time.Second)
+	secondFinalize := started.Add(3 * time.Second)
+	secret := &provider.Secret{Key: "K1", Value: "v1"}
+	state := &SyncState{Target: "dotenv", ID: ".env"}
+
+	require.NoError(t, state.BeginOperation("op-idempotent-finalize", []*provider.Secret{secret}, started))
+	require.NoError(t, state.RecordKeySuccess("op-idempotent-finalize", secret, ack))
+	require.NoError(t, state.FinalizeOperation("op-idempotent-finalize", firstFinalize))
+	before, err := json.Marshal(state)
+	require.NoError(t, err)
+
+	require.NoError(t, state.FinalizeOperation("op-idempotent-finalize", secondFinalize))
+	after, marshalErr := json.Marshal(state)
+	require.NoError(t, marshalErr)
+	assert.Equal(t, string(before), string(after))
+}
+
+func TestSyncState_RepeatedFinalizeReconciliationRetainsState(t *testing.T) {
+	started := time.Date(2026, 8, 23, 11, 10, 0, 0, time.UTC)
+	ack := started.Add(time.Second)
+	firstFinalize := started.Add(2 * time.Second)
+	secondFinalize := started.Add(3 * time.Second)
+	secret := &provider.Secret{Key: "K1", Value: "v1"}
+	state := &SyncState{Target: "dotenv", ID: ".env"}
+
+	require.NoError(t, state.BeginOperation("op-idempotent-finalize-reconcile", []*provider.Secret{secret}, started))
+	require.NoError(t, state.RecordKeyNeedsReconciliation("op-idempotent-finalize-reconcile", secret, ack))
+	require.NoError(t, state.FinalizeOperation("op-idempotent-finalize-reconcile", firstFinalize))
+	before, err := json.Marshal(state)
+	require.NoError(t, err)
+
+	require.NoError(t, state.FinalizeOperation("op-idempotent-finalize-reconcile", secondFinalize))
+	after, marshalErr := json.Marshal(state)
+	require.NoError(t, marshalErr)
+	assert.Equal(t, string(before), string(after))
+}

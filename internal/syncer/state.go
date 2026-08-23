@@ -170,6 +170,9 @@ func (s *SyncState) recordKeySuccess(operationID string, secret *provider.Secret
 	if outcome.Status == OutcomeNeedsReconciliation {
 		return ErrOperationPhaseMismatch
 	}
+	if outcome.Status == OutcomeSucceeded {
+		return nil
+	}
 	outcome.Status = OutcomeSucceeded
 	outcome.UpdatedAt = completed
 	s.Outcomes[secret.Key] = outcome
@@ -193,6 +196,9 @@ func (s *SyncState) recordKeyNeedsReconciliation(operationID string, secret *pro
 	}
 	if outcome.Status == OutcomeSucceeded {
 		return ErrOperationPhaseMismatch
+	}
+	if outcome.Status == OutcomeNeedsReconciliation {
+		return nil
 	}
 	outcome.Status = OutcomeNeedsReconciliation
 	outcome.UpdatedAt = completed
@@ -260,6 +266,9 @@ func (s *SyncState) FinalizeOperation(operationID string, completed time.Time) e
 		return ErrOperationEmpty
 	}
 	if hasNeedsReconciliation {
+		if s.Phase == OperationPhaseNeedsReconciliation {
+			return nil
+		}
 		s.Phase = OperationPhaseNeedsReconciliation
 		if s.CompletedAt == nil {
 			s.CompletedAt = timePtr(completed)
@@ -269,6 +278,9 @@ func (s *SyncState) FinalizeOperation(operationID string, completed time.Time) e
 	if hasPending {
 		s.Phase = OperationPhasePending
 		s.CompletedAt = nil
+		return nil
+	}
+	if s.Phase == OperationPhaseSucceeded {
 		return nil
 	}
 	s.Phase = OperationPhaseSucceeded
