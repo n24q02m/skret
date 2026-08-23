@@ -91,7 +91,7 @@ async function makeEnvelope(privateKey: CryptoKey, body = migrationBody(), overr
     manifest_digest: MANIFEST_DIGEST,
     body_digest: `sha256:${await sha256Hex(body)}`,
     nonce: "nonce-security-executor-001",
-    expires_at: new Date(Date.now() + 5 * 60 * 1_000).toISOString(),
+    expires_at: new Date(Date.now() + 5 * 60 * 1_000).toISOString().replace(".000Z", "Z"),
     body: toBase64(body),
     signature: "",
     ...overrides,
