@@ -24,6 +24,7 @@ type syncOptions struct {
 	githubRepo    string
 	skipUnchanged bool
 	noOverwrite   bool
+	rotate        bool
 	dryRun        bool
 	format        string
 }
@@ -31,13 +32,14 @@ type syncOptions struct {
 // SyncResult is the --format json payload for one successfully synced
 // target. syncer.Syncer only reports success/failure for a whole batch (no
 // target implements a per-key added/updated/deleted breakdown -- dotenv
-// rewrites its file wholesale and has no notion of either), so Synced is the
-// same count sync's table/stderr line already reports, not a speculative
+// rewrites its file wholesale and has no notion of either), so Synced is
+// the same count sync's table/stderr line already reports, not a speculative
 // finer-grained one. --dry-run targets are not included: they write nothing.
 type SyncResult struct {
 	Source string `json:"source"`
 	Target string `json:"target"`
 	Synced int    `json:"synced"`
+	Intent string `json:"intent,omitempty"`
 }
 
 func newSyncCmd(opts *GlobalOpts) *cobra.Command {
@@ -53,13 +55,16 @@ worker/pages, dotenv); running 'skret sync' with no --to pushes to all of them.
 --to accepts a comma-list to pick specific target types. Tokens come from
 GITHUB_TOKEN / CLOUDFLARE_API_TOKEN. Use --skip-unchanged for hash-based drift.
 --no-overwrite (or no_overwrite: true per target) only writes keys absent at
-the target, so existing values are never overwritten; rotate by deleting the
-key at the target and re-running sync. --dry-run prints what each target
-would write and exits without writing anything or saving sync state.`,
+the target, so existing values are never overwritten. Use --rotate for an
+explicit controlled overwrite of selected source keys; --rotate overrides a
+target's no_overwrite setting but cannot combine with --no-overwrite.
+--dry-run prints what each target would write and exits without writing anything
+or saving sync state.`,
 		Example: `  skret sync
   skret sync --to=github,cloudflare
   skret sync --to=github --github-repo=owner/repo --skip-unchanged
   skret sync --no-overwrite
+  skret sync --rotate
   skret sync --config deploy/sync/knowledgeprism.skret.yaml --dry-run`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return o.run(cmd)
@@ -71,6 +76,7 @@ would write and exits without writing anything or saving sync state.`,
 	cmd.Flags().StringVar(&o.githubRepo, "github-repo", "", "GitHub repository (owner/repo, comma separated)")
 	cmd.Flags().BoolVar(&o.skipUnchanged, "skip-unchanged", false, "skip secrets whose value is unchanged since the previous successful sync (drift detection)")
 	cmd.Flags().BoolVar(&o.noOverwrite, "no-overwrite", false, "only write secrets absent at the target; never overwrite an existing one (forces no_overwrite for every target)")
+	cmd.Flags().BoolVar(&o.rotate, "rotate", false, "explicitly overwrite selected target values and record rotation state (conflicts with --no-overwrite)")
 	cmd.Flags().BoolVar(&o.dryRun, "dry-run", false, "print what each target would write and exit; issues no write request and saves no state")
 	cmd.Flags().StringVar(&o.format, "format", "table", "output format (table, json)")
 
@@ -78,6 +84,10 @@ would write and exits without writing anything or saving sync state.`,
 }
 
 func (o *syncOptions) run(cmd *cobra.Command) error {
+	if o.rotate && o.noOverwrite {
+		return skret.NewError(skret.ExitConfigError, "sync: cannot combine --rotate and --no-overwrite", nil)
+	}
+
 	sc, err := loadSyncConfig(o.global)
 	if err != nil {
 		return skret.NewError(skret.ExitConfigError, "sync: load config failed", err)
@@ -117,28 +127,25 @@ func (o *syncOptions) run(cmd *cobra.Command) error {
 	for i, s := range syncers {
 		tc := targets[i]
 		toSync := secrets
-		noOv := tc.NoOverwrite || o.noOverwrite
+		noOv := !o.rotate && (tc.NoOverwrite || o.noOverwrite)
 
-		// Under no-overwrite, "write only absent keys" already subsumes
-		// drift-skipping (FilterAbsent queries the target directly, so it is
-		// stateless), and a warm value-hash cache can mask a target-side
-		// deletion -- exactly the restore path no-overwrite relies on
-		// (docs/src/content/docs/guide/sync.md: delete the key at the
-		// target, the next sync repopulates it). So --skip-unchanged's
-		// state load/filter/save is skipped entirely for a no-overwrite
-		// target; a rotated-then-deleted key must reach FilterAbsent to be
-		// seen as absent and rewritten.
+		// Rotation is an explicit overwrite intent. It always loads the
+		// target's journal so the operation lifecycle is durable, but it
+		// deliberately bypasses warm-cache filtering and no-overwrite's
+		// target-side existence check.
 		var state *syncer.SyncState
 		var operationID string
-		if o.skipUnchanged && !noOv {
+		if o.rotate || (o.skipUnchanged && !noOv) {
 			stateID := targetStateID(s, tc)
 			state, err = syncer.LoadSyncState(s.Name(), stateID)
 			if err != nil {
 				return skret.NewError(skret.ExitGenericError, "sync: load state failed", err)
 			}
-			toSync = state.FilterUnchanged(secrets)
-			if skipped := len(secrets) - len(toSync); skipped > 0 {
-				cmd.PrintErrf("Skipped %d unchanged secret(s) for %s\n", skipped, s.Name())
+			if !o.rotate {
+				toSync = state.FilterUnchanged(secrets)
+				if skipped := len(secrets) - len(toSync); skipped > 0 {
+					cmd.PrintErrf("Skipped %d unchanged secret(s) for %s\n", skipped, s.Name())
+				}
 			}
 		}
 
@@ -172,7 +179,12 @@ func (o *syncOptions) run(cmd *cobra.Command) error {
 			if err != nil {
 				return skret.NewError(skret.ExitGenericError, "sync: create operation", err)
 			}
-			if err := state.BeginOperation(operationID, toSync, time.Now().UTC()); err != nil {
+			if o.rotate {
+				err = state.BeginOperationWithIntent(operationID, syncer.OperationIntentRotate, toSync, time.Now().UTC())
+			} else {
+				err = state.BeginOperation(operationID, toSync, time.Now().UTC())
+			}
+			if err != nil {
 				return skret.NewError(skret.ExitGenericError, "sync: begin operation", err)
 			}
 			if err := syncer.SaveSyncState(state); err != nil {
@@ -198,7 +210,13 @@ func (o *syncOptions) run(cmd *cobra.Command) error {
 			return skret.NewError(exitCode, fmt.Sprintf("sync failed for %s", s.Name()), err)
 		}
 		if o.format == "json" {
-			results = append(results, SyncResult{Source: resolved.Path, Target: s.Name(), Synced: len(toSync)})
+			result := SyncResult{Source: resolved.Path, Target: s.Name(), Synced: len(toSync)}
+			if o.rotate {
+				result.Intent = syncer.OperationIntentRotate
+			}
+			results = append(results, result)
+		} else if o.rotate {
+			cmd.PrintErrf("Rotated %d secrets to %s\n", len(toSync), s.Name())
 		} else {
 			cmd.PrintErrf("Synced %d secrets to %s\n", len(toSync), s.Name())
 		}

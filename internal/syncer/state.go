@@ -24,6 +24,7 @@ type SyncState struct {
 	Updated time.Time         `json:"updated"`
 
 	OperationID string                `json:"operation_id,omitempty"`
+	Intent      string                `json:"intent,omitempty"`
 	StartedAt   *time.Time            `json:"started_at,omitempty"`
 	CompletedAt *time.Time            `json:"completed_at,omitempty"`
 	LastSuccess *time.Time            `json:"last_success,omitempty"`
@@ -54,7 +55,17 @@ func NewOperationID() (string, error) {
 	return "op-" + hex.EncodeToString(raw[:]), nil
 }
 
+const OperationIntentRotate = "rotate"
+
 func (s *SyncState) BeginOperation(operationID string, secrets []*provider.Secret, started time.Time) error {
+	return s.beginOperation(operationID, "", secrets, started)
+}
+
+func (s *SyncState) BeginOperationWithIntent(operationID, intent string, secrets []*provider.Secret, started time.Time) error {
+	return s.beginOperation(operationID, intent, secrets, started)
+}
+
+func (s *SyncState) beginOperation(operationID, intent string, secrets []*provider.Secret, started time.Time) error {
 	if strings.TrimSpace(operationID) == "" {
 		return fmt.Errorf("sync operation id is required")
 	}
@@ -71,6 +82,7 @@ func (s *SyncState) BeginOperation(operationID string, secrets []*provider.Secre
 		}
 	}
 	s.OperationID = operationID
+	s.Intent = intent
 	s.StartedAt = timePtr(started)
 	s.CompletedAt = nil
 	for _, secret := range secrets {
