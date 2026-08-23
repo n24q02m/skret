@@ -35,8 +35,8 @@ const SHA256_HEX_PATTERN = /^[a-f0-9]{64}$/u;
 const STANDARD_BASE64_PATTERN = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/u;
 const CONFIG_HEX_PATTERN = /^[0-9a-fA-F]+$/u;
 const CONTROL_CHARACTER_PATTERN = /[\u0000-\u001f\u007f]/u;
-const WINDOWS_CANONICAL_ABSOLUTE_PATH_PATTERN = /^[A-Za-z]:\\(?:[^\\]+(?:\\[^\\]+)*)?$/u;
-const UNC_CANONICAL_ABSOLUTE_PATH_PATTERN = /^\\\\[^\\/]+\\[^\\/]+(?:\\[^\\]+)*$/u;
+const WINDOWS_CANONICAL_ABSOLUTE_PATH_PATTERN = /^[A-Za-z]:\\(?:[^\\/]+(?:\\[^\\/]+)*)?$/u;
+const UNC_CANONICAL_ABSOLUTE_PATH_PATTERN = /^\\\\[^\\/]+\\[^\\/]+(?:\\[^\\/]+)*$/u;
 const POSIX_CANONICAL_ABSOLUTE_PATH_PATTERN = /^\/(?:[^/]+(?:\/[^/]+)*)?$/u;
 const SECURITY_HEADERS: Record<string, string> = {
   "Cache-Control": "no-store",
@@ -574,11 +574,14 @@ function validCanonicalAbsolutePath(value: string, allowRoot: boolean): boolean 
     return value.split("/").slice(1).every((component) => component.length > 0 && component !== "." && component !== "..");
   }
   if (WINDOWS_CANONICAL_ABSOLUTE_PATH_PATTERN.test(value)) {
+    if (value.length === 3) return allowRoot;
     const components = value.slice(3).split("\\");
-    return (components.length === 1 && components[0] === "") || components.every((component) => component.length > 0 && component !== "." && component !== "..");
+    return components.every((component) => component.length > 0 && component !== "." && component !== "..");
   }
   if (UNC_CANONICAL_ABSOLUTE_PATH_PATTERN.test(value)) {
-    return value.slice(2).split("\\").every((component) => component.length > 0 && component !== "." && component !== "..");
+    const components = value.slice(2).split("\\");
+    if (components.length === 2) return allowRoot;
+    return components.every((component) => component.length > 0 && component !== "." && component !== "..");
   }
   return false;
 }

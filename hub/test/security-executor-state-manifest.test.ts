@@ -256,6 +256,26 @@ describe("security executor signed StateManifest authority", () => {
       const fixture = await manifestFixture({ files: [{ path: "state.json", size: Number.MAX_SAFE_INTEGER + 1, sha256: SOURCE_HASH }] });
       return { fixture, body: await migrationBody(fixture) };
     }],
+    ["mixed separator forward-slash traversal in Windows source root", async () => {
+      const fixture = await manifestFixture({ document: { source_root: "C:\\skret/../state" } });
+      return { fixture, body: await migrationBody(fixture, { state_path: "C:\\skret/../state\\state.json" }) };
+    }],
+    ["mixed separator forward-slash in Windows metadata path", async () => {
+      const fixture = await manifestFixture();
+      return { fixture, body: await migrationBody(fixture, { state_path: "C:\\skret\\state/other.json" }) };
+    }],
+    ["mixed separator forward-slash in UNC metadata path", async () => {
+      const fixture = await manifestFixture({ document: { source_root: "\\\\server\\share\\state" } });
+      return { fixture, body: await migrationBody(fixture, { state_path: "\\\\server\\share\\state/nested\\state.json" }) };
+    }],
+    ["Windows drive root path rejected when allowRoot is false", async () => {
+      const fixture = await manifestFixture({ document: { source_root: "C:\\" } });
+      return { fixture, body: await migrationBody(fixture, { state_path: "C:\\", journal_path: "C:\\" }) };
+    }],
+    ["UNC share root path rejected when allowRoot is false", async () => {
+      const fixture = await manifestFixture({ document: { source_root: "\\\\server\\share" } });
+      return { fixture, body: await migrationBody(fixture, { state_path: "\\\\server\\share", journal_path: "\\\\server\\share" }) };
+    }],
   ])("rejects %s without plaintext output", async (_name, buildCase) => {
     const { fixture, body } = await buildCase();
     const { envelope, envelopePublicKey } = await makeEnvelope(fixture, body);

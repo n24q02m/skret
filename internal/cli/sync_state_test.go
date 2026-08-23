@@ -164,6 +164,114 @@ func TestSyncStateMigrate_ManifestMismatchFailsBeforeMutation(t *testing.T) {
 	assert.NotContains(t, err.Error(), "changed-after-signing")
 }
 
+func TestSyncStateMigrate_StrictManifestParsingFailsBeforeMutationOrSubmit(t *testing.T) {
+	root := t.TempDir()
+	statePath := filepath.Join(root, "state.json")
+	original := []byte(`{"schema_version":1,"metadata":"opaque-cli-strict-value"}`)
+	require.NoError(t, os.WriteFile(statePath, original, 0o600))
+	manifestPath, publicKeyHex, manifest := writeCLISignedStateManifest(t, root, map[string]string{"state.json": string(original)})
+	journalPath := filepath.Join(root, "migration.journal.json")
+	validManifestBytes := mustReadCLIFile(t, manifestPath)
+
+	validSig := base64.StdEncoding.EncodeToString(manifest.Signature)
+	urlSafeSig := base64.URLEncoding.EncodeToString(manifest.Signature)
+	rawSig := strings.TrimRight(validSig, "=")
+
+	cases := []struct {
+		name       string
+		manifestFn func() []byte
+	}{
+		{
+			name: "duplicate key at root",
+			manifestFn: func() []byte {
+				return []byte(strings.Replace(string(validManifestBytes), `"nonce":`, `"nonce":"manifest-nonce-dup", "nonce":`, 1))
+			},
+		},
+		{
+			name: "duplicate key in nested files object",
+			manifestFn: func() []byte {
+				return []byte(strings.Replace(string(validManifestBytes), `"path":`, `"path":"dup.json", "path":`, 1))
+			},
+		},
+		{
+			name: "unknown field at root",
+			manifestFn: func() []byte {
+				return []byte(strings.Replace(string(validManifestBytes), `"version":1`, `"version":1,"unknown_root_field":"invalid"`, 1))
+			},
+		},
+		{
+			name: "unknown field in nested files object",
+			manifestFn: func() []byte {
+				return []byte(strings.Replace(string(validManifestBytes), `"size":`, `"unknown_file_field":true,"size":`, 1))
+			},
+		},
+		{
+			name: "unpadded base64 signature",
+			manifestFn: func() []byte {
+				return []byte(strings.Replace(string(validManifestBytes), validSig, rawSig, 1))
+			},
+		},
+		{
+			name: "url-safe base64 signature",
+			manifestFn: func() []byte {
+				return []byte(strings.Replace(string(validManifestBytes), validSig, urlSafeSig, 1))
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			badManifestPath := filepath.Join(t.TempDir(), "bad-manifest.json")
+			badContent := tc.manifestFn()
+			require.NoError(t, os.WriteFile(badManifestPath, badContent, 0o600))
+
+			stdout, stderr, err := executeStateMigrationCLI(t,
+				"sync-state", "migrate", "--to", "v2",
+				"--state-manifest", badManifestPath,
+				"--journal", journalPath,
+				"--state", statePath,
+				"--public-key", publicKeyHex,
+				"--role", manifest.Role,
+				"--audience", manifest.Audience,
+				"--operation-id", "op-cli-strict",
+				"--execute",
+				"--format", "json",
+			)
+			require.Error(t, err)
+			assert.Empty(t, stdout)
+			assert.NotContains(t, stderr, "opaque-cli-strict-value")
+			assert.NotContains(t, err.Error(), "opaque-cli-strict-value")
+			assert.Equal(t, original, mustReadCLIFile(t, statePath))
+			assert.NoFileExists(t, statePath+".v1")
+			assert.NoFileExists(t, journalPath)
+
+			// Verify remote-execute also rejects invalid manifest before contacting remote
+			stdoutRemote, stderrRemote, errRemote := executeStateMigrationCLI(t,
+				"sync-state", "migrate", "--to", "v2",
+				"--state-manifest", badManifestPath,
+				"--journal", journalPath,
+				"--state", statePath,
+				"--public-key", publicKeyHex,
+				"--role", manifest.Role,
+				"--audience", manifest.Audience,
+				"--operation-id", "op-cli-strict-remote",
+				"--executor-url", "http://127.0.0.1:1",
+				"--operator-session", "session=opaque",
+				"--signing-key", publicKeyHex,
+				"--remote-execute",
+				"--format", "json",
+			)
+			require.Error(t, errRemote)
+			assert.Empty(t, stdoutRemote)
+			assert.NotContains(t, stderrRemote, "opaque-cli-strict-value")
+			assert.NotContains(t, errRemote.Error(), "opaque-cli-strict-value")
+			assert.Equal(t, original, mustReadCLIFile(t, statePath))
+			assert.NoFileExists(t, statePath+".v1")
+			assert.NoFileExists(t, journalPath)
+		})
+	}
+}
+
 func TestSyncStateMigrate_ResolvesOnlyExactManifestRow(t *testing.T) {
 	root := t.TempDir()
 	statePath := filepath.Join(root, "state.json")

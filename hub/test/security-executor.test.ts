@@ -101,7 +101,7 @@ function defaultManifestFixture(): Promise<DefaultManifestFixture> {
       source_root: "C:\\skret\\state",
       files: [{ path: "state.json", size: 128, sha256: SOURCE_HASH }],
       nonce: "manifest-nonce-001",
-      expires_at: new Date(Date.now() + 5 * 60 * 1_000).toISOString().replace(".000Z", "Z"),
+      expires_at: new Date(Math.floor(Date.now() / 1_000) * 1_000 + 5 * 60 * 1_000).toISOString().replace(".000Z", "Z"),
     };
     const canonical = canonicalManifestBytes(document);
     const signature = await crypto.subtle.sign("Ed25519", privateKey, canonical);
@@ -139,7 +139,7 @@ async function makeEnvelope(privateKey: CryptoKey, body?: Uint8Array, overrides:
     manifest_digest: MANIFEST_DIGEST,
     body_digest: `sha256:${await sha256Hex(body)}`,
     nonce: "nonce-security-executor-001",
-    expires_at: new Date(Date.now() + 5 * 60 * 1_000).toISOString().replace(".000Z", "Z"),
+    expires_at: new Date(Math.floor(Date.now() / 1_000) * 1_000 + 5 * 60 * 1_000).toISOString().replace(".000Z", "Z"),
     body: toBase64(body),
     signature: "",
     ...overrides,

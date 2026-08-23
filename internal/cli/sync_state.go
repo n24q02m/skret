@@ -5,6 +5,7 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -279,8 +280,12 @@ func readCLIStateManifestWithBytes(path string) (*syncer.StateManifest, []byte, 
 	if err != nil {
 		return nil, nil, err
 	}
+	if err := detectJSONDuplicateKeys(data); err != nil {
+		return nil, nil, err
+	}
 	var manifest syncer.StateManifest
 	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&manifest); err != nil {
 		return nil, nil, errors.New("invalid state manifest JSON")
 	}
@@ -288,7 +293,134 @@ func readCLIStateManifestWithBytes(path string) (*syncer.StateManifest, []byte, 
 	if err := decoder.Decode(&extra); err != io.EOF {
 		return nil, nil, errors.New("state manifest contains trailing data")
 	}
+	if err := validateCLIStateManifestSignature(data); err != nil {
+		return nil, nil, err
+	}
 	return &manifest, data, nil
+}
+
+func detectJSONDuplicateKeys(data []byte) error {
+	dec := json.NewDecoder(bytes.NewReader(data))
+	type frame struct {
+		isObject     bool
+		expectingKey bool
+		keys         map[string]struct{}
+	}
+	var stack []frame
+
+	for {
+		tok, err := dec.Token()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return errors.New("invalid state manifest JSON")
+		}
+
+		if len(stack) == 0 {
+			switch delim := tok.(type) {
+			case json.Delim:
+				if delim == '{' {
+					stack = append(stack, frame{isObject: true, expectingKey: true, keys: make(map[string]struct{})})
+				} else if delim == '[' {
+					stack = append(stack, frame{isObject: false})
+				} else {
+					return errors.New("invalid state manifest JSON")
+				}
+			default:
+				// Primitive root token
+			}
+			continue
+		}
+
+		top := &stack[len(stack)-1]
+		switch t := tok.(type) {
+		case json.Delim:
+			switch t {
+			case '{':
+				if top.isObject {
+					if top.expectingKey {
+						return errors.New("invalid state manifest JSON")
+					}
+					top.expectingKey = true
+				}
+				stack = append(stack, frame{isObject: true, expectingKey: true, keys: make(map[string]struct{})})
+			case '[':
+				if top.isObject {
+					if top.expectingKey {
+						return errors.New("invalid state manifest JSON")
+					}
+					top.expectingKey = true
+				}
+				stack = append(stack, frame{isObject: false})
+			case '}':
+				if !top.isObject || !top.expectingKey {
+					return errors.New("invalid state manifest JSON")
+				}
+				stack = stack[:len(stack)-1]
+				if len(stack) > 0 && stack[len(stack)-1].isObject {
+					stack[len(stack)-1].expectingKey = true
+				}
+			case ']':
+				if top.isObject {
+					return errors.New("invalid state manifest JSON")
+				}
+				stack = stack[:len(stack)-1]
+				if len(stack) > 0 && stack[len(stack)-1].isObject {
+					stack[len(stack)-1].expectingKey = true
+				}
+			}
+		default:
+			if top.isObject {
+				if top.expectingKey {
+					key, ok := t.(string)
+					if !ok {
+						return errors.New("invalid state manifest JSON")
+					}
+					if _, exists := top.keys[key]; exists {
+						return errors.New("state manifest contains duplicate JSON keys")
+					}
+					top.keys[key] = struct{}{}
+					top.expectingKey = false
+				} else {
+					top.expectingKey = true
+				}
+			}
+		}
+	}
+
+	if len(stack) != 0 {
+		return errors.New("invalid state manifest JSON")
+	}
+	return nil
+}
+
+func validateCLIStateManifestSignature(data []byte) error {
+	var raw struct {
+		Signature *string `json:"signature"`
+	}
+	dec := json.NewDecoder(bytes.NewReader(data))
+	if err := dec.Decode(&raw); err != nil || raw.Signature == nil {
+		return errors.New("invalid state manifest JSON")
+	}
+	sig := *raw.Signature
+	if len(sig) != 88 || !strings.HasSuffix(sig, "==") {
+		return errors.New("state manifest signature is not canonical standard base64")
+	}
+	for i := range 86 {
+		c := sig[i]
+		if !((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '+' || c == '/') {
+			return errors.New("state manifest signature is not canonical standard base64")
+		}
+	}
+	decoded, err := base64.StdEncoding.DecodeString(sig)
+	if err != nil || len(decoded) != ed25519.SignatureSize {
+		return errors.New("state manifest signature is invalid")
+	}
+	if base64.StdEncoding.EncodeToString(decoded) != sig {
+		return errors.New("state manifest signature is not canonical standard base64")
+	}
+	return nil
 }
 
 func readCLIStateMigrationPublicKey(value string) (ed25519.PublicKey, error) {
