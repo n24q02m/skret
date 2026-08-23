@@ -36,6 +36,18 @@ class WorkflowPolicyTests(unittest.TestCase):
             self.assertNotIn(marker, workflow)
         self.assertIn("\n  deploy-hub:", workflow)
 
+    def test_hub_deploy_fails_closed_without_executor_readback(self) -> None:
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        deploy_hub = workflow.split("\n  deploy-hub:", 1)[1]
+        guard = "run: python scripts/verify_executor_readback.py"
+        self.assertIn(guard, deploy_hub)
+        self.assertIn(
+            "SKRET_EXECUTOR_READBACK_JSON: ${{ secrets.SKRET_EXECUTOR_READBACK_JSON }}",
+            deploy_hub,
+        )
+        self.assertLess(deploy_hub.index(guard), deploy_hub.index("npx wrangler containers push"))
+        self.assertLess(deploy_hub.index(guard), deploy_hub.index("command: deploy --config wrangler.deploy.jsonc"))
+
     def test_legacy_opencode_workflow_is_removed(self) -> None:
         self.assertFalse(LEGACY_OPENCODE_WORKFLOW.exists())
 

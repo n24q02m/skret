@@ -12,7 +12,7 @@ name: CD
 #   TAP_GITHUB_TOKEN         - fine-grained PAT for tap repo updates
 #   HUB_CF_DEPLOY_TOKEN      - project-scoped CF token for the vault hub Worker (account Workers Scripts + KV write only; custom domain attached out-of-band, no zone perm); also used to push the sync container image to the Cloudflare managed registry -- verify it covers that scope, may need a Containers/Images permission added
 #   VAULT_KV_ID              - KV namespace id for the vault hub (from `wrangler kv namespace create VAULT_KV`)
-#
+#   SKRET_EXECUTOR_READBACK_JSON - authenticated executor deployment/readback metadata; the Hub deploy gate fails closed when absent or mismatched
 # Repo Variables required:
 #   CI_APP_ID                - n24q02m-ci GitHub App ID (3200052)
 
@@ -25,6 +25,7 @@ on:
       - "Dockerfile.sync"
       - "deploy/**"
       - ".github/workflows/cd.yml"
+      - "scripts/verify_executor_readback.py"
   # Deliberately NO `tags: ["v*"]`. semantic-release pushes the tag with an App
   # token, so a tag trigger fires a SECOND CD run for every release we dispatch
   # -- and both runs built and uploaded the same tag concurrently. On
@@ -302,6 +303,13 @@ jobs:
         with:
           egress-policy: audit
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      # The service binding is source-only until an authenticated executor
+      # deployment/readback proves this exact target is ready. Missing or
+      # mismatched JSON exits before image push or Wrangler deploy.
+      - name: Verify security executor readback
+        env:
+          SKRET_EXECUTOR_READBACK_JSON: ${{ secrets.SKRET_EXECUTOR_READBACK_JSON }}
+        run: python scripts/verify_executor_readback.py
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
         with:
           version: 10
