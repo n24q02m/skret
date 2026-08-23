@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"crypto/ed25519"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -20,16 +21,20 @@ import (
 )
 
 type syncStateMigrateOptions struct {
-	to            string
-	stateManifest string
-	journal       string
-	state         string
-	publicKey     string
-	role          string
-	audience      string
-	operationID   string
-	execute       bool
-	format        string
+	to              string
+	stateManifest   string
+	journal         string
+	state           string
+	publicKey       string
+	role            string
+	audience        string
+	operationID     string
+	execute         bool
+	remoteExecute   bool
+	executorURL     string
+	operatorSession string
+	signingKey      string
+	format          string
 }
 
 type syncStateMigrateResult struct {
@@ -43,6 +48,8 @@ type syncStateMigrateResult struct {
 	SourceSize     int64  `json:"source_size"`
 	DesiredHash    string `json:"desired_hash,omitempty"`
 	DesiredSize    int64  `json:"desired_size,omitempty"`
+	ResponseHash   string `json:"response_hash,omitempty"`
+	ResponseSize   int64  `json:"response_size,omitempty"`
 }
 
 func newSyncStateCmd() *cobra.Command {
@@ -61,9 +68,12 @@ func newSyncStateMigrateCmd() *cobra.Command {
 		Use:   "migrate",
 		Short: "Migrate one signed local sync-state file to v2",
 		Long: `Verify a signed, value-free state manifest and migrate one local v1
-state file to v2. Without --execute this command only verifies the manifest and
-source hash; it never writes state, backup, or journal files. The execute path
-performs the verified local migration and does not submit an executor request.`,
+state file to v2. Without --execute or --remote-execute this command only
+verifies the manifest and source hash; it never writes state, backup, or journal
+files. The --execute path performs the verified local migration offline and
+does not submit an executor request. The --remote-execute path submits only a
+metadata request to the authenticated Hub executor-envelope route and never
+mutates local state.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return o.run(cmd)
@@ -78,8 +88,12 @@ performs the verified local migration and does not submit an executor request.`,
 	flags.StringVar(&o.publicKey, "public-key", "", "Ed25519 public key as hex or a path containing raw/hex key bytes")
 	flags.StringVar(&o.role, "role", "", "expected manifest role")
 	flags.StringVar(&o.audience, "audience", "", "expected manifest audience")
-	flags.StringVar(&o.operationID, "operation-id", "", "operation identifier for --execute")
-	flags.BoolVar(&o.execute, "execute", false, "perform the verified local v1-to-v2 migration")
+	flags.StringVar(&o.operationID, "operation-id", "", "operation identifier for --execute or --remote-execute")
+	flags.BoolVar(&o.execute, "execute", false, "perform the verified local v1-to-v2 migration offline")
+	flags.BoolVar(&o.remoteExecute, "remote-execute", false, "submit a signed metadata-only migration request to Hub; never mutate local state")
+	flags.StringVar(&o.executorURL, "executor-url", "", "Hub origin for --remote-execute")
+	flags.StringVar(&o.operatorSession, "operator-session", "", "operator session cookie for --remote-execute [env: SKRET_OPERATOR_SESSION_COOKIE]")
+	flags.StringVar(&o.signingKey, "signing-key", "", "path containing a raw or hex Ed25519 private signing key for --remote-execute")
 	flags.StringVar(&o.format, "format", "table", "output format (table, json)")
 	return cmd
 }
@@ -100,6 +114,29 @@ func (o *syncStateMigrateOptions) run(cmd *cobra.Command) error {
 	if strings.TrimSpace(o.publicKey) == "" {
 		return syncStateMigrateValidationError("--public-key is required")
 	}
+	if o.remoteExecute {
+		if o.execute {
+			return syncStateMigrateValidationError("--execute and --remote-execute are mutually exclusive")
+		}
+		if strings.TrimSpace(o.role) == "" {
+			return syncStateMigrateValidationError("--role is required with --remote-execute")
+		}
+		if strings.TrimSpace(o.audience) == "" {
+			return syncStateMigrateValidationError("--audience is required with --remote-execute")
+		}
+		if err := validateCLIStateMigrationOperationID(o.operationID); err != nil {
+			return syncStateMigrateValidationError("invalid --operation-id")
+		}
+		if strings.TrimSpace(o.executorURL) == "" {
+			return syncStateMigrateValidationError("--executor-url is required with --remote-execute")
+		}
+		if strings.TrimSpace(o.operatorSession) == "" && strings.TrimSpace(os.Getenv("SKRET_OPERATOR_SESSION_COOKIE")) == "" {
+			return syncStateMigrateValidationError("--operator-session or SKRET_OPERATOR_SESSION_COOKIE is required with --remote-execute")
+		}
+		if strings.TrimSpace(o.signingKey) == "" {
+			return syncStateMigrateValidationError("--signing-key is required with --remote-execute")
+		}
+	}
 	if o.execute {
 		if strings.TrimSpace(o.role) == "" {
 			return syncStateMigrateValidationError("--role is required with --execute")
@@ -109,6 +146,22 @@ func (o *syncStateMigrateOptions) run(cmd *cobra.Command) error {
 		}
 		if err := validateCLIStateMigrationOperationID(o.operationID); err != nil {
 			return syncStateMigrateValidationError("invalid --operation-id")
+		}
+	}
+
+	var (
+		signingKey      ed25519.PrivateKey
+		operatorSession string
+		err             error
+	)
+	if o.remoteExecute {
+		signingKey, err = readCLIStateMigrationPrivateKey(o.signingKey)
+		if err != nil {
+			return syncStateMigrateError("read signing key", err)
+		}
+		operatorSession = strings.TrimSpace(o.operatorSession)
+		if operatorSession == "" {
+			operatorSession = strings.TrimSpace(os.Getenv("SKRET_OPERATOR_SESSION_COOKIE"))
 		}
 	}
 
@@ -188,6 +241,30 @@ func (o *syncStateMigrateOptions) run(cmd *cobra.Command) error {
 		SourceHash:     sourceHash,
 		SourceSize:     int64(len(source)),
 	}
+	if o.remoteExecute {
+		response, err := submitCLIStateMigrationRequest(
+			cmd,
+			o.executorURL,
+			operatorSession,
+			signingKey,
+			manifestDigest,
+			role,
+			audience,
+			o.operationID,
+			statePath,
+			journalPath,
+			o.to,
+			sourceHash,
+			int64(len(source)),
+			now,
+		)
+		if err != nil {
+			return syncStateMigrateError("submit remote executor request", err)
+		}
+		result.Phase = "submitted"
+		result.ResponseHash = cliStateMigrationHash(response)
+		result.ResponseSize = int64(len(response))
+	}
 	return writeCLIStateMigrationResult(cmd, result, o.format)
 }
 
@@ -231,6 +308,32 @@ func readCLIStateMigrationPublicKey(value string) (ed25519.PublicKey, error) {
 		return ed25519.PublicKey(decoded), nil
 	}
 	return nil, errors.New("public key must contain a raw or hex Ed25519 public key")
+}
+
+func readCLIStateMigrationPrivateKey(path string) (ed25519.PrivateKey, error) {
+	candidate := strings.TrimSpace(path)
+	if candidate == "" {
+		return nil, errors.New("signing key path is required")
+	}
+	info, err := os.Lstat(candidate)
+	if err != nil {
+		return nil, errors.New("signing key must be a regular file path")
+	}
+	if !info.Mode().IsRegular() {
+		return nil, errors.New("signing key path is not a regular file")
+	}
+	data, err := os.ReadFile(candidate)
+	if err != nil {
+		return nil, errors.New("read signing key file failed")
+	}
+	if len(data) == ed25519.PrivateKeySize {
+		return ed25519.PrivateKey(append([]byte(nil), data...)), nil
+	}
+	decoded, err := hex.DecodeString(strings.TrimSpace(string(data)))
+	if err != nil || len(decoded) != ed25519.PrivateKeySize {
+		return nil, errors.New("signing key must contain a raw or hex Ed25519 private key")
+	}
+	return ed25519.PrivateKey(decoded), nil
 }
 
 func decodeCLIStateMigrationPublicKeyHex(value string) ([]byte, bool) {
@@ -363,6 +466,54 @@ func validateCLIStateMigrationOperationID(value string) error {
 	return nil
 }
 
+type cliStateMigrationRequest struct {
+	OperationID    string `json:"operation_id"`
+	StatePath      string `json:"state_path"`
+	JournalPath    string `json:"journal_path"`
+	ManifestDigest string `json:"manifest_digest"`
+	Target         string `json:"target"`
+	SourceHash     string `json:"source_hash"`
+	SourceSize     int64  `json:"source_size"`
+}
+
+func submitCLIStateMigrationRequest(
+	cmd *cobra.Command,
+	executorURL, operatorSession string,
+	signingKey ed25519.PrivateKey,
+	manifestDigest, role, audience, operationID, statePath, journalPath, target, sourceHash string,
+	sourceSize int64,
+	now time.Time,
+) ([]byte, error) {
+	nonceBytes := make([]byte, 16)
+	if _, err := rand.Read(nonceBytes); err != nil {
+		return nil, errors.New("generate executor request nonce failed")
+	}
+	body, err := json.Marshal(cliStateMigrationRequest{
+		OperationID:    operationID,
+		StatePath:      statePath,
+		JournalPath:    journalPath,
+		ManifestDigest: manifestDigest,
+		Target:         target,
+		SourceHash:     sourceHash,
+		SourceSize:     sourceSize,
+	})
+	if err != nil {
+		return nil, errors.New("encode executor migration request failed")
+	}
+	client := syncer.NewEnvelopeClient(strings.TrimSpace(executorURL), signingKey)
+	client.OperatorSessionCookie = strings.TrimSpace(operatorSession)
+	client.Clock = func() time.Time { return now }
+	return client.Submit(
+		cmd.Context(),
+		manifestDigest,
+		role,
+		audience,
+		hex.EncodeToString(nonceBytes),
+		now.Add(5*time.Minute),
+		body,
+	)
+}
+
 func writeCLIStateMigrationResult(cmd *cobra.Command, result syncStateMigrateResult, format string) error {
 	if format == "json" {
 		encoded, err := json.MarshalIndent(result, "", "  ")
@@ -388,7 +539,12 @@ func writeCLIStateMigrationResult(cmd *cobra.Command, result syncStateMigrateRes
 		return err
 	}
 	if result.DesiredHash != "" {
-		_, err = fmt.Fprintf(cmd.OutOrStdout(), "desired_hash: %s\ndesired_size: %d\n", result.DesiredHash, result.DesiredSize)
+		if _, err := fmt.Fprintf(cmd.OutOrStdout(), "desired_hash: %s\ndesired_size: %d\n", result.DesiredHash, result.DesiredSize); err != nil {
+			return err
+		}
+	}
+	if result.ResponseHash != "" {
+		_, err = fmt.Fprintf(cmd.OutOrStdout(), "response_hash: %s\nresponse_size: %d\n", result.ResponseHash, result.ResponseSize)
 	}
 	return err
 }

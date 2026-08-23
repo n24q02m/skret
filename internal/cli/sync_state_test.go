@@ -6,8 +6,11 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -59,7 +62,7 @@ func TestRootCmd_RegistersSyncStateMigrate(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, child)
 	assert.Equal(t, "migrate", child.Name())
-	for _, flag := range []string{"to", "state-manifest", "journal", "state", "public-key", "role", "audience", "operation-id", "execute", "format"} {
+	for _, flag := range []string{"to", "state-manifest", "journal", "state", "public-key", "role", "audience", "operation-id", "execute", "remote-execute", "executor-url", "operator-session", "signing-key", "format"} {
 		assert.NotNil(t, child.Flags().Lookup(flag), "missing flag %q", flag)
 	}
 }
@@ -296,6 +299,217 @@ func TestSyncStateMigrate_RejectsInvalidFlagsAndMissingExecutionIdentity(t *test
 			assert.Contains(t, strings.ToLower(err.Error()), strings.ToLower(test.want))
 		})
 	}
+}
+
+func TestReadCLIStateMigrationPrivateKey_AcceptsRawAndHexFiles(t *testing.T) {
+	_, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+
+	for _, test := range []struct {
+		name string
+		data []byte
+	}{
+		{name: "raw", data: privateKey},
+		{name: "hex", data: []byte(hex.EncodeToString(privateKey))},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			keyPath := filepath.Join(t.TempDir(), "operator-signing-key")
+			require.NoError(t, os.WriteFile(keyPath, test.data, 0o600))
+
+			got, err := readCLIStateMigrationPrivateKey(keyPath)
+			require.NoError(t, err)
+			assert.Equal(t, ed25519.PrivateKey(privateKey), got)
+		})
+	}
+}
+
+func TestSyncStateMigrate_RemoteExecuteSubmitsSignedMetadataOnlyRequestWithoutMutation(t *testing.T) {
+	root := t.TempDir()
+	statePath := filepath.Join(root, "state.json")
+	original := []byte(`{"schema_version":1,"metadata":"opaque-cli-remote-value"}`)
+	require.NoError(t, os.WriteFile(statePath, original, 0o600))
+	manifestPath, publicKeyHex, manifest := writeCLISignedStateManifest(t, root, map[string]string{"state.json": string(original)})
+	journalPath := filepath.Join(root, "migration.journal.json")
+	remotePublicKey, remotePrivateKey, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	signingKeyPath := filepath.Join(t.TempDir(), "operator-signing-key")
+	require.NoError(t, os.WriteFile(signingKeyPath, remotePrivateKey, 0o600))
+
+	var received syncer.ExecutorEnvelope
+	var receivedBody map[string]json.RawMessage
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodPost, r.Method)
+		assert.Equal(t, "/operator/executor-envelope", r.URL.Path)
+		assert.Equal(t, "session=opaque-operator-session", r.Header.Get("Cookie"))
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&received))
+		require.NoError(t, json.Unmarshal(received.Body, &receivedBody))
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"accepted":true,"response_secret":"opaque-remote-response-value"}`))
+	}))
+	defer server.Close()
+
+	stdout, stderr, err := executeStateMigrationCLI(t,
+		"sync-state", "migrate", "--to", "v2",
+		"--state-manifest", manifestPath,
+		"--journal", journalPath,
+		"--state", statePath,
+		"--public-key", publicKeyHex,
+		"--role", manifest.Role,
+		"--audience", manifest.Audience,
+		"--operation-id", "op-cli-remote",
+		"--executor-url", server.URL,
+		"--operator-session", "session=opaque-operator-session",
+		"--signing-key", signingKeyPath,
+		"--remote-execute",
+		"--format", "json",
+	)
+	require.NoError(t, err)
+	assert.Empty(t, stderr)
+	assert.NotContains(t, stdout, "opaque-cli-remote-value")
+	assert.NotContains(t, stdout, "opaque-remote-response-value")
+	assert.Contains(t, stdout, `"phase": "submitted"`)
+	assert.Contains(t, stdout, `"response_hash"`)
+	assert.Contains(t, stdout, `"response_size"`)
+	assert.Equal(t, original, mustReadCLIFile(t, statePath))
+	assert.NoFileExists(t, statePath+".v1")
+	assert.NoFileExists(t, journalPath)
+
+	require.NoError(t, syncer.VerifySignedEnvelope(&received, remotePublicKey, time.Now().UTC()))
+	assert.Equal(t, manifest.Role, received.Role)
+	assert.Equal(t, manifest.Audience, received.Audience)
+	assert.Equal(t, mustCLIStateMigrationManifestDigest(t, manifest), received.ManifestDigest)
+	assert.NotEmpty(t, received.Nonce)
+	assert.False(t, received.ExpiresAt.IsZero())
+	require.Len(t, receivedBody, 7)
+	statePathJSON, err := json.Marshal(statePath)
+	require.NoError(t, err)
+	journalPathJSON, err := json.Marshal(journalPath)
+	require.NoError(t, err)
+	assert.Equal(t, `"op-cli-remote"`, string(receivedBody["operation_id"]))
+	assert.Equal(t, string(statePathJSON), string(receivedBody["state_path"]))
+	assert.Equal(t, string(journalPathJSON), string(receivedBody["journal_path"]))
+	assert.Equal(t, `"`+mustCLIStateMigrationManifestDigest(t, manifest)+`"`, string(receivedBody["manifest_digest"]))
+	assert.Equal(t, `"v2"`, string(receivedBody["target"]))
+	assert.Equal(t, `"`+manifest.Files[0].SHA256+`"`, string(receivedBody["source_hash"]))
+	assert.Equal(t, strconv.FormatInt(int64(len(original)), 10), string(receivedBody["source_size"]))
+	assert.NotContains(t, string(received.Body), "opaque-cli-remote-value")
+	assert.NotContains(t, string(received.Body), "schema_version")
+}
+
+func TestSyncStateMigrate_RemoteModeRequiresAuthenticatedInputsAndRejectsLocalExecute(t *testing.T) {
+	t.Setenv("SKRET_OPERATOR_SESSION_COOKIE", "")
+	base := []string{"sync-state", "migrate", "--remote-execute", "--state-manifest", "manifest.json", "--journal", "journal.json", "--public-key", "public.key", "--state", "state.json", "--role", "operator", "--audience", "hub", "--operation-id", "op-cli-auth", "--executor-url", "http://127.0.0.1:1", "--operator-session", "session=opaque", "--signing-key", "private.key"}
+	for _, test := range []struct {
+		name string
+		args []string
+		want string
+	}{
+		{name: "missing executor url", args: removeCLIStateMigrationFlag(base, "--executor-url"), want: "executor-url"},
+		{name: "missing operator session", args: removeCLIStateMigrationFlag(base, "--operator-session"), want: "operator-session"},
+		{name: "missing signing key", args: removeCLIStateMigrationFlag(base, "--signing-key"), want: "signing-key"},
+		{name: "missing role", args: removeCLIStateMigrationFlag(base, "--role"), want: "role"},
+		{name: "missing audience", args: removeCLIStateMigrationFlag(base, "--audience"), want: "audience"},
+		{name: "missing operation id", args: removeCLIStateMigrationFlag(base, "--operation-id"), want: "operation-id"},
+		{name: "remote and local execute", args: append(append([]string{}, base...), "--execute"), want: "mutually exclusive"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			_, _, err := executeStateMigrationCLI(t, test.args...)
+			require.Error(t, err)
+			assert.Contains(t, strings.ToLower(err.Error()), strings.ToLower(test.want))
+		})
+	}
+}
+
+func TestSyncStateMigrate_RemoteErrorIsValueFreeAndDoesNotMutateLocalState(t *testing.T) {
+	root := t.TempDir()
+	statePath := filepath.Join(root, "state.json")
+	original := []byte(`{"schema_version":1,"metadata":"opaque-cli-remote-error-value"}`)
+	require.NoError(t, os.WriteFile(statePath, original, 0o600))
+	manifestPath, publicKeyHex, manifest := writeCLISignedStateManifest(t, root, map[string]string{"state.json": string(original)})
+	journalPath := filepath.Join(root, "migration.journal.json")
+	_, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	signingKeyPath := filepath.Join(t.TempDir(), "operator-signing-key")
+	require.NoError(t, os.WriteFile(signingKeyPath, []byte(hex.EncodeToString(privateKey)), 0o600))
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "opaque-remote-error-value", http.StatusBadGateway)
+	}))
+	defer server.Close()
+
+	stdout, stderr, err := executeStateMigrationCLI(t,
+		"sync-state", "migrate", "--to", "v2",
+		"--state-manifest", manifestPath,
+		"--journal", journalPath,
+		"--state", statePath,
+		"--public-key", publicKeyHex,
+		"--role", manifest.Role,
+		"--audience", manifest.Audience,
+		"--operation-id", "op-cli-remote-error",
+		"--executor-url", server.URL,
+		"--operator-session", "session=opaque-operator-session",
+		"--signing-key", signingKeyPath,
+		"--remote-execute",
+		"--format", "json",
+	)
+	require.Error(t, err)
+	assert.Empty(t, stdout)
+	assert.NotContains(t, stderr, "opaque-remote-error-value")
+	assert.NotContains(t, err.Error(), "opaque-remote-error-value")
+	assert.NotContains(t, err.Error(), "opaque-cli-remote-error-value")
+	assert.Equal(t, original, mustReadCLIFile(t, statePath))
+	assert.NoFileExists(t, statePath+".v1")
+	assert.NoFileExists(t, journalPath)
+}
+
+func TestSyncStateMigrate_RemoteModeUsesOperatorSessionEnvironmentFallback(t *testing.T) {
+	root := t.TempDir()
+	statePath := filepath.Join(root, "state.json")
+	original := []byte(`{"schema_version":1}`)
+	require.NoError(t, os.WriteFile(statePath, original, 0o600))
+	manifestPath, publicKeyHex, manifest := writeCLISignedStateManifest(t, root, map[string]string{"state.json": string(original)})
+	journalPath := filepath.Join(root, "migration.journal.json")
+	_, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	signingKeyPath := filepath.Join(t.TempDir(), "operator-signing-key")
+	require.NoError(t, os.WriteFile(signingKeyPath, privateKey, 0o600))
+	var gotCookie string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotCookie = r.Header.Get("Cookie")
+		_, _ = w.Write([]byte(`{"accepted":true}`))
+	}))
+	defer server.Close()
+	t.Setenv("SKRET_OPERATOR_SESSION_COOKIE", "session=opaque-env-session")
+
+	_, _, err = executeStateMigrationCLI(t,
+		"sync-state", "migrate", "--state-manifest", manifestPath,
+		"--journal", journalPath, "--state", statePath, "--public-key", publicKeyHex,
+		"--role", manifest.Role, "--audience", manifest.Audience, "--operation-id", "op-cli-env",
+		"--executor-url", server.URL, "--signing-key", signingKeyPath, "--remote-execute",
+	)
+	require.NoError(t, err)
+	assert.Equal(t, "session=opaque-env-session", gotCookie)
+	assert.Equal(t, original, mustReadCLIFile(t, statePath))
+	assert.NoFileExists(t, statePath+".v1")
+	assert.NoFileExists(t, journalPath)
+}
+
+func mustCLIStateMigrationManifestDigest(t *testing.T, manifest *syncer.StateManifest) string {
+	t.Helper()
+	digest, err := cliStateMigrationManifestDigest(manifest)
+	require.NoError(t, err)
+	return digest
+}
+
+func removeCLIStateMigrationFlag(args []string, flag string) []string {
+	result := make([]string, 0, len(args))
+	for i := 0; i < len(args); i++ {
+		if args[i] == flag {
+			i++
+			continue
+		}
+		result = append(result, args[i])
+	}
+	return result
 }
 
 func originalString(value []byte) string {
