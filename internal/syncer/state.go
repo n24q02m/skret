@@ -55,7 +55,12 @@ type KeyOutcome struct {
 	UpdatedAt   time.Time     `json:"updated_at"`
 }
 
-var ErrOperationMismatch = errors.New("sync operation mismatch")
+var (
+	ErrOperationMismatch      = errors.New("sync operation mismatch")
+	ErrOperationKeyMismatch   = errors.New("sync operation key mismatch")
+	ErrOperationPhaseMismatch = errors.New("sync operation phase mismatch")
+	ErrOperationEmpty         = errors.New("sync operation has no owned keys")
+)
 
 // NewOperationID returns a non-secret identifier for one sync attempt.
 func NewOperationID() (string, error) {
@@ -122,61 +127,169 @@ func (s *SyncState) RecordSuccess(operationID string, secrets []*provider.Secret
 	if err := s.checkOperation(operationID); err != nil {
 		return err
 	}
+	if err := s.validateBatch(operationID, secrets, OutcomeSucceeded); err != nil {
+		return err
+	}
 	for _, secret := range secrets {
-		if secret == nil {
-			return fmt.Errorf("sync operation contains nil secret")
+		if err := s.recordKeySuccess(operationID, secret, completed); err != nil {
+			return err
 		}
 	}
-	if s.Outcomes == nil {
-		s.Outcomes = make(map[string]KeyOutcome)
-	}
-	owned := make([]*provider.Secret, 0, len(secrets))
-	for _, secret := range secrets {
-		outcome, ok := s.Outcomes[secret.Key]
-		if !ok || outcome.OperationID != operationID {
-			continue
-		}
-		outcome.Status = OutcomeSucceeded
-		outcome.UpdatedAt = completed
-		s.Outcomes[secret.Key] = outcome
-		owned = append(owned, secret)
-	}
-	s.Update(owned)
-	s.Phase = OperationPhaseSucceeded
-	s.CompletedAt = timePtr(completed)
-	s.LastSuccess = timePtr(completed)
-	return nil
+	return s.FinalizeOperation(operationID, completed)
 }
 
 func (s *SyncState) RecordNeedsReconciliation(operationID string, secrets []*provider.Secret, completed time.Time) error {
 	if err := s.checkOperation(operationID); err != nil {
 		return err
 	}
-	for _, secret := range secrets {
-		if secret == nil {
-			return fmt.Errorf("sync operation contains nil secret")
-		}
-	}
-	if s.Outcomes == nil {
-		s.Outcomes = make(map[string]KeyOutcome)
+	if err := s.validateBatch(operationID, secrets, OutcomeNeedsReconciliation); err != nil {
+		return err
 	}
 	for _, secret := range secrets {
-		outcome, ok := s.Outcomes[secret.Key]
-		if !ok || outcome.OperationID != operationID {
-			continue
+		if err := s.recordKeyNeedsReconciliation(operationID, secret, completed); err != nil {
+			return err
 		}
-		outcome.Status = OutcomeNeedsReconciliation
-		outcome.UpdatedAt = completed
-		s.Outcomes[secret.Key] = outcome
 	}
+	return nil
+}
+
+// RecordKeySuccess records one owned secret acknowledgement and updates only
+// that secret's hash. Operation finalization remains explicit.
+func (s *SyncState) RecordKeySuccess(operationID string, secret *provider.Secret, completed time.Time) error {
+	if err := s.checkOperation(operationID); err != nil {
+		return err
+	}
+	return s.recordKeySuccess(operationID, secret, completed)
+}
+
+func (s *SyncState) recordKeySuccess(operationID string, secret *provider.Secret, completed time.Time) error {
+	outcome, err := s.ownedOutcome(operationID, secret)
+	if err != nil {
+		return err
+	}
+	if outcome.Status == OutcomeNeedsReconciliation {
+		return ErrOperationPhaseMismatch
+	}
+	outcome.Status = OutcomeSucceeded
+	outcome.UpdatedAt = completed
+	s.Outcomes[secret.Key] = outcome
+	s.Update([]*provider.Secret{secret})
+	return nil
+}
+
+// RecordKeyNeedsReconciliation records one owned secret acknowledgement that
+// cannot be treated as successful. It never updates that secret's hash.
+func (s *SyncState) RecordKeyNeedsReconciliation(operationID string, secret *provider.Secret, completed time.Time) error {
+	if err := s.checkOperation(operationID); err != nil {
+		return err
+	}
+	return s.recordKeyNeedsReconciliation(operationID, secret, completed)
+}
+
+func (s *SyncState) recordKeyNeedsReconciliation(operationID string, secret *provider.Secret, completed time.Time) error {
+	outcome, err := s.ownedOutcome(operationID, secret)
+	if err != nil {
+		return err
+	}
+	if outcome.Status == OutcomeSucceeded {
+		return ErrOperationPhaseMismatch
+	}
+	outcome.Status = OutcomeNeedsReconciliation
+	outcome.UpdatedAt = completed
+	s.Outcomes[secret.Key] = outcome
 	s.Phase = OperationPhaseNeedsReconciliation
 	s.CompletedAt = timePtr(completed)
 	return nil
 }
 
+func (s *SyncState) validateBatch(operationID string, secrets []*provider.Secret, status OutcomeStatus) error {
+	if len(secrets) == 0 {
+		return ErrOperationEmpty
+	}
+	for _, secret := range secrets {
+		outcome, err := s.ownedOutcome(operationID, secret)
+		if err != nil {
+			return err
+		}
+		switch {
+		case status == OutcomeSucceeded && outcome.Status == OutcomeNeedsReconciliation:
+			return ErrOperationPhaseMismatch
+		case status == OutcomeNeedsReconciliation && outcome.Status == OutcomeSucceeded:
+			return ErrOperationPhaseMismatch
+		}
+	}
+	return nil
+}
+
+func (s *SyncState) ownedOutcome(operationID string, secret *provider.Secret) (KeyOutcome, error) {
+	if secret == nil {
+		return KeyOutcome{}, fmt.Errorf("sync operation contains nil secret")
+	}
+	if strings.TrimSpace(secret.Key) == "" {
+		return KeyOutcome{}, fmt.Errorf("sync operation key is required")
+	}
+	outcome, ok := s.Outcomes[secret.Key]
+	if !ok || outcome.OperationID != operationID {
+		return KeyOutcome{}, ErrOperationKeyMismatch
+	}
+	return outcome, nil
+}
+
+func (s *SyncState) FinalizeOperation(operationID string, completed time.Time) error {
+	if err := s.checkOperation(operationID); err != nil {
+		return err
+	}
+	owned := 0
+	hasPending := false
+	hasNeedsReconciliation := false
+	for _, outcome := range s.Outcomes {
+		if outcome.OperationID != operationID {
+			continue
+		}
+		owned++
+		switch outcome.Status {
+		case OutcomeSucceeded:
+			continue
+		case OutcomeNeedsReconciliation:
+			hasNeedsReconciliation = true
+		default:
+			hasPending = true
+		}
+	}
+	if owned == 0 {
+		return ErrOperationEmpty
+	}
+	if hasNeedsReconciliation {
+		s.Phase = OperationPhaseNeedsReconciliation
+		if s.CompletedAt == nil {
+			s.CompletedAt = timePtr(completed)
+		}
+		return nil
+	}
+	if hasPending {
+		s.Phase = OperationPhasePending
+		s.CompletedAt = nil
+		return nil
+	}
+	s.Phase = OperationPhaseSucceeded
+	s.CompletedAt = timePtr(completed)
+	s.LastSuccess = timePtr(completed)
+	return nil
+}
+
 func (s *SyncState) operationPending() bool {
-	return s.OperationID != "" &&
-		(s.Phase == OperationPhasePending || (s.Phase == "" && s.CompletedAt == nil))
+	if s.OperationID == "" {
+		return false
+	}
+	if s.Phase == OperationPhasePending || (s.Phase == "" && s.CompletedAt == nil) {
+		return true
+	}
+	for _, outcome := range s.Outcomes {
+		if outcome.OperationID == s.OperationID && outcome.Status == OutcomePending {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *SyncState) checkOperation(operationID string) error {

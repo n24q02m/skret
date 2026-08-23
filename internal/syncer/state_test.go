@@ -1,6 +1,7 @@
 package syncer
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -460,13 +461,14 @@ func TestSyncState_RecordOnlyUpdatesCurrentKeyOwnership(t *testing.T) {
 		UpdatedAt: now,
 	}
 
-	require.NoError(t, state.RecordSuccess("op-current", []*provider.Secret{current[0], stale}, now.Add(time.Second)))
+	err := state.RecordSuccess("op-current", []*provider.Secret{current[0], stale}, now.Add(time.Second))
+	require.ErrorIs(t, err, ErrOperationKeyMismatch)
 
-	assert.Equal(t, OutcomeSucceeded, state.Outcomes["current"].Status)
+	assert.Equal(t, OutcomePending, state.Outcomes["current"].Status)
 	assert.Equal(t, "op-current", state.Outcomes["current"].OperationID)
 	assert.Equal(t, OutcomePending, state.Outcomes["stale"].Status)
 	assert.Equal(t, "op-old", state.Outcomes["stale"].OperationID)
-	assert.NotContains(t, state.Hashes, "stale")
+	assert.Empty(t, state.Hashes)
 }
 
 func TestSyncState_OperationMetadataRoundtripAndLegacyJSON(t *testing.T) {
@@ -497,4 +499,255 @@ func TestSyncState_OperationMetadataRoundtripAndLegacyJSON(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, legacy.Phase)
 	assert.Empty(t, legacy.Outcomes["K1"].OperationID)
+}
+
+func TestSyncState_RecordKeySuccess_PartialRemainsPending(t *testing.T) {
+	started := time.Date(2026, 8, 23, 10, 0, 0, 0, time.UTC)
+	completed := started.Add(time.Second)
+	secrets := []*provider.Secret{
+		{Key: "K1", Value: "v1"},
+		{Key: "K2", Value: "v2"},
+	}
+	state := &SyncState{Target: "dotenv", ID: ".env"}
+
+	require.NoError(t, state.BeginOperation("op-partial", secrets, started))
+	require.NoError(t, state.RecordKeySuccess("op-partial", secrets[0], completed))
+
+	assert.Equal(t, OutcomeSucceeded, state.Outcomes["K1"].Status)
+	assert.Equal(t, OutcomePending, state.Outcomes["K2"].Status)
+	assert.Equal(t, OperationPhasePending, state.Phase)
+	assert.Nil(t, state.CompletedAt)
+	assert.Nil(t, state.LastSuccess)
+	assert.Equal(t, hashSecret("v1"), state.Hashes["K1"])
+	assert.NotContains(t, state.Hashes, "K2")
+}
+
+func TestSyncState_RecordKeyNeedsReconciliation_PartialSetsPhase(t *testing.T) {
+	started := time.Date(2026, 8, 23, 10, 5, 0, 0, time.UTC)
+	completed := started.Add(time.Second)
+	secrets := []*provider.Secret{
+		{Key: "K1", Value: "v1"},
+		{Key: "K2", Value: "v2"},
+	}
+	state := &SyncState{Target: "dotenv", ID: ".env"}
+
+	require.NoError(t, state.BeginOperation("op-reconcile", secrets, started))
+	require.NoError(t, state.RecordKeySuccess("op-reconcile", secrets[0], completed))
+	require.NoError(t, state.RecordKeyNeedsReconciliation("op-reconcile", secrets[1], completed))
+
+	assert.Equal(t, OutcomeSucceeded, state.Outcomes["K1"].Status)
+	assert.Equal(t, OutcomeNeedsReconciliation, state.Outcomes["K2"].Status)
+	assert.Equal(t, OperationPhaseNeedsReconciliation, state.Phase)
+	assert.Nil(t, state.LastSuccess)
+	assert.Equal(t, hashSecret("v1"), state.Hashes["K1"])
+	assert.NotContains(t, state.Hashes, "K2")
+}
+
+func TestSyncState_FinalizeOperation_WaitsForAllAcks(t *testing.T) {
+	started := time.Date(2026, 8, 23, 10, 10, 0, 0, time.UTC)
+	firstAck := started.Add(time.Second)
+	finalized := started.Add(2 * time.Second)
+	secrets := []*provider.Secret{
+		{Key: "K1", Value: "v1"},
+		{Key: "K2", Value: "v2"},
+	}
+	state := &SyncState{Target: "dotenv", ID: ".env"}
+
+	require.NoError(t, state.BeginOperation("op-finalize", secrets, started))
+	require.NoError(t, state.RecordKeySuccess("op-finalize", secrets[0], firstAck))
+	require.NoError(t, state.FinalizeOperation("op-finalize", finalized))
+
+	assert.Equal(t, OperationPhasePending, state.Phase)
+	assert.Nil(t, state.CompletedAt)
+	assert.Nil(t, state.LastSuccess)
+	assert.Equal(t, OutcomeSucceeded, state.Outcomes["K1"].Status)
+	assert.Equal(t, OutcomePending, state.Outcomes["K2"].Status)
+	assert.NotContains(t, state.Hashes, "K2")
+
+	require.NoError(t, state.RecordKeySuccess("op-finalize", secrets[1], finalized))
+	require.NoError(t, state.FinalizeOperation("op-finalize", finalized))
+
+	assert.Equal(t, OperationPhaseSucceeded, state.Phase)
+	require.NotNil(t, state.CompletedAt)
+	require.NotNil(t, state.LastSuccess)
+	assert.Equal(t, finalized, *state.CompletedAt)
+	assert.Equal(t, finalized, *state.LastSuccess)
+	assert.Equal(t, hashSecret("v2"), state.Hashes["K2"])
+}
+
+func TestSyncState_FinalizeOperation_RetainsReconciliation(t *testing.T) {
+	started := time.Date(2026, 8, 23, 10, 15, 0, 0, time.UTC)
+	ack := started.Add(time.Second)
+	finalized := started.Add(2 * time.Second)
+	secrets := []*provider.Secret{
+		{Key: "K1", Value: "v1"},
+		{Key: "K2", Value: "v2"},
+	}
+	state := &SyncState{Target: "dotenv", ID: ".env"}
+
+	require.NoError(t, state.BeginOperation("op-reconcile-final", secrets, started))
+	require.NoError(t, state.RecordKeySuccess("op-reconcile-final", secrets[0], ack))
+	require.NoError(t, state.RecordKeyNeedsReconciliation("op-reconcile-final", secrets[1], ack))
+	require.NoError(t, state.FinalizeOperation("op-reconcile-final", finalized))
+
+	assert.Equal(t, OperationPhaseNeedsReconciliation, state.Phase)
+	assert.Equal(t, OutcomeSucceeded, state.Outcomes["K1"].Status)
+	assert.Equal(t, OutcomeNeedsReconciliation, state.Outcomes["K2"].Status)
+	assert.Nil(t, state.LastSuccess)
+	assert.Equal(t, hashSecret("v1"), state.Hashes["K1"])
+	assert.NotContains(t, state.Hashes, "K2")
+}
+
+func TestSyncState_RecordKeyRejectsStaleAndUnownedWithoutMutation(t *testing.T) {
+	started := time.Date(2026, 8, 23, 10, 20, 0, 0, time.UTC)
+	state := &SyncState{Target: "dotenv", ID: ".env"}
+	require.NoError(t, state.BeginOperation("op-current", []*provider.Secret{{Key: "K1", Value: "v1"}}, started))
+	state.Outcomes["old"] = KeyOutcome{
+		Status:      OutcomePending,
+		OperationID: "op-old",
+		UpdatedAt:   started,
+	}
+
+	before, err := json.Marshal(state)
+	require.NoError(t, err)
+
+	err = state.RecordKeySuccess("op-stale", &provider.Secret{Key: "K1", Value: "v1"}, started.Add(time.Second))
+	require.ErrorIs(t, err, ErrOperationMismatch)
+	after, marshalErr := json.Marshal(state)
+	require.NoError(t, marshalErr)
+	assert.Equal(t, string(before), string(after))
+
+	err = state.RecordKeyNeedsReconciliation("op-current", &provider.Secret{Key: "old", Value: "old-value"}, started.Add(time.Second))
+	require.Error(t, err)
+	after, marshalErr = json.Marshal(state)
+	require.NoError(t, marshalErr)
+	assert.Equal(t, string(before), string(after))
+
+	err = state.RecordKeySuccess("op-current", &provider.Secret{Key: "missing", Value: "missing-value"}, started.Add(time.Second))
+	require.Error(t, err)
+	after, marshalErr = json.Marshal(state)
+	require.NoError(t, marshalErr)
+	assert.Equal(t, string(before), string(after))
+}
+
+func TestSyncState_RecordBatchRejectsUnknownWithoutMutation(t *testing.T) {
+	started := time.Date(2026, 8, 23, 10, 25, 0, 0, time.UTC)
+	state := &SyncState{Target: "dotenv", ID: ".env"}
+	require.NoError(t, state.BeginOperation("op-batch", []*provider.Secret{{Key: "K1", Value: "v1"}}, started))
+
+	before, err := json.Marshal(state)
+	require.NoError(t, err)
+	err = state.RecordSuccess("op-batch", []*provider.Secret{
+		{Key: "K1", Value: "v1"},
+		{Key: "unknown", Value: "not-a-secret-value"},
+	}, started.Add(time.Second))
+	require.Error(t, err)
+	after, marshalErr := json.Marshal(state)
+	require.NoError(t, marshalErr)
+	assert.Equal(t, string(before), string(after))
+
+	err = state.RecordNeedsReconciliation("op-batch", []*provider.Secret{
+		{Key: "K1", Value: "v1"},
+		{Key: "unknown", Value: "not-a-secret-value"},
+	}, started.Add(time.Second))
+	require.Error(t, err)
+	after, marshalErr = json.Marshal(state)
+	require.NoError(t, marshalErr)
+	assert.Equal(t, string(before), string(after))
+}
+
+func TestSyncState_RecordBatchRejectsNilWithoutMutation(t *testing.T) {
+	started := time.Date(2026, 8, 23, 10, 30, 0, 0, time.UTC)
+	state := &SyncState{Target: "dotenv", ID: ".env"}
+	require.NoError(t, state.BeginOperation("op-nil", []*provider.Secret{{Key: "K1", Value: "v1"}}, started))
+
+	before, err := json.Marshal(state)
+	require.NoError(t, err)
+	err = state.RecordSuccess("op-nil", []*provider.Secret{nil}, started.Add(time.Second))
+	require.Error(t, err)
+	after, marshalErr := json.Marshal(state)
+	require.NoError(t, marshalErr)
+	assert.Equal(t, string(before), string(after))
+
+	err = state.RecordNeedsReconciliation("op-nil", []*provider.Secret{nil}, started.Add(time.Second))
+	require.Error(t, err)
+	after, marshalErr = json.Marshal(state)
+	require.NoError(t, marshalErr)
+	assert.Equal(t, string(before), string(after))
+}
+
+func TestSyncState_FinalizeOperationRejectsEmptyOperation(t *testing.T) {
+	state := &SyncState{Target: "dotenv", ID: ".env", Hashes: map[string]string{}}
+	before, err := json.Marshal(state)
+	require.NoError(t, err)
+
+	err = state.FinalizeOperation("op-empty", time.Date(2026, 8, 23, 10, 35, 0, 0, time.UTC))
+	require.Error(t, err)
+	after, marshalErr := json.Marshal(state)
+	require.NoError(t, marshalErr)
+	assert.Equal(t, string(before), string(after))
+}
+
+func TestSyncState_RecordKeyRejectsNilOrBlankWithoutMutation(t *testing.T) {
+	started := time.Date(2026, 8, 23, 10, 40, 0, 0, time.UTC)
+	state := &SyncState{Target: "dotenv", ID: ".env"}
+	require.NoError(t, state.BeginOperation("op-key-validation", []*provider.Secret{{Key: "K1", Value: "v1"}}, started))
+
+	before, err := json.Marshal(state)
+	require.NoError(t, err)
+	err = state.RecordKeySuccess("op-key-validation", nil, started.Add(time.Second))
+	require.Error(t, err)
+	after, marshalErr := json.Marshal(state)
+	require.NoError(t, marshalErr)
+	assert.Equal(t, string(before), string(after))
+
+	err = state.RecordKeyNeedsReconciliation("op-key-validation", &provider.Secret{
+		Key:   " ",
+		Value: "not-a-secret-value",
+	}, started.Add(time.Second))
+	require.Error(t, err)
+	after, marshalErr = json.Marshal(state)
+	require.NoError(t, marshalErr)
+	assert.Equal(t, string(before), string(after))
+}
+
+func TestSyncState_FinalizeOperationIgnoresOtherOperationOutcomes(t *testing.T) {
+	started := time.Date(2026, 8, 23, 10, 45, 0, 0, time.UTC)
+	finished := started.Add(time.Second)
+	current := &provider.Secret{Key: "current", Value: "current"}
+	state := &SyncState{Target: "dotenv", ID: ".env"}
+	require.NoError(t, state.BeginOperation("op-current", []*provider.Secret{current}, started))
+	state.Outcomes["old"] = KeyOutcome{
+		Status:      OutcomePending,
+		OperationID: "op-old",
+		UpdatedAt:   started,
+	}
+
+	require.NoError(t, state.RecordKeySuccess("op-current", current, finished))
+	require.NoError(t, state.FinalizeOperation("op-current", finished))
+
+	assert.Equal(t, OperationPhaseSucceeded, state.Phase)
+	require.NotNil(t, state.LastSuccess)
+	assert.Equal(t, finished, *state.LastSuccess)
+	assert.Equal(t, OutcomePending, state.Outcomes["old"].Status)
+	assert.Equal(t, "op-old", state.Outcomes["old"].OperationID)
+}
+
+func TestSyncState_BeginOperationReconcilesPendingAfterPartialFailure(t *testing.T) {
+	first := time.Date(2026, 8, 23, 10, 50, 0, 0, time.UTC)
+	second := first.Add(time.Minute)
+	secrets := []*provider.Secret{
+		{Key: "K1", Value: "v1"},
+		{Key: "K2", Value: "v2"},
+	}
+	state := &SyncState{Target: "dotenv", ID: ".env"}
+
+	require.NoError(t, state.BeginOperation("op-first", secrets, first))
+	require.NoError(t, state.RecordKeyNeedsReconciliation("op-first", secrets[0], first.Add(time.Second)))
+	require.NoError(t, state.BeginOperation("op-second", []*provider.Secret{secrets[1]}, second))
+
+	assert.Equal(t, OutcomeNeedsReconciliation, state.Outcomes["K1"].Status)
+	assert.Equal(t, "op-first", state.Outcomes["K1"].OperationID)
+	assert.Equal(t, OutcomePending, state.Outcomes["K2"].Status)
+	assert.Equal(t, "op-second", state.Outcomes["K2"].OperationID)
 }
