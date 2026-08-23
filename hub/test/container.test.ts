@@ -172,7 +172,7 @@ function fakeEnv(secrets: Partial<Env>) {
     get: () => stub,
   };
   return {
-    env: { SYNC, SKRET_HUB_TOKEN: "synthetic-hub-token", ...secrets } as unknown as Env,
+    env: { SYNC, SKRET_HUB_TOKEN: "synthetic-hub-token", SKRET_HUB_URL: "https://synthetic-hub.example.test", ...secrets } as unknown as Env,
     start,
     beginRun,
     markStartFailure,
@@ -192,6 +192,20 @@ describe("scheduled()", () => {
     const result = worker.scheduled({} as ScheduledController, env);
 
     await expect(result).rejects.toThrow("SKRET_HUB_TOKEN");
+    await expect(result).rejects.not.toThrow(secret);
+    expect(beginRun).not.toHaveBeenCalled();
+    expect(start).not.toHaveBeenCalled();
+  });
+  it.each([undefined, "   "])("rejects when SKRET_HUB_URL is %s", async (hubUrl) => {
+    const secret = "synthetic-secret";
+    const { env, start, beginRun } = fakeEnv({
+      SKRET_HUB_URL: hubUrl,
+      GITHUB_TOKEN: secret,
+    });
+
+    const result = worker.scheduled({} as ScheduledController, env);
+
+    await expect(result).rejects.toThrow("SKRET_HUB_URL");
     await expect(result).rejects.not.toThrow(secret);
     expect(beginRun).not.toHaveBeenCalled();
     expect(start).not.toHaveBeenCalled();

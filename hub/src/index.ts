@@ -40,6 +40,10 @@ export default {
     if (!hubToken?.trim()) {
       throw new Error("missing required Hub configuration: SKRET_HUB_TOKEN");
     }
+    const hubUrl = (env as unknown as Record<string, string | undefined>).SKRET_HUB_URL;
+    if (!hubUrl?.trim()) {
+      throw new Error("missing required Hub configuration: SKRET_HUB_URL");
+    }
 
     const envVars: Record<string, string> = {};
     for (const k of SYNC_ENV_KEYS) {
