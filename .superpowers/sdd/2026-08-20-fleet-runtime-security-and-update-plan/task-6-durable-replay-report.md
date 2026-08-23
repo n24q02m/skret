@@ -11,7 +11,7 @@ PASS for the bounded executor-only Durable Object replay-store source slice. No 
 ## Focused verification
 
 - TDD red: `pnpm exec vitest run test/executor-replay-store.test.ts` failed before implementation because `../src/executor-replay-store` did not exist.
-- Green: `pnpm exec vitest run test/executor-replay-store.test.ts` — PASS (8 tests).
+- Green: `pnpm exec vitest run test/executor-replay-store.test.ts` — PASS (9 tests, including cursor-resumed sweep coverage).
 - Typecheck: `pnpm typecheck` — PASS with no diagnostics.
 
 Only the requested focused Vitest file and Hub typecheck were run. No formatter, linter, project-wide suite, deploy, or external call was run.
@@ -21,7 +21,7 @@ Only the requested focused Vitest file and Hub typecheck were run. No formatter,
 - Added `ExecutorReplayScope` with stable `audience`, `role`, and `nonce` fields and generic value-free validation for blank, control-character, overlong, malformed, or whitespace-padded input.
 - Added `DurableExecutorReplayStore` around a typed `DurableObjectStorage` transaction surface. `consume` hashes the canonical scope under `private:executor-replay:`, stores only digest/expiry metadata, removes expired rows before replacement, and rejects every unexpired duplicate scope regardless of a later digest.
 - Masked storage/transaction failures as the generic `replay store unavailable` error; invalid requests and duplicate scopes use generic errors without scope, digest, or body values.
-- Added bounded transactional `sweep(now, limit)` with an explicit list limit and no unbounded list/delete operation.
+- Added bounded transactional `sweep(now, limit, startAfter?)` returning `{ removed, nextAfter }`; it passes an explicit list limit/cursor and uses no unbounded list/delete operation. A caller can resume after live rows so later expired rows cannot starve.
 - Kept the module unreferenced by `hub/src/router.ts` and other ordinary Hub source; it is source-only and makes no claim of deployed durability.
 
 ## Test coverage
@@ -32,8 +32,7 @@ Only the requested focused Vitest file and Hub typecheck were run. No formatter,
 - Invalid scope, digest, and expiry rejection without value leakage.
 - Transaction-error masking.
 - Deterministic private key derivation without embedded scope values.
-- Bounded expiry sweep.
-- Concurrent identical consumes with exactly one winner.
+- Bounded expiry sweep and cursor-resumed sweep past live rows that sort before an expired row.
 
 ## Residuals
 

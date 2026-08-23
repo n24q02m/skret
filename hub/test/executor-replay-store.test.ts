@@ -20,14 +20,14 @@ const SCOPE: ExecutorReplayScope = {
 type ReplayValue = { digest: string; expiresAt: number };
 type ReplayTransaction = {
   get<T>(key: string): Promise<T | undefined>;
-  list<T>(options?: { prefix?: string; limit?: number }): Promise<Map<string, T>>;
+  list<T>(options?: { prefix?: string; limit?: number; startAfter?: string }): Promise<Map<string, T>>;
   put<T>(key: string, value: T): Promise<void>;
   delete(key: string): Promise<boolean>;
 };
 
 class FakeDurableStorage {
   readonly values = new Map<string, unknown>();
-  readonly transactionOptions: Array<{ prefix?: string; limit?: number }> = [];
+  readonly transactionOptions: Array<{ prefix?: string; limit?: number; startAfter?: string }> = [];
   failNextTransactionWith?: Error;
   private transactionTail = Promise.resolve();
 
@@ -46,10 +46,12 @@ class FakeDurableStorage {
       }
       const transaction: ReplayTransaction = {
         get: async <V>(key: string) => this.values.get(key) as V | undefined,
-        list: async <V>(options: { prefix?: string; limit?: number } = {}) => {
+        list: async <V>(options: { prefix?: string; limit?: number; startAfter?: string } = {}) => {
           this.transactionOptions.push(options);
           const entries = [...this.values.entries()]
             .filter(([key]) => !options.prefix || key.startsWith(options.prefix))
+            .filter(([key]) => !options.startAfter || key > options.startAfter)
+            .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
             .slice(0, options.limit ?? Number.POSITIVE_INFINITY)
             .map(([key, value]) => [key, value] as [string, V]);
           return new Map(entries);
@@ -172,21 +174,45 @@ describe("DurableExecutorReplayStore", () => {
   it("sweeps only a bounded batch of expired rows transactionally", async () => {
     const storage = new FakeDurableStorage();
     const store = storeFor(storage);
-    const secondScope = { ...SCOPE, nonce: "nonce-002" };
-    const thirdScope = { ...SCOPE, nonce: "nonce-003" };
-    const liveScope = { ...SCOPE, nonce: "nonce-live" };
+    const expiredKeyA = `${EXECUTOR_REPLAY_PREFIX}${"1".repeat(64)}`;
+    const expiredKeyB = `${EXECUTOR_REPLAY_PREFIX}${"2".repeat(64)}`;
+    const liveKey = `${EXECUTOR_REPLAY_PREFIX}${"3".repeat(64)}`;
 
-    await seed(storage, SCOPE, { digest: DIGEST_A, expiresAt: NOW - 3 });
-    await seed(storage, secondScope, { digest: DIGEST_A, expiresAt: NOW - 2 });
-    await seed(storage, thirdScope, { digest: DIGEST_A, expiresAt: NOW - 1 });
-    await seed(storage, liveScope, { digest: DIGEST_A, expiresAt: FUTURE });
+    storage.values.set(expiredKeyA, { digest: DIGEST_A, expiresAt: NOW - 2 });
+    storage.values.set(expiredKeyB, { digest: DIGEST_A, expiresAt: NOW - 1 });
+    storage.values.set(liveKey, { digest: DIGEST_A, expiresAt: FUTURE });
 
-    await expect(store.sweep(NOW, 2)).resolves.toBe(2);
+    const result = await store.sweep(NOW, 2);
 
+    expect(result).toEqual({ removed: 2, nextAfter: expiredKeyB });
     expect(storage.transactionOptions).toContainEqual({ prefix: EXECUTOR_REPLAY_PREFIX, limit: 2 });
-    expect(storage.values.size).toBe(2);
-    expect(storage.values.has(await executorReplayKey(thirdScope))).toBe(true);
-    expect(storage.values.has(await executorReplayKey(liveScope))).toBe(true);
+    expect(storage.values.size).toBe(1);
+    expect(storage.values.has(liveKey)).toBe(true);
+  });
+  it("resumes a bounded sweep after live rows before an expired row", async () => {
+    const storage = new FakeDurableStorage();
+    const store = storeFor(storage);
+    const liveKey = `${EXECUTOR_REPLAY_PREFIX}${"0".repeat(64)}`;
+    const expiredKey = `${EXECUTOR_REPLAY_PREFIX}${"f".repeat(64)}`;
+
+    storage.values.set(liveKey, { digest: DIGEST_A, expiresAt: FUTURE });
+    storage.values.set(expiredKey, { digest: DIGEST_A, expiresAt: NOW - 1 });
+
+    const first = await store.sweep(NOW, 1);
+    expect(first).toEqual({ removed: 0, nextAfter: liveKey });
+
+    const second = await store.sweep(NOW, 1, first.nextAfter);
+    expect(second).toEqual({ removed: 1, nextAfter: expiredKey });
+
+    const third = await store.sweep(NOW, 1, second.nextAfter);
+    expect(third).toEqual({ removed: 0, nextAfter: null });
+    expect(storage.values.has(liveKey)).toBe(true);
+    expect(storage.values.has(expiredKey)).toBe(false);
+    expect(storage.transactionOptions).toEqual([
+      { prefix: EXECUTOR_REPLAY_PREFIX, limit: 1 },
+      { prefix: EXECUTOR_REPLAY_PREFIX, limit: 1, startAfter: liveKey },
+      { prefix: EXECUTOR_REPLAY_PREFIX, limit: 1, startAfter: expiredKey },
+    ]);
   });
 
   it("allows exactly one winner when identical consumes race", async () => {

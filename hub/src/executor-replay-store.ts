@@ -25,7 +25,16 @@ interface ExecutorReplayRecord {
   readonly digest: string;
   readonly expiresAt: number;
 }
+export interface ExecutorReplaySweepResult {
+  readonly removed: number;
+  readonly nextAfter: string | null;
+}
 
+type ReplaySweepListOptions = {
+  prefix: string;
+  limit: number;
+  startAfter?: string;
+};
 type ReplayStorage = Pick<DurableObjectStorage, "transaction">;
 
 export class ExecutorReplayInvalidRequestError extends Error {
@@ -106,31 +115,43 @@ export class DurableExecutorReplayStore {
 
   /**
    * Delete at most `limit` expired rows under the private prefix in one
-   * transaction. No unbounded list or delete operation is used.
+   * transaction. A returned cursor resumes after the last inspected key, so
+   * live rows cannot starve expired rows that sort later in the prefix.
    */
   async sweep(
     now = Date.now(),
     limit = DEFAULT_EXECUTOR_REPLAY_SWEEP_LIMIT,
-  ): Promise<number> {
+    startAfter?: string | null,
+  ): Promise<ExecutorReplaySweepResult> {
     validateNow(now);
     validateSweepLimit(limit);
+    validateSweepCursor(startAfter);
 
     try {
       return await this.storage.transaction(async (transaction) => {
-        const rows = await transaction.list<ExecutorReplayRecord>({
+        const listOptions: ReplaySweepListOptions = {
           prefix: EXECUTOR_REPLAY_PREFIX,
           limit,
-        });
+        };
+        if (startAfter !== undefined && startAfter !== null) {
+          listOptions.startAfter = startAfter;
+        }
+        const rows = await transaction.list<ExecutorReplayRecord>(listOptions);
         let removed = 0;
         let inspected = 0;
+        let lastInspectedKey: string | null = null;
         for (const [key, record] of rows) {
           if (inspected >= limit) break;
           inspected += 1;
+          lastInspectedKey = key;
           if (record && Number.isFinite(record.expiresAt) && record.expiresAt <= now) {
             if (await transaction.delete(key)) removed += 1;
           }
         }
-        return removed;
+        return {
+          removed,
+          nextAfter: rows.size >= limit ? lastInspectedKey : null,
+        };
       });
     } catch {
       throw new ExecutorReplayStoreUnavailableError();
@@ -176,6 +197,16 @@ function validateNow(now: number): void {
 
 function validateSweepLimit(limit: number): void {
   if (!Number.isSafeInteger(limit) || limit <= 0 || limit > MAX_SWEEP_LIMIT) {
+    throw new ExecutorReplayInvalidRequestError();
+  }
+}
+
+function validateSweepCursor(startAfter: unknown): void {
+  if (
+    startAfter !== undefined &&
+    startAfter !== null &&
+    (typeof startAfter !== "string" || !startAfter.startsWith(EXECUTOR_REPLAY_PREFIX))
+  ) {
     throw new ExecutorReplayInvalidRequestError();
   }
 }
