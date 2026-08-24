@@ -115,18 +115,22 @@ jobs:
   drift:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+      - name: Configure read-only AWS credentials
+        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c
         with:
           role-to-assume: arn:aws:iam::123456789012:role/skret-github-actions
           aws-region: us-east-1
+          allowed-account-ids: "123456789012"
 
-      - name: Install skret
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6
+
+      - name: Install verified Skret release
         run: |
-          curl -fsSL https://github.com/n24q02m/skret/releases/latest/download/skret_linux_amd64.tar.gz | tar xz
-          sudo mv skret /usr/local/bin/
+          curl -fsSL https://skret.n24q02m.com/install.sh | sh -s -- --user --no-completion
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Check for drift between staging and prod
         run: skret diff staging prod --exit-code

@@ -111,25 +111,27 @@ func TestBootstrapCmd_Provisions_StoresKey(t *testing.T) {
 	s := out.String()
 	assert.Contains(t, s, "skret-myapp")
 	assert.Contains(t, s, bsAccount)
-	assert.Contains(t, s, bsKeyID)
-	assert.Equal(t, 1, strings.Count(s, bsSecret), "secret must appear exactly once in stdout")
+	assert.NotContains(t, s, bsKeyID, "access-key identifiers must stay in the credential store")
+	assert.NotContains(t, s, bsSecret, "credential material must never reach stdout or stderr")
+	assert.Contains(t, s, "Stored in the local credential cache")
 }
 
-func TestBootstrapCmd_PrintOnly_DoesNotStore(t *testing.T) {
-	store := withFakeBootstrap(t, &bsFakeIAM{}, bsFakeSTS{})
+func TestBootstrapCmd_PrintOnlyFlagRejectedBeforeProvision(t *testing.T) {
+	iamFake := &bsFakeIAM{}
+	store := withFakeBootstrap(t, iamFake, bsFakeSTS{})
 
 	var out bytes.Buffer
 	cmd := NewRootCmd()
 	cmd.SetOut(&out)
 	cmd.SetErr(&out)
 	cmd.SetArgs([]string{"bootstrap", "--yes", "--print-only", "--project", "myapp", "--path", "/myapp/prod", "--region", "ap-southeast-1"})
-	require.NoError(t, cmd.Execute())
-
-	_, err := store.Load("aws")
-	assert.ErrorIs(t, err, auth.ErrCredentialNotFound)
-
-	s := out.String()
-	assert.Equal(t, 1, strings.Count(s, bsSecret), "secret must still be printed exactly once")
+	err := cmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown flag")
+	assert.Equal(t, 0, iamFake.calls)
+	_, storeErr := store.Load("aws")
+	assert.ErrorIs(t, storeErr, auth.ErrCredentialNotFound)
+	assert.NotContains(t, out.String(), bsSecret)
 }
 
 func TestBootstrapCmd_JSONOutputOmitsCredential(t *testing.T) {
@@ -148,6 +150,8 @@ func TestBootstrapCmd_JSONOutputOmitsCredential(t *testing.T) {
 	assert.NotEmpty(t, payload["policy_fingerprint"])
 	assert.NotContains(t, out.String(), bsSecret)
 	assert.NotContains(t, out.String(), "secret_key")
+	assert.NotContains(t, out.String(), bsKeyID)
+	assert.NotContains(t, out.String(), "access_key_id")
 }
 
 func TestBootstrapCmd_UnknownFormatFailsBeforeProvision(t *testing.T) {
@@ -408,8 +412,8 @@ func TestSanitizeProject(t *testing.T) {
 	assert.Equal(t, "project", sanitizeProject("/"))
 }
 
-// TestBootstrapCmd_ValueSafety asserts the secret never appears in an error and
-// appears exactly once in stdout.
+// TestBootstrapCmd_ValueSafety asserts the generated secret never appears in
+// command output.
 func TestBootstrapCmd_ValueSafety(t *testing.T) {
 	withFakeBootstrap(t, &bsFakeIAM{}, bsFakeSTS{})
 
@@ -421,5 +425,5 @@ func TestBootstrapCmd_ValueSafety(t *testing.T) {
 	err := cmd.Execute()
 	require.NoError(t, err)
 
-	assert.Equal(t, 1, strings.Count(out.String(), bsSecret))
+	assert.Equal(t, 0, strings.Count(out.String(), bsSecret))
 }

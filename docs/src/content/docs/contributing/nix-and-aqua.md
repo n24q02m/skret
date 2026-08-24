@@ -1,66 +1,32 @@
 ---
-title: Nix flake + aqua-registry
-description: "How to install skret via Nix and how the aqua-registry entry is kept in sync with each release."
+title: Nix and aqua channel status
+description: "Why Skret does not currently advertise Nix, aqua, or mise as verified installation channels."
 ---
 
-skret ships a Nix flake and is registered in the [aqua-registry](https://github.com/aquaproj/aqua-registry). Both channels install directly from the official GitHub release artifacts, so they inherit the cosign signatures and SBOMs attached to the upstream tag.
+Nix, aqua, and mise packages are **not currently published or verified Skret installation channels**.
 
-## Nix — from the flake
+The public `n24q02m/skret-nix` repository and the expected `aquaproj/aqua-registry/pkgs/n24q02m/skret/registry.yaml` entry are absent. The former in-repository `flake.nix` was not a release package: it had no lock file, used a fake vendor hash, hardcoded an unrelated version, and disabled tests. It was removed rather than advertised as an install path.
 
-```sh
-nix run github:n24q02m/skret
-# or, in a shell
-nix shell github:n24q02m/skret
-```
+Use one of the currently supported paths:
 
-To pin a specific release:
+- the checksum/signature-verifying one-shot installer;
+- Homebrew through `n24q02m/tap`;
+- Scoop through `n24q02m/scoop-bucket`;
+- `go install github.com/n24q02m/skret/cmd/skret@latest`;
+- a release archive verified against `checksums.txt` and `checksums.txt.bundle`.
 
-```sh
-nix run "github:n24q02m/skret?ref=v1.12.0"
-```
+## Conditions for restoring a channel
 
-First-time builds need a vendor hash — `vendorHash` in `flake.nix` starts as `lib.fakeHash`; the first `nix build` prints the real hash in the error, paste it in and commit.
+Do not add a Nix, aqua, or mise command back to public install documentation until the channel owner provides automated readback that proves:
 
-## Nix — from nixpkgs (pending)
+1. the public package repository or registry entry exists;
+2. its version equals the selected stable GitHub Release;
+3. every OS/architecture URL resolves to that release;
+4. every package checksum equals the release checksum;
+5. an install smoke reports the exact selected version;
+6. update and rollback behavior is documented;
+7. channel publication is bound to the protected stable release transaction.
 
-A `pkgs/by-name/sk/skret/package.nix` is queued for nixpkgs; once merged the following will work without a flake:
+Checksum consumption alone does not inherit the Sigstore identity verification performed by the one-shot installers. Any restored channel must state exactly which authenticity checks it performs.
 
-```sh
-nix shell nixpkgs#skret
-```
-
-## aqua + mise
-
-[aqua](https://aquaproj.github.io) caches signed release binaries directly. [mise](https://mise.jdx.dev) re-uses the aqua backend when installed, so `mise use -g aqua:n24q02m/skret@latest` gives you the same binary + checksum as `curl | sh`.
-
-`registry.yaml` entry (mirrored to `aquaproj/aqua-registry/pkgs/n24q02m/skret/registry.yaml`):
-
-```yaml
-packages:
-  - type: github_release
-    repo_owner: n24q02m
-    repo_name: skret
-    asset: "skret_{{ trimV .Version }}_{{ title .OS }}_{{ .Arch }}.{{ .Format }}"
-    format: tar.gz
-    format_overrides:
-      - goos: windows
-        format: zip
-    replacements:
-      amd64: amd64
-      arm64: arm64
-    supported_envs:
-      - darwin
-      - linux
-      - windows
-    checksum:
-      type: github_release
-      asset: "checksums.txt"
-      algorithm: sha256
-```
-
-Once aqua-registry PR is merged:
-
-```sh
-aqua install n24q02m/skret
-mise use -g aqua:n24q02m/skret@latest
-```
+The release/channel owner owns this residual. Until those readbacks pass, absence from the install table is intentional rather than a documentation omission.

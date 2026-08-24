@@ -40,8 +40,8 @@ type BootstrapOpts struct {
 	UserName string // default skret-<project>
 }
 
-// BootstrapResult is returned to store/print. SecretKey is shown once; callers
-// MUST NOT log it. No other field holds a secret.
+// BootstrapResult is returned to the credential-store boundary. SecretKey
+// MUST remain in memory and MUST NOT be logged or written to command output.
 type BootstrapResult struct {
 	Account           string
 	UserName          string

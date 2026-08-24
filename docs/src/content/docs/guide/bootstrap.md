@@ -68,45 +68,27 @@ Bootstrap runs these steps:
 2. **Create the IAM user** `skret-<project>` (reused if it already exists).
 3. **Attach the inline policy** scoped to your SSM path.
 4. **Create an access key** for the user.
-5. **Store it** in `~/.skret/credentials.yaml` and **print the secret key once**.
+5. **Store it** in the local credential cache without writing secret material to stdout or stderr.
 
-The admin or root credential is used only for these calls and is **never
-stored** — only the new scoped key is saved. The secret access key is shown a
-single time; AWS will not display it again.
+The admin or root credential is used only for these calls and is **never stored**. The generated scoped key remains inside the credential cache used by the current machine.
 
-## Another machine
+## Another machine or team member
 
-Do not re-run bootstrap on a second machine. AWS shows a secret access key only
-once and caps each user at two access keys. Instead, save the one-time key from
-the first run and add it on the second machine with the access-key login:
+`skret bootstrap` is deliberately local: it always stores the generated scoped credential for the current machine and never prints a secret access key. The former `--print-only` handoff path was removed because terminal output, scrollback, shell capture, and CI logs are not credential transports.
+
+Prefer IAM Identity Center SSO for another machine or team member:
 
 ```bash
-skret auth login aws --method access-key
-# paste the Access Key ID + Secret Access Key from the bootstrap output
+skret auth login aws --method sso
 ```
 
-## Provisioning for a team member
-
-An admin can provision a per-member scoped user without storing the key locally,
-using `--print-only`:
-
-```bash
-skret bootstrap --print-only --project teammate --path /myapp/prod
-```
-
-This creates the IAM user and key and prints the secret once, but does not write
-it to the admin's `~/.skret/credentials.yaml`. Hand the printed Access Key ID +
-Secret Access Key to the team member, who then pastes them on their own machine:
+If a separate static IAM identity is required, run bootstrap on that destination with a temporary, approved admin profile, verify the scoped credential was stored, then remove the temporary admin access. Alternatively, provision and transfer the credential through an organization-approved secret-delivery mechanism outside Skret, then run:
 
 ```bash
 skret auth login aws --method access-key
 ```
 
-For teams that prefer centrally revocable access without handing out static
-keys, use IAM Identity Center SSO (`skret auth login aws --method sso`) instead.
-SSO needs one-time AWS Identity Center setup but is revoked centrally from the
-console; per-member access keys are revoked one-by-one in IAM. See the
-[authentication guide](/guide/authentication/) for the SSO flow.
+Never pass a secret access key as a command-line argument or copy it through bootstrap stdout/stderr. See the [authentication guide](/guide/authentication/) for the supported login flows.
 
 ## Options
 
@@ -151,14 +133,6 @@ AWS profile to use as the bootstrap (admin) identity.
 skret bootstrap --profile admin
 ```
 
-### `--print-only`
-
-Print the key instead of storing it locally — for provisioning another person or
-machine.
-
-```bash
-skret bootstrap --print-only
-```
 
 ### `--force`
 
@@ -187,5 +161,4 @@ skret bootstrap --yes
 - The access key is **permanent**. Prefer running bootstrap from a dedicated
   admin IAM user rather than the account root, and rotate the generated key
   periodically by re-running with `--force`.
-- The secret access key is printed only once. Save it securely if you will need
-  it to set up another machine.
+- Secret access-key material is never written to bootstrap stdout or stderr. A storage failure reports revocation guidance without echoing the generated credential.

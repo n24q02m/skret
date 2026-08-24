@@ -59,7 +59,7 @@ var isInteractiveStdin = auth.IsInteractiveStdin
 func newBootstrapCmd(opts *GlobalOpts) *cobra.Command {
 	var (
 		project, path, region, userName, profile string
-		printOnly, force, yes                    bool
+		force, yes                             bool
 	)
 	cmd := &cobra.Command{
 		Use:   "bootstrap",
@@ -141,16 +141,14 @@ func newBootstrapCmd(opts *GlobalOpts) *cobra.Command {
 				return skret.NewError(skret.ExitProviderError, "bootstrap failed", err)
 			}
 
-			if !printOnly {
-				if err := bootstrapStore().Save(&auth.Credential{
-					Provider: "aws", Method: "access-key", Token: res.SecretKey,
-					Metadata: map[string]string{
-						"access_key_id":      res.AccessKeyID,
-						"policy_fingerprint": res.PolicyFingerprint,
-					},
-				}); err != nil {
-					return skret.NewError(skret.ExitConfigError, "bootstrap: store credential failed", err)
-				}
+			if err := bootstrapStore().Save(&auth.Credential{
+				Provider: "aws", Method: "access-key", Token: res.SecretKey,
+				Metadata: map[string]string{
+					"access_key_id":      res.AccessKeyID,
+					"policy_fingerprint": res.PolicyFingerprint,
+				},
+			}); err != nil {
+				return skret.NewError(skret.ExitConfigError, "bootstrap: store credential failed; revoke the newly created access key before retrying", err)
 			}
 
 			out := cmd.OutOrStdout()
@@ -160,7 +158,6 @@ func newBootstrapCmd(opts *GlobalOpts) *cobra.Command {
 					UserName          string `json:"user_name"`
 					PolicyName        string `json:"policy_name"`
 					PolicyFingerprint string `json:"policy_fingerprint"`
-					AccessKeyID       string `json:"access_key_id"`
 					Scope             string `json:"scope"`
 					Stored            bool   `json:"stored"`
 				}{
@@ -168,22 +165,16 @@ func newBootstrapCmd(opts *GlobalOpts) *cobra.Command {
 					UserName:          res.UserName,
 					PolicyName:        res.PolicyName,
 					PolicyFingerprint: res.PolicyFingerprint,
-					AccessKeyID:       res.AccessKeyID,
 					Scope:             path,
-					Stored:            !printOnly,
+					Stored:            true,
 				})
 			}
 			if format != "table" {
 				return skret.NewError(skret.ExitValidationError,
 					fmt.Sprintf("bootstrap: unknown --format %q (table, json)", format), nil)
 			}
-			fmt.Fprintf(out, "\nCreated IAM user %s in account %s\nPolicy %s scoped to %s\nAccess Key ID: %s\n",
-				res.UserName, res.Account, res.PolicyName, path, res.AccessKeyID)
-			if printOnly {
-				fmt.Fprintf(out, "\nSecret Access Key (shown once, give to the user; not stored locally):\n  %s\n", res.SecretKey)
-			} else {
-				fmt.Fprintf(out, "\nStored locally. Secret Access Key (shown once — save it to set up another machine with `skret auth login aws`):\n  %s\n", res.SecretKey)
-			}
+			fmt.Fprintf(out, "\nCreated IAM user %s in account %s\nPolicy %s scoped to %s\nStored in the local credential cache; credential material was not written to command output.\n",
+				res.UserName, res.Account, res.PolicyName, path)
 			return nil
 		},
 	}
@@ -192,7 +183,6 @@ func newBootstrapCmd(opts *GlobalOpts) *cobra.Command {
 	cmd.Flags().StringVar(&region, "region", "", "AWS region (default: config/env)")
 	cmd.Flags().StringVar(&userName, "user-name", "", "override IAM user name (default skret-<project>)")
 	cmd.Flags().StringVar(&profile, "profile", "", "AWS profile to use as the bootstrap identity (default: paste admin/root keys interactively)")
-	cmd.Flags().BoolVar(&printOnly, "print-only", false, "print the key instead of storing it (provision for another person/machine)")
 	cmd.Flags().BoolVar(&force, "force", false, "provision even if an aws credential is already stored")
 	cmd.Flags().BoolVar(&yes, "yes", false, "skip the confirmation prompt")
 	return cmd
