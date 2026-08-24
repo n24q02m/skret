@@ -23,6 +23,8 @@ let MANIFEST_DIGEST = "";
 let STATE_MANIFEST_PUBLIC_KEY = new Uint8Array();
 const SOURCE_HASH = "b".repeat(64);
 const CALLER_CONTEXT = `sha256:${"c".repeat(64)}`;
+const IMAGE_DIGEST = `sha256:${"d".repeat(64)}`;
+const CONFIG_DIGEST = `sha256:${"e".repeat(64)}`;
 type ReplayNamespace = NonNullable<SecurityExecutorEnv["EXECUTOR_REPLAY"]>;
 const RESPONSE_KEY_BYTES = new Uint8Array(Array.from({ length: 32 }, (_, index) => index + 1));
 
@@ -160,16 +162,53 @@ function request(body: BodyInit | null, init: RequestInit & { url?: string } = {
 function namespaceFor(status: string = "accepted") {
   const consume = vi.fn(async () => ({ status }));
   const sweep = vi.fn(async () => ({ status: "swept", removed: 0, nextAfter: null }));
+  let operation: Record<string, unknown> | null = null;
+  let storedResult: Uint8Array | null = null;
+  const begin = vi.fn(async (request: Record<string, unknown>) => {
+    if (operation?.status === "succeeded") {
+      return { status: "existing", operation };
+    }
+    operation = { ...request, status: "active" };
+    return { status: "started", operation };
+  });
+  const complete = vi.fn(
+    async (
+      _operationID: string,
+      _invocationID: string,
+      _status: string,
+      _digest: string | null,
+      _now: number,
+      redactedResult?: Uint8Array,
+    ) => {
+      if (redactedResult) storedResult = redactedResult.slice();
+      operation = { ...(operation ?? {}), status: "succeeded" };
+      return operation;
+    },
+  );
+  const readResult = vi.fn(async () => storedResult?.slice() ?? null);
+  const watchdog = vi.fn(async () => ({ marked_timeout: [], terminalized: [], next_alarm_at: null }));
   return {
     consume,
     sweep,
+    begin,
+    complete,
+    readResult,
+    watchdog,
     namespace: {
       getByName: vi.fn(() => ({ consume, sweep })),
+    },
+    operationNamespace: {
+      getByName: vi.fn(() => ({ begin, complete, readResult, watchdog })),
     },
   };
 }
 
-function envFor(publicKey: Uint8Array, namespace: unknown, overrides: Partial<SecurityExecutorEnv> = {}): SecurityExecutorEnv {
+function envFor(
+  publicKey: Uint8Array,
+  namespace: unknown,
+  overrides: Partial<SecurityExecutorEnv> = {},
+): SecurityExecutorEnv {
+  const operationNamespace = namespaceFor().operationNamespace;
   return {
     EXECUTOR_EXPECTED_AUDIENCE: AUDIENCE,
     EXECUTOR_EXPECTED_ROLE: ROLE,
@@ -177,6 +216,9 @@ function envFor(publicKey: Uint8Array, namespace: unknown, overrides: Partial<Se
     EXECUTOR_STATE_MANIFEST_PUBLIC_KEY: toBase64(STATE_MANIFEST_PUBLIC_KEY),
     EXECUTOR_RESPONSE_KEY: toBase64(RESPONSE_KEY_BYTES),
     EXECUTOR_REPLAY: namespace as SecurityExecutorEnv["EXECUTOR_REPLAY"],
+    EXECUTOR_OPERATIONS: operationNamespace as unknown as SecurityExecutorEnv["EXECUTOR_OPERATIONS"],
+    EXECUTOR_IMAGE_DIGEST: IMAGE_DIGEST,
+    EXECUTOR_CONFIG_DIGEST: CONFIG_DIGEST,
     ...overrides,
   };
 }
@@ -188,12 +230,15 @@ describe.sequential("security executor Worker", () => {
     const { namespace } = namespaceFor();
     const candidates: Array<Partial<SecurityExecutorEnv>> = [
       { EXECUTOR_EXPECTED_AUDIENCE: "" },
+      { EXECUTOR_OPERATIONS: undefined },
       { EXECUTOR_EXPECTED_ROLE: "" },
       { EXECUTOR_PUBLIC_KEY: "not-a-key" },
       { EXECUTOR_RESPONSE_KEY: "00" },
       { EXECUTOR_REPLAY: undefined },
       { EXECUTOR_EXPECTED_AUDIENCE: "a".repeat(257) },
       { EXECUTOR_RESPONSE_KEY: "a".repeat(257) },
+      { EXECUTOR_IMAGE_DIGEST: undefined },
+      { EXECUTOR_CONFIG_DIGEST: "not-a-digest" },
     ];
 
     for (const candidate of candidates) {
@@ -269,28 +314,42 @@ describe.sequential("security executor Worker", () => {
     expect(await response.text()).toBe("");
   });
 
-  it("sweeps one bounded replay batch from the scheduled hook", async () => {
+  it("runs one bounded replay sweep and operation watchdog batch", async () => {
     const { publicKey } = await keyPair();
-    const { namespace, sweep } = namespaceFor();
+    const replay = namespaceFor();
+    const operations = namespaceFor();
 
-    await securityExecutor.scheduled({} as ScheduledController, envFor(publicKey, namespace));
+    await securityExecutor.scheduled(
+      {} as ScheduledController,
+      envFor(publicKey, replay.namespace, {
+        EXECUTOR_OPERATIONS: operations.operationNamespace as unknown as SecurityExecutorEnv["EXECUTOR_OPERATIONS"],
+      }),
+    );
 
-    expect(sweep).toHaveBeenCalledWith(expect.any(Number), DEFAULT_EXECUTOR_REPLAY_SWEEP_LIMIT);
+    expect(replay.sweep).toHaveBeenCalledWith(expect.any(Number), DEFAULT_EXECUTOR_REPLAY_SWEEP_LIMIT);
+    expect(operations.watchdog).toHaveBeenCalledWith(expect.any(Number));
   });
 
-  it("fails closed when the scheduled replay sweep binding or result is unavailable", async () => {
+  it("fails closed when either scheduled maintenance binding or result is unavailable", async () => {
     const { publicKey } = await keyPair();
+    const replay = namespaceFor();
 
     await expect(
       securityExecutor.scheduled({} as ScheduledController, envFor(publicKey, undefined)),
-    ).rejects.toThrow("executor replay sweep unavailable");
+    ).rejects.toThrow("executor maintenance unavailable");
+    await expect(
+      securityExecutor.scheduled(
+        {} as ScheduledController,
+        envFor(publicKey, replay.namespace, { EXECUTOR_OPERATIONS: undefined }),
+      ),
+    ).rejects.toThrow("executor maintenance unavailable");
 
     const malformedNamespace = {
       getByName: vi.fn(() => ({ sweep: vi.fn(async () => ({ status: "unexpected", secret: "must-not-leak" })) })),
     };
     await expect(
       securityExecutor.scheduled({} as ScheduledController, envFor(publicKey, malformedNamespace)),
-    ).rejects.toThrow("executor replay sweep unavailable");
+    ).rejects.toThrow("executor maintenance unavailable");
   });
 
   it("maps a bounded Durable Object sweep to value-free status", async () => {
@@ -334,11 +393,33 @@ describe.sequential("security executor Worker", () => {
     const { publicKey, privateKey } = await keyPair();
     const body = await migrationBody();
     const envelope = await makeEnvelope(privateKey, body);
-    const { namespace } = namespaceFor();
-    const response = await securityExecutor.fetch(request(JSON.stringify(envelope)), envFor(publicKey, namespace));
+    const operation = namespaceFor();
+    const response = await securityExecutor.fetch(
+      request(JSON.stringify(envelope)),
+      envFor(publicKey, operation.namespace, {
+        EXECUTOR_OPERATIONS: operation.operationNamespace as unknown as SecurityExecutorEnv["EXECUTOR_OPERATIONS"],
+      }),
+    );
     const encrypted = new TextDecoder().decode(await response.arrayBuffer());
 
     expect(response.status).toBe(200);
+    expect(operation.begin).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operation_id: "migration-20260824-001",
+        exclusive: false,
+        fingerprint: expect.stringMatching(/^sha256:[a-f0-9]{64}$/u),
+        config_digest: CONFIG_DIGEST,
+      }),
+      expect.any(Number),
+    );
+    expect(operation.complete).toHaveBeenCalledWith(
+      "migration-20260824-001",
+      expect.stringMatching(/^inv-[a-f0-9]{64}$/u),
+      "succeeded",
+      expect.stringMatching(/^sha256:[a-f0-9]{64}$/u),
+      expect.any(Number),
+      expect.any(Uint8Array),
+    );
     expect(response.headers.get("Content-Type")).toBe("application/octet-stream");
     expect(encrypted).not.toContain("C:\\skret\\state\\state.json");
     expect(encrypted).not.toContain(new TextDecoder().decode(body));
@@ -361,6 +442,50 @@ describe.sequential("security executor Worker", () => {
       manifest_digest: MANIFEST_DIGEST,
       source_hash: SOURCE_HASH,
       source_size: 128,
+      status: "accepted",
+    });
+  });
+
+  it("re-encrypts a persisted redacted result for a fresh-envelope retry", async () => {
+    const { publicKey, privateKey } = await keyPair();
+    const body = await migrationBody();
+    const firstEnvelope = await makeEnvelope(privateKey, body, { nonce: "nonce-first-ack" });
+    const secondEnvelope = await makeEnvelope(privateKey, body, { nonce: "nonce-second-ack" });
+    const operation = namespaceFor();
+    const env = envFor(publicKey, operation.namespace, {
+      EXECUTOR_OPERATIONS: operation.operationNamespace as unknown as SecurityExecutorEnv["EXECUTOR_OPERATIONS"],
+    });
+
+    const first = await securityExecutor.fetch(request(JSON.stringify(firstEnvelope)), env);
+    const second = await securityExecutor.fetch(request(JSON.stringify(secondEnvelope)), env);
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    expect(operation.complete).toHaveBeenCalledTimes(1);
+    expect(operation.readResult).toHaveBeenCalledTimes(1);
+    const secondResult = JSON.parse(
+      new TextDecoder().decode(await second.arrayBuffer()),
+    ) as {
+      iv: string;
+      ciphertext: string;
+    };
+    const key = await crypto.subtle.importKey(
+      "raw",
+      RESPONSE_KEY_BYTES,
+      "AES-GCM",
+      false,
+      ["decrypt"],
+    );
+    const aad = new TextEncoder().encode(
+      `${METADATA_ACK_AAD_PREFIX}|${AUDIENCE}|${ROLE}|${MANIFEST_DIGEST}|${String(secondEnvelope.nonce)}`,
+    );
+    const plaintext = await crypto.subtle.decrypt(
+      { name: "AES-GCM", iv: fromBase64Url(secondResult.iv), additionalData: aad },
+      key,
+      fromBase64Url(secondResult.ciphertext),
+    );
+    expect(JSON.parse(new TextDecoder().decode(plaintext))).toMatchObject({
+      operation_id: "migration-20260824-001",
       status: "accepted",
     });
   });

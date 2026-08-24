@@ -81,23 +81,31 @@ class ExecutorConfigPolicyTests(unittest.TestCase):
             },
         )
 
-    def test_executor_config_declares_replay_binding_and_migration(self) -> None:
+    def test_executor_config_declares_replay_and_operation_bindings(self) -> None:
         config = parse_jsonc(EXECUTOR_CONFIG)
         self.assertEqual(config["name"], "skret-security-executor")
         self.assertEqual(config["main"], "src/security-executor.ts")
         self.assertEqual(
             config["durable_objects"]["bindings"],
-            [{"name": "EXECUTOR_REPLAY", "class_name": "SecurityExecutorReplay"}],
+            [
+                {"name": "EXECUTOR_REPLAY", "class_name": "SecurityExecutorReplay"},
+                {"name": "EXECUTOR_OPERATIONS", "class_name": "SecurityExecutorOperations"},
+            ],
         )
         self.assertEqual(
             config["migrations"],
-            [{"tag": "v1", "new_sqlite_classes": ["SecurityExecutorReplay"]}],
+            [
+                {"tag": "v1", "new_sqlite_classes": ["SecurityExecutorReplay"]},
+                {"tag": "v2", "new_sqlite_classes": ["SecurityExecutorOperations"]},
+            ],
         )
         self.assertEqual(
             config["vars"],
             {
                 "EXECUTOR_EXPECTED_AUDIENCE": "skret-security-executor",
                 "EXECUTOR_EXPECTED_ROLE": "operator",
+                "EXECUTOR_IMAGE_DIGEST": "<executor-image-digest>",
+                "EXECUTOR_CONFIG_DIGEST": "<executor-config-digest>",
             },
         )
         self.assertNotIn("EXECUTOR_PUBLIC_KEY", config)

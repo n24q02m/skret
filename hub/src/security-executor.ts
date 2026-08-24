@@ -15,6 +15,14 @@ import {
   type PrivateExecutorReplayStore,
 } from "./private-executor-handler";
 
+import {
+  createOperationStoreAdapter,
+  executorOperationFingerprint,
+  EXECUTOR_OPERATION_OBJECT_NAME,
+  type ExecutorOperationStore,
+  type SecurityExecutorOperations,
+} from "./executor-operation-store";
+export { SecurityExecutorOperations } from "./executor-operation-store";
 export const SECURITY_EXECUTOR_SERVICE = "skret-security-executor";
 export const SECURITY_EXECUTOR_REPLAY_BINDING = "EXECUTOR_REPLAY";
 export const SECURITY_EXECUTOR_REPLAY_OBJECT_NAME = "security-executor-replay";
@@ -62,11 +70,14 @@ export interface SecurityExecutorReplaySweepResult {
 
 export interface SecurityExecutorEnv {
   readonly EXECUTOR_REPLAY?: DurableObjectNamespace<SecurityExecutorReplay>;
+  readonly EXECUTOR_OPERATIONS?: DurableObjectNamespace<SecurityExecutorOperations>;
   readonly EXECUTOR_EXPECTED_AUDIENCE?: string;
   readonly EXECUTOR_EXPECTED_ROLE?: string;
   readonly EXECUTOR_PUBLIC_KEY?: string;
   readonly EXECUTOR_STATE_MANIFEST_PUBLIC_KEY?: string;
   readonly EXECUTOR_RESPONSE_KEY?: string;
+  readonly EXECUTOR_IMAGE_DIGEST?: string;
+  readonly EXECUTOR_CONFIG_DIGEST?: string;
 }
 
 interface MetadataMigrationRequest {
@@ -161,14 +172,20 @@ export async function buildSecurityExecutorOptions(
     ED25519_PUBLIC_KEY_BYTES,
   );
   const responseKeyBytes = decodeConfiguredBytes(env.EXECUTOR_RESPONSE_KEY, AES_GCM_KEY_BYTES);
+  const imageDigest = readConfigDigest(env.EXECUTOR_IMAGE_DIGEST);
+  const configDigest = readConfigDigest(env.EXECUTOR_CONFIG_DIGEST);
   const replayNamespace = env.EXECUTOR_REPLAY;
+  const operationNamespace = env.EXECUTOR_OPERATIONS;
   if (
     !expectedAudience ||
     !expectedRole ||
     !publicKey ||
     !stateManifestPublicKey ||
     !responseKeyBytes ||
-    !hasReplayNamespace(replayNamespace)
+    !imageDigest ||
+    !configDigest ||
+    !hasReplayNamespace(replayNamespace) ||
+    !hasOperationNamespace(operationNamespace)
   ) {
     return null;
   }
@@ -182,12 +199,22 @@ export async function buildSecurityExecutorOptions(
     return null;
   }
 
+  const operationStore = createOperationStoreAdapter(operationNamespace);
   return {
     expectedAudience,
     expectedRole,
     publicKey,
     replayStore: createReplayStoreAdapter(replayNamespace),
-    execute: (body, envelope) => executeMetadataMigration(body, envelope, responseKey, stateManifestKey),
+    execute: (body, envelope) =>
+      executeMetadataMigration(
+        body,
+        envelope,
+        responseKey,
+        stateManifestKey,
+        operationStore,
+        imageDigest,
+        configDigest,
+      ),
   };
 }
 
@@ -200,22 +227,28 @@ export async function handleSecurityExecutorRequest(request: Request, env: Secur
     return emptyResponse(503);
   }
 }
-
 const worker = {
   fetch: handleSecurityExecutorRequest,
   async scheduled(_controller: ScheduledController, env: SecurityExecutorEnv): Promise<void> {
-    const namespace = env?.EXECUTOR_REPLAY;
-    if (!hasReplayNamespace(namespace)) throw new Error("executor replay sweep unavailable");
+    const replayNamespace = env?.EXECUTOR_REPLAY;
+    const operationNamespace = env?.EXECUTOR_OPERATIONS;
+    if (
+      !hasReplayNamespace(replayNamespace) ||
+      !hasOperationNamespace(operationNamespace)
+    ) {
+      throw new Error("executor maintenance unavailable");
+    }
 
     try {
-      const stub = namespace.getByName(SECURITY_EXECUTOR_REPLAY_OBJECT_NAME);
-      const result = await stub.sweep(Date.now(), DEFAULT_EXECUTOR_REPLAY_SWEEP_LIMIT);
-      const removed = result?.removed;
-      const nextAfter = result?.nextAfter;
+      const replayResult = await replayNamespace
+        .getByName(SECURITY_EXECUTOR_REPLAY_OBJECT_NAME)
+        .sweep(Date.now(), DEFAULT_EXECUTOR_REPLAY_SWEEP_LIMIT);
+      const removed = replayResult?.removed;
+      const nextAfter = replayResult?.nextAfter;
       if (
-        !result ||
-        typeof result !== "object" ||
-        result.status !== "swept" ||
+        !replayResult ||
+        typeof replayResult !== "object" ||
+        replayResult.status !== "swept" ||
         typeof removed !== "number" ||
         !Number.isSafeInteger(removed) ||
         removed < 0 ||
@@ -223,8 +256,21 @@ const worker = {
       ) {
         throw new Error("invalid replay sweep result");
       }
+
+      const operationResult = await operationNamespace
+        .getByName(EXECUTOR_OPERATION_OBJECT_NAME)
+        .watchdog(Date.now());
+      if (
+        !operationResult ||
+        !Array.isArray(operationResult.marked_timeout) ||
+        !Array.isArray(operationResult.terminalized) ||
+        (operationResult.next_alarm_at !== null &&
+          !Number.isSafeInteger(operationResult.next_alarm_at))
+      ) {
+        throw new Error("invalid operation watchdog result");
+      }
     } catch {
-      throw new Error("executor replay sweep unavailable");
+      throw new Error("executor maintenance unavailable");
     }
   },
 };
@@ -236,6 +282,9 @@ async function executeMetadataMigration(
   envelope: ExecutorEnvelope,
   responseKey: CryptoKey,
   stateManifestKey: CryptoKey,
+  operationStore: ExecutorOperationStore,
+  imageDigest: string,
+  configDigest: string,
 ): Promise<Uint8Array> {
   const metadata = parseMetadataMigrationRequest(body, envelope);
   if (!metadata) throw new Error("invalid migration metadata");
@@ -243,7 +292,50 @@ async function executeMetadataMigration(
     throw new Error("invalid state manifest authority");
   }
 
-  const plaintext = new TextEncoder().encode(
+  const encoder = new TextEncoder();
+  const startedAt = Date.now();
+  const invocationDigest = await sha256Digest(
+    encoder.encode(`${envelope.nonce}\u0000${envelope.signature}`),
+  );
+  const invocationID = `inv-${invocationDigest.slice("sha256:".length)}`;
+  const scheduleDigest = await sha256Digest(
+    encoder.encode(`${envelope.role}\u0000${metadata.manifest_digest}`),
+  );
+  const generation = `manifest-${metadata.manifest_digest.slice("sha256:".length)}`;
+  const sourceDigest = `sha256:${metadata.source_hash}`;
+  const operationFingerprint = await executorOperationFingerprint({
+    schedule_digest: scheduleDigest,
+    exclusive: false,
+    generation,
+    source_digest: sourceDigest,
+    target_digest: metadata.manifest_digest,
+    config_digest: configDigest,
+    image_digest: imageDigest,
+  });
+  const operation = await operationStore.begin(
+    {
+      operation_id: metadata.operation_id,
+      schedule_digest: scheduleDigest,
+      exclusive: false,
+      invocation_id: invocationID,
+      fingerprint: operationFingerprint,
+      generation,
+      source_digest: sourceDigest,
+      target_digest: metadata.manifest_digest,
+      config_digest: configDigest,
+      deadline_at: startedAt + 14 * 60 * 1000,
+    },
+    startedAt,
+  );
+
+  if (operation.status === "existing" && operation.operation.status === "succeeded") {
+    const storedResult = await operationStore.readResult(metadata.operation_id);
+    if (!storedResult) throw new Error("executor operation result unavailable");
+    return encryptMetadataAcknowledgement(storedResult, envelope, responseKey);
+  }
+  if (operation.status !== "started") throw new Error("executor operation unavailable");
+
+  const redactedResult = encoder.encode(
     JSON.stringify({
       operation_id: metadata.operation_id,
       target: metadata.target,
@@ -253,6 +345,38 @@ async function executeMetadataMigration(
       status: "accepted",
     }),
   );
+  try {
+    await operationStore.complete(
+      metadata.operation_id,
+      invocationID,
+      "succeeded",
+      await sha256Digest(redactedResult),
+      Date.now(),
+      redactedResult,
+    );
+  } catch (error) {
+    try {
+      await operationStore.complete(
+        metadata.operation_id,
+        invocationID,
+        "failed",
+        null,
+        Date.now(),
+      );
+    } catch {
+      // The watchdog retains the active operation when terminal persistence
+      // is unavailable; never report a false acknowledgement.
+    }
+    throw error;
+  }
+  return encryptMetadataAcknowledgement(redactedResult, envelope, responseKey);
+}
+
+async function encryptMetadataAcknowledgement(
+  redactedResult: Uint8Array,
+  envelope: ExecutorEnvelope,
+  responseKey: CryptoKey,
+): Promise<Uint8Array> {
   const iv = new Uint8Array(AES_GCM_IV_BYTES);
   crypto.getRandomValues(iv);
   const additionalData = new TextEncoder().encode(
@@ -263,7 +387,7 @@ async function executeMetadataMigration(
     ciphertext = await crypto.subtle.encrypt(
       { name: "AES-GCM", iv, additionalData },
       responseKey,
-      plaintext,
+      redactedResult,
     );
   } catch {
     throw new Error("metadata acknowledgement unavailable");
@@ -788,6 +912,12 @@ function readConfigText(value: unknown): string | null {
   return value;
 }
 
+function readConfigDigest(value: unknown): string | null {
+  return typeof value === "string" && SHA256_DIGEST_PATTERN.test(value)
+    ? value
+    : null;
+}
+
 function decodeConfiguredBytes(value: unknown, expectedLength: number): Uint8Array | null {
   if (typeof value !== "string" || value.length === 0 || value.trim() !== value) return null;
 
@@ -816,6 +946,11 @@ function decodeConfiguredBytes(value: unknown, expectedLength: number): Uint8Arr
   if (value !== canonicalStandard && value !== canonicalStandardRaw && value !== canonicalUrl) return null;
   return decoded;
 }
+function hasOperationNamespace(value: unknown): value is DurableObjectNamespace<SecurityExecutorOperations> {
+  if (!value || typeof value !== "object" || !("getByName" in value)) return false;
+  return typeof value.getByName === "function";
+}
+
 function hasReplayNamespace(value: unknown): value is DurableObjectNamespace<SecurityExecutorReplay> {
   if (!value || typeof value !== "object" || !("getByName" in value)) return false;
   return typeof value.getByName === "function";
@@ -828,6 +963,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 async function sha256Hex(bytes: Uint8Array): Promise<string> {
   const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
   return Array.from(digest, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function sha256Digest(bytes: Uint8Array): Promise<string> {
+  return `sha256:${await sha256Hex(bytes)}`;
 }
 
 function toBase64(bytes: Uint8Array): string {

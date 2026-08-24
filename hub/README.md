@@ -75,9 +75,9 @@ curl -X PUT "https://api.cloudflare.com/client/v4/accounts/<ACCOUNT_ID>/workers/
 #    CLOUDFLARE_ACCOUNT_ID - (already present for docs deploy)
 ```
 
-CD (`.github/workflows/cd.yml` `deploy-hub` job) builds `Dockerfile.sync`,
-pushes it to the Cloudflare managed registry, renders the template
-(`${VAULT_KV_ID}`, `${SKRET_SYNC_IMAGE}`, `${CLOUDFLARE_ACCOUNT_ID}`) from GH
+CD (`.github/workflows/cd.yml` `deploy-hub` job) builds the config-free
+`Dockerfile.sync` planner image, pushes it to the Cloudflare managed registry,
+renders the template (`${VAULT_KV_ID}`, `${SKRET_SYNC_IMAGE}`) from GH
 secrets, and runs `wrangler deploy` on push to main — it updates the script;
 the custom domain from step 3 stays attached.
 

@@ -15,22 +15,13 @@ export interface Env {
   // The counter that actually enforces the login limit; LOGIN_LIMIT is only
   // the free first pass in front of it (see router.ts loginAllowed).
   LOGIN_GATE: DurableObjectNamespace<LoginGate>;
-  // B2 cron sync worker: the SyncContainer Durable Object namespace plus the
-  // secrets forwarded into the container process (see index.ts SYNC_ENV_KEYS).
-  // The sync creds are optional because the dashboard/ingest request paths
-  // never read them — only scheduled() does, when it boots the container.
+  // B2 cron sync worker: the SyncContainer Durable Object namespace. The
+  // scheduler starts a credential-free metadata planner and forwards no envVars.
   SYNC: DurableObjectNamespace<SyncContainer>;
   // Paired private security executor. Ordinary Hub requests may be deployed
   // without this binding, but the operator proxy must fail closed when it is
   // absent rather than report a false success.
   EXECUTOR?: Fetcher;
-  GITHUB_TOKEN?: string;
-  CLOUDFLARE_API_TOKEN?: string;
-  CLOUDFLARE_ACCOUNT_ID?: string;
-  AWS_ACCESS_KEY_ID?: string;
-  AWS_SECRET_ACCESS_KEY?: string;
-  AWS_REGION?: string;
-  SKRET_HUB_URL?: string;
 }
 
 export interface SyncRunMetadata {

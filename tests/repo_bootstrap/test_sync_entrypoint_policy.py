@@ -10,17 +10,23 @@ LOCAL_CONFIG = REPO_ROOT / "hub" / "wrangler.jsonc"
 
 
 class SyncEntrypointPolicyTests(unittest.TestCase):
-    def test_entrypoint_rejects_missing_hub_configuration_before_provider_sync(self) -> None:
+    def test_entrypoint_runs_config_free_planner_without_provider_inputs(self) -> None:
         script = ENTRYPOINT.read_text(encoding="utf-8")
-        sync_call = script.index("skret sync")
 
-        self.assertIn('case "${SKRET_HUB_TOKEN:-}" in', script[:sync_call])
-        self.assertIn('case "${SKRET_HUB_URL:-}" in', script[:sync_call])
-        self.assertIn("missing required SKRET_HUB_TOKEN", script[:sync_call])
-        self.assertIn("missing required SKRET_HUB_URL", script[:sync_call])
-        self.assertNotIn('echo "${SKRET_HUB_TOKEN}', script)
-        self.assertNotIn('echo "${SKRET_HUB_URL}', script)
+        self.assertIn("exec /usr/local/bin/skret sync plan-server", script)
+        self.assertIn("--listen 0.0.0.0:8080", script)
+        self.assertIn("--max-body-bytes 1048576", script)
+        self.assertNotIn("SKRET_HUB_TOKEN", script)
+        self.assertNotIn("SKRET_HUB_URL", script)
+        self.assertNotIn("/app/configs", script)
+        self.assertNotIn("--config", script)
 
+    def test_sync_image_is_config_free(self) -> None:
+        dockerfile = (REPO_ROOT / "Dockerfile.sync").read_text(encoding="utf-8")
+
+        self.assertNotIn("COPY deploy/sync/", dockerfile)
+        self.assertIn('COPY deploy/sync-entrypoint.sh /usr/local/bin/sync-entrypoint.sh', dockerfile)
+        self.assertIn('ENTRYPOINT ["/usr/local/bin/sync-entrypoint.sh"]', dockerfile)
     def test_entrypoint_shell_syntax_is_valid(self) -> None:
         result = subprocess.run(
             ["sh", "-n", str(ENTRYPOINT)],
@@ -31,14 +37,10 @@ class SyncEntrypointPolicyTests(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stderr)
 
-    def test_deploy_configs_provide_runtime_hub_url(self) -> None:
+    def test_deploy_configs_omit_unused_hub_url(self) -> None:
         for config_path in (DEPLOY_TEMPLATE, LOCAL_CONFIG):
             config = config_path.read_text(encoding="utf-8")
-            self.assertIn(
-                '"SKRET_HUB_URL": "https://vault.n24q02m.com"',
-                config,
-                str(config_path),
-            )
+            self.assertNotIn('"SKRET_HUB_URL"', config, str(config_path))
 
 
 if __name__ == "__main__":

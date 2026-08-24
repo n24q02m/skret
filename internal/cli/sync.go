@@ -83,6 +83,8 @@ or saving sync state.`,
 	cmd.Flags().BoolVar(&o.dryRun, "dry-run", false, "print what each target would write and exit; issues no write request and saves no state")
 	cmd.Flags().StringVar(&o.format, "format", "table", "output format (table, json)")
 
+	cmd.AddCommand(newSyncPlanServerCmd())
+
 	return cmd
 }
 

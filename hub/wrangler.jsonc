@@ -1,9 +1,9 @@
 // wrangler.jsonc — skret vault-dashboard Worker (B3) + B2 cron sync container.
-// Read-only, 0-value dashboard; on the cron trigger the SyncContainer runs
-// `skret sync` + `skret hub push` and exits. Resource IDs are placeholders;
-// real IDs are filled at deploy time from GH secrets into the gitignored
-// wrangler.deploy.jsonc (see README). NO routes / custom domain here —
-// fully-BYO from commit one.
+// The cron trigger starts a credential-free metadata planner; it does not
+// forward provider credentials or Hub configuration into the container.
+// Resource IDs are placeholders; real IDs are filled at deploy time from GH
+// secrets into the gitignored wrangler.deploy.jsonc (see README).
+// No routes / custom domain here — fully-BYO from commit one.
 {
   "name": "skret-hub",
   "main": "src/index.ts",
@@ -52,6 +52,5 @@
     { "tag": "v2", "new_sqlite_classes": ["LoginGate"] }
   ],
   "triggers": { "crons": ["0 3 * * *"] },
-  "vars": { "SKRET_HUB_URL": "https://vault.n24q02m.com" },
   "observability": { "enabled": true }
 }

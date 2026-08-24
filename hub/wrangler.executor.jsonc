@@ -8,22 +8,25 @@
   "compatibility_date": "2026-06-14",
   "durable_objects": {
     "bindings": [
-      { "name": "EXECUTOR_REPLAY", "class_name": "SecurityExecutorReplay" }
+      { "name": "EXECUTOR_REPLAY", "class_name": "SecurityExecutorReplay" },
+      { "name": "EXECUTOR_OPERATIONS", "class_name": "SecurityExecutorOperations" }
     ]
   },
-  // v1 is the first replay authority migration. Do not rewrite this tag after
-  // a real deployment; source-only dry-runs do not authorize a deployment.
+  // v2 adds the operation lifecycle/watchdog authority without rewriting the
+  // existing replay class.
   "migrations": [
-    { "tag": "v1", "new_sqlite_classes": ["SecurityExecutorReplay"] }
+    { "tag": "v1", "new_sqlite_classes": ["SecurityExecutorReplay"] },
+    { "tag": "v2", "new_sqlite_classes": ["SecurityExecutorOperations"] }
   ],
   // Non-secret policy values are explicit. Envelope, StateManifest, and
   // response keys are expected as out-of-band raw-safe secrets and
   // intentionally have no source values.
   "vars": {
     "EXECUTOR_EXPECTED_AUDIENCE": "skret-security-executor",
-    "EXECUTOR_EXPECTED_ROLE": "operator"
+    "EXECUTOR_EXPECTED_ROLE": "operator",
+    "EXECUTOR_IMAGE_DIGEST": "<executor-image-digest>",
+    "EXECUTOR_CONFIG_DIGEST": "<executor-config-digest>"
   },
-  "observability": { "enabled": true },
   // One bounded batch per invocation; source-only until the Worker and its
   // replay Durable Object are deployed and read back in this order.
   "triggers": { "crons": ["*/15 * * * *"] }

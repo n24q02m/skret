@@ -14,6 +14,8 @@ const JOURNAL_PATH = "C:\\skret\\state\\migration-journal.json";
 const SOURCE_HASH = "b".repeat(64);
 const CALLER_CONTEXT = `sha256:${"c".repeat(64)}`;
 const RESPONSE_KEY = new Uint8Array(Array.from({ length: 32 }, (_, index) => index + 1));
+const IMAGE_DIGEST = `sha256:${"d".repeat(64)}`;
+const CONFIG_DIGEST = `sha256:${"e".repeat(64)}`;
 
 function toBase64(bytes: Uint8Array): string {
   let binary = "";
@@ -141,6 +143,16 @@ function namespace() {
   return { getByName: () => ({ consume: async () => ({ status: "accepted" }) }) };
 }
 
+function operationNamespace() {
+  return {
+    getByName: () => ({
+      begin: async (request: Record<string, unknown>) => ({ status: "started", operation: request }),
+      complete: async () => ({ status: "succeeded" }),
+      watchdog: async () => ({ marked_timeout: [], terminalized: [], next_alarm_at: null }),
+    }),
+  };
+}
+
 function envFor(fixture: ManifestFixture, envelopePublicKey: Uint8Array, overrides: Partial<SecurityExecutorEnv> = {}): SecurityExecutorEnv {
   return {
     EXECUTOR_EXPECTED_AUDIENCE: AUDIENCE,
@@ -149,6 +161,9 @@ function envFor(fixture: ManifestFixture, envelopePublicKey: Uint8Array, overrid
     EXECUTOR_STATE_MANIFEST_PUBLIC_KEY: toBase64(fixture.publicKey),
     EXECUTOR_RESPONSE_KEY: toBase64(RESPONSE_KEY),
     EXECUTOR_REPLAY: namespace() as unknown as SecurityExecutorEnv["EXECUTOR_REPLAY"],
+    EXECUTOR_OPERATIONS: operationNamespace() as unknown as SecurityExecutorEnv["EXECUTOR_OPERATIONS"],
+    EXECUTOR_IMAGE_DIGEST: IMAGE_DIGEST,
+    EXECUTOR_CONFIG_DIGEST: CONFIG_DIGEST,
     ...overrides,
   };
 }

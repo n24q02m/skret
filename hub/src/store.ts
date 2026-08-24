@@ -12,6 +12,7 @@ const PREFIX = "manifest:";
 export const SYNC_RUN_PREFIX = "sync:run:";
 export const SYNC_ACTIVE_RUN_KEY = "sync:active-run";
 export const SYNC_LAST_SUCCESS_KEY = "sync:last-success";
+export const SYNC_PLANNER_STOP_STATE_KEY = "sync:planner-stop-state";
 
 export interface SyncRunStorageOperation {
   get<T>(key: string): Promise<T | undefined>;
@@ -70,18 +71,7 @@ export async function putStartedSyncRun(
   startedAt: string,
   metadata: SyncRunMetadata = {},
 ): Promise<SyncRunRecord> {
-  const record: SyncRunRecord = {
-    runId,
-    imageDigest: normalizeString(metadata.imageDigest),
-    configFingerprint: normalizeString(metadata.configFingerprint),
-    targetCount: normalizeCount(metadata.targetCount),
-    startedAt,
-    endedAt: null,
-    status: "started",
-    classification: "started",
-    exitCode: null,
-    reason: null,
-  };
+  const record = newStartedSyncRunRecord(runId, startedAt, metadata);
 
   return storage.transaction(async (transaction) => {
     const activeRunId = await transaction.get<string>(SYNC_ACTIVE_RUN_KEY);
@@ -96,6 +86,45 @@ export async function putStartedSyncRun(
     await transaction.put(SYNC_ACTIVE_RUN_KEY, runId);
     return record;
   });
+}
+
+export async function ensureStartedSyncRun(
+  storage: SyncRunStorage,
+  startedAt: string,
+  metadata: SyncRunMetadata = {},
+): Promise<SyncRunRecord> {
+  return storage.transaction(async (transaction) => {
+    const activeRunId = await transaction.get<string>(SYNC_ACTIVE_RUN_KEY);
+    if (activeRunId) {
+      const activeRun = await transaction.get<SyncRunRecord>(syncRunKey(activeRunId));
+      if (activeRun?.status === "started") return activeRun;
+      await transaction.delete(SYNC_ACTIVE_RUN_KEY);
+    }
+
+    const record = newStartedSyncRunRecord(crypto.randomUUID(), startedAt, metadata);
+    await transaction.put(syncRunKey(record.runId), record);
+    await transaction.put(SYNC_ACTIVE_RUN_KEY, record.runId);
+    return record;
+  });
+}
+
+function newStartedSyncRunRecord(
+  runId: string,
+  startedAt: string,
+  metadata: SyncRunMetadata,
+): SyncRunRecord {
+  return {
+    runId,
+    imageDigest: normalizeString(metadata.imageDigest),
+    configFingerprint: normalizeString(metadata.configFingerprint),
+    targetCount: normalizeCount(metadata.targetCount),
+    startedAt,
+    endedAt: null,
+    status: "started",
+    classification: "started",
+    exitCode: null,
+    reason: null,
+  };
 }
 
 export async function getSyncRun(
@@ -184,38 +213,6 @@ export async function completeSyncRun(
   });
 }
 
-export async function failStartedSyncRun(
-  storage: SyncRunStorage,
-  runId: string,
-  endedAt: string,
-): Promise<SyncRunRecord | undefined> {
-  const key = syncRunKey(runId);
-  return storage.transaction(async (transaction) => {
-    const started = await transaction.get<SyncRunRecord>(key);
-    if (!started) return undefined;
-
-    if (started.status !== "started") {
-      await repairTerminalRun(transaction, started, runId);
-      return started;
-    }
-
-    const failed: SyncRunRecord = {
-      runId: started.runId,
-      imageDigest: started.imageDigest,
-      configFingerprint: started.configFingerprint,
-      targetCount: started.targetCount,
-      startedAt: started.startedAt,
-      endedAt,
-      status: "failed",
-      classification: "start_failure",
-      exitCode: null,
-      reason: "start_failure",
-    };
-    await transaction.put(key, failed);
-    await clearActiveRun(transaction, runId);
-    return failed;
-  });
-}
 
 async function repairTerminalRun(
   storage: SyncRunStorageOperation,

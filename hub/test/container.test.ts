@@ -1,9 +1,10 @@
 import { describe, it, expect, vi } from "vitest";
-import { Container } from "@cloudflare/containers";
+import { Container, type State } from "@cloudflare/containers";
 import { SyncContainer } from "../src/container";
 import {
   SYNC_ACTIVE_RUN_KEY,
   SYNC_LAST_SUCCESS_KEY,
+  SYNC_PLANNER_STOP_STATE_KEY,
   SYNC_RUN_PREFIX,
   completeSyncRun,
   syncRunKey,
@@ -76,15 +77,108 @@ describe("SyncContainer", () => {
   it("is a Container subclass named SyncContainer", () => {
     expect(SyncContainer.name).toBe("SyncContainer");
     // Prototype-chain check: SyncContainer extends the @cloudflare/containers
-    // Container base (bound as the SYNC Durable Object). sleepAfter / no
-    // defaultPort are instance fields set on construction, so they are asserted
-    // via the batch lifecycle rather than an un-instantiable DO here.
+    // Container base. Port fields are class-instance settings consumed by
+    // startAndWaitForPorts() in scheduled(); the fake DO avoids construction.
     expect(SyncContainer.prototype instanceof Container).toBe(true);
   });
 
-  it("overrides onStop for the one-shot batch lifecycle", () => {
+  it("overrides onStop for the planner lifecycle", () => {
     expect(Object.getOwnPropertyNames(SyncContainer.prototype)).toContain("onStop");
   });
+
+  it("creates one started run when startup is delivered more than once", async () => {
+    const { container, storage } = fakeEnv({});
+
+    await container.onStart();
+    const firstRunId = await storage.get<string>(SYNC_ACTIVE_RUN_KEY);
+    expect(firstRunId).toEqual(expect.any(String));
+
+    await container.onStart();
+    const secondRunId = await storage.get<string>(SYNC_ACTIVE_RUN_KEY);
+    const runKeys = [...storage.values.keys()].filter((key) => key.startsWith(SYNC_RUN_PREFIX));
+
+    expect(secondRunId).toBe(firstRunId);
+    expect(runKeys).toEqual([syncRunKey(firstRunId as string)]);
+    expect(await storage.get<SyncRunRecord>(syncRunKey(firstRunId as string))).toMatchObject({
+      runId: firstRunId,
+      status: "started",
+      classification: "started",
+      endedAt: null,
+    });
+  });
+
+  it("does not create a terminal run when startup has not reached onStart", async () => {
+    const { container, storage } = fakeEnv({});
+
+    await expect(container.onStop({ exitCode: 17, reason: "runtime_signal" })).resolves.toBeUndefined();
+
+    expect(await storage.get<string>(SYNC_ACTIVE_RUN_KEY)).toBeUndefined();
+    expect([...storage.values.keys()].filter((key) => key.startsWith(SYNC_RUN_PREFIX))).toEqual([]);
+  });
+
+  it("keeps the planner alive when activity expires", async () => {
+    const stop = vi.fn();
+    const renewActivityTimeout = vi.fn();
+    const onActivityExpired = SyncContainer.prototype.onActivityExpired;
+
+    expect(Object.getOwnPropertyNames(SyncContainer.prototype)).toContain("onActivityExpired");
+    await onActivityExpired.call({
+      stop,
+      renewActivityTimeout,
+    } as unknown as SyncContainer);
+
+    expect(renewActivityTimeout).toHaveBeenCalledTimes(1);
+    expect(stop).not.toHaveBeenCalled();
+  });
+  it("coalesces concurrent readiness calls", async () => {
+    const { container } = fakeEnv({});
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const startAndWaitForPorts = vi.fn(() => gate);
+    container.startAndWaitForPorts = startAndWaitForPorts;
+
+    const first = container.ensurePlannerReady();
+    const second = container.ensurePlannerReady();
+
+    await Promise.resolve();
+    await Promise.resolve();
+    release();
+    await Promise.all([first, second]);
+  });
+  it("holds the readiness lock through failed-start cleanup", async () => {
+    const { container } = fakeEnv({});
+    const readinessError = new Error("port readiness timed out");
+    let releaseStop!: () => void;
+    let signalStopStarted!: () => void;
+    const stopGate = new Promise<void>((resolve) => {
+      releaseStop = resolve;
+    });
+    const stopStarted = new Promise<void>((resolve) => {
+      signalStopStarted = resolve;
+    });
+    const startAndWaitForPorts = vi.fn(async () => {
+      throw readinessError;
+    });
+    const stop = vi.fn(async () => {
+      signalStopStarted();
+      await stopGate;
+    });
+    container.startAndWaitForPorts = startAndWaitForPorts;
+    container.stop = stop;
+
+    const first = container.ensurePlannerReady();
+    await stopStarted;
+    const second = container.ensurePlannerReady();
+
+    expect(startAndWaitForPorts).toHaveBeenCalledTimes(1);
+    releaseStop();
+    const results = await Promise.allSettled([first, second]);
+    expect(results.every((result) => result.status === "rejected")).toBe(true);
+    expect(stop).toHaveBeenCalledTimes(2);
+  });
+
 });
 describe("sync health projection", () => {
   it("returns an unknown freshness state when no clean success exists", async () => {
@@ -147,11 +241,10 @@ describe("sync health projection", () => {
 });
 
 
-// Build a fake env whose SYNC namespace resolves (getContainer just calls
-// idFromName + get) to a stub with lifecycle and `start` spies. This exercises
-// the real getContainer + scheduled() wiring without instantiating a container
-// DO here.
-function fakeEnv(secrets: Partial<Env>) {
+// Build a fake env whose SYNC namespace resolves (getContainer calls
+// idFromName + get) to a stub with lifecycle and readiness-start spies. This
+// exercises the real scheduled() wiring without instantiating a container DO.
+function fakeEnv(secrets: Record<string, string | undefined> = {}) {
   const storage = fakeStorage();
   const container = fakeContainer(storage);
   const order: string[] = [];
@@ -163,171 +256,264 @@ function fakeEnv(secrets: Partial<Env>) {
   const start = vi.fn(async (_options?: unknown) => {
     order.push("start");
   });
-  const markStartFailure = vi.fn(async (runId: string) => {
-    await container.markStartFailure(runId);
+  const stop = vi.fn(async () => {
+    order.push("stop");
   });
-  const stub = { beginRun, markStartFailure, start };
+  const getState = vi.fn(async () => ({ status: "stopped" as const, lastChange: 0 }));
+  container.getState = getState;
+  const stub = { beginRun, ensurePlannerReady: start, stop };
   const SYNC = {
     idFromName: () => ({}),
     get: () => stub,
   };
   return {
-    env: { SYNC, SKRET_HUB_TOKEN: "synthetic-hub-token", SKRET_HUB_URL: "https://synthetic-hub.example.test", ...secrets } as unknown as Env,
+    env: { SYNC, ...secrets } as unknown as Env,
     start,
+    stop,
     beginRun,
-    markStartFailure,
     storage,
     container,
     order,
   };
 }
 describe("scheduled()", () => {
-  it.each([undefined, "   "])("rejects when SKRET_HUB_TOKEN is %s", async (token) => {
-    const secret = "synthetic-secret";
-    const { env, start, beginRun } = fakeEnv({
-      SKRET_HUB_TOKEN: token,
-      GITHUB_TOKEN: secret,
-    });
-
-    const result = worker.scheduled({} as ScheduledController, env);
-
-    await expect(result).rejects.toThrow("SKRET_HUB_TOKEN");
-    await expect(result).rejects.not.toThrow(secret);
-    expect(beginRun).not.toHaveBeenCalled();
-    expect(start).not.toHaveBeenCalled();
-  });
-  it.each([undefined, "   "])("rejects when SKRET_HUB_URL is %s", async (hubUrl) => {
-    const secret = "synthetic-secret";
-    const { env, start, beginRun } = fakeEnv({
-      SKRET_HUB_URL: hubUrl,
-      GITHUB_TOKEN: secret,
-    });
-
-    const result = worker.scheduled({} as ScheduledController, env);
-
-    await expect(result).rejects.toThrow("SKRET_HUB_URL");
-    await expect(result).rejects.not.toThrow(secret);
-    expect(beginRun).not.toHaveBeenCalled();
-    expect(start).not.toHaveBeenCalled();
-  });
-  it("persists a started run before booting the container and forwards secrets unchanged", async () => {
+  it("only starts the planner without creating a run or forwarding provider secrets", async () => {
     const secrets = {
       GITHUB_TOKEN: "gh-tok",
       CLOUDFLARE_API_TOKEN: "cf-tok",
       AWS_ACCESS_KEY_ID: "akid",
       AWS_SECRET_ACCESS_KEY: "sk",
       AWS_REGION: "ap-southeast-1",
-      SKRET_HUB_TOKEN: "hub-tok",
-      SKRET_HUB_URL: "https://vault.example.com",
     };
     const { env, start, beginRun, order } = fakeEnv(secrets);
 
     await worker.scheduled({} as ScheduledController, env);
 
-    expect(order).toEqual(["begin", "start"]);
-    expect(beginRun).toHaveBeenCalledTimes(1);
+    expect(order).toEqual(["start"]);
+    expect(beginRun).not.toHaveBeenCalled();
     expect(start).toHaveBeenCalledTimes(1);
-    expect(start.mock.calls[0][0]).toEqual({ envVars: secrets });
+    expect(start.mock.calls[0]).toEqual([]);
   });
 
-  it("does not treat start alone as completion or last success", async () => {
-    const { env, start, storage } = fakeEnv({ GITHUB_TOKEN: "secret-token" });
+  it("is safe for repeated daily calls while the planner remains active", async () => {
+    const { env, start, beginRun, container, storage } = fakeEnv({});
+    start.mockImplementation(async () => {
+      await container.onStart();
+    });
 
     await worker.scheduled({} as ScheduledController, env);
+    const firstRunId = await storage.get<string>(SYNC_ACTIVE_RUN_KEY);
+    await worker.scheduled({} as ScheduledController, env);
 
-    expect(start).toHaveBeenCalledTimes(1);
-    const runId = await storage.get<string>(SYNC_ACTIVE_RUN_KEY);
-    expect(runId).toEqual(expect.any(String));
-    const record = await storage.get<SyncRunRecord>(syncRunKey(runId as string));
-    expect(record).toMatchObject({
-      runId,
-      imageDigest: null,
-      configFingerprint: null,
-      targetCount: null,
-      startedAt: expect.any(String),
-      status: "started",
-      classification: "started",
-      endedAt: null,
-      exitCode: null,
-      reason: null,
-    });
+    const secondRunId = await storage.get<string>(SYNC_ACTIVE_RUN_KEY);
+    const runKeys = [...storage.values.keys()].filter((key) => key.startsWith(SYNC_RUN_PREFIX));
+    expect(start).toHaveBeenCalledTimes(2);
+    expect(beginRun).not.toHaveBeenCalled();
+    expect(secondRunId).toBe(firstRunId);
+    expect(runKeys).toHaveLength(1);
     expect(await storage.get<string>(SYNC_LAST_SUCCESS_KEY)).toBeUndefined();
   });
 
-  it("rejects an overlapping scheduled run without replacing the active run", async () => {
-    const { env, start, storage } = fakeEnv({});
-    await worker.scheduled({} as ScheduledController, env);
-    const firstRunId = await storage.get<string>(SYNC_ACTIVE_RUN_KEY);
+  it("stops an unready planner before it can create a run", async () => {
+    const { container, start, stop, storage } = fakeEnv({});
+    const readinessError = new Error("port readiness timed out");
+    container.startAndWaitForPorts = start;
+    container.stop = stop;
+    start.mockRejectedValueOnce(readinessError);
 
-    await expect(worker.scheduled({} as ScheduledController, env)).rejects.toThrow(
-      "already active",
-    );
+    await expect(container.ensurePlannerReady()).rejects.toBe(readinessError);
 
-    expect(start).toHaveBeenCalledTimes(1);
-    expect(await storage.get<string>(SYNC_ACTIVE_RUN_KEY)).toBe(firstRunId);
+    expect(stop).toHaveBeenCalledWith("SIGKILL");
+    expect(await storage.get<string>(SYNC_ACTIVE_RUN_KEY)).toBeUndefined();
+    expect([...storage.values.keys()].filter((key) => key.startsWith(SYNC_RUN_PREFIX))).toEqual([]);
   });
-  it("marks a failed start terminal and clears the active pointer before rethrowing", async () => {
-    const { env, start, storage } = fakeEnv({});
+
+  it("stops after a startup failure and preserves the original error", async () => {
+    const { container, start, stop, storage } = fakeEnv({});
     const startError = new Error("container start failed");
+    container.startAndWaitForPorts = start;
+    container.stop = stop;
     start.mockRejectedValueOnce(startError);
 
-    await expect(worker.scheduled({} as ScheduledController, env)).rejects.toBe(startError);
-    const runKey = [...storage.values.keys()].find((key) => key.startsWith(SYNC_RUN_PREFIX));
-    expect(runKey).toEqual(expect.any(String));
-    const runId = (runKey as string).slice(SYNC_RUN_PREFIX.length);
-    const record = await storage.get<SyncRunRecord>(syncRunKey(runId));
-    expect(record).toMatchObject({
-      runId,
+    await expect(container.ensurePlannerReady()).rejects.toBe(startError);
+
+    expect(stop).toHaveBeenCalledWith("SIGKILL");
+    expect(await storage.get<string>(SYNC_ACTIVE_RUN_KEY)).toBeUndefined();
+    expect([...storage.values.keys()].filter((key) => key.startsWith(SYNC_RUN_PREFIX))).toEqual([]);
+  });
+
+  it("marks readiness cleanup as failure for an active run", async () => {
+    const { container, storage } = fakeEnv({});
+    container.getState = vi.fn(async () => ({ status: "running" as const, lastChange: 0 }));
+    const runId = await container.beginRun();
+    const readinessError = new Error("planner port failed");
+    const startAndWaitForPorts = vi.fn(async () => {
+      throw readinessError;
+    });
+    const stop = vi.fn(async () => {
+      container.getState = vi.fn(async () => ({ status: "stopped" as const, lastChange: 1 }));
+      await container.onStop({ exitCode: 0, reason: "exit" });
+    });
+    container.startAndWaitForPorts = startAndWaitForPorts;
+    container.stop = stop;
+
+    await expect(container.ensurePlannerReady()).rejects.toBe(readinessError);
+
+    expect(stop).toHaveBeenCalledWith("SIGKILL");
+    await expect(storage.get<SyncRunRecord>(syncRunKey(runId))).resolves.toMatchObject({
       status: "failed",
-      classification: "start_failure",
-      endedAt: expect.any(String),
-      exitCode: null,
-      reason: "start_failure",
+      classification: "runtime_signal",
+      reason: "runtime_signal",
+    });
+    expect(await storage.get<string>(SYNC_LAST_SUCCESS_KEY)).toBeUndefined();
+  });
+  it("preserves forced-stop classification across a failed completion write", async () => {
+    const { container, storage } = fakeEnv({});
+    container.getState = vi.fn(async () => ({ status: "running" as const, lastChange: 0 }));
+    const runId = await container.beginRun();
+    const readinessError = new Error("planner port failed");
+    const startAndWaitForPorts = vi.fn(async () => {
+      throw readinessError;
+    });
+    const stop = vi.fn(async () => {
+      container.getState = vi.fn(async () => ({ status: "stopped" as const, lastChange: 1 }));
+      await container.onStop({ exitCode: 137, reason: "exit" });
+    });
+    container.startAndWaitForPorts = startAndWaitForPorts;
+    container.stop = stop;
+    storage.failNextPutKey = syncRunKey(runId);
+
+    await expect(container.ensurePlannerReady()).rejects.toBe(readinessError);
+
+    expect(stop).toHaveBeenCalledTimes(2);
+    await expect(storage.get<SyncRunRecord>(syncRunKey(runId))).resolves.toMatchObject({
+      status: "failed",
+      classification: "runtime_signal",
+      reason: "runtime_signal",
     });
     expect(await storage.get<string>(SYNC_ACTIVE_RUN_KEY)).toBeUndefined();
-    expect(await storage.get<string>(SYNC_LAST_SUCCESS_KEY)).toBeUndefined();
-
-    await worker.scheduled({} as ScheduledController, env);
-    expect(start).toHaveBeenCalledTimes(2);
   });
+  it("reconciles a durable pending marker after container reconstruction", async () => {
+    const { container, storage } = fakeEnv({});
+    await storage.put(SYNC_PLANNER_STOP_STATE_KEY, "pending");
+    const startAndWaitForPorts = vi.fn(async () => undefined);
+    const stop = vi.fn(async () => undefined);
+    container.startAndWaitForPorts = startAndWaitForPorts;
+    container.stop = stop;
 
-  it("preserves a start error when cleanup retries fail without persisting its text", async () => {
-    const { env, start, markStartFailure, storage } = fakeEnv({});
-    const secret = "start-error-secret";
-    const startError = new Error(`container start failed: ${secret}`);
-    start.mockImplementationOnce(async () => {
-      storage.failNextTransactionCount = 2;
-      throw startError;
-    });
+    await container.ensurePlannerReady();
 
-    await expect(worker.scheduled({} as ScheduledController, env)).rejects.toBe(startError);
-
-    expect(markStartFailure).toHaveBeenCalledTimes(2);
-    const runKey = [...storage.values.keys()].find((key) => key.startsWith(SYNC_RUN_PREFIX));
-    expect(runKey).toEqual(expect.any(String));
-    const stored = JSON.stringify([...storage.values.values()]);
-    expect(stored).not.toContain(secret);
-    expect(stored).not.toContain(startError.message);
-    expect(await storage.get<string>(SYNC_ACTIVE_RUN_KEY)).toBe(
-      (runKey as string).slice(SYNC_RUN_PREFIX.length),
-    );
+    expect(stop).toHaveBeenCalledWith("SIGKILL");
+    expect(startAndWaitForPorts).toHaveBeenCalledTimes(1);
+    expect(await storage.get<string>(SYNC_PLANNER_STOP_STATE_KEY)).toBe("clear");
   });
+  it("terminalizes a stale active run before restarting a stopped planner", async () => {
+    const { container, storage } = fakeEnv({});
+    const runId = await container.beginRun();
+    const start = vi.fn(async () => undefined);
+    const stop = vi.fn(async () => undefined);
+    container.startAndWaitForPorts = start;
+    container.stop = stop;
 
-  it("omits unset sync secrets from envVars", async () => {
-    const { env, start } = fakeEnv({
-      SKRET_HUB_TOKEN: "hub-tok",
-      SKRET_HUB_URL: "https://vault.example.com",
-    });
+    await container.ensurePlannerReady();
 
-    await worker.scheduled({} as ScheduledController, env);
-
+    expect(stop).toHaveBeenCalledWith("SIGKILL");
     expect(start).toHaveBeenCalledTimes(1);
-    const arg = start.mock.calls[0][0] as { envVars: Record<string, string> };
-    expect(arg.envVars).toEqual({
-      SKRET_HUB_TOKEN: "hub-tok",
-      SKRET_HUB_URL: "https://vault.example.com",
+    expect(await storage.get<string>(SYNC_ACTIVE_RUN_KEY)).toBeUndefined();
+    await expect(storage.get<SyncRunRecord>(syncRunKey(runId))).resolves.toMatchObject({
+      status: "failed",
+      classification: "runtime_signal",
+      reason: "runtime_signal",
     });
-    expect(arg.envVars).not.toHaveProperty("GITHUB_TOKEN");
+  });
+  it("preserves the stopped container exit code during forced reconciliation", async () => {
+    const { container, storage } = fakeEnv({});
+    const runId = await container.beginRun();
+    container.getState = vi.fn(async () => ({
+      status: "stopped_with_code" as const,
+      exitCode: 137,
+      lastChange: 0,
+    }));
+    container.startAndWaitForPorts = vi.fn(async () => undefined);
+    container.stop = vi.fn(async () => undefined);
+
+    await container.ensurePlannerReady();
+
+    await expect(storage.get<SyncRunRecord>(syncRunKey(runId))).resolves.toMatchObject({
+      status: "failed",
+      classification: "runtime_signal",
+      exitCode: 137,
+    });
+  });
+
+  it("waits for a stopping planner to terminalize before starting its successor", async () => {
+    vi.useFakeTimers();
+    try {
+      const { container, storage } = fakeEnv({});
+      const runId = await container.beginRun();
+      const order: string[] = [];
+      let state: State = { status: "stopping", lastChange: 0 };
+      container.getState = vi.fn(async () => state);
+      container.stop = vi.fn(async () => {
+        order.push("stop");
+        state = { status: "stopped" as const, lastChange: 1 };
+        await container.onStop({ exitCode: 0, reason: "runtime_signal" });
+      });
+      container.startAndWaitForPorts = vi.fn(async () => {
+        order.push("start");
+      });
+
+      const readiness = container.ensurePlannerReady();
+      await vi.advanceTimersByTimeAsync(100);
+      await readiness;
+
+      expect(order).toEqual(["stop", "start"]);
+      await expect(storage.get<SyncRunRecord>(syncRunKey(runId))).resolves.toMatchObject({
+        status: "failed",
+        classification: "runtime_signal",
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+  it("reconstructs safely after both readiness marker writes fail", async () => {
+    const { container, storage } = fakeEnv({});
+    const runId = await container.beginRun();
+    container.getState = vi.fn(async () => ({ status: "running" as const, lastChange: 0 }));
+    const readinessError = new Error("planner readiness failed");
+    container.startAndWaitForPorts = vi.fn(async () => {
+      throw readinessError;
+    });
+    container.stop = vi.fn(async () => {
+      container.getState = vi.fn(async () => ({ status: "stopped" as const, lastChange: 1 }));
+    });
+    storage.failNextTransactionCount = 2;
+
+    await expect(container.ensurePlannerReady()).rejects.toThrow("planner stop state unavailable");
+
+    const reconstructed = fakeContainer(storage);
+    reconstructed.getState = vi.fn(async () => ({ status: "stopped" as const, lastChange: 1 }));
+    reconstructed.startAndWaitForPorts = vi.fn(async () => undefined);
+    reconstructed.stop = vi.fn(async () => undefined);
+    await reconstructed.ensurePlannerReady();
+
+    expect(await storage.get<string>(SYNC_ACTIVE_RUN_KEY)).toBeUndefined();
+    await expect(storage.get<SyncRunRecord>(syncRunKey(runId))).resolves.toMatchObject({
+      status: "failed",
+      classification: "runtime_signal",
+    });
+  });
+
+
+  it("starts the planner with only the SYNC binding", async () => {
+    const { env, start, beginRun } = fakeEnv({});
+
+    expect(Object.keys(env)).toEqual(["SYNC"]);
+    await worker.scheduled({} as ScheduledController, env);
+
+    expect(beginRun).not.toHaveBeenCalled();
+    expect(start).toHaveBeenCalledTimes(1);
+    expect(start.mock.calls[0]).toEqual([]);
   });
 });
 describe("durable sync run records", () => {
@@ -493,8 +679,9 @@ describe("durable sync run records", () => {
     const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
     try {
       const { env, container, storage } = fakeEnv(secrets);
-      await worker.scheduled({} as ScheduledController, env);
+      await container.onStart();
       const runId = await storage.get<string>(SYNC_ACTIVE_RUN_KEY);
+      await worker.scheduled({} as ScheduledController, env);
       await container.onStop({ exitCode: 0, reason: "exit" });
 
       const stored = JSON.stringify([...storage.values.values()]);
