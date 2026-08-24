@@ -93,6 +93,7 @@ jobs:
           epoch="$(git show -s --format=%ct "$SOURCE_SHA")"
           printf 'SOURCE_DATE_EPOCH=%s\n' "$epoch" >> "$GITHUB_ENV"
 
+
       - name: Prepare CLI archives, checksums, and SBOMs
         uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
         with:
@@ -143,6 +144,28 @@ jobs:
             --sbom=false \
             --output type=oci,dest=dist/skret-sync.oci.tar \
             .
+      - name: Generate source manifest
+        shell: bash
+        env:
+          MANIFEST_SOURCE_SHA: ${{ github.sha }}
+          MANIFEST_VERSION: ${{ steps.release.outputs.version }}
+          MANIFEST_TAG: ${{ steps.release.outputs.tag }}
+          MANIFEST_CHANNEL: ${{ inputs.release_type }}
+        run: |
+          set -euo pipefail
+          python scripts/release_manifests.py source \
+            --root . \
+            --output dist/source-manifest.json \
+            --digest-output dist/source-manifest.sha256 \
+            --source-sha "$MANIFEST_SOURCE_SHA" \
+            --version "$MANIFEST_VERSION" \
+            --tag "$MANIFEST_TAG" \
+            --channel "$MANIFEST_CHANNEL" \
+            --exclude .git \
+            --exclude dist \
+            --exclude docs/dist \
+            --exclude hub/node_modules \
+            --exclude docs/node_modules
 
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
         with:
@@ -186,11 +209,29 @@ jobs:
 
       - name: Build docs bundle
         shell: bash
+        env:
+          MANIFEST_SOURCE_SHA: ${{ github.sha }}
+          MANIFEST_VERSION: ${{ steps.release.outputs.version }}
+          MANIFEST_TAG: ${{ steps.release.outputs.tag }}
+          MANIFEST_CHANNEL: ${{ inputs.release_type }}
         run: |
           set -euo pipefail
           cp install.sh docs/public/install.sh
           cp install.ps1 docs/public/install.ps1
           pnpm --dir docs astro build
+          mkdir -p docs/dist/.well-known
+          source_manifest_digest="sha256:$(tr -d '\r\n' < dist/source-manifest.sha256)"
+          python scripts/release_manifests.py deployment \
+            --root docs/dist \
+            --output docs/dist/.well-known/skret-deployment-manifest.json \
+            --digest-output dist/deployment-manifest.sha256 \
+            --source-sha "$MANIFEST_SOURCE_SHA" \
+            --version "$MANIFEST_VERSION" \
+            --tag "$MANIFEST_TAG" \
+            --channel "$MANIFEST_CHANNEL" \
+            --source-manifest-digest "$source_manifest_digest" \
+            --manifest-path .well-known/skret-deployment-manifest.json \
+            --signature-path .well-known/skret-deployment-manifest.sig
           rm -f dist/hub.bundle.tar dist/security-executor.bundle.tar dist/docs.bundle.tar
           tar --sort=name --mtime="@${SOURCE_DATE_EPOCH}" --owner=0 --group=0 --numeric-owner \
             -cf dist/hub.bundle.tar -C "$RUNNER_TEMP/hub-bundle" .
@@ -198,7 +239,6 @@ jobs:
             -cf dist/security-executor.bundle.tar -C "$RUNNER_TEMP/security-executor-bundle" .
           tar --sort=name --mtime="@${SOURCE_DATE_EPOCH}" --owner=0 --group=0 --numeric-owner \
             -cf dist/docs.bundle.tar -C docs/dist .
-
       - name: Generate auxiliary SBOMs
         shell: bash
         run: |
@@ -209,17 +249,36 @@ jobs:
           syft "dir:$RUNNER_TEMP/security-executor-bundle" -o "spdx-json=dist/security-executor.sbom.json"
           syft "dir:docs/dist" -o "spdx-json=dist/docs.sbom.json"
 
-      - name: Generate source and artifact manifests
+      - name: Generate artifact manifest
         shell: bash
+        env:
+          MANIFEST_SOURCE_SHA: ${{ github.sha }}
+          MANIFEST_VERSION: ${{ steps.release.outputs.version }}
+          MANIFEST_TAG: ${{ steps.release.outputs.tag }}
+          MANIFEST_CHANNEL: ${{ inputs.release_type }}
         run: |
           set -euo pipefail
-          git ls-files -z | LC_ALL=C sort -z | xargs -0 sha256sum > dist/source-manifest.sha256
-          find dist -maxdepth 1 -type f ! -name 'auxiliary-checksums.txt' ! -name 'artifact-manifest.sha256' -print0 \
-            | LC_ALL=C sort -z \
-            | xargs -0 sha256sum > dist/auxiliary-checksums.txt
-          find dist -maxdepth 1 -type f ! -name 'artifact-manifest.sha256' -print0 \
-            | LC_ALL=C sort -z \
-            | xargs -0 sha256sum > dist/artifact-manifest.sha256
+          find dist -maxdepth 1 -type f \
+            ! -name 'auxiliary-checksums.txt' \
+            ! -name 'source-manifest.json' \
+            ! -name 'source-manifest.sha256' \
+            ! -name 'artifact-manifest.json' \
+            ! -name 'artifact-manifest.sha256' \
+            -print0 | LC_ALL=C sort -z | xargs -0 sha256sum > dist/auxiliary-checksums.txt
+          source_manifest_digest="sha256:$(tr -d '\r\n' < dist/source-manifest.sha256)"
+          python scripts/release_manifests.py artifact \
+            --root dist \
+            --output dist/artifact-manifest.json \
+            --digest-output dist/artifact-manifest.sha256 \
+            --source-sha "$MANIFEST_SOURCE_SHA" \
+            --version "$MANIFEST_VERSION" \
+            --tag "$MANIFEST_TAG" \
+            --channel "$MANIFEST_CHANNEL" \
+            --source-manifest-digest "$source_manifest_digest" \
+            --exclude source-manifest.json \
+            --exclude source-manifest.sha256 \
+            --exclude artifact-manifest.json \
+            --exclude artifact-manifest.sha256
 
       - id: journal
         name: Initialize release transaction journal
@@ -230,7 +289,7 @@ jobs:
           CANDIDATE_VERSION: ${{ steps.release.outputs.version }}
         run: |
           set -euo pipefail
-          artifact_digest="sha256:$(sha256sum dist/artifact-manifest.sha256 | cut -d ' ' -f 1)"
+          artifact_digest="sha256:$(sha256sum dist/artifact-manifest.json | cut -d ' ' -f 1)"
           intent_input="${SOURCE_SHA}\n${CANDIDATE_TAG}\n${CANDIDATE_VERSION}\n${JOURNAL_CHANNEL}\n${artifact_digest}"
           intent_digest="sha256:$(printf '%b' "$intent_input" | sha256sum | cut -d ' ' -f 1)"
           transaction_id="cd-${GITHUB_RUN_ID}"
@@ -274,8 +333,11 @@ jobs:
           path: |
             dist/checksums.txt
             dist/auxiliary-checksums.txt
-            dist/artifact-manifest.sha256
+            dist/source-manifest.json
             dist/source-manifest.sha256
+            dist/artifact-manifest.json
+            dist/artifact-manifest.sha256
+            dist/deployment-manifest.sha256
           if-no-files-found: error
           retention-days: 7
       - name: Upload SBOM artifacts
