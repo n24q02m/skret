@@ -331,6 +331,8 @@ jobs:
           path: |
             dist/skret_*/skret
             dist/skret_*/skret.exe
+            dist/skret-secret-helper_*/skret-secret-helper
+            dist/skret-compose-supervisor_*/skret-compose-supervisor
           if-no-files-found: error
           retention-days: 7
       - name: Upload archive artifacts
@@ -347,6 +349,10 @@ jobs:
         with:
           name: checksums
           path: |
+            dist/CHANGELOG.md
+            dist/artifacts.json
+            dist/config.yaml
+            dist/metadata.json
             dist/checksums.txt
             dist/auxiliary-checksums.txt
             dist/source-manifest.json
