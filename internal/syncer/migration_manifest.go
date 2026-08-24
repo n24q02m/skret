@@ -373,6 +373,7 @@ func revalidateStateManifestDirectories(directories map[string]os.FileInfo) erro
 	return nil
 }
 
+//nolint:unparam // The portable scanner consumes size; Windows uses its handle-aware scanner.
 func hashStateManifestFile(path string, expected os.FileInfo) (int64, string, error) {
 	if expected == nil || unsafeStateManifestMode(expected.Mode()) || !expected.Mode().IsRegular() {
 		return 0, "", stateManifestError("file changed during scan")

@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -183,20 +184,49 @@ func TestSyncPlanServerUsesBoundedTimeout(t *testing.T) {
 
 func TestSyncPlanServerTimeoutResponseIsJSON(t *testing.T) {
 	handler := newSyncPlanServerHandlerWithTimeout(1<<20, time.Millisecond)
-	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/v1/plan", io.NopCloser(slowPlanReader{}))
+	reader := newBlockingPlanReader()
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/v1/plan", io.NopCloser(reader))
 	req.Header.Set("Content-Type", "application/json")
 	res := httptest.NewRecorder()
+	done := make(chan struct{})
 
-	handler.ServeHTTP(res, req)
+	go func() {
+		handler.ServeHTTP(res, req)
+		close(done)
+	}()
+	select {
+	case <-reader.started:
+	case <-time.After(time.Second):
+		t.Fatal("handler did not start reading request body")
+	}
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		close(reader.release)
+		t.Fatal("timeout handler did not return")
+	}
+	close(reader.release)
 
 	assert.Equal(t, http.StatusServiceUnavailable, res.Code)
 	assert.Equal(t, "application/json", res.Header().Get("Content-Type"))
 	assert.JSONEq(t, `{"error":"request timeout"}`, res.Body.String())
 }
 
-type slowPlanReader struct{}
+type blockingPlanReader struct {
+	started chan struct{}
+	release chan struct{}
+	once    sync.Once
+}
 
-func (slowPlanReader) Read([]byte) (int, error) {
-	time.Sleep(10 * time.Millisecond)
+func newBlockingPlanReader() *blockingPlanReader {
+	return &blockingPlanReader{
+		started: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+}
+
+func (reader *blockingPlanReader) Read([]byte) (int, error) {
+	reader.once.Do(func() { close(reader.started) })
+	<-reader.release
 	return 0, io.EOF
 }

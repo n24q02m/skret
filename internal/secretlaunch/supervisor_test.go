@@ -239,6 +239,7 @@ func TestSupervisorRunRecreatesClosedSession(t *testing.T) {
 	model := fixtureModel()
 	fetchCalls := 0
 	sends := 0
+	recreated := make(chan struct{})
 	provider := FetchFunc(func(context.Context, string, string) ([]byte, error) {
 		fetchCalls++
 		return []byte("synthetic-sentinel"), nil
@@ -250,12 +251,25 @@ func TestSupervisorRunRecreatesClosedSession(t *testing.T) {
 			t.Fatal("sender received incomplete values")
 		}
 		sends++
+		if sends == 2 {
+			close(recreated)
+		}
 		_ = stream.Close()
 		return nil
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
-	defer cancel()
-	if err := supervisor.Run(ctx, model, manifest); err != nil {
+	ctx, cancel := context.WithCancel(context.Background())
+	runErr := make(chan error, 1)
+	go func() {
+		runErr <- supervisor.Run(ctx, model, manifest)
+	}()
+	select {
+	case <-recreated:
+		cancel()
+	case <-time.After(time.Second):
+		cancel()
+		t.Fatal("closed session was not recreated")
+	}
+	if err := <-runErr; err != nil {
 		t.Fatal(err)
 	}
 	if sends < 2 || fetchCalls < 2 {

@@ -310,6 +310,9 @@ func (h *Helper) waitAfterKill(child ChildProcess) (int, error) {
 }
 
 func readWireFrame(reader io.Reader) ([]byte, error) {
+	if reader == nil {
+		return nil, fail(ErrFrame)
+	}
 	header := make([]byte, frameHeaderSize)
 	if _, err := io.ReadFull(reader, header); err != nil {
 		Zeroize(header)
