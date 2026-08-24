@@ -12,6 +12,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func coverageMigrationRoot(t *testing.T) string {
+	t.Helper()
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	require.NoError(t, err)
+	return root
+}
+
 func coverageMigrationJournal(t *testing.T, statePath, journalPath, tempPath string, manifestDigest string, original, desired []byte, phase StateMigrationPhase, now time.Time) StateMigrationJournal {
 	t.Helper()
 	return StateMigrationJournal{
@@ -38,7 +45,7 @@ func TestStateMigration_RecoveryCommitsPreparedAndBackupRenamedInputs(t *testing
 	desired := stateMigrationV2Bytes(t, original, manifestDigest)
 
 	t.Run("prepared journal with committed files", func(t *testing.T) {
-		root := t.TempDir()
+		root := coverageMigrationRoot(t)
 		source := filepath.Join(root, "state.json")
 		journalPath := filepath.Join(root, "migration.journal.json")
 		backup := source + ".v1"
@@ -56,7 +63,7 @@ func TestStateMigration_RecoveryCommitsPreparedAndBackupRenamedInputs(t *testing
 	})
 
 	t.Run("backup-renamed journal with all commit inputs", func(t *testing.T) {
-		root := t.TempDir()
+		root := coverageMigrationRoot(t)
 		source := filepath.Join(root, "state.json")
 		journalPath := filepath.Join(root, "migration.journal.json")
 		backup := source + ".v1"
@@ -123,7 +130,7 @@ func TestStateMigration_RecoveryRetainsChangedArtifactsForReconciliation(t *test
 }
 
 func TestStateMigration_RecoveryRejectsMalformedOrUnsafeJournals(t *testing.T) {
-	root := t.TempDir()
+	root := coverageMigrationRoot(t)
 	journalPath := filepath.Join(root, "migration.journal.json")
 	now := time.Date(2026, 8, 24, 15, 0, 0, 0, time.UTC)
 
@@ -326,7 +333,7 @@ func TestStateMigration_RecoveryMismatchedInputsNeverMutateUnrelatedArtifacts(t 
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			root := t.TempDir()
+			root := coverageMigrationRoot(t)
 			source := filepath.Join(root, "state.json")
 			backup := source + ".v1"
 			temp := filepath.Join(root, ".state.json.v2-temp")
@@ -349,7 +356,7 @@ func TestStateMigration_RecoveryMismatchedInputsNeverMutateUnrelatedArtifacts(t 
 }
 
 func TestStateMigration_RecoveryRejectsAliasedJournalPaths(t *testing.T) {
-	root := t.TempDir()
+	root := coverageMigrationRoot(t)
 	source := filepath.Join(root, "state.json")
 	journalPath := filepath.Join(root, "migration.journal.json")
 	original := []byte(`{"schema_version":1}`)
@@ -390,7 +397,7 @@ func TestStateMigration_MigrateRejectsNonRegularBackupArtifact(t *testing.T) {
 }
 
 func TestStateMigration_InputMatchingContractsAcceptOnlyExactArtifacts(t *testing.T) {
-	root := t.TempDir()
+	root := coverageMigrationRoot(t)
 	source := filepath.Join(root, "state.json")
 	backup := source + ".v1"
 	temp := filepath.Join(root, ".state.json.v2-temp")
@@ -448,7 +455,7 @@ func TestStateMigration_RecoveryRejectsNonRegularInputArtifacts(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			root := t.TempDir()
+			root := coverageMigrationRoot(t)
 			source := filepath.Join(root, "state.json")
 			backup := source + ".v1"
 			temp := filepath.Join(root, ".state.json.v2-temp")
@@ -484,7 +491,7 @@ func TestStateMigration_RecoveryHooksAndJournalPersistenceFailuresAreFailClosed(
 	desired := []byte("desired")
 
 	t.Run("recovery hook aborts before inspection", func(t *testing.T) {
-		root := t.TempDir()
+		root := coverageMigrationRoot(t)
 		source := filepath.Join(root, "state.json")
 		backup := source + ".v1"
 		temp := filepath.Join(root, ".state.json.v2-temp")
@@ -506,7 +513,7 @@ func TestStateMigration_RecoveryHooksAndJournalPersistenceFailuresAreFailClosed(
 	})
 
 	t.Run("reconciliation journal persistence failure retains phase", func(t *testing.T) {
-		root := t.TempDir()
+		root := coverageMigrationRoot(t)
 		source := filepath.Join(root, "state.json")
 		temp := filepath.Join(root, ".state.json.v2-temp")
 		targetDirectory := filepath.Join(root, "journal-directory")
@@ -519,7 +526,7 @@ func TestStateMigration_RecoveryHooksAndJournalPersistenceFailuresAreFailClosed(
 	})
 
 	t.Run("commit journal persistence failure leaves metadata uncommitted", func(t *testing.T) {
-		root := t.TempDir()
+		root := coverageMigrationRoot(t)
 		source := filepath.Join(root, "state.json")
 		temp := filepath.Join(root, ".state.json.v2-temp")
 		targetDirectory := filepath.Join(root, "journal-directory")
@@ -533,7 +540,7 @@ func TestStateMigration_RecoveryHooksAndJournalPersistenceFailuresAreFailClosed(
 
 func TestStateMigration_PersistAndLoadJournalErrorBoundaries(t *testing.T) {
 	now := time.Date(2026, 8, 24, 18, 0, 0, 0, time.UTC)
-	root := t.TempDir()
+	root := coverageMigrationRoot(t)
 	source := filepath.Join(root, "state.json")
 	temp := filepath.Join(root, ".state.json.v2-temp")
 	journalPath := filepath.Join(root, "migration.journal.json")
@@ -571,7 +578,7 @@ func TestStateMigration_PersistAndLoadJournalErrorBoundaries(t *testing.T) {
 
 func TestStateMigration_JournalValidationRejectsEveryMutableInvariant(t *testing.T) {
 	now := time.Date(2026, 8, 24, 18, 30, 0, 0, time.UTC)
-	root := t.TempDir()
+	root := coverageMigrationRoot(t)
 	source := filepath.Join(root, "state.json")
 	journalPath := filepath.Join(root, "migration.journal.json")
 	temp := filepath.Join(root, ".state.json.v2-temp")
@@ -612,7 +619,7 @@ func TestStateMigration_StatePathOutsideManifestFileSetFailsClosed(t *testing.T)
 }
 
 func TestStateMigration_FileTransitionHelpersFailClosed(t *testing.T) {
-	root := t.TempDir()
+	root := coverageMigrationRoot(t)
 	source := filepath.Join(root, "state.json")
 	backup := source + ".v1"
 	temp := filepath.Join(root, ".state.json.v2-temp")
@@ -782,7 +789,7 @@ func TestStateMigration_ValidationHelperContracts(t *testing.T) {
 	})
 
 	t.Run("migration path relationships are exclusive", func(t *testing.T) {
-		root := t.TempDir()
+		root := coverageMigrationRoot(t)
 		source := filepath.Join(root, "state.json")
 		backup := source + ".v1"
 		temp := filepath.Join(root, ".state.json.v2-temp")
@@ -858,7 +865,7 @@ func TestStateMigration_ValidationHelperContracts(t *testing.T) {
 }
 
 func TestStateMigration_FileInspectionAndMatchingContracts(t *testing.T) {
-	root := t.TempDir()
+	root := coverageMigrationRoot(t)
 	source := filepath.Join(root, "state.json")
 	backup := source + ".v1"
 	temp := filepath.Join(root, ".state.json.v2-temp")
@@ -1005,7 +1012,7 @@ func TestStateMigration_MigrateManifestScopeFailuresNeverMutate(t *testing.T) {
 }
 
 func TestStateMigration_CommitAndAncestorHelpersRejectInvalidJournalState(t *testing.T) {
-	root := t.TempDir()
+	root := coverageMigrationRoot(t)
 	source := filepath.Join(root, "state.json")
 	backup := source + ".v1"
 	temp := filepath.Join(root, ".state.json.v2-temp")
@@ -1066,7 +1073,7 @@ func TestStateMigration_JournalAndRestoreRoundTrips(t *testing.T) {
 	desired := []byte("desired")
 
 	t.Run("persist and load a value-free journal", func(t *testing.T) {
-		root := t.TempDir()
+		root := coverageMigrationRoot(t)
 		source := filepath.Join(root, "state.json")
 		journalPath := filepath.Join(root, "migration.journal.json")
 		temp := filepath.Join(root, ".state.json.v2-temp")
@@ -1081,7 +1088,7 @@ func TestStateMigration_JournalAndRestoreRoundTrips(t *testing.T) {
 	})
 
 	t.Run("mark reconciliation persists terminal phase", func(t *testing.T) {
-		root := t.TempDir()
+		root := coverageMigrationRoot(t)
 		source := filepath.Join(root, "state.json")
 		journalPath := filepath.Join(root, "migration.journal.json")
 		temp := filepath.Join(root, ".state.json.v2-temp")
@@ -1092,7 +1099,7 @@ func TestStateMigration_JournalAndRestoreRoundTrips(t *testing.T) {
 	})
 
 	t.Run("backup validation accepts exact preserved source", func(t *testing.T) {
-		root := t.TempDir()
+		root := coverageMigrationRoot(t)
 		source := filepath.Join(root, "state.json")
 		backup := source + ".v1"
 		journalPath := filepath.Join(root, "migration.journal.json")
@@ -1103,7 +1110,7 @@ func TestStateMigration_JournalAndRestoreRoundTrips(t *testing.T) {
 	})
 
 	t.Run("preserve and restore source use exact bytes", func(t *testing.T) {
-		root := t.TempDir()
+		root := coverageMigrationRoot(t)
 		source := filepath.Join(root, "state.json")
 		backup := source + ".v1"
 		journalPath := filepath.Join(root, "migration.journal.json")
@@ -1125,7 +1132,7 @@ func TestStateMigration_RecoveryCompletesPreparedAndBackupRenamedTransitions(t *
 	desired := []byte("desired")
 
 	t.Run("prepared rollback removes only exact temporary state", func(t *testing.T) {
-		root := t.TempDir()
+		root := coverageMigrationRoot(t)
 		source := filepath.Join(root, "state.json")
 		journalPath := filepath.Join(root, "migration.journal.json")
 		temp := filepath.Join(root, ".state.json.v2-temp")
@@ -1141,7 +1148,7 @@ func TestStateMigration_RecoveryCompletesPreparedAndBackupRenamedTransitions(t *
 	})
 
 	t.Run("prepared recovery restores the preserved source", func(t *testing.T) {
-		root := t.TempDir()
+		root := coverageMigrationRoot(t)
 		source := filepath.Join(root, "state.json")
 		journalPath := filepath.Join(root, "migration.journal.json")
 		backup := source + ".v1"
@@ -1159,7 +1166,7 @@ func TestStateMigration_RecoveryCompletesPreparedAndBackupRenamedTransitions(t *
 	})
 
 	t.Run("backup-renamed recovery commits the prepared v2 state", func(t *testing.T) {
-		root := t.TempDir()
+		root := coverageMigrationRoot(t)
 		source := filepath.Join(root, "state.json")
 		journalPath := filepath.Join(root, "migration.journal.json")
 		backup := source + ".v1"
@@ -1179,7 +1186,7 @@ func TestStateMigration_RecoveryCompletesPreparedAndBackupRenamedTransitions(t *
 
 func TestStateMigration_RecoveryBackupRenamedAlreadyCommittedWithoutTemp(t *testing.T) {
 	now := time.Date(2026, 8, 24, 22, 15, 0, 0, time.UTC)
-	root := t.TempDir()
+	root := coverageMigrationRoot(t)
 	source := filepath.Join(root, "state.json")
 	backup := source + ".v1"
 	journalPath := filepath.Join(root, "migration.journal.json")

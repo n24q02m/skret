@@ -11,7 +11,6 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/n24q02m/skret/internal/provider"
 	"github.com/stretchr/testify/assert"
@@ -32,12 +31,16 @@ func (b *trackingBody) Close() error {
 type trackingTransport struct {
 	base   http.RoundTripper
 	closed *atomic.Int32
+	cancel context.CancelFunc
 }
 
 func (t *trackingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	resp, err := t.base.RoundTrip(req)
 	if err != nil {
 		return nil, err
+	}
+	if t.cancel != nil {
+		t.cancel()
 	}
 	resp.Body = &trackingBody{ReadCloser: resp.Body, closed: t.closed}
 	return resp, nil
@@ -128,24 +131,24 @@ func TestDoWithRetry_PermanentStatusDoesNotRetry(t *testing.T) {
 
 func TestDoWithRetry_ContextCancellationStopsBackoff(t *testing.T) {
 	var attempts atomic.Int32
-	firstResponse := make(chan struct{})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		attempts.Add(1)
 		w.WriteHeader(http.StatusServiceUnavailable)
-		close(firstResponse)
 	}))
 	defer srv.Close()
 
 	var closed atomic.Int32
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go func() {
-		<-firstResponse
-		time.Sleep(5 * time.Millisecond)
-		cancel()
-	}()
+	client := &http.Client{
+		Transport: &trackingTransport{
+			base:   srv.Client().Transport,
+			closed: &closed,
+			cancel: cancel,
+		},
+	}
 
-	_, err := doWithRetry(ctx, retryTestClient(srv, &closed), func() (*http.Request, error) {
+	_, err := doWithRetry(ctx, client, func() (*http.Request, error) {
 		return retryTestRequest(ctx, http.MethodGet, srv.URL)
 	}, http.StatusOK)
 	require.Error(t, err)
