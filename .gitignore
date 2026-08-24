@@ -50,8 +50,7 @@ __pycache__/
 *.pyc
 
 # Agent artifacts (not committed)
-# .jules/ is deliberately absent: the bot ledgers under it are versioned, and
-# the review bots read them from the repo. Ignoring it made `git add` refuse.
+.jules/
 .code-review-graph/
 .claude-plugin/
 .wrangler/
