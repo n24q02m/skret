@@ -8,3 +8,10 @@ changelog_file = "CHANGELOG.md"
 
 [semantic_release.remote]
 type = "github"
+
+# The protected prepare lane runs against the campaign branch before merge.
+# Keep that branch explicit so unrelated branches cannot produce candidates.
+[semantic_release.branches.candidate]
+match = "^skret-task0-followup$"
+prerelease = true
+prerelease_token = "beta"
