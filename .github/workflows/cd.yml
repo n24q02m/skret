@@ -54,6 +54,7 @@ jobs:
         uses: n24q02m/better-semantic-release@2335089f3744c77ca7ef389493a87e0cc117cc2a # v1.4.0-beta.2 candidate
         with:
           github_token: ${{ github.token }}
+          config_file: semantic-release.toml
           no_operation_mode: true
           commit: false
           tag: false

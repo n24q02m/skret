@@ -97,6 +97,7 @@ class WorkflowPolicyTests(unittest.TestCase):
             "n24q02m/better-semantic-release@2335089f3744c77ca7ef389493a87e0cc117cc2a",
             "no_operation_mode: true",
             "github_token: ${{ github.token }}",
+            "config_file: semantic-release.toml",
             "commit: false",
             "tag: false",
             "push: false",
