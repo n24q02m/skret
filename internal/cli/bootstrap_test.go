@@ -16,6 +16,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/n24q02m/skret/internal/auth"
 	"github.com/n24q02m/skret/pkg/skret"
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -427,4 +428,20 @@ func TestBootstrapCmd_ValueSafety(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, 0, strings.Count(out.String(), bsSecret))
+}
+
+func TestBootstrapOutputFormatResolution(t *testing.T) {
+	t.Run("local flag", func(t *testing.T) {
+		cmd := &cobra.Command{}
+		cmd.Flags().String("format", "json", "")
+		assert.Equal(t, "json", bootstrapOutputFormat(cmd))
+	})
+	t.Run("inherited flag", func(t *testing.T) {
+		cmd := &cobra.Command{}
+		cmd.InheritedFlags().String("format", "json", "")
+		assert.Equal(t, "json", bootstrapOutputFormat(cmd))
+	})
+	t.Run("default", func(t *testing.T) {
+		assert.Equal(t, "table", bootstrapOutputFormat(&cobra.Command{}))
+	})
 }

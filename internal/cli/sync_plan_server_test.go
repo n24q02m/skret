@@ -230,3 +230,69 @@ func (reader *blockingPlanReader) Read([]byte) (int, error) {
 	<-reader.release
 	return 0, io.EOF
 }
+
+func TestRunSyncPlanServerRejectsInvalidListenAddress(t *testing.T) {
+	err := runSyncPlanServer(context.Background(), ":not-a-port", 1<<20)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "plan-server: serve failed")
+}
+
+func TestSyncPlanServerValidationBoundaries(t *testing.T) {
+	t.Run("command rejects invalid bounds", func(t *testing.T) {
+		cmd := newSyncPlanServerCmd()
+		cmd.SetArgs([]string{"--listen", ""})
+		require.ErrorContains(t, cmd.Execute(), "listen address is required")
+
+		cmd = newSyncPlanServerCmd()
+		cmd.SetArgs([]string{"--max-body-bytes", "0"})
+		require.ErrorContains(t, cmd.Execute(), "max body size is out of bounds")
+	})
+
+	t.Run("handler normalizes invalid limits", func(t *testing.T) {
+		handler := newSyncPlanServerHandlerWithTimeout(0, 0)
+		res := httptest.NewRecorder()
+		handler.ServeHTTP(res, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/healthz", nil))
+		assert.Equal(t, http.StatusOK, res.Code)
+	})
+
+	t.Run("query and canceled requests are rejected", func(t *testing.T) {
+		handler := newSyncPlanServerHandler(1 << 20)
+		res := httptest.NewRecorder()
+		handler.ServeHTTP(res, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/healthz?debug=1", nil))
+		assert.Equal(t, http.StatusNotFound, res.Code)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		res = httptest.NewRecorder()
+		handler.ServeHTTP(res, httptest.NewRequestWithContext(ctx, http.MethodGet, "/healthz", nil))
+		assert.Equal(t, http.StatusServiceUnavailable, res.Code)
+	})
+
+	t.Run("request validation rejects invalid metadata", func(t *testing.T) {
+		var request SyncPlanRequest
+		require.NoError(t, json.Unmarshal([]byte(validPlanPayload), &request))
+		invalid := []SyncPlanRequest{
+			{SchemaVersion: "wrong", OperationID: "op", Namespace: "ns", Environment: "env", Selectors: []SyncPlanSelector{}, Rules: []SyncPlanRule{}},
+			{SchemaVersion: planSchemaVersion, OperationID: " ", Namespace: "ns", Environment: "env", Selectors: []SyncPlanSelector{}, Rules: []SyncPlanRule{}},
+			{SchemaVersion: planSchemaVersion, OperationID: "op", Namespace: "ns", Environment: "env", Selectors: nil, Rules: []SyncPlanRule{}},
+			{SchemaVersion: planSchemaVersion, OperationID: "op", Namespace: "ns", Environment: "env", Selectors: []SyncPlanSelector{{Name: "", Path: "/ok"}}, Rules: []SyncPlanRule{}},
+			{SchemaVersion: planSchemaVersion, OperationID: "op", Namespace: "ns", Environment: "env", Selectors: []SyncPlanSelector{}, Rules: []SyncPlanRule{{Target: "target", Action: ""}}},
+		}
+		for _, candidate := range invalid {
+			assert.False(t, validSyncPlanRequest(candidate))
+		}
+		assert.True(t, validSyncPlanRequest(request))
+		for _, value := range []string{"", " leading", "trailing ", string(rune(0x1f)), string(rune(0x7f)), strings.Repeat("x", maxPlanStringBytes+1)} {
+			assert.False(t, validPlanText(value), value)
+		}
+		assert.True(t, validPlanText("metadata"))
+		_, err := decodeSyncPlanRequest([]byte(validPlanPayload + " "))
+		require.Error(t, err)
+	})
+
+	t.Run("duplicate-field scanner rejects malformed roots", func(t *testing.T) {
+		for _, raw := range []string{"", "[]", `{"a":1} trailing`, `{"a":`, `{"a":{]"}`} {
+			assert.Error(t, rejectDuplicatePlanFields([]byte(raw)), raw)
+		}
+	})
+}

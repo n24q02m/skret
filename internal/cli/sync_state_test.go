@@ -753,3 +753,119 @@ func mustReadCLIFile(t *testing.T, path string) []byte {
 	require.NoError(t, err)
 	return data
 }
+
+func TestSyncStateMigrationHelperBoundaries(t *testing.T) {
+	root := resolvedCLIStateMigrationRoot(t)
+	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+
+	t.Run("public key accepts hex raw and rejects unsafe inputs", func(t *testing.T) {
+		hexPath := filepath.Join(root, "public.hex")
+		rawPath := filepath.Join(root, "public.raw")
+		dirPath := filepath.Join(root, "public.dir")
+		require.NoError(t, os.WriteFile(hexPath, []byte(hex.EncodeToString(publicKey)), 0o600))
+		require.NoError(t, os.WriteFile(rawPath, publicKey, 0o600))
+		require.NoError(t, os.Mkdir(dirPath, 0o700))
+
+		decoded, readErr := readCLIStateMigrationPublicKey(hex.EncodeToString(publicKey))
+		require.NoError(t, readErr)
+		assert.Equal(t, publicKey, decoded)
+		decoded, readErr = readCLIStateMigrationPublicKey(rawPath)
+		require.NoError(t, readErr)
+		assert.Equal(t, publicKey, decoded)
+		decoded, readErr = readCLIStateMigrationPublicKey(hexPath)
+		require.NoError(t, readErr)
+		assert.Equal(t, publicKey, decoded)
+		_, readErr = readCLIStateMigrationPublicKey(dirPath)
+		assert.ErrorContains(t, readErr, "not a regular file")
+		_, readErr = readCLIStateMigrationPublicKey(filepath.Join(root, "missing-key"))
+		assert.Error(t, readErr)
+		require.NoError(t, os.WriteFile(filepath.Join(root, "bad-key"), []byte("bad"), 0o600))
+		_, readErr = readCLIStateMigrationPublicKey(filepath.Join(root, "bad-key"))
+		assert.ErrorContains(t, readErr, "must contain")
+	})
+
+	t.Run("private key accepts raw and hex and rejects unsafe inputs", func(t *testing.T) {
+		hexPath := filepath.Join(root, "private.hex")
+		rawPath := filepath.Join(root, "private.raw")
+		dirPath := filepath.Join(root, "private.dir")
+		require.NoError(t, os.WriteFile(hexPath, []byte(hex.EncodeToString(privateKey)), 0o600))
+		require.NoError(t, os.WriteFile(rawPath, privateKey, 0o600))
+		require.NoError(t, os.Mkdir(dirPath, 0o700))
+
+		decoded, readErr := readCLIStateMigrationPrivateKey(rawPath)
+		require.NoError(t, readErr)
+		assert.Equal(t, privateKey, decoded)
+		decoded, readErr = readCLIStateMigrationPrivateKey(hexPath)
+		require.NoError(t, readErr)
+		assert.Equal(t, privateKey, decoded)
+		_, readErr = readCLIStateMigrationPrivateKey("")
+		assert.ErrorContains(t, readErr, "required")
+		_, readErr = readCLIStateMigrationPrivateKey(dirPath)
+		assert.ErrorContains(t, readErr, "not a regular file")
+		require.NoError(t, os.WriteFile(filepath.Join(root, "bad-private"), []byte("not-hex"), 0o600))
+		_, readErr = readCLIStateMigrationPrivateKey(filepath.Join(root, "bad-private"))
+		assert.ErrorContains(t, readErr, "must contain")
+	})
+
+	t.Run("path resolver enforces exact manifest rows", func(t *testing.T) {
+		base := &syncer.StateManifest{
+			SourceRoot: root,
+			Files:      []syncer.StateManifestFile{{Path: "state.json", Size: 1, SHA256: strings.Repeat("a", 64)}},
+		}
+		statePath, row, resolveErr := resolveCLIStateMigrationPath(base, "")
+		require.NoError(t, resolveErr)
+		assert.Equal(t, filepath.Join(root, "state.json"), statePath)
+		assert.Equal(t, "state.json", row.Path)
+		statePath, _, resolveErr = resolveCLIStateMigrationPath(base, statePath)
+		require.NoError(t, resolveErr)
+		assert.Equal(t, filepath.Join(root, "state.json"), statePath)
+		_, _, resolveErr = resolveCLIStateMigrationPath(nil, "")
+		assert.ErrorContains(t, resolveErr, "missing state manifest")
+		relative := *base
+		relative.SourceRoot = "relative"
+		_, _, resolveErr = resolveCLIStateMigrationPath(&relative, "")
+		assert.ErrorContains(t, resolveErr, "not absolute")
+		multiple := *base
+		multiple.Files = append(multiple.Files, syncer.StateManifestFile{Path: "other.json"})
+		_, _, resolveErr = resolveCLIStateMigrationPath(&multiple, "")
+		assert.ErrorContains(t, resolveErr, "--state is required")
+		_, _, resolveErr = resolveCLIStateMigrationPath(base, "../outside")
+		assert.ErrorContains(t, resolveErr, "escapes")
+		_, _, resolveErr = resolveCLIStateMigrationPath(base, filepath.Join(root, "..", "outside"))
+		assert.ErrorContains(t, resolveErr, "escapes")
+		duplicate := *base
+		duplicate.Files = append(duplicate.Files, base.Files[0])
+		_, _, resolveErr = resolveCLIStateMigrationPath(&duplicate, "state.json")
+		assert.ErrorContains(t, resolveErr, "ambiguous")
+		_, _, resolveErr = resolveCLIStateMigrationPath(base, "missing.json")
+		assert.ErrorContains(t, resolveErr, "exact manifest file row")
+	})
+
+	t.Run("filesystem helper boundaries", func(t *testing.T) {
+		_, normalizeErr := normalizeCLIStateMigrationPath("bad\x00path")
+		assert.ErrorContains(t, normalizeErr, "NUL")
+		normalized, normalizeErr := normalizeCLIStateMigrationPath(filepath.Join(root, "journal.json"))
+		require.NoError(t, normalizeErr)
+		assert.Equal(t, filepath.Join(root, "journal.json"), normalized)
+
+		directory := filepath.Join(root, "source-dir")
+		require.NoError(t, os.Mkdir(directory, 0o700))
+		_, readErr := readCLIStateMigrationSource(directory)
+		assert.ErrorContains(t, readErr, "not a regular file")
+		sourcePath := filepath.Join(root, "source.json")
+		require.NoError(t, os.WriteFile(sourcePath, []byte("state"), 0o600))
+		source, readErr := readCLIStateMigrationSource(sourcePath)
+		require.NoError(t, readErr)
+		assert.Equal(t, []byte("state"), source)
+
+		journalPath := filepath.Join(root, "journal.json")
+		require.NoError(t, os.WriteFile(journalPath, []byte("{"), 0o600))
+		_, readErr = readCLIStateMigrationJournal(journalPath)
+		assert.ErrorContains(t, readErr, "invalid migration journal")
+		require.NoError(t, os.WriteFile(journalPath, []byte(`{"phase":"committed"}`), 0o600))
+		journal, readErr := readCLIStateMigrationJournal(journalPath)
+		require.NoError(t, readErr)
+		assert.Equal(t, "committed", string(journal.Phase))
+	})
+}
