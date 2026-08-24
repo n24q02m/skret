@@ -105,6 +105,7 @@ class WorkflowPolicyTests(unittest.TestCase):
             "build: false",
             "steps.release.outputs.version",
             "steps.release.outputs.tag",
+            'git tag --no-sign "$CANDIDATE_TAG" "$SOURCE_SHA"',
             "args: release --clean --skip=publish -f .goreleaser.prepare.yaml",
             "version: v2.17.1",
         ):

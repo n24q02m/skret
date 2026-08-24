@@ -96,6 +96,19 @@ jobs:
           epoch="$(git show -s --format=%ct "$SOURCE_SHA")"
           printf 'SOURCE_DATE_EPOCH=%s\n' "$epoch" >> "$GITHUB_ENV"
 
+      # GoReleaser validates GORELEASER_CURRENT_TAG against the local checkout.
+      # This tag is ephemeral and never pushed; BSR remains no-op and no public
+      # release/tag side effect is introduced.
+      - name: Create ephemeral local candidate tag
+        shell: bash
+        env:
+          CANDIDATE_TAG: ${{ steps.release.outputs.tag }}
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          test -n "$CANDIDATE_TAG"
+          git tag --no-sign "$CANDIDATE_TAG" "$SOURCE_SHA"
+
 
       - name: Prepare CLI archives, checksums, and SBOMs
         uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
