@@ -1,11 +1,6 @@
 version: 2
 
 release:
-  # A transient GitHub upload error mid-publish leaves the release with a
-  # partial asset set; without this flag a rerun dies on 422 already_exists
-  # for every asset that did land, so the scoop/brew/docker publishers after
-  # the upload step never run (v1.14.0, run 29544187972).
-  replace_existing_artifacts: true
   # Mark -beta/-rc tags as GitHub pre-releases so a beta never takes the
   # "Latest" slot that install scripts and `gh release view --latest` read.
   prerelease: auto
@@ -27,7 +22,7 @@ builds:
       - -s -w
       - -X github.com/n24q02m/skret/internal/version.Version={{.Version}}
       - -X github.com/n24q02m/skret/internal/version.Commit={{.Commit}}
-      - -X github.com/n24q02m/skret/internal/version.Date={{.Date}}
+      - -X github.com/n24q02m/skret/internal/version.Date={{.CommitTimestamp}}
 
 archives:
   - id: default

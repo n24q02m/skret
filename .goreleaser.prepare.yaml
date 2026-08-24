@@ -1,0 +1,50 @@
+version: 2
+
+builds:
+  - id: skret
+    main: ./cmd/skret
+    binary: skret
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X github.com/n24q02m/skret/internal/version.Version={{.Version}}
+      - -X github.com/n24q02m/skret/internal/version.Commit={{.Commit}}
+      - -X github.com/n24q02m/skret/internal/version.Date={{.CommitTimestamp}}
+
+archives:
+  - id: default
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: "skret_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: "checksums.txt"
+
+dockers_v2:
+  - images:
+      - "ghcr.io/n24q02m/skret"
+    tags:
+      - "{{ .Version }}"
+      - "{{ if not .Prerelease }}latest{{ end }}"
+    dockerfile: Dockerfile
+    platforms:
+      - linux/amd64
+      - linux/arm64
+
+sboms:
+  - artifacts: archive
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^Merge"
