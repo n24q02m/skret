@@ -172,7 +172,7 @@ func TestStateMigration_MigrateRejectsExistingJournalAndArtifacts(t *testing.T) 
 
 	t.Run("existing journal requires recovery", func(t *testing.T) {
 		_, statePath, _, manifest, publicKey, _, now, original := stateMigrationFixture(t)
-		journalPath := filepath.Join(t.TempDir(), "migration.journal.json")
+		journalPath := filepath.Join(coverageMigrationRoot(t), "migration.journal.json")
 		manifestDigest := stateMigrationManifestDigest(t, manifest)
 		desired := stateMigrationV2Bytes(t, original, manifestDigest)
 		tempPath := filepath.Join(filepath.Dir(statePath), ".state.json.v2-existing")
@@ -185,7 +185,7 @@ func TestStateMigration_MigrateRejectsExistingJournalAndArtifacts(t *testing.T) 
 
 	t.Run("operation mismatch is rejected", func(t *testing.T) {
 		_, statePath, _, manifest, publicKey, _, now, original := stateMigrationFixture(t)
-		journalPath := filepath.Join(t.TempDir(), "migration.journal.json")
+		journalPath := filepath.Join(coverageMigrationRoot(t), "migration.journal.json")
 		manifestDigest := stateMigrationManifestDigest(t, manifest)
 		desired := stateMigrationV2Bytes(t, original, manifestDigest)
 		journal := coverageMigrationJournal(t, statePath, journalPath, filepath.Join(filepath.Dir(statePath), ".temp"), manifestDigest, original, desired, StateMigrationPhasePrepared, now)
@@ -197,7 +197,7 @@ func TestStateMigration_MigrateRejectsExistingJournalAndArtifacts(t *testing.T) 
 
 	t.Run("manifest mismatch is rejected", func(t *testing.T) {
 		_, statePath, _, manifest, publicKey, _, now, original := stateMigrationFixture(t)
-		journalPath := filepath.Join(t.TempDir(), "migration.journal.json")
+		journalPath := filepath.Join(coverageMigrationRoot(t), "migration.journal.json")
 		desired := stateMigrationV2Bytes(t, original, stateMigrationManifestDigest(t, manifest))
 		journal := coverageMigrationJournal(t, statePath, journalPath, filepath.Join(filepath.Dir(statePath), ".temp"), "sha256:"+strings.Repeat("b", 64), original, desired, StateMigrationPhasePrepared, now)
 		writeStateMigrationJournal(t, journalPath, journal)
@@ -779,12 +779,12 @@ func TestStateMigration_ValidationHelperContracts(t *testing.T) {
 	})
 
 	t.Run("paths require absolute clean names", func(t *testing.T) {
-		traversal := filepath.Join(t.TempDir(), "child") + string(filepath.Separator) + ".." + string(filepath.Separator) + "outside"
-		tests := []string{"", "relative/path", traversal, filepath.Join(t.TempDir(), "nul\x00path")}
+		traversal := filepath.Join(coverageMigrationRoot(t), "child") + string(filepath.Separator) + ".." + string(filepath.Separator) + "outside"
+		tests := []string{"", "relative/path", traversal, filepath.Join(coverageMigrationRoot(t), "nul\x00path")}
 		for _, value := range tests {
 			require.Error(t, validateMigrationPath(value), value)
 		}
-		clean := filepath.Join(t.TempDir(), "state.json")
+		clean := filepath.Join(coverageMigrationRoot(t), "state.json")
 		require.NoError(t, validateMigrationPath(clean))
 	})
 
