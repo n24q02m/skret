@@ -261,6 +261,7 @@ func TestSaveSyncState_RenameFailureCleansTemp(t *testing.T) {
 		Hashes: map[string]string{"K": hashSecret("value")},
 	}
 	path, err := StatePathFor(state.Target, state.ID)
+	require.NoError(t, err)
 	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o700))
 	require.NoError(t, os.Mkdir(path, 0o700))
 
@@ -345,6 +346,7 @@ func TestSaveSyncState_PathTraversal(t *testing.T) {
 	assert.True(t, strings.HasSuffix(entries[0].Name(), ".json"))
 	assert.NotContains(t, entries[0].Name(), "..")
 }
+
 func TestSyncState_OperationSuccessRecordsLifecycle(t *testing.T) {
 	started := time.Date(2026, 8, 22, 9, 0, 0, 0, time.UTC)
 	finished := started.Add(2 * time.Second)
@@ -415,6 +417,7 @@ func TestSyncState_BeginOperationSupersedesInterruptedOperation(t *testing.T) {
 	assert.Equal(t, second, *state.StartedAt)
 	assert.Equal(t, OutcomePending, state.Outcomes["K1"].Status)
 }
+
 func TestSyncState_OperationPhaseAndOwnership(t *testing.T) {
 	started := time.Date(2026, 8, 23, 9, 0, 0, 0, time.UTC)
 	finished := started.Add(time.Second)
@@ -830,6 +833,7 @@ func TestSyncState_RepeatedFinalizeReconciliationRetainsState(t *testing.T) {
 	require.NoError(t, marshalErr)
 	assert.Equal(t, string(before), string(after))
 }
+
 func TestSyncState_GenerationMetadataRetainedForPartialAcknowledgement(t *testing.T) {
 	started := time.Date(2026, 8, 24, 9, 0, 0, 0, time.UTC)
 	deadline := started.Add(10 * time.Minute)

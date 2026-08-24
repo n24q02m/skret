@@ -344,6 +344,7 @@ func TestHelperInitialSecretCancellationClosesClosableStream(t *testing.T) {
 		t.Fatal("canceled secret intake did not close stream")
 	}
 }
+
 func TestHelperForwardsSignals(t *testing.T) {
 	manifest, signed, policy, _ := signedFixture(t)
 	child := newFakeChild(0, false)

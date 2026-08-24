@@ -17,8 +17,10 @@ import (
 
 const StateMigrationJournalVersion = 1
 
-type StateMigrationPhase string
-type StateMigrationJournalPhase = StateMigrationPhase
+type (
+	StateMigrationPhase        string
+	StateMigrationJournalPhase = StateMigrationPhase
+)
 
 const (
 	StateMigrationPhasePrepared            StateMigrationPhase = "prepared"
@@ -474,6 +476,7 @@ func validateMigrationPath(path string) error {
 	}
 	return nil
 }
+
 func validateMigrationMutationAncestors(paths ...string) error {
 	seen := make(map[string]struct{}, len(paths))
 	for _, path := range paths {
@@ -767,6 +770,7 @@ func removeMigrationFileIfExact(path, expectedHash string, expectedSize int64) e
 	}
 	return nil
 }
+
 func preserveMigrationSourceExclusively(journal *StateMigrationJournal) error {
 	if err := validateMigrationMutationAncestors(journal.SourcePath, journal.BackupPath); err != nil {
 		return err

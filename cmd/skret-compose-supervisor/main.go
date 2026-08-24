@@ -214,7 +214,7 @@ func runContext(
 		provider = adapted
 	}
 	if closeProvider != nil {
-		defer closeProvider()
+		defer func() { _ = closeProvider() }()
 	}
 	if runtime == nil {
 		if !filepath.IsAbs(*dockerBinary) || *dockerDigest == "" ||
@@ -225,7 +225,7 @@ func runContext(
 		runtime = secretlaunch.NewDockerRuntime(*dockerBinary, commandRunner{}, attachRunner{}, *invokeDocker)
 	}
 	supervisor := secretlaunch.NewSupervisor(runtime, provider)
-	defer supervisor.Close()
+	defer func() { _ = supervisor.Close() }()
 	if err := supervisor.Run(ctx, model, manifest); err != nil {
 		fmt.Fprintln(diagnostics, err)
 		return 1

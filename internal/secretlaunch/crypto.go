@@ -30,7 +30,7 @@ type Handshake struct {
 }
 
 func NewHandshake(random ...io.Reader) (*Handshake, error) {
-	r := io.Reader(cryptorand.Reader)
+	r := cryptorand.Reader
 	if len(random) > 1 {
 		return nil, fail(ErrCrypto)
 	}
@@ -138,7 +138,7 @@ func NewSession(shared, manifestCanonical []byte, random ...io.Reader) (*Session
 	if len(shared) != 32 || len(manifestCanonical) == 0 || len(random) > 1 {
 		return nil, fail(ErrCrypto)
 	}
-	r := io.Reader(cryptorand.Reader)
+	r := cryptorand.Reader
 	if len(random) == 1 && random[0] != nil {
 		r = random[0]
 	}
@@ -320,7 +320,7 @@ func validateFrameFields(key, version string, value []byte) error {
 	if key == "" || len(key) > MaxKeyLength || version == "" || len(version) > MaxKeyLength {
 		return fail(ErrFrame)
 	}
-	if value != nil && len(value) > MaxValueLength {
+	if len(value) > MaxValueLength {
 		return fail(ErrFrame)
 	}
 	for _, value := range []string{key, version} {

@@ -257,15 +257,16 @@ func (o *syncOptions) run(cmd *cobra.Command) error {
 			}
 		}
 
-		if o.format == "json" {
+		switch {
+		case o.format == "json":
 			result := SyncResult{Source: resolved.Path, Target: s.Name(), Synced: len(toSync)}
 			if o.rotate {
 				result.Intent = syncer.OperationIntentRotate
 			}
 			results = append(results, result)
-		} else if o.rotate {
+		case o.rotate:
 			cmd.PrintErrf("Rotated %d secrets to %s\n", len(toSync), s.Name())
-		} else {
+		default:
 			cmd.PrintErrf("Synced %d secrets to %s\n", len(toSync), s.Name())
 		}
 	}
@@ -294,7 +295,7 @@ func syncStateNeedsRecovery(state *syncer.SyncState) bool {
 		return false
 	}
 	if state.Phase != syncer.OperationPhasePending &&
-		!(state.Phase == "" && state.CompletedAt == nil) {
+		(state.Phase != "" || state.CompletedAt != nil) {
 		return false
 	}
 	owned := 0

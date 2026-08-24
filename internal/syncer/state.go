@@ -523,7 +523,7 @@ func (metadata *OperationMetadata) verificationFailed() bool {
 }
 
 func validOperationReference(value string) bool {
-	if len(value) == 0 || len(value) > 512 {
+	if value == "" || len(value) > 512 {
 		return false
 	}
 	for index := range len(value) {
@@ -820,8 +820,8 @@ func (s *SyncState) checkOperation(operationID string) error {
 }
 
 func timePtr(value time.Time) *time.Time {
-	copy := value
-	return &copy
+	copyOfValue := value
+	return &copyOfValue
 }
 
 // StatePathFor returns the on-disk path for the given target+id.

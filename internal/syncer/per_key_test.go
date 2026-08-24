@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/nacl/box"
 )
+
 // Keep the test contract local so the adapter behavior is exercised through
 // the optional method rather than coupled to a concrete implementation type.
 type perKeySyncerContract interface {
@@ -71,8 +72,8 @@ func TestPerKeySyncer_CloudflareWorkerAdapterWritesOneKeyAndRetries(t *testing.T
 	}))
 	defer server.Close()
 	built, err := Build([]TargetConfig{{
-		Type:  "cloudflare",
-		Token: "token",
+		Type:   "cloudflare",
+		Token:  "token",
 		Fields: map[string]string{"account": "account", "worker": "worker", "base_url": server.URL},
 	}})
 	require.NoError(t, err)
@@ -102,8 +103,8 @@ func TestPerKeySyncer_CloudflareWorkerRequestShapeIsValueFreeOnError(t *testing.
 	}))
 	defer server.Close()
 	built, err := Build([]TargetConfig{{
-		Type:  "cloudflare",
-		Token: "token",
+		Type:   "cloudflare",
+		Token:  "token",
 		Fields: map[string]string{"account": "account", "worker": "worker", "base_url": server.URL},
 	}})
 	require.NoError(t, err)

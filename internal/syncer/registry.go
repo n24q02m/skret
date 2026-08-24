@@ -2,10 +2,11 @@ package syncer
 
 import (
 	"fmt"
-	"golang.org/x/text/unicode/norm"
 	"net/url"
 	"path/filepath"
 	"strings"
+
+	"golang.org/x/text/unicode/norm"
 )
 
 // TargetConfig is a resolved sync destination (from .skret.yaml or flags).

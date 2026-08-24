@@ -36,15 +36,15 @@ const (
 // values because they are byte slices. Nonce is preserved for executor/Hub
 // replay handling; VerifySignedEnvelope intentionally does not track it.
 type ExecutorEnvelope struct {
-	Version       int       `json:"version"`
-	Audience      string    `json:"audience"`
-	Role          string    `json:"role"`
+	Version        int       `json:"version"`
+	Audience       string    `json:"audience"`
+	Role           string    `json:"role"`
 	ManifestDigest string    `json:"manifest_digest"`
-	BodyDigest    string    `json:"body_digest"`
-	Nonce         string    `json:"nonce"`
-	ExpiresAt     time.Time `json:"expires_at"`
-	Body          []byte    `json:"body"`
-	Signature     []byte    `json:"signature"`
+	BodyDigest     string    `json:"body_digest"`
+	Nonce          string    `json:"nonce"`
+	ExpiresAt      time.Time `json:"expires_at"`
+	Body           []byte    `json:"body"`
+	Signature      []byte    `json:"signature"`
 }
 
 // SignedEnvelope is retained as the descriptive name for ExecutorEnvelope.

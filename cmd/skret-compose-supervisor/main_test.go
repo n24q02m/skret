@@ -2,14 +2,12 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"crypto/ed25519"
 	cryptorand "crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -89,7 +87,7 @@ func writeSupervisorFixtureFiles(t *testing.T) (string, string, string) {
 		t.Fatal(err)
 	}
 	manifestPath := filepath.Join(dir, "manifest.json")
-	if err := os.WriteFile(manifestPath, signedBytes, 0600); err != nil {
+	if err := os.WriteFile(manifestPath, signedBytes, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	trustDoc := secretlaunch.TrustDocument{
@@ -104,7 +102,7 @@ func writeSupervisorFixtureFiles(t *testing.T) (string, string, string) {
 		t.Fatal(err)
 	}
 	trustPath := filepath.Join(dir, "trust.json")
-	if err := os.WriteFile(trustPath, trustBytes, 0600); err != nil {
+	if err := os.WriteFile(trustPath, trustBytes, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	modelBytes, err := json.Marshal(modelDoc)
@@ -112,7 +110,7 @@ func writeSupervisorFixtureFiles(t *testing.T) (string, string, string) {
 		t.Fatal(err)
 	}
 	composePath := filepath.Join(dir, "compose.json")
-	if err := os.WriteFile(composePath, modelBytes, 0600); err != nil {
+	if err := os.WriteFile(composePath, modelBytes, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	return manifestPath, trustPath, composePath
@@ -136,10 +134,6 @@ func TestSupervisorCLIFailsClosedWithoutProvider(t *testing.T) {
 	}
 }
 
-type fakeSupervisorRuntime struct {
-	reconciled bool
-}
-
 func TestBoundedBufferRejectsUnboundedCommandOutput(t *testing.T) {
 	var buffer boundedBuffer
 	buffer.limit = 4
@@ -154,29 +148,3 @@ func TestBoundedBufferRejectsUnboundedCommandOutput(t *testing.T) {
 		t.Fatalf("bounded output = %q", got)
 	}
 }
-
-func (f *fakeSupervisorRuntime) Render(context.Context, secretlaunch.RenderedModel) (secretlaunch.RenderedModel, error) {
-	f.reconciled = true
-	return secretlaunch.RenderedModel{}, nil
-}
-
-func (f *fakeSupervisorRuntime) List(context.Context, map[string]string) ([]secretlaunch.Container, error) {
-	return nil, nil
-}
-
-func (f *fakeSupervisorRuntime) Inspect(context.Context, string) (secretlaunch.ContainerState, error) {
-	return secretlaunch.ContainerState{}, nil
-}
-
-func (f *fakeSupervisorRuntime) Create(context.Context, secretlaunch.ServiceSpec, map[string]string) (secretlaunch.Container, error) {
-	return secretlaunch.Container{}, nil
-}
-
-func (f *fakeSupervisorRuntime) Attach(context.Context, string) (io.ReadWriteCloser, error) {
-	return nil, nil
-}
-func (f *fakeSupervisorRuntime) Start(context.Context, string) error { return nil }
-
-func (f *fakeSupervisorRuntime) Kill(context.Context, string) error { return nil }
-
-func (f *fakeSupervisorRuntime) Remove(context.Context, string, bool) error { return nil }

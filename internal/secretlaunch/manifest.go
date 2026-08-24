@@ -133,9 +133,10 @@ func (m Manifest) Digest() ([32]byte, error) {
 }
 
 func (m Manifest) Service(name string) (ServiceAuthority, bool) {
-	for _, service := range m.Services {
+	for i := range m.Services {
+		service := &m.Services[i]
 		if service.Name == name {
-			return service, true
+			return *service, true
 		}
 	}
 	return ServiceAuthority{}, false
@@ -177,7 +178,8 @@ func (m Manifest) Validate() error {
 		return fail(ErrInvalidInput)
 	}
 	last := ""
-	for _, service := range m.Services {
+	for i := range m.Services {
+		service := &m.Services[i]
 		if service.Name <= last || validateServiceAuthority(service) != nil {
 			return fail(ErrInvalidInput)
 		}
@@ -205,7 +207,7 @@ func (m Manifest) ValidateAt(now time.Time) error {
 	return nil
 }
 
-func validateServiceAuthority(service ServiceAuthority) error {
+func validateServiceAuthority(service *ServiceAuthority) error {
 	if !validServiceName(service.Name) || !pinnedImage(service.Image) || service.User == "" ||
 		strings.IndexByte(service.User, 0) >= 0 || service.Restart != "no" || !service.OpenStdin || !validDigest(service.WrapperDigest) {
 		return fail(ErrInvalidInput)
@@ -323,7 +325,8 @@ func VerifyManifest(manifest Manifest, signature []byte, keyID string, policy Tr
 	if !policy.AllowedVersions[manifest.Version] || !policy.AllowedRuntimeIDs[manifest.RuntimeID] || !policy.AllowedRoles[manifest.Role] {
 		return fail(ErrTrust)
 	}
-	for _, service := range manifest.Services {
+	for i := range manifest.Services {
+		service := &manifest.Services[i]
 		for _, key := range service.Keys {
 			versions, ok := policy.KeyVersions[key.Name]
 			if !ok || !versions[key.Version] {
@@ -472,7 +475,8 @@ func validNonce(value string) bool {
 		return false
 	}
 	for _, r := range value {
-		if !(r >= 'A' && r <= 'Z') && !(r >= 'a' && r <= 'z') && !(r >= '0' && r <= '9') && !strings.ContainsRune("._~-", r) {
+		alphaNumeric := (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9')
+		if !alphaNumeric && !strings.ContainsRune("._~-", r) {
 			return false
 		}
 	}
@@ -496,10 +500,9 @@ func validEnvName(value string) bool {
 		return false
 	}
 	for i, r := range value {
-		if i == 0 && !((r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') || r == '_') {
-			return false
-		}
-		if i > 0 && !((r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '_') {
+		firstCharacter := (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') || r == '_'
+		subsequentCharacter := firstCharacter || (r >= '0' && r <= '9')
+		if (i == 0 && !firstCharacter) || (i > 0 && !subsequentCharacter) {
 			return false
 		}
 	}
@@ -511,7 +514,9 @@ func validServiceName(value string) bool {
 		return false
 	}
 	for _, r := range value {
-		if !((r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' || r == '_' || r == '.') {
+		valid := (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') ||
+			(r >= '0' && r <= '9') || r == '-' || r == '_' || r == '.'
+		if !valid {
 			return false
 		}
 	}
@@ -540,7 +545,8 @@ func validDigest(value string) bool {
 		return false
 	}
 	for _, r := range value[len("sha256:"):] {
-		if !(r >= '0' && r <= '9') && !(r >= 'a' && r <= 'f') {
+		valid := (r >= '0' && r <= '9') || (r >= 'a' && r <= 'f')
+		if !valid {
 			return false
 		}
 	}

@@ -134,11 +134,13 @@ func (s *Supervisor) Reconcile(ctx context.Context, model RenderedModel, manifes
 	}
 	serviceByName := make(map[string]ServiceSpec, len(rendered.Services))
 	authorityByName := make(map[string]ServiceAuthority, len(manifest.Services))
-	for _, service := range rendered.Services {
-		serviceByName[service.Name] = service
+	for i := range rendered.Services {
+		service := &rendered.Services[i]
+		serviceByName[service.Name] = *service
 	}
-	for _, authority := range manifest.Services {
-		authorityByName[authority.Name] = authority
+	for i := range manifest.Services {
+		authority := &manifest.Services[i]
+		authorityByName[authority.Name] = *authority
 	}
 	if err := validateDependencies(ordered, serviceByName); err != nil {
 		return result, err
@@ -160,12 +162,13 @@ func (s *Supervisor) Reconcile(ctx context.Context, model RenderedModel, manifes
 		values    SecretSet
 	}
 	pendingServices := make([]pending, 0, len(ordered))
-	for _, service := range ordered {
+	for i := range ordered {
+		service := &ordered[i]
 		existing := matches[service.Name]
 		if len(existing) == 1 && existing[0].Running && s.hasSession(existing[0].ID) {
 			state, inspectErr := s.Runtime.Inspect(ctx, existing[0].ID)
 			if inspectErr == nil && state.Running && state.Healthy &&
-				ExactLabels(state.Labels, ServiceLabels(manifest, service)) {
+				ExactLabels(state.Labels, ServiceLabels(manifest, *service)) {
 				result.Reused = append(result.Reused, service.Name)
 				continue
 			}
@@ -175,7 +178,7 @@ func (s *Supervisor) Reconcile(ctx context.Context, model RenderedModel, manifes
 			return ReconcileResult{}, fail(ErrBinding)
 		}
 		pendingServices = append(pendingServices, pending{
-			service: service, authority: authority, old: append([]Container(nil), existing...),
+			service: *service, authority: authority, old: append([]Container(nil), existing...),
 		})
 	}
 
@@ -417,11 +420,12 @@ func (s *Supervisor) now() time.Time {
 
 func OrderServices(services []ServiceSpec) ([]ServiceSpec, error) {
 	byName := make(map[string]ServiceSpec, len(services))
-	for _, service := range services {
+	for i := range services {
+		service := &services[i]
 		if _, exists := byName[service.Name]; exists {
 			return nil, fail(ErrRuntime)
 		}
-		byName[service.Name] = service
+		byName[service.Name] = *service
 	}
 	state := make(map[string]uint8, len(services))
 	ordered := make([]ServiceSpec, 0, len(services))
@@ -463,7 +467,8 @@ func OrderServices(services []ServiceSpec) ([]ServiceSpec, error) {
 }
 
 func validateDependencies(ordered []ServiceSpec, all map[string]ServiceSpec) error {
-	for _, service := range ordered {
+	for i := range ordered {
+		service := &ordered[i]
 		for _, dependency := range service.Dependencies {
 			if _, ok := all[dependency]; !ok {
 				return fail(ErrRuntime)

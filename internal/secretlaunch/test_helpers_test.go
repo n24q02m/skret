@@ -30,10 +30,12 @@ func fixtureAuthority() ServiceAuthority {
 		},
 	}
 }
+
 func fixtureModel() RenderedModel {
+	authority := fixtureAuthority()
 	model := RenderedModel{
 		RuntimeID: "docker-prod",
-		Services:  []ServiceSpec{serviceSpecFromAuthority(fixtureAuthority())},
+		Services:  []ServiceSpec{serviceSpecFromAuthority(&authority)},
 	}
 	digest, err := ModelDigest(model)
 	if err != nil {
@@ -86,6 +88,7 @@ func signedFixture(t *testing.T) (Manifest, []byte, TrustPolicy, ed25519.Private
 	}
 	return manifest, signed, policy, private
 }
+
 func encodePublicKey(key ed25519.PublicKey) string {
 	return base64.StdEncoding.EncodeToString(key)
 }

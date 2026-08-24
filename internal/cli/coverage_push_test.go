@@ -167,6 +167,7 @@ func TestInitOptions_Run_RepairsGitignoreForExistingConfig(t *testing.T) {
 	assert.Contains(t, string(gotIgnore), ".secrets.*.yaml")
 	assert.Contains(t, string(gotIgnore), ".secrets.*.yml")
 }
+
 func TestInitOptions_Run_DryRunDoesNotWrite(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.MkdirAll(dir+"/.git", 0o755))

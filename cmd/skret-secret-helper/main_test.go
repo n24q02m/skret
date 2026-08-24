@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"crypto/ed25519"
 	cryptorand "crypto/rand"
 	"crypto/sha256"
@@ -74,7 +73,7 @@ func writeTempFiles(t *testing.T) (string, string) {
 		t.Fatal(err)
 	}
 	manifestPath := filepath.Join(dir, "manifest.json")
-	if err := os.WriteFile(manifestPath, signedBytes, 0600); err != nil {
+	if err := os.WriteFile(manifestPath, signedBytes, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	trustDoc := secretlaunch.TrustDocument{
@@ -89,7 +88,7 @@ func writeTempFiles(t *testing.T) (string, string) {
 		t.Fatal(err)
 	}
 	trustPath := filepath.Join(dir, "trust.json")
-	if err := os.WriteFile(trustPath, trustBytes, 0600); err != nil {
+	if err := os.WriteFile(trustPath, trustBytes, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	return manifestPath, trustPath
@@ -110,7 +109,7 @@ func TestHelperCLIRejectsTamperedManifest(t *testing.T) {
 		t.Fatal(err)
 	}
 	raw[len(raw)-3] ^= 1
-	if err := os.WriteFile(manifestPath, raw, 0600); err != nil {
+	if err := os.WriteFile(manifestPath, raw, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	var diagnostics bytes.Buffer
@@ -118,10 +117,4 @@ func TestHelperCLIRejectsTamperedManifest(t *testing.T) {
 	if code != 1 || strings.Contains(diagnostics.String(), "synthetic-sentinel") {
 		t.Fatalf("code = %d, out = %s", code, diagnostics.String())
 	}
-}
-
-type fakeRunner struct{}
-
-func (fakeRunner) Run(context.Context, string, ...string) ([]byte, []byte, error) {
-	return []byte("ok"), nil, nil
 }

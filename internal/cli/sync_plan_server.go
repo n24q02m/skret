@@ -71,10 +71,11 @@ type SyncPlanResponse struct {
 
 // Lower-case aliases keep focused package tests concise while the exported
 // structs make the contract inspectable by integration tests.
-type syncPlanSelector = SyncPlanSelector
-type syncPlanRule = SyncPlanRule
-type syncPlanRequest = SyncPlanRequest
-type syncPlanResponse = SyncPlanResponse
+type (
+	syncPlanSelector = SyncPlanSelector
+	syncPlanRule     = SyncPlanRule
+	syncPlanResponse = SyncPlanResponse
+)
 
 type syncPlanServerOptions struct {
 	listen       string

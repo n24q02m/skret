@@ -86,14 +86,14 @@ func TestBuildSignedEnvelope_RejectsInvalidFieldsAndLifetime(t *testing.T) {
 	validBody := []byte("payload")
 
 	tests := []struct {
-		name       string
-		manifest   string
-		role       string
-		audience   string
-		nonce      string
-		expiresAt  time.Time
-		body       []byte
-		signer     ed25519.PrivateKey
+		name      string
+		manifest  string
+		role      string
+		audience  string
+		nonce     string
+		expiresAt time.Time
+		body      []byte
+		signer    ed25519.PrivateKey
 	}{
 		{name: "missing manifest digest", manifest: "", role: "operator", audience: "hub", nonce: "nonce", expiresAt: now.Add(time.Minute), body: validBody, signer: privateKey},
 		{name: "invalid manifest digest", manifest: "not-a-digest", role: "operator", audience: "hub", nonce: "nonce", expiresAt: now.Add(time.Minute), body: validBody, signer: privateKey},
@@ -268,6 +268,7 @@ func TestEnvelopeClientSubmit_DoesNotFollowRedirectsToAnotherPath(t *testing.T) 
 	assert.Contains(t, err.Error(), "307")
 	assert.False(t, redirected)
 }
+
 func TestEnvelopeClientSubmit_RejectsMissingOperatorSessionCookieBeforeNetwork(t *testing.T) {
 	now := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
 	_, privateKey, err := ed25519.GenerateKey(rand.Reader)
@@ -284,8 +285,8 @@ func TestEnvelopeClientSubmit_RejectsMissingOperatorSessionCookieBeforeNetwork(t
 		t.Run(tc.name, func(t *testing.T) {
 			requests := 0
 			client := &EnvelopeClient{
-				BaseURL:              "http://example.test",
-				Signer:               privateKey,
+				BaseURL:               "http://example.test",
+				Signer:                privateKey,
 				OperatorSessionCookie: tc.cookie,
 				HTTPClient: &http.Client{
 					Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {

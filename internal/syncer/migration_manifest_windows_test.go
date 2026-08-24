@@ -36,6 +36,7 @@ func TestBuildStateManifest_RejectsWindowsJunctionRootsAndEntries(t *testing.T) 
 	require.Error(t, err)
 	assert.NotContains(t, err.Error(), target)
 }
+
 func TestWindowsFinalPathContainmentUsesCaseInsensitiveComponentBoundary(t *testing.T) {
 	root := `\\?\C:\State`
 	assert.True(t, windowsStateManifestPathWithinRoot(root, `\\?\c:\state\child\file`))
@@ -43,6 +44,7 @@ func TestWindowsFinalPathContainmentUsesCaseInsensitiveComponentBoundary(t *test
 	assert.False(t, windowsStateManifestPathWithinRoot(root, `\\?\C:\State-escape\file`))
 	assert.False(t, windowsStateManifestPathWithinRoot(root, `\\?\C:\State2\file`))
 }
+
 func TestWindowsStateManifestPathComponentsHandlesExtendedUNC(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -73,7 +75,6 @@ func TestWindowsStateManifestPathComponentsHandlesExtendedUNC(t *testing.T) {
 	}
 }
 
-
 func TestWindowsScannerRejectsJunctionEntryBeforeEnumeration(t *testing.T) {
 	root := t.TempDir()
 	target := filepath.Join(root, "outside")
@@ -102,6 +103,7 @@ func TestWindowsScannerUsesOpenedDirectoryHandle(t *testing.T) {
 		SHA256: "4ba69735ca53765ed6a709edb56c6ea236b7193a3b29a6b390c346f0f4340e4e",
 	}}, files)
 }
+
 func TestWindowsOpenedDirectoryHandleDoesNotFollowPathReplacement(t *testing.T) {
 	root := t.TempDir()
 	child := filepath.Join(root, "child")
@@ -124,7 +126,6 @@ func TestWindowsOpenedDirectoryHandleDoesNotFollowPathReplacement(t *testing.T) 
 	assert.Equal(t, "inside-state", entries[0].Name())
 }
 
-
 func TestWindowsStableRootHandleRejectsAncestorJunctionSwap(t *testing.T) {
 	base := t.TempDir()
 	parent := filepath.Join(base, "parent")
@@ -145,7 +146,7 @@ func TestWindowsStableRootHandleRejectsAncestorJunctionSwap(t *testing.T) {
 
 func createWindowsJunction(t *testing.T, junction, target string) {
 	t.Helper()
-	command := exec.Command("cmd.exe", "/d", "/c", "mklink", "/J", junction, target)
+	command := exec.CommandContext(t.Context(), "cmd.exe", "/d", "/c", "mklink", "/J", junction, target)
 	command.Stdout = io.Discard
 	command.Stderr = io.Discard
 	require.NoError(t, command.Run())

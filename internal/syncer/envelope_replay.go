@@ -22,8 +22,8 @@ var (
 	// replay authority to consume the scope. It deliberately hides store errors.
 	ErrEnvelopeReplayStoreUnavailable = errors.New("envelope: replay store unavailable")
 
-	errEnvelopeReplayRequest = errors.New("envelope: invalid replay request")
-	errEnvelopeReplayExpired = errors.New("envelope: replay request expired")
+	errEnvelopeReplayRequest   = errors.New("envelope: invalid replay request")
+	errEnvelopeReplayExpired   = errors.New("envelope: replay request expired")
 	errEnvelopeReplayCanonical = errors.New("envelope: canonical digest failed")
 )
 

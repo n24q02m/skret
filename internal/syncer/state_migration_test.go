@@ -216,6 +216,7 @@ func TestStateMigration_RecoversBackupRenamedByCompletingV2Commit(t *testing.T) 
 	assert.NoFileExists(t, tempPath)
 	assert.Equal(t, StateMigrationPhaseCommitted, readStateMigrationJournal(t, journalPath).Phase)
 }
+
 func TestStateMigration_PreparedRecoveryRestoresSourceWithoutDeletingBackup(t *testing.T) {
 	_, statePath, journalPath, manifest, _, _, now, original := stateMigrationFixture(t)
 	manifestDigest := stateMigrationManifestDigest(t, manifest)
@@ -332,6 +333,7 @@ func TestStateMigration_RejectsTraversalAndInvalidJournalWithoutMutation(t *test
 	assert.NoFileExists(t, statePath+".v1")
 	assert.Equal(t, StateMigrationPhasePrepared, readStateMigrationJournal(t, journalPath).Phase)
 }
+
 func TestStateMigration_RejectsInvalidJournalSchemaAndHashWithoutMutation(t *testing.T) {
 	_, statePath, journalPath, _, _, _, now, original := stateMigrationFixture(t)
 	require.NoError(t, os.WriteFile(journalPath, []byte(`{"version":2}`), 0o600))
@@ -341,6 +343,7 @@ func TestStateMigration_RejectsInvalidJournalSchemaAndHashWithoutMutation(t *tes
 	assert.Equal(t, original, mustReadFile(t, statePath))
 	assert.NoFileExists(t, statePath+".v1")
 }
+
 func TestStateMigration_PostBackupJournalFailureRetainsTempForRecovery(t *testing.T) {
 	_, statePath, journalPath, manifest, publicKey, _, now, original := stateMigrationFixture(t)
 	originalPersist := stateMigrationPersistJournal
@@ -370,6 +373,7 @@ func TestStateMigration_PostBackupJournalFailureRetainsTempForRecovery(t *testin
 	assert.Equal(t, original, mustReadFile(t, statePath+".v1"))
 	assert.NoFileExists(t, tempPath)
 }
+
 func TestStateMigration_TempRenameFailureRetainsTempForRecovery(t *testing.T) {
 	_, statePath, journalPath, manifest, publicKey, _, now, original := stateMigrationFixture(t)
 	originalPersist := stateMigrationPersistJournal
@@ -453,6 +457,7 @@ func TestStateMigration_RecoverySecuresRestoredBackup(t *testing.T) {
 		assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
 	}
 }
+
 func TestStateMigration_RecoveryDoesNotOverwriteAppearedSource(t *testing.T) {
 	_, statePath, journalPath, manifest, _, _, now, original := stateMigrationFixture(t)
 	manifestDigest := stateMigrationManifestDigest(t, manifest)
@@ -490,6 +495,7 @@ func TestStateMigration_RecoveryDoesNotOverwriteAppearedSource(t *testing.T) {
 	assert.Equal(t, original, mustReadFile(t, backupPath))
 	assert.Equal(t, desired, mustReadFile(t, tempPath))
 }
+
 func TestStateMigration_RecoveryPreservesTempWhenSourceChangesBeforeCommit(t *testing.T) {
 	_, statePath, journalPath, manifest, _, _, now, original := stateMigrationFixture(t)
 	manifestDigest := stateMigrationManifestDigest(t, manifest)
@@ -559,6 +565,7 @@ func TestStateMigration_PostRenameBackupMismatchRestoresWithoutOverwriting(t *te
 	assert.Equal(t, []byte("changed-backup"), mustReadFile(t, statePath+".v1"))
 	assert.Equal(t, desired, mustReadFile(t, filepath.Join(filepath.Dir(statePath), tempFiles[0])))
 }
+
 func TestStateMigration_SerializesSaveSyncState(t *testing.T) {
 	withFakeHome(t)
 	_, statePath, journalPath, manifest, publicKey, _, now, _ := stateMigrationFixture(t)
@@ -623,6 +630,7 @@ func TestStateMigration_SourceBackupPreservationDoesNotDeleteReplacement(t *test
 	require.Len(t, tempFiles, 1)
 	assert.Equal(t, desired, mustReadFile(t, filepath.Join(filepath.Dir(statePath), tempFiles[0])))
 }
+
 func TestStateMigration_SourceBackupRemovalFailureRetainsRecoveryArtifacts(t *testing.T) {
 	_, statePath, journalPath, manifest, publicKey, _, now, original := stateMigrationFixture(t)
 	originalHook := stateMigrationBeforeSourceBackupRemoveFinal
@@ -677,8 +685,8 @@ func TestStateMigration_RejectsUnsafeAncestorBeforeRecoveryMutation(t *testing.T
 	assert.Equal(t, original, mustReadFile(t, filepath.Join(realRoot, "state.json")))
 	assert.NoFileExists(t, filepath.Join(realRoot, "state.json.v1"))
 }
-func migrationTempFiles(t *testing.T, dir string) []string {
 
+func migrationTempFiles(t *testing.T, dir string) []string {
 	t.Helper()
 	entries, err := os.ReadDir(dir)
 	require.NoError(t, err)

@@ -276,11 +276,6 @@ func (o *syncStateMigrateOptions) run(cmd *cobra.Command) error {
 	return writeCLIStateMigrationResult(cmd, result, o.format)
 }
 
-func readCLIStateManifest(path string) (*syncer.StateManifest, error) {
-	manifest, _, err := readCLIStateManifestWithBytes(path)
-	return manifest, err
-}
-
 func readCLIStateManifestWithBytes(path string) (*syncer.StateManifest, []byte, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -380,11 +375,12 @@ func detectJSONDuplicateKeys(data []byte) error {
 		if len(stack) == 0 {
 			switch delim := tok.(type) {
 			case json.Delim:
-				if delim == '{' {
+				switch delim {
+				case '{':
 					stack = append(stack, frame{isObject: true, expectingKey: true, keys: make(map[string]struct{})})
-				} else if delim == '[' {
+				case '[':
 					stack = append(stack, frame{isObject: false})
-				} else {
+				default:
 					return errors.New("invalid state manifest JSON")
 				}
 			default:
@@ -469,7 +465,9 @@ func validateCLIStateManifestSignature(data []byte) error {
 	}
 	for i := range 86 {
 		c := sig[i]
-		if !((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '+' || c == '/') {
+		valid := (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+			(c >= '0' && c <= '9') || c == '+' || c == '/'
+		if !valid {
 			return errors.New("state manifest signature is not canonical standard base64")
 		}
 	}
@@ -554,7 +552,7 @@ func resolveCLIStateMigrationPath(manifest *syncer.StateManifest, requested stri
 		return "", syncer.StateManifestFile{}, errors.New("manifest source root is not absolute")
 	}
 
-	rowPath := ""
+	var rowPath string
 	if strings.TrimSpace(requested) == "" {
 		if len(manifest.Files) != 1 {
 			return "", syncer.StateManifestFile{}, errors.New("--state is required unless manifest contains exactly one file")

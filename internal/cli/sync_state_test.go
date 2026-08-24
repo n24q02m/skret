@@ -113,7 +113,8 @@ func TestSyncStateMigrate_DryRunVerifiesWithoutMutationAndJSONIsValueFree(t *tes
 	manifestPath, publicKeyHex, manifest := writeCLISignedStateManifest(t, root, map[string]string{"state.json": string(original)})
 	journalPath := filepath.Join(root, "migration.journal.json")
 
-	stdout, stderr, err := executeStateMigrationCLI(t,
+	stdout, stderr, err := executeStateMigrationCLI(
+		t,
 		"sync-state", "migrate", "--to", "v2",
 		"--state-manifest", manifestPath,
 		"--journal", journalPath,
@@ -144,7 +145,8 @@ func TestSyncStateMigrate_ExecuteMigratesAndPrintsMetadataOnly(t *testing.T) {
 	manifestPath, publicKeyHex, manifest := writeCLISignedStateManifest(t, root, map[string]string{"state.json": string(original)})
 	journalPath := filepath.Join(root, "migration.journal.json")
 
-	stdout, stderr, err := executeStateMigrationCLI(t,
+	stdout, stderr, err := executeStateMigrationCLI(
+		t,
 		"sync-state", "migrate", "--to", "v2",
 		"--state-manifest", manifestPath,
 		"--journal", journalPath,
@@ -183,7 +185,8 @@ func TestSyncStateMigrate_ManifestMismatchFailsBeforeMutation(t *testing.T) {
 	require.NoError(t, os.WriteFile(statePath, []byte(`{"schema_version":1,"metadata":"changed-after-signing"}`), 0o600))
 	journalPath := filepath.Join(root, "migration.journal.json")
 
-	_, _, err := executeStateMigrationCLI(t,
+	_, _, err := executeStateMigrationCLI(
+		t,
 		"sync-state", "migrate", "--to", "v2",
 		"--state-manifest", manifestPath,
 		"--journal", journalPath,
@@ -297,7 +300,8 @@ func TestSyncStateMigrate_StrictManifestParsingFailsBeforeMutationOrSubmit(t *te
 			badContent := tc.manifestFn()
 			require.NoError(t, os.WriteFile(badManifestPath, badContent, 0o600))
 
-			stdout, stderr, err := executeStateMigrationCLI(t,
+			stdout, stderr, err := executeStateMigrationCLI(
+				t,
 				"sync-state", "migrate", "--to", "v2",
 				"--state-manifest", badManifestPath,
 				"--journal", journalPath,
@@ -316,7 +320,8 @@ func TestSyncStateMigrate_StrictManifestParsingFailsBeforeMutationOrSubmit(t *te
 			assert.NoFileExists(t, statePath+".v1")
 			assert.NoFileExists(t, journalPath)
 
-			stdoutExecute, stderrExecute, errExecute := executeStateMigrationCLI(t,
+			stdoutExecute, stderrExecute, errExecute := executeStateMigrationCLI(
+				t,
 				"sync-state", "migrate", "--to", "v2",
 				"--state-manifest", badManifestPath,
 				"--journal", journalPath,
@@ -344,7 +349,8 @@ func TestSyncStateMigrate_StrictManifestParsingFailsBeforeMutationOrSubmit(t *te
 
 					// Verify remote-execute also rejects invalid manifest before
 					// contacting the httptest executor or mutating local state.
-					stdoutRemote, stderrRemote, errRemote := executeStateMigrationCLI(t,
+					stdoutRemote, stderrRemote, errRemote := executeStateMigrationCLI(
+						t,
 						"sync-state", "migrate", "--to", "v2",
 						"--state-manifest", badManifestPath,
 						"--journal", journalPath,
@@ -384,7 +390,8 @@ func TestSyncStateMigrate_ResolvesOnlyExactManifestRow(t *testing.T) {
 	})
 	journalPath := filepath.Join(root, "migration.journal.json")
 
-	_, _, err := executeStateMigrationCLI(t,
+	_, _, err := executeStateMigrationCLI(
+		t,
 		"sync-state", "migrate", "--to", "v2",
 		"--state-manifest", manifestPath,
 		"--journal", journalPath,
@@ -399,7 +406,8 @@ func TestSyncStateMigrate_ResolvesOnlyExactManifestRow(t *testing.T) {
 	assert.NoFileExists(t, statePath+".v1")
 	assert.NoFileExists(t, journalPath)
 
-	_, _, err = executeStateMigrationCLI(t,
+	_, _, err = executeStateMigrationCLI(
+		t,
 		"sync-state", "migrate", "--to", "v2",
 		"--state-manifest", manifestPath,
 		"--journal", journalPath,
@@ -431,7 +439,8 @@ func TestSyncStateMigrate_AcceptsPublicKeyFilesAndInfersSingleStateRow(t *testin
 			keyPath := filepath.Join(t.TempDir(), "operator-key")
 			require.NoError(t, os.WriteFile(keyPath, test.data, 0o600))
 			journalPath := filepath.Join(t.TempDir(), "migration.journal.json")
-			stdout, stderr, err := executeStateMigrationCLI(t,
+			stdout, stderr, err := executeStateMigrationCLI(
+				t,
 				"sync-state", "migrate", "--to", "v2",
 				"--state-manifest", manifestPath,
 				"--journal", journalPath,
@@ -528,7 +537,7 @@ func TestReadCLIStateMigrationPrivateKey_AcceptsRawAndHexFiles(t *testing.T) {
 
 			got, err := readCLIStateMigrationPrivateKey(keyPath)
 			require.NoError(t, err)
-			assert.Equal(t, ed25519.PrivateKey(privateKey), got)
+			assert.Equal(t, privateKey, got)
 		})
 	}
 }
@@ -558,7 +567,8 @@ func TestSyncStateMigrate_RemoteExecuteSubmitsSignedMetadataOnlyRequestWithoutMu
 	}))
 	defer server.Close()
 
-	stdout, stderr, err := executeStateMigrationCLI(t,
+	stdout, stderr, err := executeStateMigrationCLI(
+		t,
 		"sync-state", "migrate", "--to", "v2",
 		"--state-manifest", manifestPath,
 		"--journal", journalPath,
@@ -648,7 +658,8 @@ func TestSyncStateMigrate_RemoteErrorIsValueFreeAndDoesNotMutateLocalState(t *te
 	}))
 	defer server.Close()
 
-	stdout, stderr, err := executeStateMigrationCLI(t,
+	stdout, stderr, err := executeStateMigrationCLI(
+		t,
 		"sync-state", "migrate", "--to", "v2",
 		"--state-manifest", manifestPath,
 		"--journal", journalPath,
@@ -692,7 +703,8 @@ func TestSyncStateMigrate_RemoteModeUsesOperatorSessionEnvironmentFallback(t *te
 	defer server.Close()
 	t.Setenv("SKRET_OPERATOR_SESSION_COOKIE", "session=opaque-env-session")
 
-	_, _, err = executeStateMigrationCLI(t,
+	_, _, err = executeStateMigrationCLI(
+		t,
 		"sync-state", "migrate", "--state-manifest", manifestPath,
 		"--journal", journalPath, "--state", statePath, "--public-key", publicKeyHex,
 		"--role", manifest.Role, "--audience", manifest.Audience, "--operation-id", "op-cli-env",

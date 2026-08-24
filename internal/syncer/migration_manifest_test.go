@@ -217,6 +217,7 @@ func TestBuildStateManifest_RejectsEmptyRootsAndSymlinkEntries(t *testing.T) {
 		require.Error(t, err)
 	})
 }
+
 func TestStateManifestUnsafeMode_RejectsSymlinkAndIrregular(t *testing.T) {
 	tests := []struct {
 		name string

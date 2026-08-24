@@ -11,7 +11,7 @@ import (
 func TestReadRegularFileRejectsOversizeAndSymlink(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "target")
-	if err := os.WriteFile(target, []byte("synthetic-sentinel"), 0600); err != nil {
+	if err := os.WriteFile(target, []byte("synthetic-sentinel"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := ReadRegularFile(target, 4); errorCode(err) != ErrInvalidInput {
@@ -30,7 +30,7 @@ func TestVerifyRegularFileDigestRequiresExactBytes(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "artifact")
 	contents := []byte("artifact-bytes")
-	if err := os.WriteFile(path, contents, 0600); err != nil {
+	if err := os.WriteFile(path, contents, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	manifest := fixtureManifest()

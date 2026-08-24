@@ -9,7 +9,7 @@ import (
 
 const (
 	maxHTTPAttempts = 3
-	retryBackoff     = 10 * time.Millisecond
+	retryBackoff    = 10 * time.Millisecond
 )
 
 // HTTPStatusError reports an HTTP response status without retaining the

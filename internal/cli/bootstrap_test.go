@@ -403,7 +403,8 @@ func TestSanitizeProject(t *testing.T) {
 	assert.Equal(t, "myapp-prod", sanitizeProject("/myapp/prod/"))
 	assert.Equal(t, "demo-demo-env", sanitizeProject("/demo/demo.env!"))
 	assert.NotEqual(t, sanitizeProject("/foo/prod"), sanitizeProject("/bar/prod"))
-	assert.NotEqual(t,
+	assert.NotEqual(
+		t,
 		sanitizeProject("/"+strings.Repeat("a", 70)+"-one/prod"),
 		sanitizeProject("/"+strings.Repeat("a", 70)+"-two/prod"),
 		"long namespaces with a shared prefix must remain distinct",

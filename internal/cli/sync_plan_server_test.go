@@ -35,7 +35,7 @@ func TestSyncPlanServerCommandPreservesSyncFlags(t *testing.T) {
 
 func TestSyncPlanServerValidRequestReturnsDeterministicMetadataOnly(t *testing.T) {
 	handler := newSyncPlanServerHandler(1 << 20)
-	req := httptest.NewRequest(http.MethodPost, "/v1/plan", strings.NewReader(validPlanPayload))
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/v1/plan", strings.NewReader(validPlanPayload))
 	req.Header.Set("Content-Type", "application/json")
 	res := httptest.NewRecorder()
 
@@ -69,7 +69,7 @@ func TestSyncPlanServerValidRequestReturnsDeterministicMetadataOnly(t *testing.T
 func TestSyncPlanServerHealthz(t *testing.T) {
 	handler := newSyncPlanServerHandler(1 << 20)
 	res := httptest.NewRecorder()
-	handler.ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	handler.ServeHTTP(res, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/healthz", nil))
 
 	assert.Equal(t, http.StatusOK, res.Code)
 	assert.Equal(t, "application/json", res.Header().Get("Content-Type"))
@@ -92,7 +92,7 @@ func TestSyncPlanServerRejectsUnsupportedSurface(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			req := httptest.NewRequest(tc.method, tc.path, strings.NewReader(validPlanPayload))
+			req := httptest.NewRequestWithContext(context.Background(), tc.method, tc.path, strings.NewReader(validPlanPayload))
 			req.Header.Set("Content-Type", tc.contentType)
 			res := httptest.NewRecorder()
 			handler.ServeHTTP(res, req)
@@ -126,7 +126,7 @@ func TestSyncPlanServerRejectsMalformedOrNoncanonicalRequests(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			handler := newSyncPlanServerHandler(1 << 20)
-			req := httptest.NewRequest(http.MethodPost, "/v1/plan", strings.NewReader(tc.body))
+			req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/v1/plan", strings.NewReader(tc.body))
 			req.Header.Set("Content-Type", "application/json")
 			res := httptest.NewRecorder()
 			handler.ServeHTTP(res, req)
@@ -155,7 +155,7 @@ func TestSyncPlanServerRejectsObjectWithTooManyKeys(t *testing.T) {
 func TestSyncPlanServerRejectsOversizedBody(t *testing.T) {
 	body := strings.Repeat("x", 64)
 	handler := newSyncPlanServerHandler(int64(len(body) - 1))
-	req := httptest.NewRequest(http.MethodPost, "/v1/plan", strings.NewReader(body))
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/v1/plan", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	res := httptest.NewRecorder()
 
@@ -170,7 +170,7 @@ func TestSyncPlanServerUsesBoundedTimeout(t *testing.T) {
 	assert.LessOrEqual(t, syncPlanHandlerTimeout, 5*time.Second)
 
 	handler := newSyncPlanServerHandler(1 << 20)
-	req := httptest.NewRequest(http.MethodPost, "/v1/plan", strings.NewReader(validPlanPayload))
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/v1/plan", strings.NewReader(validPlanPayload))
 	req.Header.Set("Content-Type", "application/json")
 	ctx, cancel := context.WithCancel(req.Context())
 	cancel()
@@ -183,7 +183,7 @@ func TestSyncPlanServerUsesBoundedTimeout(t *testing.T) {
 
 func TestSyncPlanServerTimeoutResponseIsJSON(t *testing.T) {
 	handler := newSyncPlanServerHandlerWithTimeout(1<<20, time.Millisecond)
-	req := httptest.NewRequest(http.MethodPost, "/v1/plan", io.NopCloser(slowPlanReader{}))
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/v1/plan", io.NopCloser(slowPlanReader{}))
 	req.Header.Set("Content-Type", "application/json")
 	res := httptest.NewRecorder()
 

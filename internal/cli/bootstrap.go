@@ -59,7 +59,7 @@ var isInteractiveStdin = auth.IsInteractiveStdin
 func newBootstrapCmd(opts *GlobalOpts) *cobra.Command {
 	var (
 		project, path, region, userName, profile string
-		force, yes                             bool
+		force, yes                               bool
 	)
 	cmd := &cobra.Command{
 		Use:   "bootstrap",

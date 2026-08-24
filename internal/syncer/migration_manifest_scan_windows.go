@@ -29,7 +29,7 @@ func scanStateManifestRoot(root string) ([]StateManifestFile, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer stableRoot.Close()
+	defer func() { _ = stableRoot.Close() }()
 
 	files := make([]StateManifestFile, 0)
 	if err := scanWindowsStateManifestDirectory(stableRoot.root, stableRoot.finalPath, "", stableRoot.finalPath, &files); err != nil {
@@ -304,7 +304,6 @@ func windowsStateManifestFinalPath(file *os.File) (string, error) {
 		size = length + 1
 	}
 }
-
 
 func windowsStateManifestPathWithinRoot(rootFinalPath, candidateFinalPath string) bool {
 	rootFinalPath = strings.TrimRight(strings.ReplaceAll(rootFinalPath, "/", "\\"), "\\")

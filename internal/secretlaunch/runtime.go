@@ -79,18 +79,18 @@ func NewDockerRuntime(binary string, runner CommandRunner, attach AttachRunner, 
 	return &DockerRuntime{Binary: binary, Runner: runner, AttachRunner: attach, ExplicitInvoke: explicitlyInvoked}
 }
 
-func (d *DockerRuntime) invoke(ctx context.Context, args ...string) ([]byte, []byte, error) {
+func (d *DockerRuntime) invoke(ctx context.Context, args ...string) ([]byte, error) {
 	if d == nil || !d.ExplicitInvoke {
-		return nil, nil, fail(ErrNotInvoked)
+		return nil, fail(ErrNotInvoked)
 	}
 	if d.Runner == nil || d.Binary == "" {
-		return nil, nil, fail(ErrRuntime)
+		return nil, fail(ErrRuntime)
 	}
-	stdout, stderr, err := d.Runner.Run(ctx, d.Binary, args...)
+	stdout, _, err := d.Runner.Run(ctx, d.Binary, args...)
 	if err != nil {
-		return nil, nil, fail(ErrDaemon)
+		return nil, fail(ErrDaemon)
 	}
-	return stdout, stderr, nil
+	return stdout, nil
 }
 
 func (d *DockerRuntime) Render(_ context.Context, model RenderedModel) (RenderedModel, error) {
@@ -101,13 +101,14 @@ func (d *DockerRuntime) Render(_ context.Context, model RenderedModel) (Rendered
 }
 
 func (d *DockerRuntime) List(ctx context.Context, labels map[string]string) ([]Container, error) {
-	args := []string{"ps", "--all", "--no-trunc"}
 	keys := sortedMapKeys(labels)
+	args := make([]string, 0, 5+2*len(keys))
+	args = append(args, "ps", "--all", "--no-trunc")
 	for _, key := range keys {
 		args = append(args, "--filter", "label="+key+"="+labels[key])
 	}
 	args = append(args, "--format", "{{json .}}")
-	stdout, _, err := d.invoke(ctx, args...)
+	stdout, err := d.invoke(ctx, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -135,7 +136,7 @@ func (d *DockerRuntime) Inspect(ctx context.Context, id string) (ContainerState,
 	if !validContainerID(id) {
 		return ContainerState{}, fail(ErrRuntime)
 	}
-	stdout, _, err := d.invoke(ctx, "inspect", "--format", "{{json .}}", id)
+	stdout, err := d.invoke(ctx, "inspect", "--format", "{{json .}}", id)
 	if err != nil {
 		return ContainerState{}, err
 	}
@@ -161,7 +162,7 @@ func (d *DockerRuntime) Inspect(ctx context.Context, id string) (ContainerState,
 }
 
 func (d *DockerRuntime) Create(ctx context.Context, spec ServiceSpec, labels map[string]string) (Container, error) {
-	if err := validateServiceSpec(spec); err != nil {
+	if err := validateServiceSpec(&spec); err != nil {
 		return Container{}, err
 	}
 	args := []string{"create", "--name", spec.Name, "--restart", "no", "--interactive", "--attach", "stdin"}
@@ -189,7 +190,7 @@ func (d *DockerRuntime) Create(ctx context.Context, spec ServiceSpec, labels map
 	}
 	args = append(args, "--", spec.Image)
 	args = append(args, spec.Argv...)
-	stdout, _, err := d.invoke(ctx, args...)
+	stdout, err := d.invoke(ctx, args...)
 	if err != nil {
 		return Container{}, err
 	}
@@ -214,7 +215,7 @@ func (d *DockerRuntime) Start(ctx context.Context, id string) error {
 	if !validContainerID(id) {
 		return fail(ErrRuntime)
 	}
-	_, _, err := d.invoke(ctx, "start", id)
+	_, err := d.invoke(ctx, "start", id)
 	return err
 }
 
@@ -222,7 +223,7 @@ func (d *DockerRuntime) Kill(ctx context.Context, id string) error {
 	if !validContainerID(id) {
 		return fail(ErrRuntime)
 	}
-	_, _, err := d.invoke(ctx, "kill", id)
+	_, err := d.invoke(ctx, "kill", id)
 	return err
 }
 
@@ -235,7 +236,7 @@ func (d *DockerRuntime) Remove(ctx context.Context, id string, force bool) error
 		args = append(args, "--force")
 	}
 	args = append(args, id)
-	_, _, err := d.invoke(ctx, args...)
+	_, err := d.invoke(ctx, args...)
 	return err
 }
 
@@ -291,7 +292,8 @@ func validateModelStructure(model RenderedModel) error {
 		return fail(ErrRuntime)
 	}
 	last := ""
-	for _, service := range model.Services {
+	for i := range model.Services {
+		service := &model.Services[i]
 		if service.Name <= last {
 			return fail(ErrRuntime)
 		}
@@ -303,7 +305,7 @@ func validateModelStructure(model RenderedModel) error {
 	return nil
 }
 
-func validateServiceSpec(service ServiceSpec) error {
+func validateServiceSpec(service *ServiceSpec) error {
 	if !validServiceName(service.Name) || !pinnedImage(service.Image) || service.User == "" ||
 		strings.IndexByte(service.User, 0) >= 0 || service.Restart != "no" || !service.OpenStdin ||
 		!validDigest(service.WrapperDigest) || validArguments(service.Argv) != nil ||
@@ -358,8 +360,8 @@ func ValidateManifestModel(manifest Manifest, model RenderedModel) error {
 		len(manifest.Services) != len(model.Services) {
 		return fail(ErrBinding)
 	}
-	for index, authority := range manifest.Services {
-		expected := serviceSpecFromAuthority(authority)
+	for index := range manifest.Services {
+		expected := serviceSpecFromAuthority(&manifest.Services[index])
 		if !reflect.DeepEqual(expected, model.Services[index]) {
 			return fail(ErrBinding)
 		}
@@ -367,7 +369,7 @@ func ValidateManifestModel(manifest Manifest, model RenderedModel) error {
 	return nil
 }
 
-func serviceSpecFromAuthority(authority ServiceAuthority) ServiceSpec {
+func serviceSpecFromAuthority(authority *ServiceAuthority) ServiceSpec {
 	keys := make([]string, 0, len(authority.Keys))
 	for _, key := range authority.Keys {
 		keys = append(keys, key.Name)
@@ -402,6 +404,7 @@ func cloneStrings(values []string) []string {
 	copy(cloned, values)
 	return cloned
 }
+
 func secretLikeName(value string) bool {
 	upper := strings.ToUpper(value)
 	for _, marker := range []string{"SECRET", "PASSWORD", "TOKEN", "CREDENTIAL", "PRIVATE_KEY", "API_KEY"} {
@@ -449,6 +452,7 @@ func ContainsLabels(actual, required map[string]string) bool {
 	}
 	return true
 }
+
 func ExactLabels(actual, expected map[string]string) bool {
 	if len(actual) != len(expected) {
 		return false

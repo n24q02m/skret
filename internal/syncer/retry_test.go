@@ -9,9 +9,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
-	"time"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/n24q02m/skret/internal/provider"
 	"github.com/stretchr/testify/assert"

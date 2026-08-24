@@ -77,21 +77,13 @@ func (s SecretSet) Get(key string) (SecretBuffer, bool) {
 	return item, true
 }
 
-func (s SecretSet) Zeroize() {
+func (s *SecretSet) Zeroize() {
 	for key, item := range s.items {
 		Zeroize(item.Bytes)
 		item.Bytes = nil
 		s.items[key] = item
 	}
 	s.items = nil
-}
-
-func (s SecretSet) names() []string {
-	result := make([]string, 0, len(s.items))
-	for key := range s.items {
-		result = append(result, key)
-	}
-	return result
 }
 
 func FetchSecrets(ctx context.Context, provider SecretProvider, keys []ManifestKey) (SecretSet, error) {
