@@ -49,11 +49,27 @@ builds:
       - -s -w
 
 archives:
-  - id: default
+  - id: cli
+    ids:
+      - skret
     format_overrides:
       - goos: windows
         formats: [zip]
     name_template: "skret_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+  - id: secret-helper
+    ids:
+      - skret-secret-helper
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: "skret-secret-helper_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+  - id: compose-supervisor
+    ids:
+      - skret-compose-supervisor
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: "skret-compose-supervisor_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 
 checksum:
   name_template: "checksums.txt"
