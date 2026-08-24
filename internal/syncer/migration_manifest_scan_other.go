@@ -8,6 +8,14 @@ import (
 	"sort"
 )
 
+func canonicalStateManifestRootPath(root string) (string, error) {
+	resolved, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Clean(resolved), nil
+}
+
 func scanStateManifestRoot(root string) ([]StateManifestFile, error) {
 	files := make([]StateManifestFile, 0)
 	directories := make(map[string]os.FileInfo)

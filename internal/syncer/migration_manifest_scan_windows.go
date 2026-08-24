@@ -19,6 +19,10 @@ const (
 	windowsStateManifestFinalPathMaxSize     = 32768
 )
 
+func canonicalStateManifestRootPath(root string) (string, error) {
+	return filepath.Clean(root), nil
+}
+
 func scanStateManifestRoot(root string) ([]StateManifestFile, error) {
 	expectedRoot, err := os.Lstat(root)
 	if err != nil || expectedRoot == nil || unsafeStateManifestMode(expectedRoot.Mode()) || !expectedRoot.IsDir() {

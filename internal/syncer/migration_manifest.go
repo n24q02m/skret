@@ -328,8 +328,8 @@ func canonicalizeStateManifestRoot(raw string) (string, error) {
 	if err != nil {
 		return "", stateManifestError("invalid source root")
 	}
-	canonical := filepath.Clean(absolute)
-	if !filepath.IsAbs(canonical) {
+	canonical, err := canonicalStateManifestRootPath(filepath.Clean(absolute))
+	if err != nil || !filepath.IsAbs(canonical) {
 		return "", stateManifestError("invalid source root")
 	}
 	if err := rejectStateManifestUnsafeAncestors(canonical); err != nil {

@@ -55,6 +55,7 @@ class WorkflowPolicyTests(unittest.TestCase):
             "github/codeql-action/init@5595ccaf912efad79be6eef63a5619ff05969be3",
             "github/codeql-action/autobuild@5595ccaf912efad79be6eef63a5619ff05969be3",
             "github/codeql-action/analyze@5595ccaf912efad79be6eef63a5619ff05969be3",
+            "upload: never",
         ):
             self.assertIn(marker, workflow)
         self.assertGreaterEqual(workflow.count("github/codeql-action/init@"), 1)

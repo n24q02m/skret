@@ -189,6 +189,11 @@ jobs:
           languages: ${{ matrix.language }}
       - uses: github/codeql-action/autobuild@5595ccaf912efad79be6eef63a5619ff05969be3 # v4.37.6
       - uses: github/codeql-action/analyze@5595ccaf912efad79be6eef63a5619ff05969be3 # v4.37.6
+        with:
+          # GitHub default setup owns SARIF upload for this repository. The
+          # pinned advanced job still builds and analyzes locally, but must not
+          # submit a second CodeQL configuration.
+          upload: never
 
   scorecard:
     name: Scorecard analysis

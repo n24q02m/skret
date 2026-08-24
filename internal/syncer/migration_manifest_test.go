@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -33,8 +34,9 @@ func TestStateManifest_SignsDeterministicSortedMetadataOnly(t *testing.T) {
 	require.NotNil(t, second)
 
 	assert.Equal(t, StateManifestVersion, first.Version)
-	assert.Equal(t, filepath.Clean(root), first.SourceRoot)
-	require.Len(t, first.Files, 2)
+	expectedRoot, err := canonicalStateManifestRootPath(filepath.Clean(root))
+	require.NoError(t, err)
+	assert.Equal(t, expectedRoot, first.SourceRoot)
 	assert.Equal(t, filepath.ToSlash(filepath.Join("nested", "a.txt")), first.Files[0].Path)
 	assert.Equal(t, "z.txt", first.Files[1].Path)
 	assert.Equal(t, first.Files, second.Files)
@@ -216,6 +218,27 @@ func TestBuildStateManifest_RejectsEmptyRootsAndSymlinkEntries(t *testing.T) {
 		_, err := BuildStateManifest(root, "operator", "hub", "nonce-4", now.Add(time.Minute), privateKey, now)
 		require.Error(t, err)
 	})
+}
+
+func TestBuildStateManifest_CanonicalizesUnixSymlinkedRoot(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows junction roots must remain rejected")
+	}
+	now := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
+	base, err := filepath.EvalSymlinks(t.TempDir())
+	require.NoError(t, err)
+	realRoot := filepath.Join(base, "real")
+	aliasRoot := filepath.Join(base, "alias")
+	require.NoError(t, os.Mkdir(realRoot, 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(realRoot, "state"), []byte("state"), 0o600))
+	require.NoError(t, os.Symlink(realRoot, aliasRoot))
+	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+
+	manifest, err := BuildStateManifest(aliasRoot, "operator", "hub", "nonce-alias", now.Add(time.Minute), privateKey, now)
+	require.NoError(t, err)
+	assert.Equal(t, realRoot, manifest.SourceRoot)
+	require.NoError(t, VerifyStateManifest(manifest, aliasRoot, "operator", "hub", publicKey, now))
 }
 
 func TestStateManifestUnsafeMode_RejectsSymlinkAndIrregular(t *testing.T) {
