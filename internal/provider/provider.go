@@ -11,6 +11,29 @@ var (
 	ErrCapabilityNotSupported = errors.New("provider does not support this operation")
 )
 
+// Capability is the write-safety contract for one target operation. These are
+// deliberately strict values: an unknown capability must never be treated as
+// a safe default.
+type Capability string
+
+const (
+	CapabilityNativeCAS         Capability = "native_cas"
+	CapabilityEnforcedExclusive Capability = "enforced_exclusive"
+	CapabilityOwnerRiskGate     Capability = "owner_risk_gate"
+	CapabilityBlocked           Capability = "blocked"
+)
+
+// Valid reports whether c is one of the capability values understood by the
+// offline sync-state journal.
+func (c Capability) Valid() bool {
+	switch c {
+	case CapabilityNativeCAS, CapabilityEnforcedExclusive, CapabilityOwnerRiskGate, CapabilityBlocked:
+		return true
+	default:
+		return false
+	}
+}
+
 // Secret holds a secret key-value pair with metadata.
 type Secret struct {
 	Key     string
