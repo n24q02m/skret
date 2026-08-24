@@ -21,13 +21,15 @@ import (
 
 func stateMigrationFixture(t *testing.T) (root, statePath, journalPath string, manifest *StateManifest, publicKey ed25519.PublicKey, privateKey ed25519.PrivateKey, now time.Time, original []byte) {
 	t.Helper()
+	var err error
 	now = time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
-	root = t.TempDir()
+	root, err = filepath.EvalSymlinks(t.TempDir())
+	require.NoError(t, err)
 	statePath = filepath.Join(root, "state.json")
 	journalPath = filepath.Join(root, "state-migration.journal.json")
 	original = []byte(`{"schema_version":1,"target":"synthetic","metadata":"sensitive-state-value","hashes":{"key":"opaque-hash"}}`)
 	require.NoError(t, os.WriteFile(statePath, original, 0o600))
-	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	publicKey, privateKey, err = ed25519.GenerateKey(rand.Reader)
 	require.NoError(t, err)
 	manifest, err = BuildStateManifest(root, "operator", "hub", "nonce-state-migration", now.Add(5*time.Minute), privateKey, now)
 	require.NoError(t, err)

@@ -21,6 +21,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func resolvedCLIStateMigrationRoot(t *testing.T) string {
+	t.Helper()
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	require.NoError(t, err)
+	return root
+}
+
 func writeCLISignedStateManifest(t *testing.T, root string, extraFiles map[string]string) (manifestPath, publicKeyHex string, manifest *syncer.StateManifest) {
 	t.Helper()
 	for name, contents := range extraFiles {
@@ -106,7 +113,7 @@ func TestRootCmd_RegistersSyncStateMigrate(t *testing.T) {
 }
 
 func TestSyncStateMigrate_DryRunVerifiesWithoutMutationAndJSONIsValueFree(t *testing.T) {
-	root := t.TempDir()
+	root := resolvedCLIStateMigrationRoot(t)
 	statePath := filepath.Join(root, "state.json")
 	original := []byte(`{"schema_version":1,"metadata":"opaque-cli-state-value","hashes":{"key":"opaque-hash"}}`)
 	require.NoError(t, os.WriteFile(statePath, original, 0o600))
@@ -138,7 +145,7 @@ func TestSyncStateMigrate_DryRunVerifiesWithoutMutationAndJSONIsValueFree(t *tes
 }
 
 func TestSyncStateMigrate_ExecuteMigratesAndPrintsMetadataOnly(t *testing.T) {
-	root := t.TempDir()
+	root := resolvedCLIStateMigrationRoot(t)
 	statePath := filepath.Join(root, "state.json")
 	original := []byte(`{"schema_version":1,"metadata":"opaque-cli-execute-value"}`)
 	require.NoError(t, os.WriteFile(statePath, original, 0o600))
@@ -177,7 +184,7 @@ func TestSyncStateMigrate_ExecuteMigratesAndPrintsMetadataOnly(t *testing.T) {
 }
 
 func TestSyncStateMigrate_ManifestMismatchFailsBeforeMutation(t *testing.T) {
-	root := t.TempDir()
+	root := resolvedCLIStateMigrationRoot(t)
 	statePath := filepath.Join(root, "state.json")
 	original := []byte(`{"schema_version":1,"metadata":"opaque-cli-mismatch-value"}`)
 	require.NoError(t, os.WriteFile(statePath, original, 0o600))
@@ -205,7 +212,7 @@ func TestSyncStateMigrate_ManifestMismatchFailsBeforeMutation(t *testing.T) {
 }
 
 func TestSyncStateMigrate_StrictManifestParsingFailsBeforeMutationOrSubmit(t *testing.T) {
-	root := t.TempDir()
+	root := resolvedCLIStateMigrationRoot(t)
 	statePath := filepath.Join(root, "state.json")
 	original := []byte(`{"schema_version":1,"metadata":"opaque-cli-strict-value"}`)
 	require.NoError(t, os.WriteFile(statePath, original, 0o600))
@@ -380,7 +387,7 @@ func TestSyncStateMigrate_StrictManifestParsingFailsBeforeMutationOrSubmit(t *te
 }
 
 func TestSyncStateMigrate_ResolvesOnlyExactManifestRow(t *testing.T) {
-	root := t.TempDir()
+	root := resolvedCLIStateMigrationRoot(t)
 	statePath := filepath.Join(root, "state.json")
 	original := []byte(`{"schema_version":1}`)
 	require.NoError(t, os.WriteFile(statePath, original, 0o600))
@@ -420,7 +427,7 @@ func TestSyncStateMigrate_ResolvesOnlyExactManifestRow(t *testing.T) {
 }
 
 func TestSyncStateMigrate_AcceptsPublicKeyFilesAndInfersSingleStateRow(t *testing.T) {
-	root := t.TempDir()
+	root := resolvedCLIStateMigrationRoot(t)
 	original := []byte(`{"schema_version":1}`)
 	statePath := filepath.Join(root, "state.json")
 	require.NoError(t, os.WriteFile(statePath, original, 0o600))
@@ -459,7 +466,7 @@ func TestSyncStateMigrate_AcceptsPublicKeyFilesAndInfersSingleStateRow(t *testin
 }
 
 func TestSyncStateMigrate_ExecuteReplaysCommittedOperationIdempotently(t *testing.T) {
-	root := t.TempDir()
+	root := resolvedCLIStateMigrationRoot(t)
 	statePath := filepath.Join(root, "state.json")
 	original := []byte(`{"schema_version":1,"metadata":"opaque-cli-idempotent-value"}`)
 	require.NoError(t, os.WriteFile(statePath, original, 0o600))
@@ -486,7 +493,7 @@ func TestSyncStateMigrate_ExecuteReplaysCommittedOperationIdempotently(t *testin
 }
 
 func TestSyncStateMigrate_RejectsInvalidFlagsAndMissingExecutionIdentity(t *testing.T) {
-	root := t.TempDir()
+	root := resolvedCLIStateMigrationRoot(t)
 	statePath := filepath.Join(root, "state.json")
 	original := []byte(`{"schema_version":1}`)
 	require.NoError(t, os.WriteFile(statePath, original, 0o600))
@@ -543,7 +550,7 @@ func TestReadCLIStateMigrationPrivateKey_AcceptsRawAndHexFiles(t *testing.T) {
 }
 
 func TestSyncStateMigrate_RemoteExecuteSubmitsSignedMetadataOnlyRequestWithoutMutation(t *testing.T) {
-	root := t.TempDir()
+	root := resolvedCLIStateMigrationRoot(t)
 	statePath := filepath.Join(root, "state.json")
 	original := []byte(`{"schema_version":1,"metadata":"opaque-cli-remote-value"}`)
 	require.NoError(t, os.WriteFile(statePath, original, 0o600))
@@ -643,7 +650,7 @@ func TestSyncStateMigrate_RemoteModeRequiresAuthenticatedInputsAndRejectsLocalEx
 }
 
 func TestSyncStateMigrate_RemoteErrorIsValueFreeAndDoesNotMutateLocalState(t *testing.T) {
-	root := t.TempDir()
+	root := resolvedCLIStateMigrationRoot(t)
 	statePath := filepath.Join(root, "state.json")
 	original := []byte(`{"schema_version":1,"metadata":"opaque-cli-remote-error-value"}`)
 	require.NoError(t, os.WriteFile(statePath, original, 0o600))
@@ -685,7 +692,7 @@ func TestSyncStateMigrate_RemoteErrorIsValueFreeAndDoesNotMutateLocalState(t *te
 }
 
 func TestSyncStateMigrate_RemoteModeUsesOperatorSessionEnvironmentFallback(t *testing.T) {
-	root := t.TempDir()
+	root := resolvedCLIStateMigrationRoot(t)
 	statePath := filepath.Join(root, "state.json")
 	original := []byte(`{"schema_version":1}`)
 	require.NoError(t, os.WriteFile(statePath, original, 0o600))
