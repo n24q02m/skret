@@ -8,4 +8,4 @@ RUN apk add --no-cache ca-certificates
 # fills TARGETPLATFORM in; declaring the ARG is what brings it into scope.
 ARG TARGETPLATFORM
 COPY $TARGETPLATFORM/skret /usr/local/bin/skret
-ENTRYPOINT ["skret"]
+ENTRYPOINT ["/usr/local/bin/skret"]
