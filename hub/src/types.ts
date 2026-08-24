@@ -15,9 +15,13 @@ export interface Env {
   // The counter that actually enforces the login limit; LOGIN_LIMIT is only
   // the free first pass in front of it (see router.ts loginAllowed).
   LOGIN_GATE: DurableObjectNamespace<LoginGate>;
-  // B2 cron sync worker: the SyncContainer Durable Object namespace. The
-  // scheduler starts a credential-free metadata planner and forwards no envVars.
+  // Credential-free planner namespace. Health-only options below do not
+  // replace the required Durable Object binding.
   SYNC: DurableObjectNamespace<SyncContainer>;
+  // Optional non-secret health inputs. Invalid values fail closed in the
+  // SyncContainer health RPC; absence uses the bounded source default.
+  SYNC_EXPECTED_FINGERPRINT?: string;
+  SYNC_STALE_THRESHOLD_SECONDS?: string;
   // Paired private security executor. Ordinary Hub requests may be deployed
   // without this binding, but the operator proxy must fail closed when it is
   // absent rather than report a false success.
@@ -47,15 +51,43 @@ export interface SyncRunRecord {
   targetCount: number | null;
   startedAt: string;
   endedAt: string | null;
+  /** Durable completion order; absent only on records written before schema migration. */
+  completionSequence?: number;
   status: SyncRunStatus;
   classification: SyncRunClassification;
   exitCode: number | null;
   reason: SyncRunReason | null;
 }
+export type SyncHealthStatus =
+  | "unknown"
+  | "active"
+  | "healthy"
+  | "degraded"
+  | "stale"
+  | "fingerprint_drift";
+
 export interface SyncHealth {
+  status: SyncHealthStatus;
   active: boolean;
+  stale: boolean;
+  fingerprint_match: boolean | null;
   last_success_at: string | null;
   age_seconds: number | null;
+}
+
+export interface SyncHealthAlerts {
+  nonzero_completion: boolean;
+  stale: boolean;
+  fingerprint_drift: boolean;
+}
+
+export interface OperatorSyncHealth extends SyncHealth {
+  last_completion: SyncRunRecord | null;
+  last_success: SyncRunRecord | null;
+  active_run: SyncRunRecord | null;
+  expected_fingerprint: string | null;
+  stale_threshold_seconds: number;
+  alerts: SyncHealthAlerts;
 }
 
 export interface Manifest {

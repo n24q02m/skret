@@ -1,12 +1,14 @@
 import { Container, type State, type StopParams } from "@cloudflare/containers";
-import type { Env, SyncHealth, SyncRunMetadata } from "./types";
+import type { Env, OperatorSyncHealth, SyncHealth, SyncRunMetadata } from "./types";
 import {
   SYNC_ACTIVE_RUN_KEY,
   SYNC_PLANNER_STOP_STATE_KEY,
   completeSyncRun,
   ensureStartedSyncRun,
   getSyncHealth as readSyncHealth,
+  getOperatorSyncHealth as readOperatorSyncHealth,
   putStartedSyncRun,
+  resolveSyncHealthConfig,
 } from "./store";
 
 const PLANNER_STOP_RECONCILE_TIMEOUT_MS = 5000;
@@ -300,7 +302,19 @@ export class SyncContainer extends Container<Env> {
   // Public health reads receive only the coarse freshness projection. Detailed
   // run records remain in Durable Object storage for authenticated operators.
   async getSyncHealth(): Promise<SyncHealth> {
-    return readSyncHealth(this.ctx.storage);
+    return readSyncHealth(
+      this.ctx.storage,
+      new Date(),
+      resolveSyncHealthConfig(this.env),
+    );
+  }
+
+  async getOperatorSyncHealth(): Promise<OperatorSyncHealth> {
+    return readOperatorSyncHealth(
+      this.ctx.storage,
+      new Date(),
+      resolveSyncHealthConfig(this.env),
+    );
   }
 
   // Once onStart() persists a record, onStop() is the sole terminal transition
