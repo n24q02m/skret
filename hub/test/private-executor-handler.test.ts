@@ -126,7 +126,7 @@ async function options(
 ): Promise<PrivateExecutorHandlerOptions> {
   return {
     expectedAudience: AUDIENCE,
-    expectedRole: ROLE,
+    expectedRoles: [ROLE],
     publicKey,
     replayStore,
     execute,
@@ -222,6 +222,19 @@ describe("private executor envelope handler", () => {
     expect(execute).not.toHaveBeenCalled();
   });
 
+  it("accepts a signed envelope for any explicitly configured role", async () => {
+    const { privateKey, publicKey } = await keyPair();
+    const envelope = await makeEnvelope(privateKey, { role: "provider-sync" });
+    const execute = vi.fn(async () => new Uint8Array([7]));
+    const base = await options(publicKey, storeThat(), execute);
+    const response = await handlePrivateExecutorEnvelope(
+      request(JSON.stringify(envelope)),
+      { ...base, expectedRoles: [ROLE, "provider-sync"] },
+    );
+    expect(response.status).toBe(200);
+    expect(execute).toHaveBeenCalledOnce();
+  });
+
   it.each([
     ["audience", { audience: "other-audience" }],
     ["role", { role: "other-role" }],
@@ -279,9 +292,11 @@ describe("private executor envelope handler", () => {
     const { privateKey, publicKey } = await keyPair();
     const envelope = await makeEnvelope(privateKey);
     const incomplete = [
-      { expectedAudience: AUDIENCE, expectedRole: ROLE, publicKey: new Uint8Array(31), replayStore: storeThat(), execute: vi.fn() },
-      { expectedAudience: AUDIENCE, expectedRole: ROLE, publicKey, replayStore: undefined, execute: vi.fn() },
-      { expectedAudience: AUDIENCE, expectedRole: ROLE, publicKey, replayStore: storeThat(), execute: undefined },
+      { expectedAudience: AUDIENCE, expectedRoles: [ROLE], publicKey: new Uint8Array(31), replayStore: storeThat(), execute: vi.fn() },
+      { expectedAudience: AUDIENCE, expectedRoles: [ROLE], publicKey, replayStore: undefined, execute: vi.fn() },
+      { expectedAudience: AUDIENCE, expectedRoles: [ROLE], publicKey, replayStore: storeThat(), execute: undefined },
+      { expectedAudience: AUDIENCE, expectedRoles: [], publicKey, replayStore: storeThat(), execute: vi.fn() },
+      { expectedAudience: AUDIENCE, expectedRoles: [ROLE, ROLE], publicKey, replayStore: storeThat(), execute: vi.fn() },
     ];
 
     for (const candidate of incomplete) {

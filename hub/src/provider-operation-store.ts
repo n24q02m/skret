@@ -6,8 +6,8 @@ import type {
 const OPERATION_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
 const DIGEST_PATTERN = /^sha256:[a-f0-9]{64}$/u;
 const GENERATION_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
-const IDENTIFIER_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:/@=-]{0,255}$/u;
-const OID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
+const IDENTIFIER_PATTERN = /^[\u0021-\u007e]{1,2048}$/u;
+const OID_PATTERN = /^[\u0021-\u007e]{1,2048}$/u;
 const NONCE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
 const CONTROL_TEXT_PATTERN = /[\u0000-\u001f\u007f]/u;
 const STANDARD_BASE64_PATTERN = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/u;

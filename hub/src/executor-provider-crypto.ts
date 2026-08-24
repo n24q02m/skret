@@ -411,13 +411,26 @@ export class AwsSourceClient {
   preflightMetadata(sourceIdentity: SourceIdentity, metadata: AwsParameterMetadata): void {
     const identity = canonicalSourceIdentity(sourceIdentity);
     validateMetadata(identity, metadata);
-    if (metadata.labels.length >= MAX_AWS_PARAMETER_LABELS) throw new ProviderLabelBoundaryError();
     const existing = metadata.labels.find((binding) => binding.label === identity.lifecycleLabel);
     if (existing !== undefined && existing.version !== identity.version) throw new ProviderLabelDriftError();
+    if (existing === undefined && metadata.labels.length >= MAX_AWS_PARAMETER_LABELS) {
+      throw new ProviderLabelBoundaryError();
+    }
   }
 
   async labelExact(sourceIdentity: SourceIdentity): Promise<void> {
     const identity = canonicalSourceIdentity(sourceIdentity);
+    let before: number | null;
+    try {
+      before = await this.#transport.readParameterLabel({
+        parameterName: identity.fullParameterName,
+        label: identity.lifecycleLabel,
+      });
+    } catch {
+      throw new ProviderLabelReadbackError();
+    }
+    if (before === identity.version) return;
+    if (before !== null) throw new ProviderLabelDriftError();
     try {
       await this.#transport.labelParameterVersion({
         parameterName: identity.fullParameterName,
@@ -692,6 +705,7 @@ export interface PrepareProviderEnvelopeInput {
   readonly generation: string;
   readonly sourceIdentity: SourceIdentity;
   readonly targetSetDigest: string;
+  readonly expectedSourceDigest: string;
   readonly keyReference: string;
   readonly targetIdentities: readonly string[];
   readonly references?: readonly EnvelopeReference[];
@@ -703,6 +717,7 @@ export interface PreparedProviderGeneration {
   readonly operationId: string;
   readonly generation: string;
   readonly sourceIdentity: SourceIdentity;
+  readonly sourceDigest: string;
   readonly context: ProviderEnvelopeContext;
   readonly targetIdentities: readonly string[];
   readonly keyReference: string;
@@ -738,6 +753,82 @@ export interface ProviderEnvelopeGenerationStore {
   put(generation: PreparedProviderGeneration): Promise<void>;
   delete(operationId: string): Promise<void>;
 }
+export interface ProviderEnvelopeTransaction {
+  get<T>(key: string): Promise<T | undefined>;
+  put<T>(key: string, value: T): Promise<void>;
+  delete(key: string): Promise<boolean>;
+}
+
+export interface ProviderEnvelopeStorage extends ProviderEnvelopeTransaction {
+  transaction<T>(closure: (transaction: ProviderEnvelopeTransaction) => Promise<T>): Promise<T>;
+}
+
+export class ProviderEnvelopeGenerationConflictError extends Error {
+  constructor() {
+    super("provider envelope generation conflict");
+    this.name = "ProviderEnvelopeGenerationConflictError";
+  }
+}
+
+export class ProviderEnvelopeGenerationInvalidStateError extends Error {
+  constructor() {
+    super("invalid provider envelope generation state");
+    this.name = "ProviderEnvelopeGenerationInvalidStateError";
+  }
+}
+const PREPARED_PROVIDER_GENERATION_FIELDS = [
+  "operationId",
+  "generation",
+  "sourceIdentity",
+  "sourceDigest",
+  "context",
+  "targetIdentities",
+  "keyReference",
+  "envelope",
+] as const;
+const PERSISTED_PROVIDER_ENVELOPE_FIELDS = [
+  "schema",
+  "ciphertext",
+  "iv",
+  "mac",
+  "encryptedDataKey",
+  "contextDigest",
+  "references",
+] as const;
+
+
+const PROVIDER_ENVELOPE_GENERATION_PREFIX = "private:provider-envelope-generation:";
+
+export class DurableProviderEnvelopeGenerationStore implements ProviderEnvelopeGenerationStore {
+  constructor(private readonly storage: ProviderEnvelopeStorage) {}
+
+  async get(operationId: string): Promise<PreparedProviderGeneration | undefined> {
+    const key = providerEnvelopeGenerationKey(operationId);
+    const generation = await this.storage.get<unknown>(key);
+    if (generation === undefined) return undefined;
+    return validatePreparedProviderGeneration(generation, operationId);
+  }
+
+  async put(generation: PreparedProviderGeneration): Promise<void> {
+    const canonical = await validatePreparedProviderGeneration(generation);
+    const key = providerEnvelopeGenerationKey(canonical.operationId);
+    await this.storage.transaction(async (transaction) => {
+      const existing = await transaction.get<unknown>(key);
+      if (existing === undefined) {
+        await transaction.put(key, canonical);
+        return;
+      }
+      const validated = await validatePreparedProviderGeneration(existing, canonical.operationId);
+      if (JSON.stringify(validated) !== JSON.stringify(canonical)) {
+        throw new ProviderEnvelopeGenerationConflictError();
+      }
+    });
+  }
+
+  async delete(operationId: string): Promise<void> {
+    await this.storage.delete(providerEnvelopeGenerationKey(operationId));
+  }
+}
 
 export class ProviderEnvelopeLifecycle {
   readonly #source: AwsSourceClient;
@@ -758,11 +849,14 @@ export class ProviderEnvelopeLifecycle {
       targetSetDigest: input.targetSetDigest,
     });
     validateReference(input.keyReference);
+    if (!SHA256_DIGEST.test(input.expectedSourceDigest)) throw new ProviderSourceBoundaryError();
     const targetIdentities = normalizeTargetIdentities(input.targetIdentities);
     const sourceRead = await this.#source.readExact(context.sourceIdentity);
-    input.onEvent?.("source-read");
     try {
+      input.onEvent?.("source-read");
       this.#source.preflightMetadata(context.sourceIdentity, sourceRead.metadata);
+      const sourceDigest = await sha256Digest(sourceRead.value);
+      if (sourceDigest !== input.expectedSourceDigest) throw new ProviderSourceBoundaryError();
       await this.#source.labelExact(context.sourceIdentity);
       input.onEvent?.("label-readback");
       input.onEvent?.("kms-generate");
@@ -779,6 +873,7 @@ export class ProviderEnvelopeLifecycle {
         operationId: context.operationId,
         generation: context.generation,
         sourceIdentity: context.sourceIdentity,
+        sourceDigest,
         context,
         targetIdentities,
         keyReference: input.keyReference,
@@ -790,6 +885,21 @@ export class ProviderEnvelopeLifecycle {
       zeroize(sourceRead.value);
     }
   }
+  async withDecryptedValue<T>(
+    prepared: PreparedProviderGeneration,
+    callback: (value: Uint8Array) => Promise<T> | T,
+  ): Promise<T> {
+    return withDecryptedProviderEnvelope(
+      {
+        envelope: prepared.envelope,
+        context: prepared.context,
+        keyReference: prepared.keyReference,
+        kms: this.#kms,
+      },
+      callback,
+    );
+  }
+
 
   async getRetained(operationId: string): Promise<PreparedProviderGeneration | undefined> {
     return this.#store.get(operationId);
@@ -833,6 +943,110 @@ export class ProviderEnvelopeLifecycle {
         : { status: "recovery_unavailable" };
     }
   }
+}
+
+function providerEnvelopeGenerationKey(operationId: string): string {
+  try {
+    const canonical = readCanonicalText(operationId, 256);
+    if (!SAFE_ID.test(canonical)) throw new InvalidProviderEnvelopeError();
+    return `${PROVIDER_ENVELOPE_GENERATION_PREFIX}${canonical}`;
+  } catch {
+    throw new ProviderEnvelopeGenerationInvalidStateError();
+  }
+}
+
+async function validatePreparedProviderGeneration(
+  value: unknown,
+  expectedOperationId?: string,
+): Promise<PreparedProviderGeneration> {
+  let decoded: ReturnType<typeof decodePersistedEnvelope> | undefined;
+  try {
+    if (
+      !isRecord(value) ||
+      !hasExactFields(value, PREPARED_PROVIDER_GENERATION_FIELDS) ||
+      typeof value.operationId !== "string" ||
+      typeof value.generation !== "string" ||
+      typeof value.sourceDigest !== "string" ||
+      !SHA256_DIGEST.test(value.sourceDigest) ||
+      typeof value.keyReference !== "string" ||
+      !isRecord(value.sourceIdentity) ||
+      !isRecord(value.context) ||
+      !isRecord(value.envelope)
+    ) {
+      throw new InvalidProviderEnvelopeError();
+    }
+    const operationId = readCanonicalText(value.operationId, 256);
+    const generation = readCanonicalText(value.generation, 256);
+    if (!SAFE_ID.test(operationId) || !SAFE_ID.test(generation) || (expectedOperationId !== undefined && operationId !== expectedOperationId)) {
+      throw new InvalidProviderEnvelopeError();
+    }
+    validateReference(value.keyReference);
+    const sourceIdentity = canonicalSourceIdentity(value.sourceIdentity as unknown as SourceIdentity);
+    if (JSON.stringify(sourceIdentity) !== JSON.stringify(value.sourceIdentity)) throw new InvalidProviderEnvelopeError();
+    const context = createEnvelopeContext(value.context as unknown as ProviderEnvelopeContext);
+    if (
+      JSON.stringify(context) !== JSON.stringify(value.context) ||
+      context.operationId !== operationId ||
+      context.generation !== generation ||
+      JSON.stringify(context.sourceIdentity) !== JSON.stringify(sourceIdentity)
+    ) {
+      throw new InvalidProviderEnvelopeError();
+    }
+    const targetIdentities = normalizeTargetIdentities(value.targetIdentities as readonly string[]);
+    if (
+      targetIdentities.length > 64 ||
+      JSON.stringify(targetIdentities) !== JSON.stringify(value.targetIdentities)
+    ) {
+      throw new InvalidProviderEnvelopeError();
+    }
+    const targetSetDigest = await sha256Digest(
+      encodeLengthPrefixed(targetIdentities.map((targetIdentity) => textEncoder.encode(targetIdentity))),
+    );
+    if (targetSetDigest !== context.targetSetDigest) throw new InvalidProviderEnvelopeError();
+
+    const envelope = value.envelope as unknown as PersistedProviderEnvelope;
+    if (!hasExactFields(value.envelope, PERSISTED_PROVIDER_ENVELOPE_FIELDS)) {
+      throw new InvalidProviderEnvelopeError();
+    }
+    decoded = decodePersistedEnvelope(envelope);
+    if (
+      decoded.contextDigest !== await providerContextDigest(context) ||
+      JSON.stringify(decoded.references) !== JSON.stringify(envelope.references)
+    ) {
+      throw new InvalidProviderEnvelopeError();
+    }
+    const references = new Set(decoded.references.map((reference) => `${reference.kind}\u0000${reference.id}`));
+    if (
+      !references.has(`source\u0000${sourceReference(sourceIdentity)}`) ||
+      !references.has(`kms\u0000${value.keyReference}`) ||
+      targetIdentities.some((targetIdentity) => !references.has(`target\u0000${targetIdentity}`))
+    ) {
+      throw new InvalidProviderEnvelopeError();
+    }
+    return structuredClone({
+      operationId,
+      generation,
+      sourceIdentity,
+      sourceDigest: value.sourceDigest,
+      context,
+      targetIdentities,
+      keyReference: value.keyReference,
+      envelope,
+    });
+  } catch (error) {
+    if (error instanceof ProviderEnvelopeGenerationInvalidStateError) throw error;
+    throw new ProviderEnvelopeGenerationInvalidStateError();
+  } finally {
+    zeroize(decoded?.ciphertext);
+    zeroize(decoded?.iv);
+    zeroize(decoded?.mac);
+    zeroize(decoded?.encryptedDataKey);
+  }
+}
+
+function hasExactFields(value: Record<string, unknown>, fields: readonly string[]): boolean {
+  const keys = Object.keys(value);
+  return keys.length === fields.length && keys.every((key, index) => key === fields[index]);
 }
 
 function cleanupVerificationMatches(
@@ -921,6 +1135,11 @@ function isValidReference(value: unknown): value is EnvelopeReference {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+async function sha256Digest(bytes: Uint8Array): Promise<string> {
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+  return `sha256:${toHex(digest)}`;
 }
 
 function zeroize(value: Uint8Array | null | undefined): void {

@@ -26,7 +26,7 @@ type OperationResult = Uint8Array | ArrayBuffer | ArrayBufferView;
 
 export interface PrivateExecutorHandlerOptions {
   readonly expectedAudience: string;
-  readonly expectedRole: string;
+  readonly expectedRoles: readonly string[];
   readonly publicKey: Uint8Array;
   readonly replayStore: ReplayStore;
   readonly execute: (
@@ -84,7 +84,7 @@ export async function handlePrivateExecutorEnvelope(
   if (typeof parsed.audience !== "string" || typeof parsed.role !== "string") {
     return emptyResponse(400);
   }
-  if (parsed.audience !== options.expectedAudience || parsed.role !== options.expectedRole) {
+  if (parsed.audience !== options.expectedAudience || !options.expectedRoles.includes(parsed.role)) {
     return emptyResponse(403);
   }
 
@@ -128,8 +128,17 @@ function hasValidDependencies(options: PrivateExecutorHandlerOptions | undefined
       typeof options === "object" &&
       typeof options.expectedAudience === "string" &&
       options.expectedAudience.length > 0 &&
-      typeof options.expectedRole === "string" &&
-      options.expectedRole.length > 0 &&
+      Array.isArray(options.expectedRoles) &&
+      options.expectedRoles.length > 0 &&
+      options.expectedRoles.length <= 16 &&
+      options.expectedRoles.every((role) =>
+        typeof role === "string" &&
+        role.length > 0 &&
+        role.length <= 256 &&
+        role.trim() === role &&
+        !/[\u0000-\u001f\u007f]/u.test(role)
+      ) &&
+      new Set(options.expectedRoles).size === options.expectedRoles.length &&
       options.publicKey instanceof Uint8Array &&
       options.publicKey.byteLength === 32 &&
       options.replayStore &&

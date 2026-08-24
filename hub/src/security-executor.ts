@@ -203,7 +203,7 @@ export async function buildSecurityExecutorOptions(
   const operationStore = createOperationStoreAdapter(operationNamespace);
   return {
     expectedAudience,
-    expectedRole,
+    expectedRoles: [expectedRole],
     publicKey,
     replayStore: createReplayStoreAdapter(replayNamespace),
     execute: (body, envelope) =>

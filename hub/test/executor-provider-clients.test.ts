@@ -17,7 +17,12 @@ const CONTEXT_DIGEST = `sha256:${"b".repeat(64)}`;
 const CF_ACCOUNT = "a".repeat(32);
 
 function applied(operationId: string, targetIdentity: string): ProviderWriteResponse {
-  return { status: "applied", operationId, targetIdentity };
+  return {
+    status: "applied",
+    operationId,
+    targetIdentity,
+    providerStateOID: `state:${operationId}`,
+  };
 }
 
 class FakeSealedBox implements SealedBox {
@@ -150,6 +155,7 @@ describe("canonical executor target clients", () => {
     const result = await client.upsertSecret({ operation, value: callerValue });
 
     expect(result.status).toBe("applied");
+    expect(result.providerStateOID).toBe("state:op-github-1");
     expect(transport.calls.map(({ operation: name }) => name)).toEqual(["public-key", "upsert"]);
     expect(transport.calls[1]?.input).toMatchObject({
       owner: "fixture",

@@ -3,6 +3,7 @@ import {
   AwsSourceClient,
   KmsClient,
   ProviderEnvelopeLifecycle,
+  DurableProviderEnvelopeGenerationStore,
   SourceMissingError,
   canonicalKmsEncryptionContext,
   createEnvelopeContext,
@@ -15,6 +16,8 @@ import {
   type PersistedProviderEnvelope,
   type PreparedProviderGeneration,
   type ProviderEnvelopeGenerationStore,
+  type ProviderEnvelopeStorage,
+  type ProviderEnvelopeTransaction,
   type SourceIdentity,
 } from "../src/executor-provider-crypto";
 const SOURCE: SourceIdentity = {
@@ -37,6 +40,7 @@ const DATA_KEY = Uint8Array.from({ length: 32 }, (_, index) => index + 1);
 const ENCRYPTED_DATA_KEY = Uint8Array.from({ length: 32 }, (_, index) => 0xa0 + index);
 const IV = Uint8Array.from({ length: 12 }, (_, index) => index + 1);
 const FIXTURE_VALUE = new TextEncoder().encode("synthetic-fixture-value");
+const SOURCE_DIGEST = "sha256:34317a35afa2565aba2ce4af8e20ec3cf6cfcf412294d4dc40d2c217fe34ed42";
 
 function metadata(overrides: Partial<AwsParameterMetadata> = {}): AwsParameterMetadata {
   return {
@@ -124,6 +128,29 @@ class FakeGenerationStore implements ProviderEnvelopeGenerationStore {
     this.records.delete(operationId);
   }
 }
+class FakeEnvelopeStorage implements ProviderEnvelopeStorage {
+  readonly values = new Map<string, unknown>();
+  private tail = Promise.resolve();
+
+  async get<T>(key: string): Promise<T | undefined> {
+    return this.values.get(key) as T | undefined;
+  }
+
+  async put<T>(key: string, value: T): Promise<void> {
+    this.values.set(key, structuredClone(value));
+  }
+
+  async delete(key: string): Promise<boolean> {
+    return this.values.delete(key);
+  }
+
+  transaction<T>(closure: (transaction: ProviderEnvelopeTransaction) => Promise<T>): Promise<T> {
+    const result = this.tail.then(() => closure(this));
+    this.tail = result.then(() => undefined, () => undefined);
+    return result;
+  }
+}
+
 
 
 async function expectInvalidEnvelope(
@@ -248,6 +275,48 @@ describe("executor provider envelope crypto", () => {
     await expect(decryptProviderEnvelope({ envelope, context: CONTEXT, keyReference: "fixture-kms-key", kms }))
       .rejects.toThrow("KMS operation failed");
   });
+  it("persists envelope generations create-only and rejects corrupt durable state", async () => {
+    const storage = new FakeEnvelopeStorage();
+    const store = new DurableProviderEnvelopeGenerationStore(storage);
+    const targetIdentity = "github|fixture/repo|production|TOKEN";
+    const targetDigestBytes = new Uint8Array(
+      await crypto.subtle.digest("SHA-256", encodeLengthPrefixed([new TextEncoder().encode(targetIdentity)])),
+    );
+    const context = createEnvelopeContext({
+      ...CONTEXT,
+      targetSetDigest: `sha256:${Array.from(targetDigestBytes, (byte) => byte.toString(16).padStart(2, "0")).join("")}`,
+    });
+    const envelope = await createProviderEnvelope({
+      plaintext: FIXTURE_VALUE.slice(),
+      context,
+      keyReference: "fixture-kms-key",
+      references: [{ kind: "target", id: targetIdentity }],
+      iv: IV,
+      kms: new KmsClient(new FakeKmsTransport()),
+    });
+    const prepared: PreparedProviderGeneration = {
+      operationId: context.operationId,
+      generation: context.generation,
+      sourceIdentity: SOURCE,
+      sourceDigest: SOURCE_DIGEST,
+      context,
+      targetIdentities: [targetIdentity],
+      keyReference: "fixture-kms-key",
+      envelope,
+    };
+    await store.put(prepared);
+    await store.put(structuredClone(prepared));
+    expect(await store.get(prepared.operationId)).toEqual(prepared);
+    await expect(store.put({ ...prepared, sourceDigest: `sha256:${"b".repeat(64)}` }))
+      .rejects.toThrow("provider envelope generation conflict");
+
+    const key = [...storage.values.keys()][0]!;
+    storage.values.set(key, { operationId: prepared.operationId });
+    await expect(store.get(prepared.operationId)).rejects.toThrow("invalid provider envelope generation state");
+    await store.delete(prepared.operationId);
+    await expect(store.get(prepared.operationId)).resolves.toBeUndefined();
+  });
+
 });
 
 describe("AWS source client and lifecycle", () => {
@@ -272,6 +341,14 @@ describe("AWS source client and lifecycle", () => {
     transport.currentMetadata = metadata({ versionCount: 101 });
     await expect(client.preflight(SOURCE)).rejects.toThrow("provider source boundary");
 
+    transport.currentMetadata = metadata({
+      labels: [
+        { label: SOURCE.lifecycleLabel, version: SOURCE.version },
+        ...Array.from({ length: 9 }, (_, i) => ({ label: `l-${i}`, version: 1 })),
+      ],
+    });
+    await expect(client.preflight(SOURCE)).resolves.toMatchObject({ version: SOURCE.version });
+
     transport.currentMetadata = metadata({ labels: Array.from({ length: 10 }, (_, i) => ({ label: `l-${i}`, version: 1 })) });
     await expect(client.preflight(SOURCE)).rejects.toThrow("provider label boundary");
 
@@ -283,7 +360,7 @@ describe("AWS source client and lifecycle", () => {
     const transport = new FakeAwsTransport();
     const client = new AwsSourceClient(transport);
     transport.labelReadbackOverride = 2;
-    await expect(client.labelExact(SOURCE)).rejects.toThrow("provider label readback mismatch");
+    await expect(client.labelExact(SOURCE)).rejects.toThrow("provider label drift");
 
     transport.labelReadbackOverride = SOURCE.version;
     await expect(client.labelExact(SOURCE)).resolves.toBeUndefined();
@@ -292,11 +369,35 @@ describe("AWS source client and lifecycle", () => {
     transport.labelReadbackOverride = undefined;
     transport.throwAfterLabelCommit = true;
     await expect(client.labelExact(SOURCE)).resolves.toBeUndefined();
-    expect(transport.calls.filter((call) => call.startsWith("Label:"))).toHaveLength(3);
+    expect(transport.calls.filter((call) => call.startsWith("Label:"))).toHaveLength(1);
 
     transport.throwAfterUnlabelCommit = true;
     await expect(client.unlabelExact(SOURCE)).resolves.toBeUndefined();
     expect(transport.calls.filter((call) => call.startsWith("Unlabel:"))).toHaveLength(2);
+  });
+
+  it("rejects a mismatched source digest before label or KMS mutation", async () => {
+    const aws = new FakeAwsTransport();
+    const kms = new FakeKmsTransport();
+    const lifecycle = new ProviderEnvelopeLifecycle(
+      new AwsSourceClient(aws),
+      new KmsClient(kms),
+      new FakeGenerationStore(),
+    );
+    await expect(
+      lifecycle.prepare({
+        operationId: CONTEXT.operationId,
+        generation: CONTEXT.generation,
+        sourceIdentity: SOURCE,
+        targetSetDigest: CONTEXT.targetSetDigest,
+        expectedSourceDigest: `sha256:${"f".repeat(64)}`,
+        keyReference: "fixture-kms-key",
+        targetIdentities: ["github|fixture/repo|SECRET"],
+        iv: IV,
+      }),
+    ).rejects.toThrow("provider source boundary");
+    expect(aws.calls.some((call) => call.startsWith("Label:"))).toBe(false);
+    expect(kms.calls).toHaveLength(0);
   });
 
   it("labels and reads back before envelope creation, and retains state at every cleanup kill point", async () => {
@@ -314,6 +415,7 @@ describe("AWS source client and lifecycle", () => {
       generation: CONTEXT.generation,
       sourceIdentity: SOURCE,
       targetSetDigest: CONTEXT.targetSetDigest,
+      expectedSourceDigest: SOURCE_DIGEST,
       keyReference: "fixture-kms-key",
       targetIdentities: ["github|fixture/repo|SECRET"],
       iv: IV,
@@ -363,6 +465,7 @@ describe("AWS source client and lifecycle", () => {
       generation: CONTEXT.generation,
       sourceIdentity: SOURCE,
       targetSetDigest: CONTEXT.targetSetDigest,
+      expectedSourceDigest: SOURCE_DIGEST,
       keyReference: "fixture-kms-key",
       targetIdentities: ["github|fixture/repo|SECRET"],
       iv: IV,
@@ -394,6 +497,7 @@ describe("AWS source client and lifecycle", () => {
       generation: CONTEXT.generation,
       sourceIdentity: SOURCE,
       targetSetDigest: CONTEXT.targetSetDigest,
+      expectedSourceDigest: SOURCE_DIGEST,
       keyReference: "fixture-kms-key",
       targetIdentities: ["github|fixture/repo|SECRET"],
       iv: IV,

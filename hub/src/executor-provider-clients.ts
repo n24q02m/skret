@@ -142,12 +142,14 @@ export interface ProviderWriteResponse {
   readonly status: "applied" | "ambiguous";
   readonly operationId: string;
   readonly targetIdentity: string;
+  readonly providerStateOID: string | null;
 }
 
 export interface TargetWriteResult {
   readonly status: TargetWriteStatus;
   readonly operationId: string;
   readonly targetIdentity: string;
+  readonly providerStateOID: string | null;
 }
 
 export function canonicalGitHubTarget(input: GitHubTargetInput): GitHubTargetIdentity {
@@ -604,20 +606,33 @@ function reconciliationResult(operation: TargetOperation): TargetWriteResult {
     status: "needs_reconciliation",
     operationId: operation.operationId,
     targetIdentity: operation.target.canonical,
+    providerStateOID: null,
   };
 }
 
 function normalizeWriteResponse(response: ProviderWriteResponse | null | undefined, operation: TargetOperation): TargetWriteResult {
-  if (response === null || response === undefined) {
-    return { status: "needs_reconciliation", operationId: operation.operationId, targetIdentity: operation.target.canonical };
-  }
-  if (typeof response !== "object" || (response.status !== "applied" && response.status !== "ambiguous") || response.operationId !== operation.operationId || response.targetIdentity !== operation.target.canonical) {
+  if (response === null || response === undefined) return reconciliationResult(operation);
+  if (
+    typeof response !== "object" ||
+    (response.status !== "applied" && response.status !== "ambiguous") ||
+    response.operationId !== operation.operationId ||
+    response.targetIdentity !== operation.target.canonical
+  ) {
     throw new InvalidProviderResponseError();
   }
   if (response.status === "ambiguous") {
-    return { status: "needs_reconciliation", operationId: operation.operationId, targetIdentity: operation.target.canonical };
+    if (response.providerStateOID !== null) throw new InvalidProviderResponseError();
+    return reconciliationResult(operation);
   }
-  return { status: "applied", operationId: operation.operationId, targetIdentity: operation.target.canonical };
+  if (typeof response.providerStateOID !== "string" || !SAFE_TARGET_REFERENCE.test(response.providerStateOID)) {
+    throw new InvalidProviderResponseError();
+  }
+  return {
+    status: "applied",
+    operationId: operation.operationId,
+    targetIdentity: operation.target.canonical,
+    providerStateOID: response.providerStateOID,
+  };
 }
 
 function compareCanonicalText(left: string, right: string): number {
