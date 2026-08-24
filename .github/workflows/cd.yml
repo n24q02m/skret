@@ -28,6 +28,8 @@ jobs:
   prepare:
     name: Prepare release artifacts
     runs-on: ubuntu-latest
+    environment:
+      name: ${{ github.event.inputs.release_type == 'beta' && 'beta-publish' || 'stable-publish' }}
     permissions:
       contents: read
     outputs:
