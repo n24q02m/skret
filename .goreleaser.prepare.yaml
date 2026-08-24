@@ -18,6 +18,30 @@ builds:
       - -X github.com/n24q02m/skret/internal/version.Version={{.Version}}
       - -X github.com/n24q02m/skret/internal/version.Commit={{.Commit}}
       - -X github.com/n24q02m/skret/internal/version.Date={{.CommitTimestamp}}
+  - id: skret-secret-helper
+    main: ./cmd/skret-secret-helper
+    binary: skret-secret-helper
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+  - id: skret-compose-supervisor
+    main: ./cmd/skret-compose-supervisor
+    binary: skret-compose-supervisor
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
 
 archives:
   - id: default
