@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -93,6 +94,9 @@ func (p *Provider) Capabilities() provider.Capabilities {
 }
 
 func (p *Provider) Get(ctx context.Context, key string) (*provider.Secret, error) {
+	if p == nil || p.client == nil || key == "" {
+		return nil, provider.ErrNotFound
+	}
 	output, err := p.client.GetParameter(ctx, &ssm.GetParameterInput{
 		Name:           awslib.String(key),
 		WithDecryption: awslib.Bool(true),
@@ -100,7 +104,9 @@ func (p *Provider) Get(ctx context.Context, key string) (*provider.Secret, error
 	if err != nil {
 		return nil, mapError("get", key, err)
 	}
-
+	if output == nil || output.Parameter == nil {
+		return nil, provider.ErrNotFound
+	}
 	param := output.Parameter
 	s := &provider.Secret{
 		Key:     awslib.ToString(param.Name),
@@ -111,6 +117,35 @@ func (p *Provider) Get(ctx context.Context, key string) (*provider.Secret, error
 		s.Meta.UpdatedAt = *param.LastModifiedDate
 	}
 	return s, nil
+}
+
+// GetVersion reads one immutable SSM parameter version using the documented
+// name:version selector and verifies that AWS returned that exact version.
+func (p *Provider) GetVersion(ctx context.Context, key string, version int64) (*provider.Secret, error) {
+	if p == nil || p.client == nil || key == "" || version <= 0 {
+		return nil, provider.ErrNotFound
+	}
+	selector := key + ":" + strconv.FormatInt(version, 10)
+	output, err := p.client.GetParameter(ctx, &ssm.GetParameterInput{
+		Name:           awslib.String(selector),
+		WithDecryption: awslib.Bool(true),
+	})
+	if err != nil {
+		return nil, mapError("get_version", key, err)
+	}
+	if output == nil || output.Parameter == nil || output.Parameter.Version != version {
+		return nil, provider.ErrNotFound
+	}
+	parameter := output.Parameter
+	secret := &provider.Secret{
+		Key:     awslib.ToString(parameter.Name),
+		Value:   awslib.ToString(parameter.Value),
+		Version: parameter.Version,
+	}
+	if parameter.LastModifiedDate != nil {
+		secret.Meta.UpdatedAt = *parameter.LastModifiedDate
+	}
+	return secret, nil
 }
 
 func (p *Provider) GetBatch(ctx context.Context, keys []string) ([]*provider.Secret, error) {

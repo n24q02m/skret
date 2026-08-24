@@ -61,6 +61,13 @@ type Capabilities struct {
 	MaxValueKB int
 }
 
+// VersionedReader fetches one immutable provider version. Callers that bind a
+// launch or rollback to an exact version must require this interface rather
+// than accepting SecretProvider.Get's moving latest value.
+type VersionedReader interface {
+	GetVersion(ctx context.Context, key string, version int64) (*Secret, error)
+}
+
 // SecretProvider is the core abstraction for all secret backends.
 type SecretProvider interface {
 	Name() string

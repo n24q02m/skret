@@ -192,7 +192,7 @@ func (o *syncOptions) run(cmd *cobra.Command) error {
 			if err != nil {
 				return skret.NewError(skret.ExitGenericError, "sync: begin operation", err)
 			}
-			if err := syncer.SaveSyncState(state); err != nil {
+			if err := saveSyncState(state); err != nil {
 				return skret.NewError(skret.ExitGenericError, "sync: save state failed", err)
 			}
 		}
@@ -201,7 +201,7 @@ func (o *syncOptions) run(cmd *cobra.Command) error {
 			if err := state.FinalizeOperation(state.OperationID, time.Now().UTC()); err != nil {
 				return skret.NewError(skret.ExitGenericError, "sync: recover operation", err)
 			}
-			if err := syncer.SaveSyncState(state); err != nil {
+			if err := saveSyncState(state); err != nil {
 				return skret.NewError(skret.ExitGenericError, "sync: save recovered state", err)
 			}
 			recoveredState = true
@@ -231,7 +231,7 @@ func (o *syncOptions) run(cmd *cobra.Command) error {
 				if state != nil && operationID != "" {
 					journalErr := state.RecordNeedsReconciliation(operationID, toSync, time.Now().UTC())
 					if journalErr == nil {
-						journalErr = syncer.SaveSyncState(state)
+						journalErr = saveSyncState(state)
 					}
 					if journalErr != nil {
 						return skret.NewError(exitCode, fmt.Sprintf("sync failed for %s; state journal failed", s.Name()), journalErr)
@@ -251,7 +251,7 @@ func (o *syncOptions) run(cmd *cobra.Command) error {
 				}
 			}
 			if !durablePerKey && !recoveredState {
-				if err := syncer.SaveSyncState(state); err != nil {
+				if err := saveSyncState(state); err != nil {
 					return skret.NewError(skret.ExitGenericError, "sync: save state failed", err)
 				}
 			}

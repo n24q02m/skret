@@ -185,6 +185,25 @@ func TestAWS_GetNotFound(t *testing.T) {
 	assert.ErrorIs(t, err, provider.ErrNotFound)
 }
 
+func TestAWS_GetVersionUsesExactSelectorAndRejectsMismatch(t *testing.T) {
+	p := newTestProvider(map[string]ssmtypes.Parameter{
+		"/test/prod/API_KEY:7": {
+			Name:    awslib.String("/test/prod/API_KEY"),
+			Value:   awslib.String("secret-v7"),
+			Version: 7,
+		},
+	})
+	reader, ok := p.(provider.VersionedReader)
+	require.True(t, ok)
+	secret, err := reader.GetVersion(context.Background(), "/test/prod/API_KEY", 7)
+	require.NoError(t, err)
+	assert.Equal(t, int64(7), secret.Version)
+	assert.Equal(t, "secret-v7", secret.Value)
+
+	_, err = reader.GetVersion(context.Background(), "/test/prod/API_KEY", 8)
+	assert.ErrorIs(t, err, provider.ErrNotFound)
+}
+
 func TestAWS_GetError(t *testing.T) {
 	mock := &mockSSMClient{params: make(map[string]ssmtypes.Parameter), errGet: errors.New("network err")}
 	p := skaws.NewWithClient(mock, "/test/prod")

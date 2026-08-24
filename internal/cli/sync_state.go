@@ -57,7 +57,11 @@ func newSyncStateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "sync-state",
 		Short: "Inspect and migrate local sync state",
-		Args:  cobra.NoArgs,
+		Long: `Inspect local sync-state metadata or migrate one signed state file.
+
+The command is offline by default. Migration verifies the signed, value-free
+manifest before any local write; remote execution submits metadata only.`,
+		Args: cobra.NoArgs,
 	}
 	cmd.AddCommand(newSyncStateMigrateCmd())
 	return cmd
@@ -75,6 +79,8 @@ files. The --execute path performs the verified local migration offline and
 does not submit an executor request. The --remote-execute path submits only a
 metadata request to the authenticated Hub executor-envelope route and never
 mutates local state.`,
+		Example: `  skret sync-state migrate --to=v2 --state-manifest ./state-manifest.json --journal ./state-journal.json --state ./sync-state.json --public-key ./operator.pub --role operator --audience hub
+  skret sync-state migrate --to=v2 --state-manifest ./state-manifest.json --journal ./state-journal.json --state ./sync-state.json --public-key ./operator.pub --role operator --audience hub --execute`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return o.run(cmd)

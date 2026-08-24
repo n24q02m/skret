@@ -207,7 +207,7 @@ sync:
 	var saveCalls int
 	saveSyncState = func(state *syncer.SyncState) error {
 		saveCalls++
-		if saveCalls == 3 {
+		if saveCalls == 4 {
 			return errors.New("opaque journal failure")
 		}
 		return syncer.SaveSyncState(state)

@@ -88,7 +88,7 @@ func TestCLI_EdgeCases(t *testing.T) {
 	// 9b. Sync: github error missing token (results in 401 from GitHub because dummy token)
 	_, err = executeCmd("sync", "--to=github", "--github-repo=owner/repo")
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "API returned 401")
+	assert.Contains(t, err.Error(), "status 401")
 
 	// 10. Sync: github error invalid format
 	os.Setenv("GITHUB_TOKEN", "dummy")

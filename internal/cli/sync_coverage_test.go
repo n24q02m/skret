@@ -157,11 +157,11 @@ environments:
 	} else {
 		t.Setenv("HOME", home)
 	}
-
-	// Make the state path blocked by a directory instead of a file
-	stateDir := filepath.Join(home, ".skret", "sync-state")
-	require.NoError(t, os.MkdirAll(stateDir, 0o700))
-	require.NoError(t, os.Mkdir(filepath.Join(stateDir, "dotenv-.env.json.tmp"), 0o755))
+	originalSaveSyncState := saveSyncState
+	saveSyncState = func(*syncer.SyncState) error {
+		return errors.New("synthetic save failure")
+	}
+	defer func() { saveSyncState = originalSaveSyncState }()
 
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))

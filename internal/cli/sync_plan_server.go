@@ -89,7 +89,12 @@ func newSyncPlanServerCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "plan-server",
 		Short: "Serve a private metadata-only sync planner",
-		Args:  cobra.NoArgs,
+		Long: `Serve a bounded local HTTP endpoint for names-only sync plans.
+
+Requests are canonical JSON and carry selectors and rules only; provider
+credentials, secret values, mounts, and environment exports are rejected.`,
+		Example: `  skret sync plan-server --listen 127.0.0.1:8080 --max-body-bytes 1048576`,
+		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if strings.TrimSpace(o.listen) == "" {
 				return errors.New("plan-server: listen address is required")
