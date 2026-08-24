@@ -111,6 +111,7 @@ class ExecutorConfigPolicyTests(unittest.TestCase):
         self.assertNotIn("EXECUTOR_PUBLIC_KEY", config)
         self.assertNotIn("EXECUTOR_STATE_MANIFEST_PUBLIC_KEY", config)
         self.assertNotIn("EXECUTOR_RESPONSE_KEY", config)
+        self.assertNotIn("EXECUTOR_PROVIDER_CONTROL_PUBLIC_KEY", config)
 
 
 if __name__ == "__main__":

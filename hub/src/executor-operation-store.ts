@@ -1,8 +1,21 @@
 import { DurableObject } from "cloudflare:workers";
+import {
+  DurableProviderOperationStore,
+  type ProviderControlDecision,
+  type ProviderDispatchRequest,
+  type ProviderDispatchResponse,
+  type ProviderLastSuccess,
+  type ProviderOperationRecord,
+  type ProviderOperationStart,
+  type ProviderOperationStartResult,
+  type ProviderVerification,
+  type ProviderInvocationOutcome,
+} from "./provider-operation-store";
 
 const OPERATION_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
 const DIGEST_PATTERN = /^sha256:[a-f0-9]{64}$/u;
 const GENERATION_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
+const CONFIG_HEX_PATTERN = /^[0-9a-fA-F]+$/u;
 const OPERATION_PREFIX = "private:executor-operation:";
 const INVOCATION_PREFIX = "private:executor-invocation:";
 const RESULT_PREFIX = "private:executor-operation-result:";
@@ -15,6 +28,10 @@ const MAX_OPERATION_RESULT_BYTES = 1 << 20;
 
 export const EXECUTOR_OPERATION_OBJECT_NAME = "security-executor-operations";
 export const EXECUTOR_OPERATION_BINDING = "EXECUTOR_OPERATIONS";
+
+export interface SecurityExecutorOperationEnv {
+  readonly EXECUTOR_PROVIDER_CONTROL_PUBLIC_KEY?: string;
+}
 
 export type ExecutorOperationStatus =
   | "active"
@@ -541,12 +558,83 @@ export class DurableExecutorOperationStore implements ExecutorOperationStore {
   }
 }
 
-export class SecurityExecutorOperations extends DurableObject {
+export class SecurityExecutorOperations extends DurableObject<SecurityExecutorOperationEnv> {
   private get operationStore(): DurableExecutorOperationStore {
     return new DurableExecutorOperationStore(
       this.ctx.storage,
       (timestamp) => this.ctx.storage.setAlarm(timestamp),
     );
+  }
+
+  private providerStore(): DurableProviderOperationStore {
+    return new DurableProviderOperationStore(this.ctx.storage);
+  }
+
+  private providerControlStore(): DurableProviderOperationStore {
+    return new DurableProviderOperationStore(this.ctx.storage, {
+      control_public_key: decodeProviderControlPublicKey(
+        this.env.EXECUTOR_PROVIDER_CONTROL_PUBLIC_KEY,
+      ),
+    });
+  }
+
+  async providerStart(
+    request: ProviderOperationStart,
+    now = Date.now(),
+  ): Promise<ProviderOperationStartResult> {
+    return this.providerStore().start(request, now);
+  }
+
+  async providerClaim(
+    operationID: string,
+    invocationID: string,
+    now = Date.now(),
+  ): Promise<ProviderDispatchRequest | null> {
+    return this.providerStore().claim(operationID, invocationID, now);
+  }
+
+  async providerRecordOutcome(
+    operationID: string,
+    invocationID: string,
+    response: ProviderDispatchResponse,
+    now = Date.now(),
+  ): Promise<ProviderOperationRecord> {
+    return this.providerStore().recordOutcome(operationID, invocationID, response, now);
+  }
+
+
+  async providerApplyDecision(
+    decision: ProviderControlDecision,
+    now = Date.now(),
+  ): Promise<ProviderOperationRecord> {
+    return this.providerControlStore().applyDecision(decision, now);
+  }
+
+  async providerVerify(
+    operationID: string,
+    verification: ProviderVerification,
+    now = Date.now(),
+  ): Promise<ProviderOperationRecord> {
+    return this.providerStore().verify(operationID, verification, now);
+  }
+
+  async providerRead(operationID: string): Promise<ProviderOperationRecord | null> {
+    return this.providerStore().read(operationID);
+  }
+
+  async providerReadInvocationOutcome(
+    operationID: string,
+    invocationID: string,
+  ): Promise<ProviderInvocationOutcome | null> {
+    return this.providerStore().readInvocationOutcome(operationID, invocationID);
+  }
+
+  async providerReadLastSuccess(
+    targetIdentity: string,
+    targetDigest: string,
+    sourceFingerprint: string,
+  ): Promise<ProviderLastSuccess | null> {
+    return this.providerStore().readLastSuccess(targetIdentity, targetDigest, sourceFingerprint);
   }
 
   async begin(request: ExecutorOperationStart, now = Date.now()): Promise<ExecutorOperationStartResult> {
@@ -769,4 +857,34 @@ function operationKey(operationID: string): string {
 
 function invocationKey(operationID: string, invocationID: string): string {
   return `${INVOCATION_PREFIX}${operationID}:${invocationID}`;
+}
+
+function decodeProviderControlPublicKey(value: string | undefined): Uint8Array | undefined {
+  if (typeof value !== "string" || value.length === 0 || value.trim() !== value) return undefined;
+  if (value.length === 64 && CONFIG_HEX_PATTERN.test(value)) {
+    const decoded = new Uint8Array(32);
+    for (let index = 0; index < decoded.length; index += 1) {
+      decoded[index] = Number.parseInt(value.slice(index * 2, index * 2 + 2), 16);
+    }
+    return decoded;
+  }
+
+  const normalized = value.replace(/-/gu, "+").replace(/_/gu, "/");
+  const unpadded = normalized.replace(/=+$/u, "");
+  if (!/^[A-Za-z0-9+/]*$/u.test(unpadded) || unpadded.length % 4 === 1) return undefined;
+  const padded = unpadded + "=".repeat((4 - (unpadded.length % 4)) % 4);
+  let binary: string;
+  try {
+    binary = atob(padded);
+  } catch {
+    return undefined;
+  }
+  if (binary.length !== 32) return undefined;
+  const decoded = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+  let canonical = "";
+  for (const byte of decoded) canonical += String.fromCharCode(byte);
+  const standard = btoa(canonical);
+  const standardRaw = standard.replace(/=+$/u, "");
+  const urlSafe = standardRaw.replace(/\+/gu, "-").replace(/\//gu, "_");
+  return value === standard || value === standardRaw || value === urlSafe ? decoded : undefined;
 }

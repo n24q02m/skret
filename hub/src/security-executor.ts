@@ -76,6 +76,7 @@ export interface SecurityExecutorEnv {
   readonly EXECUTOR_PUBLIC_KEY?: string;
   readonly EXECUTOR_STATE_MANIFEST_PUBLIC_KEY?: string;
   readonly EXECUTOR_RESPONSE_KEY?: string;
+  readonly EXECUTOR_PROVIDER_CONTROL_PUBLIC_KEY?: string;
   readonly EXECUTOR_IMAGE_DIGEST?: string;
   readonly EXECUTOR_CONFIG_DIGEST?: string;
 }
