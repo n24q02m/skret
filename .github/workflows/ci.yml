@@ -6,10 +6,9 @@ on:
   pull_request:
     branches: [main]
     types: [opened, synchronize, reopened, edited, ready_for_review]
-  # The installer-smoke job below gates itself on `workflow_dispatch` or a v* tag.
-  # Without this trigger neither could ever fire -- and CI does not run on tags --
-  # so that job had never executed once, which is how the installers stayed broken
-  # from 2026-05-26 to 1.16.0. Keep this trigger or the gate is decorative.
+  branch_protection_rule:
+  schedule:
+    - cron: "0 3 * * 1"
   workflow_dispatch:
 
 env:
@@ -166,12 +165,62 @@ jobs:
             BINARY=skret.exe
           fi
           go build -ldflags="-s -w -X github.com/n24q02m/skret/internal/version.Version=ci-${{ github.sha }}" -o $BINARY ./cmd/skret
+  codeql:
+    name: CodeQL (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [go, javascript-typescript]
+    steps:
+      - uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - uses: github/codeql-action/init@5595ccaf912efad79be6eef63a5619ff05969be3 # v4.37.6
+        with:
+          languages: ${{ matrix.language }}
+      - uses: github/codeql-action/autobuild@5595ccaf912efad79be6eef63a5619ff05969be3 # v4.37.6
+      - uses: github/codeql-action/analyze@5595ccaf912efad79be6eef63a5619ff05969be3 # v4.37.6
 
-  # CodeQL handled by GitHub default setup (repo Settings > Security > Code
-  # Scanning). Running an advanced workflow here would clash with default
-  # setup ("CodeQL analyses from advanced configurations cannot be processed
-  # when the default setup is enabled"). If we later need custom query
-  # packs, flip default setup off and restore the advanced workflow.
+  scorecard:
+    name: Scorecard analysis
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      id-token: write
+      contents: read
+      actions: read
+    steps:
+      - uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - uses: ossf/scorecard-action@2d1146689b8cda280b9bc96326124645441f03bc # v2.4.4
+        with:
+          results_file: results.sarif
+          results_format: sarif
+          publish_results: true
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: scorecard-sarif
+          path: results.sarif
+          retention-days: 5
+      - uses: github/codeql-action/upload-sarif@5595ccaf912efad79be6eef63a5619ff05969be3 # v4.37.6
+        with:
+          sarif_file: results.sarif
+
+
 
   installer-lint:
     name: Installer scripts lint
@@ -305,10 +354,9 @@ jobs:
 
   docs-build:
     name: Docs Astro build
-    # PR gate mirroring the cd.yml "Deploy Docs" build (minus the deploy step) so a
-    # breaking docs dependency bump (e.g. @astrojs/starlight major needing a new
-    # astro) fails at PR time instead of only on push-to-main. Keeps the docs build
-    # green on main. cd.yml owns the actual build+deploy on push to main.
+    # PR gate mirroring the cd.yml docs artifact build so a breaking docs
+    # dependency bump (e.g. @astrojs/starlight major needing a new astro) fails
+    # at PR time instead of only on the manually dispatched prepare run.
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:

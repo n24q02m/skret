@@ -1,9 +1,8 @@
-// wrangler.jsonc — skret vault-dashboard Worker (B3) + B2 cron sync container.
+// wrangler.jsonc — source configuration for the skret vault Worker and cron
+// metadata planner. The committed file is placeholder-only and is consumed by
+// explicit Wrangler dry-runs; no credentials or provider values are present.
 // The cron trigger starts a credential-free metadata planner; it does not
 // forward provider credentials or Hub configuration into the container.
-// Resource IDs are placeholders; real IDs are filled at deploy time from GH
-// secrets into the gitignored wrangler.deploy.jsonc (see README).
-// No routes / custom domain here — fully-BYO from commit one.
 {
   "name": "skret-hub",
   "main": "src/index.ts",
@@ -27,10 +26,9 @@
     {
       "name": "skret-sync",
       "class_name": "SyncContainer",
-      // CF Containers pull only from the Cloudflare managed registry (an
-      // external ghcr.io ref fails). Push the pre-built image first
-      // (`wrangler containers push`), then fill <YOUR_ACCOUNT_ID>. Re-pushing
-      // the SAME tag does NOT roll a running instance — bump the tag.
+      // The image reference is intentionally a placeholder in source. The
+      // runtime bundle remains local build output until an independently gated
+      // operator supplies an approved immutable image.
       "image": "registry.cloudflare.com/<YOUR_ACCOUNT_ID>/skret-sync:latest",
       "instance_type": "lite",
       "max_instances": 1
@@ -43,10 +41,10 @@
     ]
   },
   // Source-only service binding. The executor Worker has its own config and
-  // replay Durable Object; deployment/readback remains explicitly gated.
+  // replay Durable Object; both configurations are checked independently.
   "services": [{ "binding": "EXECUTOR", "service": "skret-security-executor" }],
   // A new class needs its own tag; v1 is already applied and must stay
-  // untouched, or the deploy is rejected as a rewritten migration history.
+  // untouched, or the configuration is rejected as rewritten migration history.
   "migrations": [
     { "tag": "v1", "new_sqlite_classes": ["SyncContainer"] },
     { "tag": "v2", "new_sqlite_classes": ["LoginGate"] }

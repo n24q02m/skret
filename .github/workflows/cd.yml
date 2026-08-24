@@ -1,266 +1,149 @@
 name: CD
 
-# CD handles:
-#  - Release on workflow_dispatch (semantic-release -> tag -> goreleaser -> publish)
-#  - Docs artifact build on push to main when docs/** changes
-#  - Vault hub Worker deploy on push to main when hub/** changes (Cloudflare Workers)
-#
-# Repo Secrets required:
-#   GITHUB_TOKEN             - built-in
-#   CI_APP_KEY               - n24q02m-ci GitHub App private key (for the release job)
-#   CLOUDFLARE_ACCOUNT_ID    - CF account ID (also used by the vault hub deploy)
-#   TAP_GITHUB_TOKEN         - fine-grained PAT for tap repo updates
-#   HUB_CF_DEPLOY_TOKEN      - project-scoped CF token for the vault hub Worker (account Workers Scripts + KV write only; custom domain attached out-of-band, no zone perm); also used to push the sync container image to the Cloudflare managed registry -- verify it covers that scope, may need a Containers/Images permission added
-#   VAULT_KV_ID              - KV namespace id for the vault hub (from `wrangler kv namespace create VAULT_KV`)
-#   SKRET_EXECUTOR_READBACK_JSON - authenticated executor deployment/readback metadata; the Hub deploy gate fails closed when absent or mismatched
-# Repo Variables required:
-#   CI_APP_ID                - n24q02m-ci GitHub App ID (3200052)
+# This workflow is the credential-free release prepare lane. It computes the
+# exact candidate version/tag, builds immutable local artifacts, and records a
+# value-free transaction journal. Publication and deployment are separate,
+# gated follow-up capabilities and are intentionally absent here.
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "docs/**"
-      - "hub/**"
-      - "Dockerfile.sync"
-      - "deploy/**"
-      - ".github/workflows/cd.yml"
-      - "scripts/verify_executor_readback.py"
-  # Deliberately NO `tags: ["v*"]`. semantic-release pushes the tag with an App
-  # token, so a tag trigger fires a SECOND CD run for every release we dispatch
-  # -- and both runs built and uploaded the same tag concurrently. On
-  # v1.17.1-beta.1 the two goreleaser jobs started 4 seconds apart and the
-  # release ended up carrying two archives from one build, four from the other,
-  # and a checksums.txt describing only the second. Every installer verifies
-  # checksums and is fail-closed, so that release was uninstallable.
-  #
-  # `concurrency` below cannot catch this: it keys on github.ref, which is
-  # refs/heads/main for the dispatch run and refs/tags/<v> for the tag run --
-  # two different groups, hence no serialization at the one collision that
-  # matters. Publishing is therefore owned by exactly one event: this dispatch.
-  #
-  # Hand-pushing a tag no longer publishes anything. That flow was already
-  # against policy (versions come from semantic-release; we never pick one by
-  # hand), and it was the entry point for this corruption.
   workflow_dispatch:
     inputs:
       release_type:
-        description: "Release type"
+        description: "Candidate channel"
         required: true
-        default: "stable"
+        default: beta
         type: choice
         options:
-          - stable
           - beta
+          - stable
 
 permissions:
   contents: read
 
 concurrency:
-  group: cd-${{ github.ref }}
+  group: skret-release-prepare
   cancel-in-progress: false
 
 jobs:
-  verify-readme-sync:
-    name: Verify README sync
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-      - name: Verify README sync
-        run: python scripts/repo-bootstrap/verify_readme_sync.py --repo-root=.
-
-  # ==================== Release (workflow_dispatch) ====================
-  release:
-    name: Semantic Release
-    if: github.event_name == 'workflow_dispatch'
-    needs: [verify-readme-sync]
+  prepare:
+    name: Prepare release artifacts
     runs-on: ubuntu-latest
     permissions:
-      contents: write
-      id-token: write
+      contents: read
     outputs:
-      released: ${{ steps.release.outputs.released }}
-      tag: ${{ steps.release.outputs.tag }}
-      version: ${{ steps.release.outputs.version }}
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      transaction_id: ${{ steps.journal.outputs.transaction_id }}
+      artifact_digest: ${{ steps.journal.outputs.artifact_digest }}
+      intent_digest: ${{ steps.journal.outputs.intent_digest }}
     steps:
       - uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
         with:
           egress-policy: audit
-      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
-        id: app-token
-        with:
-          app-id: ${{ vars.CI_APP_ID }}
-          private-key: ${{ secrets.CI_APP_KEY }}
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           fetch-depth: 0
-          token: ${{ steps.app-token.outputs.token }}
+          persist-credentials: false
+
+      # BSR is pinned and restricted to calculation. Every side-effecting
+      # release capability is explicitly disabled until the G1 prerequisite.
       - id: release
+        name: Calculate candidate version and tag
         uses: n24q02m/better-semantic-release@9b8ee6275b7dae995bac090282ccb1cabc99ae0f # v1.2.3
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          prerelease: ${{ github.event.inputs.release_type == 'beta' }}
+          github_token: ${{ github.token }}
+          no_operation_mode: true
+          commit: false
+          tag: false
+          push: false
+          vcs_release: false
+          build: false
+          prerelease: ${{ inputs.release_type == 'beta' }}
           prerelease_token: beta
-      - if: steps.release.outputs.released == 'true'
-        uses: python-semantic-release/publish-action@5a5718ce47b892ef699f2972dae122297771d641 # v10.6.1
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          tag: ${{ steps.release.outputs.tag }}
 
-  # ==================== Goreleaser ====================
-  # The one and only publisher of a tag's artifacts. See the `on:` block for
-  # why the second entry point was removed.
-  goreleaser:
-    name: Build and Publish Binaries
-    # No `always()` any more. It existed solely so this job would survive
-    # `release` being skipped on the tag-push path; with that path gone,
-    # `release` runs in every scenario where this job could, and the default
-    # needs-semantics (run only if all dependencies succeeded) is precisely the
-    # intent. `always()` here was actively harmful: combined with a `result ==
-    # 'success'` check on only ONE of the two dependencies, it let this job
-    # start while the other had failed.
-    if: needs.release.outputs.released == 'true'
-    needs: [release, verify-readme-sync]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      packages: write
-      id-token: write
-    steps:
-      - uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
-        with:
-          egress-policy: audit
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-        with:
-          fetch-depth: 0
-          ref: ${{ needs.release.outputs.tag }}
+      - id: version
+        name: Preserve candidate outputs
+        shell: bash
+        env:
+          BSR_VERSION: ${{ steps.release.outputs.version }}
+          BSR_TAG: ${{ steps.release.outputs.tag }}
+          CHANNEL_INPUT: ${{ inputs.release_type }}
+        run: |
+          set -euo pipefail
+          test -n "$BSR_VERSION"
+          test -n "$BSR_TAG"
+          printf 'version=%s\n' "$BSR_VERSION" >> "$GITHUB_OUTPUT"
+          printf 'tag=%s\n' "$BSR_TAG" >> "$GITHUB_OUTPUT"
+          printf 'SOURCE_SHA=%s\n' "$GITHUB_SHA" >> "$GITHUB_ENV"
+          printf 'CHANNEL=%s\n' "$CHANNEL_INPUT" >> "$GITHUB_ENV"
+
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version-file: go.mod
-      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
       - uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
         with:
           syft-version: v1.51.0
-      - uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      # Both are required by the dockers_v2 block in .goreleaser.yaml, which
-      # builds a linux/amd64 + linux/arm64 manifest. The runner's default
-      # buildx driver is `docker`, which refuses multi-platform builds, and the
-      # image's `RUN apk add ca-certificates` executes in the target
-      # architecture, so the arm64 leg needs binfmt emulation to run at all.
       - uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0
       - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
-      - uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
+
+      - name: Set reproducible build epoch
+        shell: bash
+        run: |
+          set -euo pipefail
+          epoch="$(git show -s --format=%ct "$SOURCE_SHA")"
+          printf 'SOURCE_DATE_EPOCH=%s\n' "$epoch" >> "$GITHUB_ENV"
+
+      - name: Prepare CLI archives, checksums, and SBOMs
+        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
         with:
           distribution: goreleaser
           version: v2.17.1
-          args: release --clean
+          args: release --clean --skip=publish -f .goreleaser.prepare.yaml
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Pin goreleaser to the exact tag semantic-release produced.
-          # Without this, git-describe is ambiguous when a stable tag and
-          # a prerelease tag (e.g. v1.5.1 + v1.5.1-beta.1) point at the same
-          # commit, and goreleaser may pick the wrong one (duplicate-asset 422).
-          GORELEASER_CURRENT_TAG: ${{ needs.release.outputs.tag }}
-          # Fine-grained PAT with `contents:write` on
-          # n24q02m/homebrew-tap + n24q02m/scoop-bucket. Goreleaser
-          # uses this to push formula/manifest updates on release.
-          TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+          GORELEASER_CURRENT_TAG: ${{ steps.release.outputs.tag }}
+      - name: Build CLI OCI archive from prepared binaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -d '' -t amd64_archives < <(
+            find dist -maxdepth 1 -type f -name 'skret_*_linux_amd64.tar.gz' -print0
+          )
+          mapfile -d '' -t arm64_archives < <(
+            find dist -maxdepth 1 -type f -name 'skret_*_linux_arm64.tar.gz' -print0
+          )
+          test "${#amd64_archives[@]}" -eq 1
+          test "${#arm64_archives[@]}" -eq 1
+          amd64_archive="${amd64_archives[0]}"
+          arm64_archive="${arm64_archives[0]}"
+          context="$RUNNER_TEMP/cli-image"
+          rm -rf "$context"
+          mkdir -p "$context/linux/amd64" "$context/linux/arm64"
+          cp Dockerfile "$context/Dockerfile"
+          tar -xOf "$amd64_archive" skret > "$context/linux/amd64/skret"
+          tar -xOf "$arm64_archive" skret > "$context/linux/arm64/skret"
+          chmod 0755 "$context/linux/amd64/skret" "$context/linux/arm64/skret"
+          docker buildx build \
+            --file "$context/Dockerfile" \
+            --platform linux/amd64,linux/arm64 \
+            --provenance=false \
+            --sbom=false \
+            --output type=oci,dest=dist/skret-cli.oci.tar \
+            "$context"
 
-  # ==================== Installer smoke (post-publish) ====================
-  # The installers can only be exercised against a release that already exists,
-  # which is why this cannot live on the tag-push event the way ci.yml's copy
-  # tried to: semantic-release creates the tag, and goreleaser only uploads the
-  # assets afterwards. A smoke test wired to the tag would download files that
-  # do not exist yet and fail every release for the wrong reason.
-  #
-  # ci.yml keeps a `workflow_dispatch` copy as the on-demand bed (and owns the
-  # stubbed-cosign failure-path assertions, which need no real release). This
-  # job is the one that fires on every release -- the gate that was missing
-  # while the installers stayed broken from 2026-05-26 through 1.16.0.
-  installer-smoke:
-    name: Installer smoke test (${{ matrix.os }})
-    # No `if:` at all -- default needs-semantics already means "only when both
-    # dependencies succeeded", which is the whole requirement. The `always()`
-    # this used to carry was inherited from goreleaser's tag-push workaround.
-    needs: [release, goreleaser]
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
-    env:
-      # The exact tag just published. The scripts can detect a version on their
-      # own, but that path must not be used here: they ask the GitHub API for
-      # the *latest* release, and on a beta run that is the previous STABLE. The
-      # job would install a release this run never produced and report green.
-      TAG: ${{ needs.release.outputs.tag }}
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-      - name: Install via install.sh (Unix)
-        if: runner.os != 'Windows'
-        run: |
-          ./install.sh --user --quiet "--version=$TAG"
-          got=$("$HOME/.local/bin/skret" --version)
-          echo "$got"
-          # Asserting the version, not just a zero exit: an installer that
-          # silently falls back to an older release still exits 0. Anchored on
-          # `version <v> (` rather than a bare substring, because 1.17.0 is a
-          # substring of 1.17.0-beta.1 and a loose match would accept a
-          # prerelease as its own stable.
-          case "$got" in
-            *"version ${TAG#v} ("*) ;;
-            *) echo "FAIL: installed '$got', expected $TAG"; exit 1 ;;
-          esac
-      - name: Install via install.ps1 (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          .\install.ps1 -Quiet -Version $env:TAG
-          $got = & "$env:LOCALAPPDATA\Programs\skret\skret.exe" --version
-          Write-Host $got
-          # Same anchoring as the Unix leg: a bare substring would let
-          # 1.17.0-beta.1 satisfy an assertion for 1.17.0.
-          $want = "version " + $env:TAG.TrimStart('v') + " ("
-          if ($got -notlike "*$want*") { throw "FAIL: installed '$got', expected $env:TAG" }
-      # The tap and the bucket are part of a release too, and they break on
-      # their own terms -- #649 was a cask that named a shell homebrew does not
-      # support, invisible from the archive path. Stable only: a prerelease
-      # carries skip_upload for both, so on a beta these would install the
-      # previous stable and assert nothing about this run.
-      - name: Install via brew (macOS, stable only)
-        if: runner.os == 'macOS' && !contains(env.TAG, '-')
-        run: |
-          brew install n24q02m/tap/skret
-          skret --version
-      - name: Install via scoop (Windows, stable only)
-        if: runner.os == 'Windows' && !contains(env.TAG, '-')
-        shell: pwsh
-        run: |
-          if (-not (Get-Command scoop -ErrorAction SilentlyContinue)) {
-            iwr -useb get.scoop.sh | iex
-          }
-          scoop bucket add n24q02m https://github.com/n24q02m/scoop-bucket
-          scoop install skret
-          skret --version
 
-  # ==================== Docs Artifact Build ====================
-  docs-build:
-    name: Build Docs Artifact
-    if: |
-      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
-      !startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
-        with:
-          egress-policy: audit
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - name: Build sync OCI archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          docker buildx build \
+            --file Dockerfile.sync \
+            --platform linux/amd64,linux/arm64 \
+            --provenance=false \
+            --sbom=false \
+            --output type=oci,dest=dist/skret-sync.oci.tar \
+            .
+
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
         with:
           version: 10
@@ -268,104 +151,179 @@ jobs:
         with:
           node-version: "24"
           cache: pnpm
-          cache-dependency-path: docs/pnpm-lock.yaml
-      - name: Install dependencies
+          cache-dependency-path: |
+            hub/pnpm-lock.yaml
+            docs/pnpm-lock.yaml
+
+      - name: Install Hub dependencies
+        working-directory: hub
+        run: pnpm install --frozen-lockfile
+      - name: Verify Hub sources
+        working-directory: hub
+        run: |
+          pnpm test
+          pnpm typecheck
+
+      - name: Build ordinary Hub bundle
+        working-directory: hub
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf "$RUNNER_TEMP/hub-bundle"
+          pnpm exec wrangler deploy --dry-run --config wrangler.jsonc --outdir "$RUNNER_TEMP/hub-bundle"
+
+      - name: Build security executor bundle
+        working-directory: hub
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf "$RUNNER_TEMP/security-executor-bundle"
+          pnpm exec wrangler deploy --dry-run --config wrangler.executor.jsonc --outdir "$RUNNER_TEMP/security-executor-bundle"
+
+      - name: Install docs dependencies
         working-directory: docs
         run: pnpm install --frozen-lockfile
-      - name: Sync install scripts into docs/public
+
+      - name: Build docs bundle
+        shell: bash
         run: |
+          set -euo pipefail
           cp install.sh docs/public/install.sh
           cp install.ps1 docs/public/install.ps1
-      - name: Build Astro Starlight site
-        working-directory: docs
-        run: pnpm astro build
-      - name: Upload Docs artifact
+          pnpm --dir docs astro build
+          rm -f dist/hub.bundle.tar dist/security-executor.bundle.tar dist/docs.bundle.tar
+          tar --sort=name --mtime="@${SOURCE_DATE_EPOCH}" --owner=0 --group=0 --numeric-owner \
+            -cf dist/hub.bundle.tar -C "$RUNNER_TEMP/hub-bundle" .
+          tar --sort=name --mtime="@${SOURCE_DATE_EPOCH}" --owner=0 --group=0 --numeric-owner \
+            -cf dist/security-executor.bundle.tar -C "$RUNNER_TEMP/security-executor-bundle" .
+          tar --sort=name --mtime="@${SOURCE_DATE_EPOCH}" --owner=0 --group=0 --numeric-owner \
+            -cf dist/docs.bundle.tar -C docs/dist .
+
+      - name: Generate auxiliary SBOMs
+        shell: bash
+        run: |
+          set -euo pipefail
+          syft "oci-archive:dist/skret-cli.oci.tar" -o "spdx-json=dist/cli-oci.sbom.json"
+          syft "oci-archive:dist/skret-sync.oci.tar" -o "spdx-json=dist/sync-oci.sbom.json"
+          syft "dir:$RUNNER_TEMP/hub-bundle" -o "spdx-json=dist/hub.sbom.json"
+          syft "dir:$RUNNER_TEMP/security-executor-bundle" -o "spdx-json=dist/security-executor.sbom.json"
+          syft "dir:docs/dist" -o "spdx-json=dist/docs.sbom.json"
+
+      - name: Generate source and artifact manifests
+        shell: bash
+        run: |
+          set -euo pipefail
+          git ls-files -z | LC_ALL=C sort -z | xargs -0 sha256sum > dist/source-manifest.sha256
+          find dist -maxdepth 1 -type f ! -name 'auxiliary-checksums.txt' ! -name 'artifact-manifest.sha256' -print0 \
+            | LC_ALL=C sort -z \
+            | xargs -0 sha256sum > dist/auxiliary-checksums.txt
+          find dist -maxdepth 1 -type f ! -name 'artifact-manifest.sha256' -print0 \
+            | LC_ALL=C sort -z \
+            | xargs -0 sha256sum > dist/artifact-manifest.sha256
+
+      - id: journal
+        name: Initialize release transaction journal
+        shell: bash
+        env:
+          JOURNAL_CHANNEL: ${{ inputs.release_type }}
+          CANDIDATE_TAG: ${{ steps.release.outputs.tag }}
+          CANDIDATE_VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          set -euo pipefail
+          artifact_digest="sha256:$(sha256sum dist/artifact-manifest.sha256 | cut -d ' ' -f 1)"
+          intent_input="${SOURCE_SHA}\n${CANDIDATE_TAG}\n${CANDIDATE_VERSION}\n${JOURNAL_CHANNEL}\n${artifact_digest}"
+          intent_digest="sha256:$(printf '%b' "$intent_input" | sha256sum | cut -d ' ' -f 1)"
+          transaction_id="cd-${GITHUB_RUN_ID}"
+          timestamp="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          python scripts/release_transaction.py init \
+            --journal "$RUNNER_TEMP/release-journal.jsonl" \
+            --transaction-id "$transaction_id" \
+            --channel "$JOURNAL_CHANNEL" \
+            --source-sha "$SOURCE_SHA" \
+            --artifact-digest "$artifact_digest" \
+            --intent-digest "$intent_digest" \
+            --timestamp "$timestamp"
+          {
+            printf 'transaction_id=%s\n' "$transaction_id"
+            printf 'artifact_digest=%s\n' "$artifact_digest"
+            printf 'intent_digest=%s\n' "$intent_digest"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Upload CLI artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: docs-dist
-          path: docs/dist
+          name: cli
+          path: |
+            dist/skret_*/skret
+            dist/skret_*/skret.exe
+          if-no-files-found: error
           retention-days: 7
-
-  # ==================== Vault Hub Deploy ====================
-  deploy-hub:
-    name: Deploy Vault Hub Worker
-    # workflow_dispatch (any release_type) also redeploys the hub even when
-    # only CLI code changed -- intentional: the hub isn't versioned with the
-    # CLI, and a redeploy of the same Worker source is idempotent/harmless.
-    if: |
-      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
-      !startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
+      - name: Upload archive artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          egress-policy: audit
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-      # The service binding is source-only until an authenticated executor
-      # deployment/readback proves this exact target is ready. Missing or
-      # mismatched JSON exits before image push or Wrangler deploy.
-      - name: Verify security executor readback
-        env:
-          SKRET_EXECUTOR_READBACK_JSON: ${{ secrets.SKRET_EXECUTOR_READBACK_JSON }}
-        run: python scripts/verify_executor_readback.py
-      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+          name: archives
+          path: |
+            dist/*.tar.gz
+            dist/*.zip
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload checksum artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          version: 10
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+          name: checksums
+          path: |
+            dist/checksums.txt
+            dist/auxiliary-checksums.txt
+            dist/artifact-manifest.sha256
+            dist/source-manifest.sha256
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload SBOM artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          node-version: "24"
-          cache: pnpm
-          cache-dependency-path: hub/pnpm-lock.yaml
-      - name: Install
-        working-directory: hub
-        run: pnpm install --frozen-lockfile
-      # Fail-safe deploy gate: never publish a build that fails tests or types.
-      # cd.yml and ci.yml are independent workflows with no cross-ordering, so
-      # the gate is repeated here rather than relying on the CI hub job landing.
-      - name: Test
-        working-directory: hub
-        run: pnpm test
-      - name: Typecheck
-        working-directory: hub
-        run: pnpm typecheck
-      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
-      - name: Compute sync container image tag
-        env:
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: |
-          echo "SKRET_SYNC_IMAGE=registry.cloudflare.com/${CLOUDFLARE_ACCOUNT_ID}/skret-sync:${GITHUB_SHA::7}" >> "$GITHUB_ENV"
-      - name: Build sync container image
-        run: |
-          docker buildx build \
-            --platform linux/amd64 \
-            --load \
-            --file Dockerfile.sync \
-            --tag "$SKRET_SYNC_IMAGE" \
-            .
-      # Pushes to the Cloudflare managed registry (registry.cloudflare.com),
-      # not a standard docker registry -- auth is via CLOUDFLARE_API_TOKEN /
-      # CLOUDFLARE_ACCOUNT_ID env vars, which Wrangler reads directly.
-      - name: Push sync container image
-        working-directory: hub
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.HUB_CF_DEPLOY_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: |
-          npx wrangler containers push "$SKRET_SYNC_IMAGE"
-      - name: Render deploy config from secrets
-        working-directory: hub
-        env:
-          VAULT_KV_ID: ${{ secrets.VAULT_KV_ID }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: |
-          envsubst '${VAULT_KV_ID} ${SKRET_SYNC_IMAGE} ${CLOUDFLARE_ACCOUNT_ID}' \
-            < wrangler.deploy.template.jsonc > wrangler.deploy.jsonc
-      - name: Deploy Worker
-        uses: cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0 # v4.0.0
+          name: sbom
+          path: dist/*.sbom.json
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload CLI OCI artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          apiToken: ${{ secrets.HUB_CF_DEPLOY_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          workingDirectory: hub
-          command: deploy --config wrangler.deploy.jsonc
+          name: cli-oci
+          path: dist/skret-cli.oci.tar
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload sync OCI artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sync-oci
+          path: dist/skret-sync.oci.tar
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload ordinary Hub artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: hub
+          path: dist/hub.bundle.tar
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload security executor artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: security-executor
+          path: dist/security-executor.bundle.tar
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload docs artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: docs
+          path: dist/docs.bundle.tar
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload release journal
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-journal
+          path: ${{ runner.temp }}/release-journal.jsonl
+          if-no-files-found: error
+          retention-days: 7

@@ -8,7 +8,7 @@ PUBLISH_CONFIG = REPO_ROOT / ".goreleaser.yaml"
 PREPARE_CONFIG = REPO_ROOT / ".goreleaser.prepare.yaml"
 SEMANTIC_RELEASE_CONFIG = REPO_ROOT / "semantic-release.toml"
 
-PARITY_SECTIONS = ("builds", "archives", "checksum", "dockers_v2", "sboms")
+PARITY_SECTIONS = ("builds", "archives", "checksum", "sboms")
 TOP_LEVEL_KEY = re.compile(r"^[A-Za-z_][A-Za-z0-9_-]*$")
 
 
@@ -68,6 +68,7 @@ class ReleasePolicyTests(unittest.TestCase):
             "announcements",
             "brews",
             "dockers",
+            "dockers_v2",
             "docker_manifests",
         ):
             self.assertNotIn(forbidden, keys)
@@ -81,6 +82,7 @@ class ReleasePolicyTests(unittest.TestCase):
             "github_urls:",
             "GITHUB_TOKEN",
             "TAP_GITHUB_TOKEN",
+            "ghcr.io/",
         ):
             self.assertNotIn(forbidden_marker, source)
 

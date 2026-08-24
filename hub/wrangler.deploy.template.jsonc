@@ -1,22 +1,18 @@
-// Rendered at deploy time: envsubst fills ${VAULT_KV_ID} and ${SKRET_SYNC_IMAGE}
-// from GH secrets into wrangler.deploy.jsonc (gitignored). 0 real IDs here.
-//
-// The custom domain (vault.n24q02m.com) is attached ONCE, out-of-band, to the
-// Worker via `PUT /accounts/<acc>/workers/domains` (or the dashboard) — NOT via
-// a `routes` block here. That keeps the CD deploy token least-privilege
-// (account Workers Scripts + KV write only, no zone Workers-Routes permission):
-// asserting a custom-domain route needs a zone-scoped policy, which the deploy
-// token deliberately does not carry. The attached domain persists across script
-// re-deploys, so CD never needs to touch it. See README "Hardening / deploy".
+// Placeholder template for explicit local dry-run rendering. The variable
+// names describe configuration shape only; no credential values are stored.
+// Keep this file aligned with wrangler.jsonc while preserving placeholder
+// values for every environment-specific identifier.
+// Custom domains and other account-side state are intentionally outside this
+// source bundle.
 {
   "name": "skret-hub",
   "main": "src/index.ts",
   "compatibility_date": "2026-06-14",
   "kv_namespaces": [{ "binding": "VAULT_KV", "id": "${VAULT_KV_ID}" }],
-  // Must stay in step with wrangler.jsonc: Env declares both limiters as
-  // required, so a deploy rendered without them fails at the first login
-  // rather than silently serving an unlimited one. namespace_id is a
-  // per-Worker counter id, not an account resource -- nothing to envsubst.
+  // Keep in step with wrangler.jsonc: Env declares both limiters as required,
+  // so a rendered configuration without them fails at the first login rather
+  // than silently serving an unlimited one. namespace_id is a per-Worker
+  // counter id, not an account resource, so nothing is substituted here.
   "ratelimits": [
     { "name": "LOGIN_LIMIT", "namespace_id": "1001", "simple": { "limit": 5, "period": 60 } },
     { "name": "INGEST_LIMIT", "namespace_id": "1002", "simple": { "limit": 30, "period": 60 } }

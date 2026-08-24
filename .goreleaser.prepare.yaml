@@ -29,16 +29,6 @@ archives:
 checksum:
   name_template: "checksums.txt"
 
-dockers_v2:
-  - images:
-      - "ghcr.io/n24q02m/skret"
-    tags:
-      - "{{ .Version }}"
-      - "{{ if not .Prerelease }}latest{{ end }}"
-    dockerfile: Dockerfile
-    platforms:
-      - linux/amd64
-      - linux/arm64
 
 sboms:
   - artifacts: archive

@@ -1,5 +1,5 @@
-// Source-only security executor Worker. Deployment, secret injection, and
-// production readback remain explicit residuals outside this repository slice.
+// Source-only security executor Worker. The committed configuration is used
+// for explicit local dry-run bundle checks; runtime activation is external.
 {
   "name": "skret-security-executor",
   "main": "src/security-executor.ts",
@@ -27,7 +27,7 @@
     "EXECUTOR_IMAGE_DIGEST": "<executor-image-digest>",
     "EXECUTOR_CONFIG_DIGEST": "<executor-config-digest>"
   },
-  // One bounded batch per invocation; source-only until the Worker and its
-  // replay Durable Object are deployed and read back in this order.
+  // One bounded batch per invocation; this source bundle is checked locally
+  // and carries no runtime credentials or activation state.
   "triggers": { "crons": ["*/15 * * * *"] }
 }

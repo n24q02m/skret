@@ -1,87 +1,91 @@
 ---
 title: Release Process
-description: "skret uses [Python Semantic Release](https://python-semantic-release.readthedocs.io/) (PSR) for automated versioning and [GoReleaser](https://goreleaser.com/) f"
+description: "How Skret prepares deterministic release candidates, records their identity, and separates preparation from protected publication."
 ---
 
-skret uses [Python Semantic Release](https://python-semantic-release.readthedocs.io/) (PSR) for automated versioning and [GoReleaser](https://goreleaser.com/) for cross-platform binary builds.
+Skret's release path has two distinct boundaries:
 
-## How It Works
+1. **Prepare** — calculate a candidate, build deterministic artifacts, and record their immutable identity without publishing anything.
+2. **Publish and promote** — use an approved, protected publisher to create public release state from the exact prepared candidate.
 
-1. **Version bump** -- PSR analyzes commit messages (`feat:` / `fix:`) to determine the next version
-2. **Tag creation** -- PSR creates a git tag (`v0.1.0`) and updates `CHANGELOG.md`
-3. **Binary build** -- GoReleaser builds binaries for all 6 platforms and publishes to GitHub Releases
-4. **Package updates** -- Homebrew tap and Scoop bucket are updated automatically
+The repository currently implements only the credential-free **prepare** boundary in `.github/workflows/cd.yml`. It does not create or push a tag, create a GitHub Release, publish a package or image, deploy a Worker, update a package manager, or sign a release.
 
-## Triggering a Release
+## Prepare a Candidate
 
-Releases are triggered via `workflow_dispatch` on the `cd.yml` workflow:
+Run the dispatch-only workflow with the candidate channel:
 
 ```bash
-# Stable release
-gh workflow run cd.yml -f release_type=stable
-
-# Beta/prerelease
+# Prepare a beta candidate
 gh workflow run cd.yml -f release_type=beta
+
+# Prepare a stable-channel candidate; this does not publish or promote it
+gh workflow run cd.yml -f release_type=stable
 ```
 
-Never create tags manually. Always use the workflow.
+The workflow has only `contents: read`, uses one non-cancelling `skret-release-prepare` concurrency lane, and persists no checkout credential. `better-semantic-release` is pinned to a commit and runs in no-operation mode with commit, tag, push, VCS release, and build side effects disabled.
 
-## Release Types
+Selecting `stable` calculates and prepares a stable-channel candidate. It is not stable-promotion approval.
 
-| Type | Version Example | Use Case |
-|------|----------------|----------|
-| Stable | `v0.2.0` | Production-ready release |
-| Beta | `v0.3.0-beta.1` | Testing before stable |
+## Prepare Pipeline
 
-### Beta to Stable Promotion
+The prepare job performs these steps:
 
-1. Release a beta: `gh workflow run cd.yml -f release_type=beta`
-2. Test the beta build
-3. If passing, release stable: `gh workflow run cd.yml -f release_type=stable`
+1. Calculate the candidate version and tag from `semantic-release.toml`.
+2. Bind the candidate to the exact source SHA and that commit's timestamp.
+3. Build six CLI archives with `.goreleaser.prepare.yaml` and `--skip=publish`.
+4. Build multi-platform CLI and sync OCI archives locally.
+5. test and type-check the Hub, then build ordinary-Hub and security-executor dry-run bundles.
+6. Build the documentation bundle.
+7. Generate archive and auxiliary SBOMs, a tracked-source manifest, artifact checksums, and an artifact manifest.
+8. Initialize a value-free, hash-chained release transaction journal.
+9. Upload the prepared files as seven-day GitHub Actions artifacts.
 
-PSR automatically determines the version number from commits since the last release.
+The prepare configuration intentionally excludes release, signing, publisher, package-manager, and deployment sections. Prepared artifacts are inputs to a later protected publisher, not public releases.
 
-## Commit Impact on Versions
+## Candidate Identity and Journal
 
-| Commit Prefix | Version Bump |
-|---------------|-------------|
-| `fix:` | Patch (`1.12.0` -> `1.12.1`) |
-| `feat:` | Minor (`1.12.0` -> `1.13.0`) |
+Every candidate is identified by:
 
-`semantic-release.toml` sets `major_on_zero = false`, so unlike the PSR
-default, this project never treated 0.x minor bumps as safe for breaking
-changes -- a breaking-change commit bumps the **major** version regardless
-of whether the project is pre- or post-1.0. The project has been on `v1.x`
-since early 2026; there is no active `v0.x` phase to describe.
+- the exact source SHA;
+- channel, candidate version, and candidate tag;
+- an artifact-manifest digest;
+- an intent digest over the immutable release inputs;
+- a transaction ID and hash-chained journal records.
 
-## CI/CD Pipeline
+`scripts/release_transaction.py` records strict canonical JSONL transitions. It rejects a changed identity, conflicting replay, a broken hash chain, a partial tail, an invalid transition, or a dispatch record without the external identifier. Ambiguous publication observations move the transaction to `needs_reconciliation`; they are never silently treated as success.
 
-```
-push to main
-  -> ci.yml (lint, test, build)
+The intended lifecycle is:
 
-workflow_dispatch (cd.yml: "release" job)
-  -> PSR: analyze commits, bump version, update CHANGELOG, create + push tag
-  -> cd.yml: "goreleaser" job (same run, needs: release)
-    -> GoReleaser: build 6 binaries, create GitHub Release
-    -> Docker: push ghcr.io/n24q02m/skret:<version> as one linux/amd64 +
-       linux/arm64 manifest; :latest moves only on a stable release
-    -> Homebrew: update tap formula
-    -> Scoop: update bucket manifest
-    -> Cosign: sign artifacts (keyless, GitHub OIDC)
-    -> Syft: generate SBOM
-
-(a raw `git tag vX.Y.Z && git push --tags` also triggers cd.yml's
-"goreleaser" job directly, without the "release" job -- recovery path,
-not routine use; see "Never create tags manually" above)
+```text
+prepared -> approved -> dispatching -> dispatched -> completed
+               \             \              \
+                +------ needs_reconciliation
 ```
 
-## Build Targets
+No record contains secret values. A journal is evidence about one transaction; it is not permission to publish.
 
-GoReleaser produces binaries for:
+## Publication and Stable Promotion
 
-| OS | Architecture | Artifact |
-|----|-------------|----------|
+Do not create or push release tags manually. Do not rebuild a candidate inside a publisher.
+
+Publication remains closed until the repository has an exact, pinned publisher contract that can:
+
+- consume the prepared source and artifact identity without rebuilding it;
+- enforce a protected approval for the requested channel;
+- make one idempotent dispatch attempt;
+- record the external release identifier and post-publication observation;
+- reconcile an ambiguous response before any retry;
+- sign published checksum material and preserve provenance;
+- update package-manager and deployment surfaces only through their own explicit gates.
+
+Beta publication is a technical release prerequisite once that publisher exists. Stable promotion additionally requires the explicit stable-release decision. Until those conditions are met, a successful `cd.yml` run means **candidate prepared**, not **release published**.
+
+## Candidate Build Targets
+
+GoReleaser prepares:
+
+| OS | Architecture | Archive |
+|----|--------------|---------|
 | Linux | amd64 | `skret_VERSION_linux_amd64.tar.gz` |
 | Linux | arm64 | `skret_VERSION_linux_arm64.tar.gz` |
 | macOS | amd64 | `skret_VERSION_darwin_amd64.tar.gz` |
@@ -89,54 +93,37 @@ GoReleaser produces binaries for:
 | Windows | amd64 | `skret_VERSION_windows_amd64.zip` |
 | Windows | arm64 | `skret_VERSION_windows_arm64.zip` |
 
-The container image reuses the two Linux binaries above rather than rebuilding
-them, so `docker pull ghcr.io/n24q02m/skret` resolves on both architectures.
+The CLI OCI archive is built from the exact Linux binaries extracted from those prepared archives. The sync image, Hub bundles, security-executor bundle, and docs bundle are separate prepared surfaces with their own SBOM and checksum evidence.
 
-## CHANGELOG
+## Version Policy
 
-`CHANGELOG.md` is managed entirely by PSR. Do not edit it manually.
+| Commit prefix | Version bump |
+|---------------|--------------|
+| `fix:` | Patch (`1.12.0` -> `1.12.1`) |
+| `feat:` | Minor (`1.12.0` -> `1.13.0`) |
 
-Each release entry includes:
+`semantic-release.toml` sets `major_on_zero = false`; a breaking-change commit is a major bump even for a historical `0.x` version. Skret has been on `v1.x` since early 2026.
 
-- Version number and date
-- Grouped changes under `feat:` and `fix:` headings
-- Links to commits and compare URLs
+`CHANGELOG.md` uses semantic-release update mode and the `<!-- version list -->` insertion marker. Do not edit generated release entries or remove that marker.
 
-`CHANGELOG.md` uses PSR's `update` mode: new release sections are spliced in right below the
-`<!-- version list -->` marker near the top of the file on every release. Do not remove that marker
-— without it, PSR silently leaves the file unchanged (by design, not an error) instead of appending
-new content. Do not switch to `init` mode either — that regenerates the whole file from full git
-history on every run.
+## Verify a Published Release
 
-## Verifying a Release
-
-After a release completes:
-
-The signature covers `checksums.txt`, not each archive individually — `.goreleaser.yaml`
-signs with `artifacts: checksum`. So verification is two steps: check the signature on
-`checksums.txt`, then check your archive against that now-trusted file. There are no
-per-archive `.cert` / `.sig` files to download; the one signature artifact is
-`checksums.txt.bundle`.
+This section applies only after the protected publisher has produced a release. The public signature covers `checksums.txt`; each archive is then verified against that authenticated checksum file.
 
 ```bash
-# Check the latest release
-gh release view --repo n24q02m/skret
-
-# Download the archive plus the two files needed to verify it
+gh release view vVERSION --repo n24q02m/skret
 gh release download vVERSION --repo n24q02m/skret \
-  -p 'skret_VERSION_linux_amd64.tar.gz' -p 'checksums.txt' -p 'checksums.txt.bundle'
+  -p 'skret_VERSION_linux_amd64.tar.gz' \
+  -p 'checksums.txt' \
+  -p 'checksums.txt.bundle'
 
-# 1. Verify the signature on checksums.txt.
-# The identity is the CD workflow at the ref it ran from, which differs between a
-# stable release (refs/tags/vVERSION) and a prerelease cut by workflow_dispatch
-# (refs/heads/main) -- the regexp below accepts either.
 cosign verify-blob \
   --bundle checksums.txt.bundle \
-  --certificate-identity-regexp="https://github.com/n24q02m/skret" \
-  --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+  --certificate-identity-regexp='https://github.com/n24q02m/skret/.+' \
+  --certificate-oidc-issuer='https://token.actions.githubusercontent.com' \
   checksums.txt
 
-# 2. Verify the archive against the checksums file you just proved authentic.
-# --ignore-missing skips the entries for artifacts you did not download.
 sha256sum --check --ignore-missing checksums.txt
 ```
+
+The one-shot installers enforce the same trust chain by default: exact checksum row, non-empty Sigstore bundle, `cosign verify-blob`, bounded `SAFE-ARCHIVE-V1` extraction, atomic replacement, and post-install `skret --version` rollback verification.

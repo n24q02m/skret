@@ -34,52 +34,30 @@ guessable secret.
 Login guards one shared password, so it cannot rely on that. The binding still
 runs first as a free filter, then a `LoginGate` Durable Object — one instance
 per client address, so one counter worldwide for that address — makes the
-5/min real. Bindings and Durable Object are declared in `wrangler.jsonc` and
-`wrangler.deploy.template.jsonc`, and `Env` requires them: a deploy that drops
-them fails at the first login instead of quietly serving an unlimited one.
+5/min real. Bindings and Durable Object are declared in
+`wrangler.jsonc` and `wrangler.deploy.template.jsonc`, and `Env` requires them:
+a configuration that drops them fails at the first login instead of quietly
+serving an unlimited one.
 
 Neither is a cap across *all* addresses — a distributed attacker gets one
 counter per address. Put a zone WAF rate-limiting rule in front if you need
 that.
 
-## BYO deploy (bring your own infra)
+## Build-only Wrangler package
 
 Committed `wrangler.jsonc` and `wrangler.deploy.template.jsonc` carry only
-placeholders. Fill real IDs into the gitignored `wrangler.deploy.jsonc`.
-
-One-time owner setup:
+placeholders. The repository exposes source checks and explicit dry-runs; it
+does not contain a deployment command or credential setup.
 
 ```bash
-# 1. Create the KV namespace (note the returned id -> GH secret VAULT_KV_ID)
-cd hub && wrangler kv namespace create VAULT_KV
-
-# 2. First deploy (creates the Worker), then set the two Worker secrets
-#    (never committed, never GH secrets)
-wrangler deploy -c wrangler.deploy.jsonc  # rendered from the template
-wrangler secret put SKRET_HUB_TOKEN     # the bearer skret hub push uses
-wrangler secret put RELAY_PASSWORD      # the dashboard login password
-
-# 3. Attach the custom domain ONCE (out-of-band, self-creates CF-managed DNS).
-#    This is NOT done by CD, so the CD token needs no zone permission:
-curl -X PUT "https://api.cloudflare.com/client/v4/accounts/<ACCOUNT_ID>/workers/domains" \
-  -H "Authorization: Bearer <a token with zone Workers-Routes edit, e.g. the dev token>" \
-  -H "Content-Type: application/json" \
-  --data '{"zone_id":"<ZONE_ID>","hostname":"vault.n24q02m.com","service":"skret-hub","environment":"production"}'
-#    (or Dashboard > Workers > skret-hub > Settings > Domains & Routes > Add custom domain)
-
-# 4. GH repo secrets for CD (Settings > Secrets):
-#    HUB_CF_DEPLOY_TOKEN   - project-scoped token: account Workers Scripts + KV
-#                            write ONLY (no zone perm — the domain is attached
-#                            out-of-band in step 3 and persists across deploys)
-#    VAULT_KV_ID           - from step 1
-#    CLOUDFLARE_ACCOUNT_ID - (already present for docs deploy)
+cd hub
+pnpm install
+pnpm test
+pnpm typecheck
+pnpm dryrun
+pnpm exec wrangler deploy --dry-run --config wrangler.jsonc --outdir "$TMPDIR/skret-hub"
+pnpm exec wrangler deploy --dry-run --config wrangler.executor.jsonc --outdir "$TMPDIR/skret-executor"
 ```
-
-CD (`.github/workflows/cd.yml` `deploy-hub` job) builds the config-free
-`Dockerfile.sync` planner image, pushes it to the Cloudflare managed registry,
-renders the template (`${VAULT_KV_ID}`, `${SKRET_SYNC_IMAGE}`) from GH
-secrets, and runs `wrangler deploy` on push to main — it updates the script;
-the custom domain from step 3 stays attached.
 
 ## Hardening (owner-side)
 
