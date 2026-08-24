@@ -93,7 +93,7 @@ class WorkflowPolicyTests(unittest.TestCase):
     def test_cd_preserves_candidate_outputs_and_exact_prepare_command(self) -> None:
         workflow = CD_WORKFLOW.read_text(encoding="utf-8")
         for marker in (
-            "n24q02m/better-semantic-release@9b8ee6275b7dae995bac090282ccb1cabc99ae0f",
+            "n24q02m/better-semantic-release@2335089f3744c77ca7ef389493a87e0cc117cc2a",
             "no_operation_mode: true",
             "github_token: ${{ github.token }}",
             "commit: false",
