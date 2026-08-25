@@ -43,7 +43,12 @@ def sha(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def create_oci_archive(path: Path, entrypoint: list[str], *, secret_env: bool = False, platform: str = "arm64") -> None:
+def create_oci_archive(
+    path: Path,
+    entrypoint: list[str],
+    secret_env: bool = False,
+    platform: str = "arm64",
+) -> None:
     config = {
         "architecture": platform,
         "os": "linux",
@@ -90,6 +95,40 @@ def create_oci_archive(path: Path, entrypoint: list[str], *, secret_env: bool = 
         f"blobs/sha256/{manifest_digest}": manifest_bytes,
         f"blobs/sha256/{config_digest}": config_bytes,
     }
+    with tarfile.open(path, "w", format=tarfile.PAX_FORMAT) as archive:
+        for name, data in sorted(members.items()):
+            info = tarfile.TarInfo(name)
+            info.size = len(data)
+            info.mode = 0o644
+            info.mtime = 0
+            archive.addfile(info, io.BytesIO(data))
+
+
+def wrap_nested_index(path: Path) -> None:
+    """Rewrite a flat OCI archive into buildx-style nested-index layout."""
+    with tarfile.open(path, "r") as archive:
+        members = {m.name: archive.extractfile(m).read() for m in archive if m.isfile()}
+    index = json.loads(members["index.json"])
+    descriptor = index["manifests"][0]
+    inner = {
+        "schemaVersion": 2,
+        "mediaType": "application/vnd.oci.image.index.v1+json",
+        "manifests": [descriptor],
+    }
+    inner_bytes = json.dumps(inner, sort_keys=True, separators=(",", ":")).encode()
+    inner_digest = sha(inner_bytes)
+    outer = {
+        "schemaVersion": 2,
+        "manifests": [
+            {
+                "mediaType": "application/vnd.oci.image.index.v1+json",
+                "digest": "sha256:" + inner_digest,
+                "size": len(inner_bytes),
+            }
+        ],
+    }
+    members["index.json"] = json.dumps(outer, sort_keys=True, separators=(",", ":")).encode()
+    members[f"blobs/sha256/{inner_digest}"] = inner_bytes
     with tarfile.open(path, "w", format=tarfile.PAX_FORMAT) as archive:
         for name, data in sorted(members.items()):
             info = tarfile.TarInfo(name)
@@ -154,6 +193,35 @@ class OCIArm64HarnessTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.temp.cleanup()
+
+    def _nested_spec(self) -> dict[str, object]:
+        nested_cli = self.root / "nested-cli.oci.tar"
+        nested_sync = self.root / "nested-sync.oci.tar"
+        create_oci_archive(nested_cli, ["/usr/local/bin/skret"])
+        create_oci_archive(nested_sync, ["/usr/local/bin/sync-entrypoint.sh"])
+        wrap_nested_index(nested_cli)
+        wrap_nested_index(nested_sync)
+        spec = dict(self.spec)
+        spec["cli_archive"] = str(nested_cli)
+        spec["cli_archive_digest"] = file_digest(nested_cli)
+        spec["sync_archive"] = str(nested_sync)
+        spec["sync_archive_digest"] = file_digest(nested_sync)
+        return spec
+
+    def test_verify_accepts_buildx_nested_index_layout(self) -> None:
+        verified = arm64.verify_inputs(self._nested_spec())
+        self.assertEqual(verified["status"], "archive-verified")
+        self.assertEqual(verified["cli"]["manifest_digest"][:7], "sha256:")
+
+    def test_verify_rejects_nested_index_without_arm64(self) -> None:
+        amd64_only = self.root / "nested-amd64.oci.tar"
+        create_oci_archive(amd64_only, ["/usr/local/bin/skret"], platform="amd64")
+        wrap_nested_index(amd64_only)
+        spec = dict(self._nested_spec())
+        spec["cli_archive"] = str(amd64_only)
+        spec["cli_archive_digest"] = file_digest(amd64_only)
+        with self.assertRaises(arm64.OCIArm64HarnessError):
+            arm64.verify_inputs(spec)
     def test_source_image_entrypoints_are_absolute_and_config_free(self) -> None:
         cli_dockerfile = (REPO_ROOT / "Dockerfile").read_text(encoding="utf-8")
         sync_dockerfile = (REPO_ROOT / "Dockerfile.sync").read_text(encoding="utf-8")

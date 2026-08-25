@@ -343,6 +343,41 @@ def _validate_runtime_config(
             _fail("credential-shaped OCI environment")
 
 
+def _collect_platform_descriptors(
+    archive: tarfile.TarFile,
+    members: Mapping[str, tarfile.TarInfo],
+    descriptors: Any,
+    referenced: set[str],
+    depth: int = 0,
+) -> list[dict[str, Any]]:
+    """Flatten index descriptors, descending through nested image indexes.
+
+    Buildx OCI exports wrap per-platform manifests inside a nested index
+    whose outer descriptor carries no platform; release-relevant
+    descriptors always declare one explicitly.
+    """
+    if depth > 4:
+        _fail("invalid OCI descriptor")
+    if not isinstance(descriptors, list) or not descriptors:
+        _fail("invalid OCI index")
+    rows: list[dict[str, Any]] = []
+    for row in descriptors:
+        if not isinstance(row, dict):
+            _fail("invalid OCI descriptor")
+        if isinstance(row.get("platform"), dict):
+            rows.append(row)
+            continue
+        digest, size = _descriptor(row)
+        referenced.add(f"blobs/sha256/{digest}")
+        inner = _parse_json(
+            _verify_blob(archive, members, digest, size, limit=_MAX_METADATA_BYTES)
+        )
+        nested = inner.get("manifests") if isinstance(inner, dict) else None
+        rows.extend(
+            _collect_platform_descriptors(archive, members, nested, referenced, depth + 1)
+        )
+    return rows
+
 def _inspect_archive(
     path: Path,
     expected_digest: str,
@@ -389,8 +424,9 @@ def _inspect_archive(
             ):
                 _fail("invalid OCI index")
             referenced = {"oci-layout", "index.json"}
+            platform_rows = _collect_platform_descriptors(archive, members, descriptors, referenced)
             arm64_count = 0
-            for descriptor_row in descriptors:
+            for descriptor_row in platform_rows:
                 if not isinstance(descriptor_row, dict) or not isinstance(descriptor_row.get("platform"), dict):
                     _fail("invalid OCI descriptor")
                 platform = descriptor_row["platform"]
