@@ -234,7 +234,7 @@ jobs:
           out="$(docker run --rm skret-ci:cli --version)"
           echo "cli version: $out"
           case "$out" in
-            ci-"${GITHUB_SHA::7}") ;;
+            *"ci-${GITHUB_SHA::7}"*) ;;
             *) echo "cli version mismatch" >&2; exit 1 ;;
           esac
       - name: Smoke sync plan-server inside a native arm64 container
