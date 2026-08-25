@@ -290,7 +290,39 @@ jobs:
               live_paths: ([$live_a, $live_b] | sort),
               platform: "linux/arm64"
             }' > spec.json
-          python3 scripts/oci_arm64_harness.py --spec spec.json
+          python3 scripts/oci_arm64_harness.py --spec spec.json || {
+            status=$?
+            echo "--- harness failed; spec diagnostics ---" >&2
+            cat spec.json >&2
+            python3 -c "
+            import importlib.util, json
+            s = importlib.util.spec_from_file_location('h', 'scripts/oci_arm64_harness.py')
+            h = importlib.util.module_from_spec(s); s.loader.exec_module(h)
+            spec = json.load(open('spec.json'))
+            print('fields_ok', set(spec) == h._SPEC_FIELDS)
+            print('platform_ok', spec.get('platform') == 'linux/arm64')
+            print('version_ok', bool(h._VERSION.fullmatch(spec['candidate_version'])), spec['candidate_version'])
+            print('sha_ok', bool(h._SOURCE_SHA.fullmatch(spec['source_sha'])))
+            for k in ('cli_archive_digest', 'sync_archive_digest', 'launch_manifest_digest'):
+                print(k, bool(h._DIGEST.fullmatch(spec[k])))
+            for k in ('cli_entrypoint', 'sync_entrypoint'):
+                try:
+                    h._validate_entrypoint(spec[k]); print(k, 'ok')
+                except Exception as e:
+                    print(k, 'FAIL', e)
+            for k in ('cli_archive', 'sync_archive', 'launch_manifest'):
+                try:
+                    h._regular_path(spec[k]); print(k, 'ok')
+                except Exception as e:
+                    print(k, 'FAIL', e)
+            for p in spec['live_paths']:
+                try:
+                    h._regular_path(p); print('live ok', p)
+                except Exception as e:
+                    print('live FAIL', p, e)
+            " >&2
+            exit $status
+          }
 
   codeql:
     name: CodeQL (${{ matrix.language }})
