@@ -179,6 +179,9 @@ jobs:
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version-file: go.mod
+      # The default docker driver cannot export OCI archives; the
+      # docker-container driver (same pin as cd.yml) can.
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
       - name: Build linux/arm64 CLI natively
         env:
           CGO_ENABLED: "0"
