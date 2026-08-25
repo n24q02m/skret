@@ -588,8 +588,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         spec = parse_spec(spec_path.read_bytes())
         sys.stdout.write(canonical_json_bytes(verify_inputs(spec)).decode("utf-8") + "\n")
         return 0
-    except (OCIArm64HarnessError, OSError, TypeError, ValueError):
-        sys.stderr.write("error: OCI ARM64 verification failed\n")
+    except (OCIArm64HarnessError, OSError, TypeError, ValueError) as exc:
+        sys.stderr.write(f"error: {exc}\n")
         return 1
 
 
