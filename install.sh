@@ -418,7 +418,7 @@ dest_bak="$PREFIX/.skret.bak.$$"
 log "Installing $dest (atomic swap)"
 if [ "$had_prior" -eq 1 ]; then
   run_privileged cp -p -- "$extracted_bin" "$dest_tmp" || err "failed to copy binary into staging"
-  run_privileged chmod 0755 -- "$dest_tmp" || err "failed to set staged binary permissions"
+  run_privileged chmod 0755 "$dest_tmp" || err "failed to set staged binary permissions"
   if ! run_privileged mv -f -- "$dest" "$dest_bak"; then
     if path_exists "$dest_bak" && ! path_exists "$dest"; then prior_stashed=1; fi
     err "failed to move prior binary aside"
@@ -426,7 +426,7 @@ if [ "$had_prior" -eq 1 ]; then
   prior_stashed=1
 else
   run_privileged cp -p -- "$extracted_bin" "$dest_tmp" || err "failed to copy binary into staging"
-  run_privileged chmod 0755 -- "$dest_tmp" || err "failed to set staged binary permissions"
+  run_privileged chmod 0755 "$dest_tmp" || err "failed to set staged binary permissions"
 fi
 
 if ! run_privileged mv -f -- "$dest_tmp" "$dest"; then
