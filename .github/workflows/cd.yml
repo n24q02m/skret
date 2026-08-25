@@ -102,7 +102,7 @@ jobs:
           fetch-depth: 0
           token: ${{ steps.app-token.outputs.token }}
       - id: release
-        uses: n24q02m/better-semantic-release@2335089f3744c77ca7ef389493a87e0cc117cc2a # v1.4.0-beta.2 candidate
+        uses: n24q02m/better-semantic-release@087b84e8d2ba75bdec350924d3bf8247088e0b1a # v1.4.0
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           prerelease: ${{ github.event.inputs.release_type == 'beta' }}
