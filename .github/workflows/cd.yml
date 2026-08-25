@@ -51,7 +51,7 @@ jobs:
       # release capability is explicitly disabled until the G1 prerequisite.
       - id: release
         name: Calculate candidate version and tag
-        uses: n24q02m/better-semantic-release@2335089f3744c77ca7ef389493a87e0cc117cc2a # v1.4.0-beta.2 candidate
+        uses: n24q02m/better-semantic-release@d680f9132f1896456a0f36b95ae512b059d82e6d # v1.4.0 G1
         with:
           github_token: ${{ github.token }}
           config_file: semantic-release.toml

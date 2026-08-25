@@ -94,7 +94,7 @@ class WorkflowPolicyTests(unittest.TestCase):
     def test_cd_preserves_candidate_outputs_and_exact_prepare_command(self) -> None:
         workflow = CD_WORKFLOW.read_text(encoding="utf-8")
         for marker in (
-            "n24q02m/better-semantic-release@2335089f3744c77ca7ef389493a87e0cc117cc2a",
+            "n24q02m/better-semantic-release@d680f9132f1896456a0f36b95ae512b059d82e6d",
             "no_operation_mode: true",
             "github_token: ${{ github.token }}",
             "config_file: semantic-release.toml",
