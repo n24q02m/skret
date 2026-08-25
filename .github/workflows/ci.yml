@@ -290,7 +290,7 @@ jobs:
               live_paths: ([$live_a, $live_b] | sort),
               platform: "linux/arm64"
             }' | python3 -c "import json,sys;sys.stdout.write(json.dumps(json.load(sys.stdin),sort_keys=True,separators=(',',':')))" > spec.json
-          python3 scripts/oci_arm64_harness.py --spec spec.json || {
+          python3 scripts/oci_arm64_harness.py --spec "$PWD/spec.json" || {
             status=$?
             echo "--- harness failed; spec diagnostics ---" >&2
             cat spec.json >&2
