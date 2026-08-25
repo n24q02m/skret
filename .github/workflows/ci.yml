@@ -191,20 +191,29 @@ jobs:
           go build -trimpath \
             -ldflags="-s -w -X github.com/n24q02m/skret/internal/version.Version=ci-${GITHUB_SHA::7}" \
             -o context/linux/arm64/skret ./cmd/skret
+      # The repo Dockerfiles pin single-arch (amd64) base digests for the
+      # amd64 release lane. This job rewrites them to the equivalent
+      # linux/arm64 manifest digests (resolved from the same tags) so every
+      # RUN step executes natively on the arm64 runner. CI-ephemeral only;
+      # the checked-in Dockerfiles are untouched on disk in git.
       - name: Build CLI OCI archive (native arm64)
         run: |
           set -euo pipefail
           cp Dockerfile context/Dockerfile
+          sed -i 's@alpine@sha256:79ff19e9084a00eece421b2523fb93e22d730e2c0e525905de047e848e56d95f@alpine@sha256:d858bb5442632a31bd4bca6c5e601dbe6b536fd7942092ea6a08a0a95805693c@' context/Dockerfile
+          grep -q 'sha256:d858bb5442632a31bd4bca6c5e601dbe6b536fd7942092ea6a08a0a95805693c' context/Dockerfile
           docker buildx build \
             --platform linux/arm64 \
             --file context/Dockerfile context \
             --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
             --label "org.opencontainers.image.version=0.0.0-ci-${GITHUB_SHA::7}" \
-            --provenance=false --sbom=false \
-            --output type=oci,dest=skret-cli.oci.tar
       - name: Build sync OCI archive (native arm64)
         run: |
           set -euo pipefail
+          sed -i 's@golang:1.26-alpine@sha256:0178a641fbb4858c5f1b48e34bdaabe0350a330a1b1149aabd498d0699ff5fb2@golang:1.26-alpine@sha256:c9bc58ef02c419539a6bab6f970844ece1dd9953baf409264f2fa429378e12a7@' Dockerfile.sync
+          sed -i 's@alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b@alpine:3.24@sha256:e7a1a92a5bfeee40966aea60f0796b0e7917cc35591542701834f03a68fa3d18@' Dockerfile.sync
+          grep -q 'sha256:c9bc58ef02c419539a6bab6f970844ece1dd9953baf409264f2fa429378e12a7' Dockerfile.sync
+          grep -q 'sha256:e7a1a92a5bfeee40966aea60f0796b0e7917cc35591542701834f03a68fa3d18' Dockerfile.sync
           docker buildx build \
             --platform linux/arm64 \
             --file Dockerfile.sync . \
