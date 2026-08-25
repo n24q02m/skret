@@ -415,3 +415,148 @@ jobs:
           path: ${{ runner.temp }}/release-journal.jsonl
           if-no-files-found: error
           retention-days: 7
+
+  publish:
+    name: Publish candidate release
+    # Plan Task 7A: the winning dispatch run uploads immutable assets, signs
+    # the checksum manifest (keyless cosign bundle), attests build provenance,
+    # and binds the tag/release identity to the prepare job's outputs. Any
+    # drift between the recomputed and prepared identity fails before upload.
+    # Stable-channel dispatch remains an explicit user gate.
+    needs: [prepare]
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ github.event.inputs.release_type == 'beta' && 'beta-publish' || 'stable-publish' }}
+    permissions:
+      contents: write
+      id-token: write
+    outputs:
+      tag: ${{ steps.cas.outputs.tag }}
+      version: ${{ steps.cas.outputs.version }}
+    steps:
+      - uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          path: dist
+          merge-multiple: true
+      - id: cas
+        name: Bind prepared identity
+        env:
+          EXPECTED_VERSION: ${{ needs.prepare.outputs.version }}
+          EXPECTED_TAG: ${{ needs.prepare.outputs.tag }}
+        run: |
+          set -euo pipefail
+          test -n "$EXPECTED_VERSION"
+          test -n "$EXPECTED_TAG"
+          printf 'version=%s\n' "$EXPECTED_VERSION" >> "$GITHUB_OUTPUT"
+          printf 'tag=%s\n' "$EXPECTED_TAG" >> "$GITHUB_OUTPUT"
+      - name: Publish tag and release via pinned BSR
+        uses: n24q02m/better-semantic-release@d680f9132f1896456a0f36b95ae512b059d82e6d # v1.4.0 G1
+        with:
+          github_token: ${{ github.token }}
+          config_file: semantic-release.toml
+          commit: false
+          tag: true
+          push: true
+          vcs_release: true
+          build: false
+          prerelease: ${{ inputs.release_type == 'beta' }}
+          prerelease_token: beta
+          git_committer_name: n24q02m
+          git_committer_email: n24q02m@users.noreply.github.com
+      - name: Verify published identity
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_TAG: ${{ needs.prepare.outputs.tag }}
+          EXPECTED_SHA: ${{ github.sha }}
+          CHANNEL: ${{ inputs.release_type }}
+        run: |
+          set -euo pipefail
+          git fetch origin --tags --force
+          test "$(git rev-parse "refs/tags/$EXPECTED_TAG^{commit}")" = "$EXPECTED_SHA"
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$EXPECTED_TAG" > release.json
+          python3 -c "import json,sys;d=json.load(open('release.json'));assert d['tag_name']==sys.argv[1];assert d['draft'] is False;assert d['prerelease']==(sys.argv[2]=='beta')" "$EXPECTED_TAG" "$CHANNEL"
+      - uses: sigstore/cosign-installer@7e8b541eb2e61bf99390e1afd4be13a184e9ebc5 # v3.10.1
+      - name: Sign checksum manifest (keyless bundle)
+        env:
+          COSIGN_YES: "true"
+        run: |
+          set -euo pipefail
+          cosign sign-blob --yes --bundle dist/checksums.txt.bundle dist/checksums.txt
+      - name: Upload release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_TAG: ${{ needs.prepare.outputs.tag }}
+        run: |
+          set -euo pipefail
+          gh release upload "$EXPECTED_TAG" \
+            dist/*.tar.gz dist/*.zip \
+            dist/checksums.txt dist/checksums.txt.bundle dist/auxiliary-checksums.txt \
+            dist/*.sbom.json \
+            dist/source-manifest.json dist/source-manifest.sha256 \
+            dist/artifact-manifest.json dist/artifact-manifest.sha256 \
+            dist/deployment-manifest.sha256 \
+            dist/skret-cli.oci.tar dist/skret-sync.oci.tar \
+            dist/hub.bundle.tar dist/security-executor.bundle.tar dist/docs.bundle.tar \
+            dist/CHANGELOG.md dist/artifacts.json dist/config.yaml dist/metadata.json \
+            dist/release-journal.jsonl \
+            --clobber
+          gh release view "$EXPECTED_TAG" --json assets --jq '.assets | length'
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/skret-cli.oci.tar
+            dist/skret-sync.oci.tar
+            dist/hub.bundle.tar
+            dist/security-executor.bundle.tar
+            dist/docs.bundle.tar
+
+  installer-smoke:
+    name: Release installer smoke (${{ matrix.os }})
+    # Plan Task 7A: verify Windows and native ARM64 install using the exact
+    # published candidate artifacts. Installs the exact tag and asserts the
+    # reported version; the arm64 leg runs on a native arm64 runner.
+    needs: [prepare, publish]
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: sigstore/cosign-installer@7e8b541eb2e61bf99390e1afd4be13a184e9ebc5 # v3.10.1
+      - name: Install exact candidate (Unix)
+        if: runner.os != 'Windows'
+        env:
+          CANDIDATE_TAG: ${{ needs.publish.outputs.tag }}
+          EXPECTED_VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+          ./install.sh --user --quiet --version="$CANDIDATE_TAG"
+          out="$("$HOME/.local/bin/skret" --version)"
+          echo "$out"
+          case "$out" in
+            *"$EXPECTED_VERSION"*) ;;
+            *) echo "version mismatch: $out" >&2; exit 1 ;;
+          esac
+      - name: Install exact candidate (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          CANDIDATE_TAG: ${{ needs.publish.outputs.tag }}
+          EXPECTED_VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          & pwsh -NoProfile -File .\install.ps1 -Version $env:CANDIDATE_TAG -Quiet
+          $exe = "$env:LOCALAPPDATA\Programs\skret\skret.exe"
+          $out = & $exe --version
+          Write-Output $out
+          if ($out -notlike "*$($env:EXPECTED_VERSION)*") { throw "version mismatch: $out" }

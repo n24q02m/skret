@@ -75,21 +75,27 @@ class WorkflowPolicyTests(unittest.TestCase):
         ):
             self.assertIn(f"\n  {existing_job}", workflow)
 
-    def test_cd_is_prepare_only_with_non_cancelling_concurrency(self) -> None:
+    def test_cd_has_prepare_and_publish_lanes_with_non_cancelling_concurrency(self) -> None:
         workflow = CD_WORKFLOW.read_text(encoding="utf-8")
         self.assertIn("workflow_dispatch:", workflow)
         self.assertIn("group: skret-release-prepare", workflow)
         self.assertIn("cancel-in-progress: false", workflow)
         self.assertIn("\n  prepare:", workflow)
+        self.assertIn("\n  publish:", workflow)
+        self.assertIn("\n  installer-smoke:", workflow)
         for forbidden_job in (
             "release:",
             "goreleaser:",
             "deploy-hub:",
-            "publish:",
             "sign:",
             "channel-publish:",
         ):
             self.assertNotIn(f"\n  {forbidden_job}", workflow)
+        prepare, publish = workflow.split("\n  publish:", 1)
+        self.assertIn("contents: read", prepare)
+        self.assertNotIn("contents: write", prepare)
+        self.assertIn("contents: write", publish)
+        self.assertIn("id-token: write", publish)
 
     def test_cd_preserves_candidate_outputs_and_exact_prepare_command(self) -> None:
         workflow = CD_WORKFLOW.read_text(encoding="utf-8")
@@ -167,13 +173,10 @@ class WorkflowPolicyTests(unittest.TestCase):
         self.assertNotIn("GITHUB_RUN_ATTEMPT", workflow)
         self.assertNotIn("secrets.", workflow)
 
-    def test_cd_has_read_only_permissions_and_no_mutation_credentials(self) -> None:
+    def test_cd_scopes_mutation_credentials_to_the_publish_lane(self) -> None:
         workflow = CD_WORKFLOW.read_text(encoding="utf-8")
+        prepare, publish = workflow.split("\n  publish:", 1)
         for marker in (
-            "contents: write",
-            "packages: write",
-            "id-token: write",
-            "pull-requests: write",
             "actions/create-github-app-token",
             "CI_APP_KEY",
             "TAP_GITHUB_TOKEN",
@@ -186,17 +189,38 @@ class WorkflowPolicyTests(unittest.TestCase):
             "wrangler containers push",
             "wrangler-action",
             "semantic-release/publish-action",
+            "apiToken:",
+            "command: deploy",
+            "command: pages deploy",
             "cosign",
+        ):
+            self.assertNotIn(marker, prepare, f"{marker} must stay out of prepare")
+        self.assertNotIn("contents: write", prepare)
+        for line in prepare.splitlines():
+            if "wrangler deploy" in line:
+                self.assertIn("--dry-run", line)
+        self.assertIn("pnpm test", prepare)
+        self.assertIn("pnpm typecheck", prepare)
+        for marker in (
+            "secrets.",
+            "TAP_GITHUB_TOKEN",
+            "CLOUDFLARE_",
+            "AWS_ACCESS_KEY",
+            "AWS_SECRET",
+            "AWS_ROLE_ARN",
+            "docker push",
+            "wrangler containers push",
+            "wrangler-action",
+            "semantic-release/publish-action",
             "apiToken:",
             "command: deploy",
             "command: pages deploy",
         ):
-            self.assertNotIn(marker, workflow)
-        for line in workflow.splitlines():
-            if "wrangler deploy" in line:
-                self.assertIn("--dry-run", line)
-        self.assertIn("pnpm test", workflow)
-        self.assertIn("pnpm typecheck", workflow)
+            self.assertNotIn(marker, publish, f"{marker} must stay out of publish")
+        self.assertIn("cosign sign-blob --yes --bundle dist/checksums.txt.bundle dist/checksums.txt", publish)
+        self.assertIn("gh release upload", publish)
+        self.assertIn("actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8", publish)
+
 
     def test_hub_public_surface_is_build_only(self) -> None:
         package = json.loads((HUB_DIR / "package.json").read_text(encoding="utf-8"))
@@ -223,6 +247,25 @@ class WorkflowPolicyTests(unittest.TestCase):
             self.assertNotIn("wrangler containers push", source)
             self.assertNotRegex(source, r"wrangler\s+secret\s+")
             self.assertNotRegex(source, r"curl\s+-X\s+(?:PUT|POST|DELETE)")
+
+
+    def test_cd_publish_lane_binds_prepare_identity_and_release_smoke(self) -> None:
+        workflow = CD_WORKFLOW.read_text(encoding="utf-8")
+        for marker in (
+            "needs: [prepare]",
+            "actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0",
+            "merge-multiple: true",
+            "n24q02m/better-semantic-release@d680f9132f1896456a0f36b95ae512b059d82e6d # v1.4.0 G1",
+            "git_committer_name: n24q02m",
+            "git_committer_email: n24q02m@users.noreply.github.com",
+            'git rev-parse "refs/tags/$EXPECTED_TAG^{commit}"',
+            "sigstore/cosign-installer@7e8b541eb2e61bf99390e1afd4be13a184e9ebc5 # v3.10.1",
+            "needs: [prepare, publish]",
+            "ubuntu-24.04-arm",
+            '--version="$CANDIDATE_TAG"',
+            "-Version $env:CANDIDATE_TAG -Quiet",
+        ):
+            self.assertIn(marker, workflow)
 
     def test_no_legacy_mutating_workflow_markers_remain_anywhere(self) -> None:
         for path in self._workflow_sources():
