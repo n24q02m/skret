@@ -430,6 +430,7 @@ jobs:
     permissions:
       contents: write
       id-token: write
+      attestations: write
     outputs:
       tag: ${{ steps.cas.outputs.tag }}
       version: ${{ steps.cas.outputs.version }}
