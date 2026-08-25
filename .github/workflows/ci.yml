@@ -165,6 +165,117 @@ jobs:
             BINARY=skret.exe
           fi
           go build -ldflags="-s -w -X github.com/n24q02m/skret/internal/version.Version=ci-${{ github.sha }}" -o $BINARY ./cmd/skret
+
+  arm64-native:
+    name: Native ARM64 OCI parity
+    # Plan prescription (fleet-runtime-security plan, Task 7): exact-candidate
+    # ARM64 jobs run in CI on a native arm64 runner. This job builds both OCI
+    # archives natively (no qemu), verifies them with scripts/oci_arm64_harness.py
+    # verify_inputs, and smokes the CLI binary and the sync plan-server inside
+    # real arm64 containers.
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+      - name: Build linux/arm64 CLI natively
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          set -euo pipefail
+          mkdir -p context/linux/arm64
+          go build -trimpath \
+            -ldflags="-s -w -X github.com/n24q02m/skret/internal/version.Version=ci-${GITHUB_SHA::7}" \
+            -o context/linux/arm64/skret ./cmd/skret
+      - name: Build CLI OCI archive (native arm64)
+        run: |
+          set -euo pipefail
+          cp Dockerfile context/Dockerfile
+          docker buildx build \
+            --platform linux/arm64 \
+            --file context/Dockerfile context \
+            --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
+            --label "org.opencontainers.image.version=0.0.0-ci-${GITHUB_SHA::7}" \
+            --provenance=false --sbom=false \
+            --output type=oci,dest=skret-cli.oci.tar
+      - name: Build sync OCI archive (native arm64)
+        run: |
+          set -euo pipefail
+          docker buildx build \
+            --platform linux/arm64 \
+            --file Dockerfile.sync . \
+            --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
+            --label "org.opencontainers.image.version=0.0.0-ci-${GITHUB_SHA::7}" \
+            --provenance=false --sbom=false \
+            --output type=oci,dest=skret-sync.oci.tar
+      - name: Smoke CLI inside a native arm64 container
+        run: |
+          set -euo pipefail
+          docker buildx build \
+            --platform linux/arm64 \
+            --file context/Dockerfile context \
+            --provenance=false --sbom=false \
+            --load --tag skret-ci:cli
+          out="$(docker run --rm skret-ci:cli --version)"
+          echo "cli version: $out"
+          case "$out" in
+            ci-"${GITHUB_SHA::7}") ;;
+            *) echo "cli version mismatch" >&2; exit 1 ;;
+          esac
+      - name: Smoke sync plan-server inside a native arm64 container
+        run: |
+          set -euo pipefail
+          docker buildx build \
+            --platform linux/arm64 \
+            --file Dockerfile.sync . \
+            --provenance=false --sbom=false \
+            --load --tag skret-ci:sync
+          cid="$(docker run -d -p 18080:8080 skret-ci:sync)"
+          trap 'docker rm -f "$cid" >/dev/null 2>&1 || true' EXIT
+          for _ in $(seq 1 20); do
+            if curl -fsS http://127.0.0.1:18080/healthz | grep -q '"status":"ok"'; then
+              echo "plan-server healthz ok"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "plan-server healthz failed" >&2
+          exit 1
+      - name: Verify both archives with the ARM64 harness
+        run: |
+          set -euo pipefail
+          printf '{"schema":"offline-fixture"}\n' > launch-manifest.json
+          printf 'live-a\n' > live-a
+          printf 'live-b\n' > live-b
+          dig() { printf 'sha256:%s' "$(sha256sum "$1" | cut -d' ' -f1)"; }
+          jq -n \
+            --arg schema "skret-oci-arm64-harness/v1" \
+            --arg candidate_version "0.0.0-ci-${GITHUB_SHA::7}" \
+            --arg source_sha "$GITHUB_SHA" \
+            --arg cli_archive "skret-cli.oci.tar" \
+            --arg cli_archive_digest "$(dig skret-cli.oci.tar)" \
+            --arg sync_archive "skret-sync.oci.tar" \
+            --arg sync_archive_digest "$(dig skret-sync.oci.tar)" \
+            --arg launch_manifest "launch-manifest.json" \
+            --arg launch_manifest_digest "$(dig launch-manifest.json)" \
+            '{
+              schema: $schema,
+              candidate_version: $candidate_version,
+              source_sha: $source_sha,
+              cli_archive: $cli_archive,
+              cli_archive_digest: $cli_archive_digest,
+              cli_entrypoint: ["/usr/local/bin/skret"],
+              sync_archive: $sync_archive,
+              sync_archive_digest: $sync_archive_digest,
+              sync_entrypoint: ["/usr/local/bin/sync-entrypoint.sh"],
+              launch_manifest: $launch_manifest,
+              launch_manifest_digest: $launch_manifest_digest,
+              live_paths: ["live-a", "live-b"],
+              platform: "linux/arm64"
+            }' > spec.json
+          python3 scripts/oci_arm64_harness.py --spec spec.json
+
   codeql:
     name: CodeQL (${{ matrix.language }})
     runs-on: ubuntu-latest
@@ -256,8 +367,11 @@ jobs:
     # covered" to anyone auditing the gate, which is exactly the belief that let
     # the installers stay broken from 2026-05-26 through 1.16.0.
     #
-    # Release coverage now lives in cd.yml's own installer-smoke job, which runs
-    # after the assets are actually published and pins the exact tag. What stays
+    # Release-time installer coverage (a cd.yml job running after assets are
+    # published, pinned to the exact tag) is NOT implemented yet: cd.yml is
+    # prepare-only by policy and publication is a separate gated capability.
+    # Until that lane lands, nothing covers the installer against a fresh
+    # release -- the gap is explicit, not silently assumed away. What stays
     # here is the on-demand bed plus the stubbed-cosign failure-path assertions
     # below, which prove the installer refuses a bad signature and need no
     # freshly-published release to do it.
