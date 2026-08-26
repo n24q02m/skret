@@ -37,11 +37,6 @@ func ResolvePath(raw string) (string, bool) {
 	for {
 		prevSlash := strings.LastIndexByte(norm[:idx], '/')
 		if prevSlash == -1 {
-			seg := norm[:idx]
-			if idx > 0 && isSSMPathSegment(seg) {
-				validSegs++
-				idx = -1
-			}
 			break
 		}
 
@@ -54,9 +49,6 @@ func ResolvePath(raw string) (string, bool) {
 	}
 
 	if validSegs >= 2 {
-		if idx == -1 {
-			idx = 0
-		}
 		return "/" + strings.TrimLeft(norm[idx:], "/"), true
 	}
 	return raw, true
