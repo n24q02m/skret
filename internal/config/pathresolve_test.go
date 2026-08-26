@@ -15,6 +15,8 @@ func TestResolvePath(t *testing.T) {
 		{"msys-mangled forward-slash form recovered", "C:/Users/n24q02m-wpc/scoop/apps/git/2.54.0/myapp/dev", "/myapp/dev", true},
 		{"msys-mangled backslash form recovered", `C:\Users\x\scoop\apps\git\2.54.0\myapp\dev`, "/myapp/dev", true},
 		{"genuine windows path with no SSM-like tail passthrough+warn", `C:\Users\bob\Documents`, `C:\Users\bob\Documents`, true},
+		{"msys-mangled form with valid segment reaching root", `C:/myorg/myapp`, `/myorg/myapp`, true},
+		{"msys-mangled form with invalid char in middle of segment", `C:/myapp/my@app`, `C:/myapp/my@app`, true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
