@@ -28,6 +28,7 @@ _SPEC_FIELDS = {
     "synthetic_config",
     "synthetic_values",
     "sentinel_program",
+    "synthetic_state_root",
     "state_file",
     "state_manifest",
     "state_public_key",
@@ -143,6 +144,59 @@ def _regular_path(value: Any) -> Path:
         _fail()
     return path
 
+def _regular_directory(value: Any) -> Path:
+    if not isinstance(value, str) or not value or "\x00" in value:
+        _fail()
+    path = Path(value)
+    if not path.is_absolute():
+        _fail()
+    try:
+        details = os.lstat(path)
+    except OSError as exc:
+        raise HomeSandboxError("sandbox input unavailable") from exc
+    if stat.S_ISLNK(details.st_mode) or _is_reparse(details) or not stat.S_ISDIR(details.st_mode):
+        _fail()
+    return path
+
+
+def _is_within(path: Path, root: Path) -> bool:
+    try:
+        path.relative_to(root)
+    except ValueError:
+        return False
+    return True
+
+
+def _validate_synthetic_state_root(
+    state_root: Path,
+    state_file: Path,
+    state_manifest: Path,
+    state_public_key: Path,
+) -> None:
+    if any(not _is_within(path, state_root) for path in (state_file, state_manifest, state_public_key)):
+        _fail()
+    try:
+        document = json.loads(
+            state_manifest.read_text(encoding="utf-8"),
+            object_pairs_hook=_object_pairs,
+            parse_constant=_reject_constant,
+        )
+    except (OSError, UnicodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
+        raise HomeSandboxError("invalid synthetic state manifest") from exc
+    if not isinstance(document, dict):
+        _fail()
+    source_root = document.get("source_root")
+    files = document.get("files")
+    if not isinstance(source_root, str) or Path(source_root) != state_root or not isinstance(files, list):
+        _fail()
+    state_relative = state_file.relative_to(state_root).as_posix()
+    matches = sum(
+        isinstance(row, dict) and row.get("path") == state_relative
+        for row in files
+    )
+    if matches != 1:
+        _fail()
+
 
 def _new_sandbox_path(value: Any) -> Path:
     if not isinstance(value, str) or not value or "\x00" in value:
@@ -165,7 +219,11 @@ def _validate_spec(spec: Mapping[str, Any]) -> None:
         _fail()
     candidate = _regular_path(spec.get("candidate_binary"))
     live_binary = _regular_path(spec.get("live_binary"))
+    state_root = _regular_directory(spec.get("synthetic_state_root"))
     state_file = _regular_path(spec.get("state_file"))
+    state_manifest = _regular_path(spec.get("state_manifest"))
+    state_public_key = _regular_path(spec.get("state_public_key"))
+    _validate_synthetic_state_root(state_root, state_file, state_manifest, state_public_key)
     input_roles = [
         candidate,
         live_binary,
@@ -173,23 +231,28 @@ def _validate_spec(spec: Mapping[str, Any]) -> None:
         _regular_path(spec.get("synthetic_config")),
         _regular_path(spec.get("synthetic_values")),
         _regular_path(spec.get("sentinel_program")),
-        state_file,
-        _regular_path(spec.get("state_manifest")),
-        _regular_path(spec.get("state_public_key")),
     ]
+    # state files are already validated as within state_root; check disjointness separately
     inputs: list[Path] = []
     for source in input_roles:
-        if source in inputs and source != state_file:
+        if source in inputs:
             _fail()
-        if source not in inputs:
-            inputs.append(source)
+        inputs.append(source)
+        if _is_within(source, state_root) or _is_within(state_root, source):
+            _fail()
     if candidate == live_binary:
         _fail()
     sandbox = _new_sandbox_path(spec.get("sandbox_root"))
+    if _is_within(sandbox, state_root) or _is_within(state_root, sandbox):
+        _fail()
     for source in inputs:
-        if sandbox == source or sandbox in source.parents or source in sandbox.parents:
+        if _is_within(sandbox, source) or _is_within(source, sandbox):
             _fail()
-
+    # live configs must not be inside synthetic state root
+    for cfg in live_configs:
+        cfg_path = Path(cfg)
+        if _is_within(cfg_path, state_root) or _is_within(state_root, cfg_path):
+            _fail()
 
 def _digest_file(path: Path) -> str:
     digest = hashlib.sha256()

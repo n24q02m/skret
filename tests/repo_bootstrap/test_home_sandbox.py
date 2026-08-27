@@ -72,11 +72,23 @@ class HomeSandboxTests(unittest.TestCase):
         )
         self.sentinel_program = self.root / "sentinel-check.exe"
         self.sentinel_program.write_bytes(b"synthetic-sentinel-program")
-        self.state = self.root / "state.v1.json"
+        self.state_root = self.root / "synthetic-state-root"
+        self.state_root.mkdir()
+        self.state = self.state_root / "state.v1.json"
         self.state.write_bytes(b'{"schema_version":1}')
-        self.state_manifest = self.root / "state-manifest.json"
-        self.state_manifest.write_bytes(b'{"signed":"fixture"}')
-        self.state_public_key = self.root / "state-public-key"
+        self.state_manifest = self.state_root / "state-manifest.json"
+        self.state_manifest.write_text(
+            json.dumps(
+                {
+                    "source_root": str(self.state_root),
+                    "files": [{"path": "state.v1.json"}],
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+            ),
+            encoding="utf-8",
+        )
+        self.state_public_key = self.state_root / "state-public-key"
         self.state_public_key.write_bytes(b"k" * 32)
         self.spec = {
             "schema": "skret-home-sandbox/v1",
@@ -84,10 +96,11 @@ class HomeSandboxTests(unittest.TestCase):
             "candidate_digest": digest(self.candidate),
             "candidate_version": "1.2.3-beta.1",
             "live_binary": str(self.live_binary),
-            "live_config_paths": [str(self.live_config), str(self.state)],
+            "live_config_paths": [str(self.live_config)],
             "synthetic_config": str(self.synthetic_config),
             "synthetic_values": str(self.synthetic_values),
             "sentinel_program": str(self.sentinel_program),
+            "synthetic_state_root": str(self.state_root),
             "state_file": str(self.state),
             "state_manifest": str(self.state_manifest),
             "state_public_key": str(self.state_public_key),
@@ -97,7 +110,7 @@ class HomeSandboxTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temp.cleanup()
 
-    def test_exact_candidate_runs_names_only_dry_run_child_and_copied_state_migration(self) -> None:
+    def test_exact_candidate_runs_names_only_dry_run_child_and_synthetic_state_migration(self) -> None:
         runner = FakeRunner()
         result = home.run_sandbox(self.spec, runner)
         self.assertEqual(result["status"], "passed")
@@ -129,6 +142,10 @@ class HomeSandboxTests(unittest.TestCase):
             self.assertEqual(command[command.index("--role") + 1], "operator")
             self.assertEqual(command[command.index("--audience") + 1], "hub")
             self.assertEqual(command[command.index("--operation-id") + 1], "home-sandbox-local")
+            self.assertEqual(Path(command[command.index("--state") + 1]), Path(self.spec["sandbox_root"]) / "state.v1.json")
+            self.assertEqual(Path(command[command.index("--state-manifest") + 1]), Path(self.spec["sandbox_root"]) / "state-manifest.json")
+            self.assertEqual(Path(command[command.index("--public-key") + 1]), Path(self.spec["sandbox_root"]) / "state-public-key")
+            self.assertIn(str(Path(self.spec["sandbox_root"])), command[command.index("--state") + 1])
         for command, environment, cwd in runner.calls:
             self.assertNotIn("env", command)
             self.assertNotIn("AWS_ACCESS_KEY_ID", environment)
@@ -184,6 +201,26 @@ exit /b 0
         after = {path: digest(Path(path)) for path in before}
         self.assertEqual(after, before)
         self.assertFalse(Path(self.spec["sandbox_root"]).exists())
+
+    def test_state_manifest_must_match_the_separate_synthetic_state_root(self) -> None:
+        mismatched_manifest = self.root / "mismatched-state-manifest.json"
+        mismatched_manifest.write_text(
+            json.dumps(
+                {
+                    "source_root": str(self.root),
+                    "files": [{"path": "synthetic-state-root/state.v1.json"}],
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+            ),
+            encoding="utf-8",
+        )
+        wrong = dict(self.spec)
+        wrong["state_manifest"] = str(mismatched_manifest)
+        runner = FakeRunner()
+        with self.assertRaises(home.HomeSandboxError):
+            home.run_sandbox(wrong, runner)
+        self.assertEqual(runner.calls, [])
 
     def test_digest_path_overlap_and_noncanonical_specs_fail_before_execution(self) -> None:
         runner = FakeRunner()
