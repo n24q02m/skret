@@ -421,6 +421,12 @@ def run_sandbox(spec: Mapping[str, Any], runner: CommandRunner | None = None) ->
             str(staged_state),
             "--public-key",
             str(staged_public_key),
+            "--role",
+            "operator",
+            "--audience",
+            "hub",
+            "--operation-id",
+            "home-sandbox-local",
             "--format",
             "json",
         ]

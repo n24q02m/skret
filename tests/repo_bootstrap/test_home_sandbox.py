@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -121,6 +122,13 @@ class HomeSandboxTests(unittest.TestCase):
         self.assertEqual(len(migration_commands), 2)
         self.assertNotIn("--execute", migration_commands[0])
         self.assertIn("--execute", migration_commands[1])
+        for command in migration_commands:
+            self.assertIn("--role", command)
+            self.assertIn("--audience", command)
+            self.assertIn("--operation-id", command)
+            self.assertEqual(command[command.index("--role") + 1], "operator")
+            self.assertEqual(command[command.index("--audience") + 1], "hub")
+            self.assertEqual(command[command.index("--operation-id") + 1], "home-sandbox-local")
         for command, environment, cwd in runner.calls:
             self.assertNotIn("env", command)
             self.assertNotIn("AWS_ACCESS_KEY_ID", environment)
@@ -128,6 +136,45 @@ class HomeSandboxTests(unittest.TestCase):
             self.assertEqual(Path(cwd), Path(self.spec["sandbox_root"]))
             self.assertEqual(Path(environment["HOME"]), Path(self.spec["sandbox_root"]) / "home")
             self.assertEqual(Path(environment["USERPROFILE"]), Path(self.spec["sandbox_root"]) / "home")
+
+    @unittest.skipUnless(os.name == "nt", "Windows subprocess contract")
+    def test_subprocess_runner_forwards_required_local_migration_flags(self) -> None:
+        candidate = self.root / "candidate.cmd"
+        live_binary = self.root / "live.cmd"
+        command = """@echo off
+if /I "%~1"=="--version" (
+  echo skret 1.2.3-beta.1
+  exit /b 0
+)
+if /I "%~1"=="list" (
+  echo [{"key":"SYNTHETIC_CANARY"}]
+  exit /b 0
+)
+if /I "%~1"=="sync-state" (
+  echo %* | findstr /C:"--role operator" >nul || exit /b 21
+  echo %* | findstr /C:"--audience hub" >nul || exit /b 22
+  echo %* | findstr /C:"--operation-id home-sandbox-local" >nul || exit /b 23
+  echo {"ok":true}
+  exit /b 0
+)
+echo {"ok":true}
+exit /b 0
+"""
+        candidate.write_text(command, encoding="utf-8")
+        live_binary.write_text(command, encoding="utf-8")
+        spec = dict(self.spec)
+        spec.update(
+            candidate_binary=str(candidate),
+            candidate_digest=digest(candidate),
+            live_binary=str(live_binary),
+            sentinel_program=str(Path(os.environ["SystemRoot"]) / "System32" / "whoami.exe"),
+            sandbox_root=str(self.root / "subprocess-sandbox"),
+        )
+
+        result = home.run_sandbox(spec)
+
+        self.assertEqual(result["status"], "passed")
+        self.assertFalse(Path(spec["sandbox_root"]).exists())
 
     def test_failure_cleans_sandbox_and_preserves_every_live_hash(self) -> None:
         before = {path: digest(Path(path)) for path in [self.spec["live_binary"], *self.spec["live_config_paths"]]}
