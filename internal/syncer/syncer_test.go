@@ -182,7 +182,7 @@ func TestGitHubSyncer_PutAPIError500WithBody(t *testing.T) {
 	err := s.Sync(context.Background(), []*provider.Secret{{Key: "K", Value: "V"}})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "500")
-	assert.Contains(t, err.Error(), "internal error")
+	assert.NotContains(t, err.Error(), "internal error")
 }
 
 func TestGitHubSyncer_ConcurrentManySecrets(t *testing.T) {

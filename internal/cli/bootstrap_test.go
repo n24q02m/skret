@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -15,6 +16,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/n24q02m/skret/internal/auth"
 	"github.com/n24q02m/skret/pkg/skret"
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -31,6 +33,10 @@ type bsFakeIAM struct{ calls int }
 
 func (f *bsFakeIAM) GetUser(_ context.Context, _ *iam.GetUserInput, _ ...func(*iam.Options)) (*iam.GetUserOutput, error) {
 	return &iam.GetUserOutput{}, nil
+}
+
+func (f *bsFakeIAM) GetUserPolicy(_ context.Context, _ *iam.GetUserPolicyInput, _ ...func(*iam.Options)) (*iam.GetUserPolicyOutput, error) {
+	return &iam.GetUserPolicyOutput{}, nil
 }
 
 func (f *bsFakeIAM) CreateUser(_ context.Context, _ *iam.CreateUserInput, _ ...func(*iam.Options)) (*iam.CreateUserOutput, error) {
@@ -100,30 +106,67 @@ func TestBootstrapCmd_Provisions_StoresKey(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "access-key", cred.Method)
 	assert.Equal(t, bsKeyID, cred.Metadata["access_key_id"])
+	assert.NotEmpty(t, cred.Metadata["policy_fingerprint"])
 	assert.Equal(t, bsSecret, cred.Token)
 
 	s := out.String()
 	assert.Contains(t, s, "skret-myapp")
 	assert.Contains(t, s, bsAccount)
-	assert.Contains(t, s, bsKeyID)
-	assert.Equal(t, 1, strings.Count(s, bsSecret), "secret must appear exactly once in stdout")
+	assert.NotContains(t, s, bsKeyID, "access-key identifiers must stay in the credential store")
+	assert.NotContains(t, s, bsSecret, "credential material must never reach stdout or stderr")
+	assert.Contains(t, s, "Stored in the local credential cache")
 }
 
-func TestBootstrapCmd_PrintOnly_DoesNotStore(t *testing.T) {
-	store := withFakeBootstrap(t, &bsFakeIAM{}, bsFakeSTS{})
+func TestBootstrapCmd_PrintOnlyFlagRejectedBeforeProvision(t *testing.T) {
+	iamFake := &bsFakeIAM{}
+	store := withFakeBootstrap(t, iamFake, bsFakeSTS{})
 
 	var out bytes.Buffer
 	cmd := NewRootCmd()
 	cmd.SetOut(&out)
 	cmd.SetErr(&out)
 	cmd.SetArgs([]string{"bootstrap", "--yes", "--print-only", "--project", "myapp", "--path", "/myapp/prod", "--region", "ap-southeast-1"})
+	err := cmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown flag")
+	assert.Equal(t, 0, iamFake.calls)
+	_, storeErr := store.Load("aws")
+	assert.ErrorIs(t, storeErr, auth.ErrCredentialNotFound)
+	assert.NotContains(t, out.String(), bsSecret)
+}
+
+func TestBootstrapCmd_JSONOutputOmitsCredential(t *testing.T) {
+	withFakeBootstrap(t, &bsFakeIAM{}, bsFakeSTS{})
+
+	var out bytes.Buffer
+	cmd := NewRootCmd()
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"bootstrap", "--yes", "--format=json", "--project", "myapp", "--path", "/myapp/prod", "--region", "ap-southeast-1"})
 	require.NoError(t, cmd.Execute())
 
-	_, err := store.Load("aws")
-	assert.ErrorIs(t, err, auth.ErrCredentialNotFound)
+	var payload map[string]any
+	require.NoError(t, json.Unmarshal(out.Bytes(), &payload))
+	assert.Equal(t, "skret-myapp", payload["user_name"])
+	assert.NotEmpty(t, payload["policy_fingerprint"])
+	assert.NotContains(t, out.String(), bsSecret)
+	assert.NotContains(t, out.String(), "secret_key")
+	assert.NotContains(t, out.String(), bsKeyID)
+	assert.NotContains(t, out.String(), "access_key_id")
+}
 
-	s := out.String()
-	assert.Equal(t, 1, strings.Count(s, bsSecret), "secret must still be printed exactly once")
+func TestBootstrapCmd_UnknownFormatFailsBeforeProvision(t *testing.T) {
+	iamFake := &bsFakeIAM{}
+	store := withFakeBootstrap(t, iamFake, bsFakeSTS{})
+
+	cmd := NewRootCmd()
+	cmd.SetArgs([]string{"bootstrap", "--yes", "--format=yaml", "--project", "myapp", "--path", "/myapp/prod", "--region", "ap-southeast-1"})
+	err := cmd.Execute()
+	require.Error(t, err)
+	assert.Equal(t, skret.ExitValidationError, skret.ExitCode(err))
+	assert.Equal(t, 0, iamFake.calls, "invalid format must be rejected before provisioning")
+	_, storeErr := store.Load("aws")
+	assert.ErrorIs(t, storeErr, auth.ErrCredentialNotFound)
 }
 
 func TestBootstrapCmd_NonInteractive_NoYes_Errors(t *testing.T) {
@@ -198,7 +241,7 @@ func TestBootstrapCmd_ResolvesConfig_DefaultsProjectFromPath(t *testing.T) {
 	cmd.SetOut(&out)
 	cmd.SetErr(&out)
 	// No --project/--path/--region: all come from .skret.yaml; project defaults
-	// to the path's last segment ("prod") -> user skret-prod.
+	// to the full normalized namespace ("demo-prod"), not only "prod".
 	cmd.SetArgs([]string{"bootstrap", "--yes"})
 	require.NoError(t, cmd.Execute())
 
@@ -207,7 +250,7 @@ func TestBootstrapCmd_ResolvesConfig_DefaultsProjectFromPath(t *testing.T) {
 	assert.Equal(t, bsKeyID, cred.Metadata["access_key_id"])
 
 	s := out.String()
-	assert.Contains(t, s, "skret-prod")
+	assert.Contains(t, s, "skret-demo-prod")
 	assert.Contains(t, s, "/demo/prod")
 }
 
@@ -340,7 +383,6 @@ func TestBootstrapCmd_MalformedConfig_FallsBackToFlags(t *testing.T) {
 	assert.Equal(t, bsKeyID, cred.Metadata["access_key_id"])
 }
 
-// TestBootstrapCmd_ExplicitConfigMissing_HardError covers bootstrap.go:77-79:
 // with --path/--region/--profile all unset (forcing config resolution) and
 // an explicit --config pointing at a file that does not exist,
 // resolveBootstrapConfig's error must be surfaced as a hard ExitConfigError
@@ -358,15 +400,22 @@ func TestBootstrapCmd_ExplicitConfigMissing_HardError(t *testing.T) {
 }
 
 func TestSanitizeProject(t *testing.T) {
-	assert.Equal(t, "prod", sanitizeProject("/myapp/prod"))
-	assert.Equal(t, "prod", sanitizeProject("/myapp/prod/"))
-	assert.Equal(t, "demoenv", sanitizeProject("/demo/demo.env!"))
-	// A path with no name characters falls back to filepath.Base.
-	assert.Equal(t, filepath.Base("/"), sanitizeProject("/"))
+	assert.Equal(t, "myapp-prod", sanitizeProject("/myapp/prod"))
+	assert.Equal(t, "myapp-prod", sanitizeProject("/myapp/prod/"))
+	assert.Equal(t, "demo-demo-env", sanitizeProject("/demo/demo.env!"))
+	assert.NotEqual(t, sanitizeProject("/foo/prod"), sanitizeProject("/bar/prod"))
+	assert.NotEqual(
+		t,
+		sanitizeProject("/"+strings.Repeat("a", 70)+"-one/prod"),
+		sanitizeProject("/"+strings.Repeat("a", 70)+"-two/prod"),
+		"long namespaces with a shared prefix must remain distinct",
+	)
+	assert.LessOrEqual(t, len("skret-"+sanitizeProject("/"+strings.Repeat("a", 100))), 64)
+	assert.Equal(t, "project", sanitizeProject("/"))
 }
 
-// TestBootstrapCmd_ValueSafety asserts the secret never appears in an error and
-// appears exactly once in stdout.
+// TestBootstrapCmd_ValueSafety asserts the generated secret never appears in
+// command output.
 func TestBootstrapCmd_ValueSafety(t *testing.T) {
 	withFakeBootstrap(t, &bsFakeIAM{}, bsFakeSTS{})
 
@@ -378,5 +427,21 @@ func TestBootstrapCmd_ValueSafety(t *testing.T) {
 	err := cmd.Execute()
 	require.NoError(t, err)
 
-	assert.Equal(t, 1, strings.Count(out.String(), bsSecret))
+	assert.Equal(t, 0, strings.Count(out.String(), bsSecret))
+}
+
+func TestBootstrapOutputFormatResolution(t *testing.T) {
+	t.Run("local flag", func(t *testing.T) {
+		cmd := &cobra.Command{}
+		cmd.Flags().String("format", "json", "")
+		assert.Equal(t, "json", bootstrapOutputFormat(cmd))
+	})
+	t.Run("inherited flag", func(t *testing.T) {
+		cmd := &cobra.Command{}
+		cmd.InheritedFlags().String("format", "json", "")
+		assert.Equal(t, "json", bootstrapOutputFormat(cmd))
+	})
+	t.Run("default", func(t *testing.T) {
+		assert.Equal(t, "table", bootstrapOutputFormat(&cobra.Command{}))
+	})
 }

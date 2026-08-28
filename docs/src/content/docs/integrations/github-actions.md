@@ -1,26 +1,19 @@
 ---
 title: GitHub Actions
-description: "Use skret in GitHub Actions with OIDC for secure, credential-free access to AWS SSM."
+description: "Use Skret in GitHub Actions with short-lived, read-only AWS OIDC credentials."
 ---
 
-Use skret in GitHub Actions with OIDC for secure, credential-free access to AWS SSM.
+Use Skret in a consumer workflow with a repository-scoped AWS OIDC role. The workflow may read its approved SSM namespace to launch a process; it must not project or rotate secrets into GitHub or another provider.
 
 ## OIDC Setup
 
 ### 1. Create the IAM OIDC Provider
 
-Run once per AWS account:
-
-```bash
-aws iam create-open-id-connect-provider \
-  --url https://token.actions.githubusercontent.com \
-  --client-id-list sts.amazonaws.com \
-  --thumbprint-list 6938fd4d98bab03faadb97b34396831e3780aea1
-```
+Create the GitHub Actions OIDC provider once per AWS account, following the current AWS and GitHub guidance for `https://token.actions.githubusercontent.com` with audience `sts.amazonaws.com`.
 
 ### 2. Create the IAM Role
 
-Create a trust policy that limits access to your repository:
+Limit the trust policy to the intended repository and, where possible, its protected branch or environment:
 
 ```json
 {
@@ -37,7 +30,7 @@ Create a trust policy that limits access to your repository:
           "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
         },
         "StringLike": {
-          "token.actions.githubusercontent.com:sub": "repo:your-org/your-repo:*"
+          "token.actions.githubusercontent.com:sub": "repo:your-org/your-repo:ref:refs/heads/main"
         }
       }
     }
@@ -45,13 +38,9 @@ Create a trust policy that limits access to your repository:
 }
 ```
 
-```bash
-aws iam create-role \
-  --role-name skret-github-actions \
-  --assume-role-policy-document file://trust-policy.json
-```
+### 3. Attach a Read-only SSM Policy
 
-### 3. Attach SSM Read Policy
+Scope both SSM and KMS access to the namespace and key used by this repository:
 
 ```json
 {
@@ -69,7 +58,7 @@ aws iam create-role \
     {
       "Effect": "Allow",
       "Action": ["kms:Decrypt"],
-      "Resource": "*",
+      "Resource": "arn:aws:kms:us-east-1:123456789012:key/KEY-ID",
       "Condition": {
         "StringEquals": {
           "kms:ViaService": "ssm.us-east-1.amazonaws.com"
@@ -80,16 +69,11 @@ aws iam create-role \
 }
 ```
 
-```bash
-aws iam put-role-policy \
-  --role-name skret-github-actions \
-  --policy-name ssm-read \
-  --policy-document file://ssm-policy.json
-```
+Do not add `PutParameter`, label mutation, GitHub secret-write, Cloudflare write, or deployment permissions to this consumer role.
 
-## Workflow Examples
+## Run Tests with Secrets
 
-### Basic: Run tests with secrets
+The example pins every third-party action to an immutable commit. The one-shot installer requires and uses `cosign`, verifies the release checksum/signature, enforces `SAFE-ARCHIVE-V1`, and smokes the installed binary before success.
 
 ```yaml
 name: CI
@@ -103,77 +87,45 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+      - name: Configure read-only AWS credentials
+        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c
         with:
           role-to-assume: arn:aws:iam::123456789012:role/skret-github-actions
           aws-region: us-east-1
+          allowed-account-ids: "123456789012"
 
-      - name: Install skret
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6
+
+      - name: Install verified Skret release
         run: |
-          curl -fsSL https://github.com/n24q02m/skret/releases/latest/download/skret_linux_amd64.tar.gz | tar xz
-          sudo mv skret /usr/local/bin/
+          curl -fsSL https://skret.n24q02m.com/install.sh | sh -s -- --user --no-completion
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Run tests with secrets
         run: skret run -- go test ./...
 ```
 
-### Sync secrets to GitHub Actions
+Keep untrusted pull requests away from the OIDC-bearing job. Use a protected branch/environment and GitHub's permission controls for any workflow that can request the role.
 
-Push secrets from AWS SSM to GitHub Actions repository secrets:
+## Projection and Rotation
 
-```yaml
-name: Sync Secrets
-on:
-  workflow_dispatch:
-  schedule:
-    - cron: '0 6 * * 1'  # Weekly Monday 6am
+Do not run `skret sync`, `skret delete`, or provider-setting mutation from an ordinary GitHub Actions workflow. In the hosted architecture:
 
-permissions:
-  id-token: write
-  contents: read
+1. the credential-free planner accepts bounded, signed, value-free planning input;
+2. the separate security executor verifies the exact operation and target allowlist;
+3. provider credentials and KMS access remain executor-only;
+4. ambiguous write responses retain the source envelope and require reconciliation rather than an automatic retry.
 
-jobs:
-  sync:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: arn:aws:iam::123456789012:role/skret-github-actions
-          aws-region: us-east-1
-
-      - name: Install skret
-        run: |
-          curl -fsSL https://github.com/n24q02m/skret/releases/latest/download/skret_linux_amd64.tar.gz | tar xz
-          sudo mv skret /usr/local/bin/
-
-      - name: Sync to GitHub Actions
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          skret --env=prod sync --to=github \
-            --github-repo=${{ github.repository }}
-```
-
-### Multi-repo sync
-
-```yaml
-      - name: Sync to multiple repos
-        env:
-          GITHUB_TOKEN: ${{ secrets.GH_PAT }}  # PAT with repo scope
-        run: |
-          skret --env=prod sync --to=github \
-            --github-repo=your-org/app-frontend,your-org/app-backend
-```
+An operator may still run an explicit local `skret sync` or `skret sync --rotate` from a trusted environment with the documented target credentials. That is a manual operator boundary, not a reusable CI projection job.
 
 ## Security Considerations
 
-- **Restrict the trust policy** to specific branches if needed: `repo:org/repo:ref:refs/heads/main`
-- **Use least-privilege IAM** -- read-only for CI, read-write only for sync jobs
-- The `id-token: write` permission is required for OIDC. Without it, the `configure-aws-credentials` action cannot request a token.
-- OIDC tokens are short-lived (valid for the duration of the workflow run)
+- Restrict OIDC trust to the exact repository and protected ref or environment.
+- Use read-only SSM/KMS permissions for consumer workflows.
+- Pin every action to a full commit SHA and review automated pin updates.
+- Install Skret through a checksum/signature-verifying path; do not stream an unverified archive directly into `tar`.
+- OIDC credentials are short-lived, but their permissions still determine impact. A short TTL does not make provider-write scope acceptable in ordinary CI.
+- Do not print `skret env`, process environments, provider responses, or secret values in workflow logs.

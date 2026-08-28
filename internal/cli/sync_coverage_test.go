@@ -157,11 +157,11 @@ environments:
 	} else {
 		t.Setenv("HOME", home)
 	}
-
-	// Make the state path blocked by a directory instead of a file
-	stateDir := filepath.Join(home, ".skret", "sync-state")
-	require.NoError(t, os.MkdirAll(stateDir, 0o700))
-	require.NoError(t, os.Mkdir(filepath.Join(stateDir, "dotenv-.env.json.tmp"), 0o755))
+	originalSaveSyncState := saveSyncState
+	saveSyncState = func(*syncer.SyncState) error {
+		return errors.New("synthetic save failure")
+	}
+	defer func() { saveSyncState = originalSaveSyncState }()
 
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))
@@ -647,6 +647,28 @@ func appendSyncTarget(t *testing.T, dir, block string) {
 	require.NoError(t, err)
 }
 
+func TestSyncOptions_Run_RejectsDuplicateTargetsBeforeProviderLoad(t *testing.T) {
+	dir := setupSyncRepoWithSecrets(t, map[string]string{})
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".skret.yaml"), []byte(`version: "1"
+default_env: dev
+environments:
+  dev:
+    provider: unknown
+    file: secrets.yaml
+sync:
+  targets:
+    - type: github
+      repo: Owner/Repo
+    - type: github
+      repo: owner/repo
+`), 0o644))
+	t.Setenv("GITHUB_TOKEN", "test-token")
+
+	err := runSyncCmdErr(t, dir, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "identity collision")
+}
+
 // withGithubTarget declares a github sync.targets entry pointed at baseURL
 // (an httptest server, via the base_url passthrough added in Task 2/3), so
 // the test never needs a real GitHub API or an env-var seam.
@@ -961,6 +983,47 @@ func TestSyncOptions_Run_DryRun_DotenvWritesNoFile(t *testing.T) {
 	assert.Contains(t, out, "[dry-run] dotenv: would write 1 secret(s)")
 	_, err := os.Stat(filepath.Join(dir, "out.env"))
 	assert.True(t, os.IsNotExist(err))
+}
+
+func TestSyncOptions_Run_SkipUnchangedPersistsOperationLifecycle(t *testing.T) {
+	home := t.TempDir()
+	if runtime.GOOS == "windows" {
+		t.Setenv("USERPROFILE", home)
+	} else {
+		t.Setenv("HOME", home)
+	}
+
+	dir := setupSyncRepoWithSecrets(t, map[string]string{"ALPHA": "1"})
+	withDotenvTarget(t, dir, "out.env", false)
+
+	runSyncCmd(t, dir, []string{"--skip-unchanged"})
+
+	state, err := syncer.LoadSyncState("dotenv", "out.env")
+	require.NoError(t, err)
+	assert.NotEmpty(t, state.OperationID)
+	require.NotNil(t, state.LastSuccess)
+	assert.Equal(t, syncer.OutcomeSucceeded, state.Outcomes["ALPHA"].Status)
+}
+
+func TestSyncOptions_Run_SkipUnchangedFailurePersistsReconciliation(t *testing.T) {
+	home := t.TempDir()
+	if runtime.GOOS == "windows" {
+		t.Setenv("USERPROFILE", home)
+	} else {
+		t.Setenv("HOME", home)
+	}
+
+	dir := setupSyncRepoWithSecrets(t, map[string]string{"ALPHA": "1"})
+	require.NoError(t, os.Mkdir(filepath.Join(dir, "blocked_dir"), 0o755))
+	withDotenvTarget(t, dir, "blocked_dir", false)
+
+	require.Error(t, runSyncCmdErr(t, dir, []string{"--skip-unchanged"}))
+
+	state, err := syncer.LoadSyncState("dotenv", "blocked_dir")
+	require.NoError(t, err)
+	assert.Equal(t, syncer.OutcomeNeedsReconciliation, state.Outcomes["ALPHA"].Status)
+	assert.Nil(t, state.LastSuccess)
+	assert.Empty(t, state.Hashes)
 }
 
 // --- Wave 2 T4: sync exit-code classification (fix I2) ---

@@ -128,7 +128,7 @@ func TestCloudflareSyncer_Internal_PutWorkerSecret_Errors(t *testing.T) {
 	require.Error(t, err)
 	require.ErrorContains(t, err, "parse base url")
 
-	// Non-200 response whose body cannot be read.
+	// A status error must not read or retain a provider response body.
 	cf.baseURL = "https://api.cloudflare.com/client/v4"
 	cf.httpClient.Transport = &mockTransport{
 		roundTrip: func(req *http.Request) (*http.Response, error) {
@@ -140,8 +140,8 @@ func TestCloudflareSyncer_Internal_PutWorkerSecret_Errors(t *testing.T) {
 	}
 	err = cf.putWorkerSecret(context.Background(), "name", "value")
 	require.Error(t, err)
-	require.ErrorContains(t, err, "read error")
-	require.ErrorContains(t, err, "body unreadable")
+	require.ErrorContains(t, err, "500")
+	require.NotContains(t, err.Error(), "read error")
 }
 
 func TestCloudflareSyncer_Pages_PatchOnlySyncedKeys(t *testing.T) {
@@ -204,7 +204,7 @@ func TestCloudflareSyncer_Pages_Errors(t *testing.T) {
 	require.Error(t, err)
 	require.ErrorContains(t, err, "parse base url")
 
-	// Non-200 response whose body cannot be read.
+	// A status error must not read or retain a provider response body.
 	cf.baseURL = "https://api.cloudflare.com/client/v4"
 	cf.httpClient.Transport = &mockTransport{
 		roundTrip: func(req *http.Request) (*http.Response, error) {
@@ -216,6 +216,6 @@ func TestCloudflareSyncer_Pages_Errors(t *testing.T) {
 	}
 	err = cf.syncPages(context.Background(), []*provider.Secret{{Key: "K", Value: "v"}})
 	require.Error(t, err)
-	require.ErrorContains(t, err, "read error")
-	require.ErrorContains(t, err, "body unreadable")
+	require.ErrorContains(t, err, "500")
+	require.NotContains(t, err.Error(), "read error")
 }

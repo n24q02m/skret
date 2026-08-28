@@ -6,8 +6,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
-    "dryrun": "wrangler deploy --dry-run",
-    "deploy": "wrangler deploy"
+    "dryrun": "wrangler deploy --dry-run"
   },
   "dependencies": {
     "@cloudflare/containers": "^0.3.7"

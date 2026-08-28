@@ -45,14 +45,19 @@ Every command accepts a global `--config <path>` flag that loads the given
 upward:
 
 ```bash
-skret sync --config deploy/sync/knowledgeprism.skret.yaml
+skret list --config /etc/skret/app.skret.yaml -e prod
 skret env --config /etc/skret/app.skret.yaml -e prod
 ```
 
-If the file does not exist the command fails with a config error -- it never
-silently falls back to discovery. This is what lets one process (for example
-the sync container) serve several namespaces, each declared in its own config
-file.
+If the file does not exist, the command fails with a config error; discovery is
+never used as a fallback.
+
+The production sync image does not load `.skret.yaml` files or provider
+credentials. It serves metadata-only plans. Provider projection is authorized
+separately by the private executor using a signed target manifest. The closed
+schema is `deploy/sync-target-manifest.schema.json`; the
+`deploy/sync/candidate.skret.yaml.tmpl` fixture is synthetic, value-free, and is
+not a production configuration.
 
 ## Precedence
 

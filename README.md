@@ -98,7 +98,6 @@ If you only need a single-cloud injector and you don't care about migration or C
 |----------|-----------------|-----------------|
 | **macOS / Linux** | `curl -fsSL https://skret.n24q02m.com/install.sh \| sh` | `brew install n24q02m/tap/skret` |
 | **Windows** | `iwr -useb https://skret.n24q02m.com/install.ps1 \| iex` | `scoop bucket add n24q02m https://github.com/n24q02m/scoop-bucket && scoop install skret` |
-| **Cross-OS managers** | `mise use -g aqua:n24q02m/skret@latest` | `nix shell github:n24q02m/skret-nix#skret` |
 | **Go developers** | `go install github.com/n24q02m/skret/cmd/skret@latest` | — |
 | **Direct binary** | Download from [Releases](https://github.com/n24q02m/skret/releases/latest) | — |
 
@@ -110,7 +109,7 @@ Verify the install and check the version:
 skret --version
 ```
 
-The `install.sh` and `install.ps1` scripts verify SHA256 checksums and (if `cosign` is available) the Sigstore signature before placing the binary. Either check failing aborts the install; set `SKRET_INSECURE_SKIP_VERIFY=1` to install past a signature failure anyway. Source both scripts at [skret.n24q02m.com/install.sh](https://skret.n24q02m.com/install.sh) and [skret.n24q02m.com/install.ps1](https://skret.n24q02m.com/install.ps1) before piping to a shell if you prefer — both are short, POSIX-pure or PowerShell 5+.
+The one-shot installers require SHA256 verification and a non-empty Sigstore bundle verified by `cosign` before extraction. They then enforce the `SAFE-ARCHIVE-V1` allowlist and resource bounds, extract into an owner-only staging directory, atomically replace the target, and roll back to the byte-identical prior binary if activation or `skret --version` fails. Set `SKRET_INSECURE_SKIP_VERIFY=1` only for an explicit signature-verification bypass; checksum, archive, path, and rollback checks remain enforced. Source both scripts at [skret.n24q02m.com/install.sh](https://skret.n24q02m.com/install.sh) and [skret.n24q02m.com/install.ps1](https://skret.n24q02m.com/install.ps1) before piping to a shell if you prefer.
 
 ## Quick start
 

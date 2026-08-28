@@ -75,3 +75,99 @@ func TestRegistry_Cloudflare(t *testing.T) {
 		assert.Equal(t, "cloudflare", s[0].Name())
 	})
 }
+
+func TestCanonicalTargetIdentity(t *testing.T) {
+	t.Run("github canonicalizes case and owner scope", func(t *testing.T) {
+		a, err := CanonicalTargetIdentity(TargetConfig{
+			Type:   "github",
+			Fields: map[string]string{"repo": "Owner/Repo"},
+		})
+		require.NoError(t, err)
+		b, err := CanonicalTargetIdentity(TargetConfig{
+			Type:   "github",
+			Fields: map[string]string{"repo": "owner/repo"},
+		})
+		require.NoError(t, err)
+		assert.Equal(t, a, b)
+	})
+
+	t.Run("github canonicalizes equivalent base URLs", func(t *testing.T) {
+		a, err := CanonicalTargetIdentity(TargetConfig{
+			Type:   "github",
+			Fields: map[string]string{"repo": "owner/repo", "base_url": "https://git.example/"},
+		})
+		require.NoError(t, err)
+		b, err := CanonicalTargetIdentity(TargetConfig{
+			Type:   "github",
+			Fields: map[string]string{"repo": "owner/repo", "base_url": "HTTPS://GIT.EXAMPLE"},
+		})
+		require.NoError(t, err)
+		assert.Equal(t, a, b)
+	})
+
+	t.Run("cloudflare canonicalizes endpoint in identity", func(t *testing.T) {
+		a, err := CanonicalTargetIdentity(TargetConfig{
+			Type:   "cloudflare",
+			Fields: map[string]string{"account": "acct", "worker": "vault", "base_url": "https://cf.example/"},
+		})
+		require.NoError(t, err)
+		b, err := CanonicalTargetIdentity(TargetConfig{
+			Type:   "cloudflare",
+			Fields: map[string]string{"account": "ACCT", "worker": "VAULT", "base_url": "HTTPS://CF.EXAMPLE"},
+		})
+		require.NoError(t, err)
+		assert.Equal(t, a, b)
+	})
+
+	t.Run("endpoint path case remains significant", func(t *testing.T) {
+		upper, err := CanonicalTargetIdentity(TargetConfig{
+			Type:   "cloudflare",
+			Fields: map[string]string{"account": "acct", "worker": "vault", "base_url": "https://cf.example/API"},
+		})
+		require.NoError(t, err)
+		lower, err := CanonicalTargetIdentity(TargetConfig{
+			Type:   "cloudflare",
+			Fields: map[string]string{"account": "acct", "worker": "vault", "base_url": "https://cf.example/api"},
+		})
+		require.NoError(t, err)
+		assert.NotEqual(t, upper, lower)
+	})
+
+	t.Run("endpoint hostname NFC is canonical", func(t *testing.T) {
+		composed, err := CanonicalTargetIdentity(TargetConfig{
+			Type:   "cloudflare",
+			Fields: map[string]string{"account": "acct", "worker": "vault", "base_url": "https://exämple.test"},
+		})
+		require.NoError(t, err)
+		decomposed, err := CanonicalTargetIdentity(TargetConfig{
+			Type:   "cloudflare",
+			Fields: map[string]string{"account": "acct", "worker": "vault", "base_url": "https://exa\u0308mple.test"},
+		})
+		require.NoError(t, err)
+		assert.Equal(t, composed, decomposed)
+	})
+
+	t.Run("cloudflare includes account and resource kind", func(t *testing.T) {
+		worker, err := CanonicalTargetIdentity(TargetConfig{
+			Type:   "cloudflare",
+			Fields: map[string]string{"account": "Acct", "worker": "Vault"},
+		})
+		require.NoError(t, err)
+		pages, err := CanonicalTargetIdentity(TargetConfig{
+			Type:   "cloudflare",
+			Fields: map[string]string{"account": "acct", "pages": "vault"},
+		})
+		require.NoError(t, err)
+		assert.NotEqual(t, worker, pages)
+	})
+
+	t.Run("duplicate identities fail before build", func(t *testing.T) {
+		err := ValidateTargetIdentities([]TargetConfig{
+			{Type: "github", Fields: map[string]string{"repo": "Owner/Repo"}},
+			{Type: "github", Fields: map[string]string{"repo": "owner/repo"}},
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "collision")
+		assert.Contains(t, err.Error(), "github")
+	})
+}

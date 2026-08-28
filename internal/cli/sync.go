@@ -8,6 +8,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/n24q02m/skret/internal/config"
 	"github.com/n24q02m/skret/internal/provider"
@@ -23,20 +24,25 @@ type syncOptions struct {
 	githubRepo    string
 	skipUnchanged bool
 	noOverwrite   bool
+	rotate        bool
 	dryRun        bool
 	format        string
 }
 
+// saveSyncState is kept indirect so focused tests can exercise persistence
+// failures at each acknowledgement boundary without touching real targets.
+var saveSyncState = syncer.SaveSyncState
+
 // SyncResult is the --format json payload for one successfully synced
-// target. syncer.Syncer only reports success/failure for a whole batch (no
-// target implements a per-key added/updated/deleted breakdown -- dotenv
-// rewrites its file wholesale and has no notion of either), so Synced is the
-// same count sync's table/stderr line already reports, not a speculative
-// finer-grained one. --dry-run targets are not included: they write nothing.
+// target. Batch-only targets report the full batch count; durable operations
+// for per-key targets report the same count only after every key is
+// acknowledged and the operation state is finalized and saved. --dry-run
+// targets are not included: they write nothing.
 type SyncResult struct {
 	Source string `json:"source"`
 	Target string `json:"target"`
 	Synced int    `json:"synced"`
+	Intent string `json:"intent,omitempty"`
 }
 
 func newSyncCmd(opts *GlobalOpts) *cobra.Command {
@@ -52,13 +58,16 @@ worker/pages, dotenv); running 'skret sync' with no --to pushes to all of them.
 --to accepts a comma-list to pick specific target types. Tokens come from
 GITHUB_TOKEN / CLOUDFLARE_API_TOKEN. Use --skip-unchanged for hash-based drift.
 --no-overwrite (or no_overwrite: true per target) only writes keys absent at
-the target, so existing values are never overwritten; rotate by deleting the
-key at the target and re-running sync. --dry-run prints what each target
-would write and exits without writing anything or saving sync state.`,
+the target, so existing values are never overwritten. Use --rotate for an
+explicit controlled overwrite of selected source keys; --rotate overrides a
+target's no_overwrite setting but cannot combine with --no-overwrite.
+--dry-run prints what each target would write and exits without writing anything
+or saving sync state.`,
 		Example: `  skret sync
   skret sync --to=github,cloudflare
   skret sync --to=github --github-repo=owner/repo --skip-unchanged
   skret sync --no-overwrite
+  skret sync --rotate
   skret sync --config deploy/sync/knowledgeprism.skret.yaml --dry-run`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return o.run(cmd)
@@ -70,13 +79,37 @@ would write and exits without writing anything or saving sync state.`,
 	cmd.Flags().StringVar(&o.githubRepo, "github-repo", "", "GitHub repository (owner/repo, comma separated)")
 	cmd.Flags().BoolVar(&o.skipUnchanged, "skip-unchanged", false, "skip secrets whose value is unchanged since the previous successful sync (drift detection)")
 	cmd.Flags().BoolVar(&o.noOverwrite, "no-overwrite", false, "only write secrets absent at the target; never overwrite an existing one (forces no_overwrite for every target)")
+	cmd.Flags().BoolVar(&o.rotate, "rotate", false, "explicitly overwrite selected target values and record rotation state (conflicts with --no-overwrite)")
 	cmd.Flags().BoolVar(&o.dryRun, "dry-run", false, "print what each target would write and exit; issues no write request and saves no state")
 	cmd.Flags().StringVar(&o.format, "format", "table", "output format (table, json)")
+
+	cmd.AddCommand(newSyncPlanServerCmd())
 
 	return cmd
 }
 
 func (o *syncOptions) run(cmd *cobra.Command) error {
+	if o.rotate && o.noOverwrite {
+		return skret.NewError(skret.ExitConfigError, "sync: cannot combine --rotate and --no-overwrite", nil)
+	}
+
+	sc, err := loadSyncConfig(o.global)
+	if err != nil {
+		return skret.NewError(skret.ExitConfigError, "sync: load config failed", err)
+	}
+
+	targets, err := o.resolveTargets(sc)
+	if err != nil {
+		return err
+	}
+	syncers, err := syncer.Build(targets)
+	if err != nil {
+		return skret.NewError(skret.ExitConfigError, "sync: build targets", err)
+	}
+	if err := syncer.ValidateTargetIdentities(targets); err != nil {
+		return skret.NewError(skret.ExitConfigError, "sync: validate targets", err)
+	}
+
 	resolved, p, err := loadProvider(o.global)
 	if err != nil {
 		return err
@@ -95,45 +128,29 @@ func (o *syncOptions) run(cmd *cobra.Command) error {
 		cmd.PrintErrln("No secrets found to sync. Use 'skret set' to add a secret.")
 	}
 
-	sc, err := loadSyncConfig(o.global)
-	if err != nil {
-		return skret.NewError(skret.ExitConfigError, "sync: load config failed", err)
-	}
-
-	targets, err := o.resolveTargets(sc)
-	if err != nil {
-		return err
-	}
-	syncers, err := syncer.Build(targets)
-	if err != nil {
-		return skret.NewError(skret.ExitConfigError, "sync: build targets", err)
-	}
-
 	results := make([]SyncResult, 0, len(syncers))
 	for i, s := range syncers {
 		tc := targets[i]
 		toSync := secrets
-		noOv := tc.NoOverwrite || o.noOverwrite
+		noOv := !o.rotate && (tc.NoOverwrite || o.noOverwrite)
 
-		// Under no-overwrite, "write only absent keys" already subsumes
-		// drift-skipping (FilterAbsent queries the target directly, so it is
-		// stateless), and a warm value-hash cache can mask a target-side
-		// deletion -- exactly the restore path no-overwrite relies on
-		// (docs/src/content/docs/guide/sync.md: delete the key at the
-		// target, the next sync repopulates it). So --skip-unchanged's
-		// state load/filter/save is skipped entirely for a no-overwrite
-		// target; a rotated-then-deleted key must reach FilterAbsent to be
-		// seen as absent and rewritten.
+		// Rotation is an explicit overwrite intent. It always loads the
+		// target's journal so the operation lifecycle is durable, but it
+		// deliberately bypasses warm-cache filtering and no-overwrite's
+		// target-side existence check.
 		var state *syncer.SyncState
-		if o.skipUnchanged && !noOv {
+		var operationID string
+		if o.rotate || (o.skipUnchanged && !noOv) {
 			stateID := targetStateID(s, tc)
 			state, err = syncer.LoadSyncState(s.Name(), stateID)
 			if err != nil {
 				return skret.NewError(skret.ExitGenericError, "sync: load state failed", err)
 			}
-			toSync = state.FilterUnchanged(secrets)
-			if skipped := len(secrets) - len(toSync); skipped > 0 {
-				cmd.PrintErrf("Skipped %d unchanged secret(s) for %s\n", skipped, s.Name())
+			if !o.rotate {
+				toSync = state.FilterUnchanged(secrets)
+				if skipped := len(secrets) - len(toSync); skipped > 0 {
+					cmd.PrintErrf("Skipped %d unchanged secret(s) for %s\n", skipped, s.Name())
+				}
 			}
 		}
 
@@ -162,26 +179,95 @@ func (o *syncOptions) run(cmd *cobra.Command) error {
 			continue
 		}
 
-		if err := s.Sync(ctx, toSync); err != nil {
-			// dotenv writes a local file only -- a failure there is I/O, not
-			// network. github/cloudflare stay ExitNetworkError (audit I2).
-			exitCode := skret.ExitNetworkError
-			if tc.Type == "dotenv" {
-				exitCode = skret.ExitGenericError
+		if state != nil && len(toSync) > 0 {
+			operationID, err = syncer.NewOperationID()
+			if err != nil {
+				return skret.NewError(skret.ExitGenericError, "sync: create operation", err)
 			}
-			return skret.NewError(exitCode, fmt.Sprintf("sync failed for %s", s.Name()), err)
-		}
-		if o.format == "json" {
-			results = append(results, SyncResult{Source: resolved.Path, Target: s.Name(), Synced: len(toSync)})
-		} else {
-			cmd.PrintErrf("Synced %d secrets to %s\n", len(toSync), s.Name())
-		}
-
-		if o.skipUnchanged && !noOv && state != nil {
-			state.Update(toSync)
-			if err := syncer.SaveSyncState(state); err != nil {
+			if o.rotate {
+				err = state.BeginOperationWithIntent(operationID, syncer.OperationIntentRotate, toSync, time.Now().UTC())
+			} else {
+				err = state.BeginOperation(operationID, toSync, time.Now().UTC())
+			}
+			if err != nil {
+				return skret.NewError(skret.ExitGenericError, "sync: begin operation", err)
+			}
+			if err := saveSyncState(state); err != nil {
 				return skret.NewError(skret.ExitGenericError, "sync: save state failed", err)
 			}
+		}
+		recoveredState := false
+		if state != nil && len(toSync) == 0 && syncStateNeedsRecovery(state) {
+			if err := state.FinalizeOperation(state.OperationID, time.Now().UTC()); err != nil {
+				return skret.NewError(skret.ExitGenericError, "sync: recover operation", err)
+			}
+			if err := saveSyncState(state); err != nil {
+				return skret.NewError(skret.ExitGenericError, "sync: save recovered state", err)
+			}
+			recoveredState = true
+		}
+		durablePerKey := false
+		if state != nil && operationID != "" {
+			if keyer, ok := s.(syncer.PerKeySyncer); ok {
+				durablePerKey = true
+				if err := syncPerKeyOperation(ctx, keyer, state, operationID, toSync); err != nil {
+					exitCode := skret.ExitNetworkError
+					var journalErr *syncJournalError
+					if errors.As(err, &journalErr) {
+						exitCode = skret.ExitGenericError
+					}
+					return skret.NewError(exitCode, fmt.Sprintf("sync failed for %s", s.Name()), err)
+				}
+			}
+		}
+		if !durablePerKey {
+			if err := s.Sync(ctx, toSync); err != nil {
+				// dotenv writes a local file only -- a failure there is I/O, not
+				// network. github/cloudflare stay ExitNetworkError (audit I2).
+				exitCode := skret.ExitNetworkError
+				if tc.Type == "dotenv" {
+					exitCode = skret.ExitGenericError
+				}
+				if state != nil && operationID != "" {
+					journalErr := state.RecordNeedsReconciliation(operationID, toSync, time.Now().UTC())
+					if journalErr == nil {
+						journalErr = saveSyncState(state)
+					}
+					if journalErr != nil {
+						return skret.NewError(exitCode, fmt.Sprintf("sync failed for %s; state journal failed", s.Name()), journalErr)
+					}
+				}
+				return skret.NewError(exitCode, fmt.Sprintf("sync failed for %s", s.Name()), err)
+			}
+		}
+
+		// Durable state must be finalized and persisted before reporting target
+		// success. Per-key targets already journaled each acknowledgement and
+		// finalized in syncPerKeyOperation.
+		if state != nil {
+			if operationID != "" && !durablePerKey {
+				if err := state.RecordSuccess(operationID, toSync, time.Now().UTC()); err != nil {
+					return skret.NewError(skret.ExitGenericError, "sync: record success", err)
+				}
+			}
+			if !durablePerKey && !recoveredState {
+				if err := saveSyncState(state); err != nil {
+					return skret.NewError(skret.ExitGenericError, "sync: save state failed", err)
+				}
+			}
+		}
+
+		switch {
+		case o.format == "json":
+			result := SyncResult{Source: resolved.Path, Target: s.Name(), Synced: len(toSync)}
+			if o.rotate {
+				result.Intent = syncer.OperationIntentRotate
+			}
+			results = append(results, result)
+		case o.rotate:
+			cmd.PrintErrf("Rotated %d secrets to %s\n", len(toSync), s.Name())
+		default:
+			cmd.PrintErrf("Synced %d secrets to %s\n", len(toSync), s.Name())
 		}
 	}
 
@@ -193,6 +279,77 @@ func (o *syncOptions) run(cmd *cobra.Command) error {
 		fmt.Fprintln(cmd.OutOrStdout(), string(data))
 	}
 
+	return nil
+}
+
+type syncJournalError struct {
+	err error
+}
+
+func (e *syncJournalError) Error() string { return e.err.Error() }
+
+func (e *syncJournalError) Unwrap() error { return e.err }
+
+func syncStateNeedsRecovery(state *syncer.SyncState) bool {
+	if state == nil || state.OperationID == "" {
+		return false
+	}
+	if state.Phase != syncer.OperationPhasePending &&
+		(state.Phase != "" || state.CompletedAt != nil) {
+		return false
+	}
+	owned := 0
+	for _, outcome := range state.Outcomes {
+		if outcome.OperationID != state.OperationID {
+			continue
+		}
+		owned++
+		if outcome.Status != syncer.OutcomeSucceeded {
+			return false
+		}
+	}
+	return owned > 0
+}
+
+// syncPerKeyOperation writes and journals one target key at a time. A failed
+// key is marked for reconciliation and stops the operation, leaving every
+// unattempted key pending. Each successful acknowledgement is persisted before
+// the next provider call so a process interruption cannot turn an earlier
+// provider success into an unjournaled global result.
+func syncPerKeyOperation(
+	ctx context.Context,
+	target syncer.PerKeySyncer,
+	state *syncer.SyncState,
+	operationID string,
+	secrets []*provider.Secret,
+) error {
+	for _, secret := range secrets {
+		if err := target.SyncKey(ctx, secret); err != nil {
+			now := time.Now().UTC()
+			if journalErr := state.RecordKeyNeedsReconciliation(operationID, secret, now); journalErr != nil {
+				return &syncJournalError{err: fmt.Errorf("record key reconciliation: %w", journalErr)}
+			}
+			if journalErr := saveSyncState(state); journalErr != nil {
+				return &syncJournalError{err: fmt.Errorf("save key reconciliation: %w", journalErr)}
+			}
+			return err
+		}
+
+		now := time.Now().UTC()
+		if err := state.RecordKeySuccess(operationID, secret, now); err != nil {
+			return &syncJournalError{err: fmt.Errorf("record key success: %w", err)}
+		}
+		if err := saveSyncState(state); err != nil {
+			return &syncJournalError{err: fmt.Errorf("save key success: %w", err)}
+		}
+	}
+
+	if err := state.FinalizeOperation(operationID, time.Now().UTC()); err != nil {
+		return &syncJournalError{err: fmt.Errorf("finalize operation: %w", err)}
+	}
+	if err := saveSyncState(state); err != nil {
+		return &syncJournalError{err: fmt.Errorf("save finalized operation: %w", err)}
+	}
 	return nil
 }
 

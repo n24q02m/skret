@@ -69,10 +69,11 @@ A `github` target and a Cloudflare **Worker** target (`sync.targets: - type: clo
 
 ### Credentials for a live presence check
 
-Because presence is looked up live, `skret hub push` needs the **same credentials `skret sync` needs** for any target it should check: `GITHUB_TOKEN` for a `github` target, `CLOUDFLARE_API_TOKEN` (plus an account id) for a `cloudflare` target.
+Because presence is looked up live, `skret hub push` needs the **same credentials `skret sync` needs** for every target it should check: `GITHUB_TOKEN` for a `github` target, or `CLOUDFLARE_API_TOKEN` plus an account ID for a `cloudflare` target.
 
-- The cron sync container already forwards these from the Worker's own secrets — no extra setup for the scheduled push.
-- Running `skret hub push` **by hand** (a laptop, CI, anywhere outside the cron container) needs you to export the same variables yourself, exactly as for `skret sync`:
+The hosted sync planner is deliberately config-free and credential-free. It accepts only bounded planning inputs and never receives provider tokens or secret values. Provider and target calls for a hosted operation belong to the separate security-executor boundary; do not add provider credentials to the planner container to make a live presence lookup work.
+
+Running `skret hub push` by hand (a laptop, CI, or another trusted operator environment) requires you to export the target credentials locally, exactly as for `skret sync`:
 
 ```bash
 export GITHUB_TOKEN=ghp_xxx
@@ -80,7 +81,7 @@ export CLOUDFLARE_API_TOKEN=xxx
 skret hub push
 ```
 
-Without them, those targets simply show `unknown` for every key — the push still succeeds, it just can't tell you more than that.
+Without the required credential, that target shows `unknown` for every key. The push still succeeds, but cannot report a stronger presence result for that target.
 
 ## Options
 

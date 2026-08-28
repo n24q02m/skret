@@ -1,0 +1,80 @@
+version: 2
+
+builds:
+  - id: skret
+    main: ./cmd/skret
+    binary: skret
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X github.com/n24q02m/skret/internal/version.Version={{.Version}}
+      - -X github.com/n24q02m/skret/internal/version.Commit={{.Commit}}
+      - -X github.com/n24q02m/skret/internal/version.Date={{.CommitTimestamp}}
+  - id: skret-secret-helper
+    main: ./cmd/skret-secret-helper
+    binary: skret-secret-helper
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+  - id: skret-compose-supervisor
+    main: ./cmd/skret-compose-supervisor
+    binary: skret-compose-supervisor
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+
+archives:
+  - id: cli
+    ids:
+      - skret
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: "skret_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+  - id: secret-helper
+    ids:
+      - skret-secret-helper
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: "skret-secret-helper_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+  - id: compose-supervisor
+    ids:
+      - skret-compose-supervisor
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: "skret-compose-supervisor_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: "checksums.txt"
+
+
+sboms:
+  - artifacts: archive
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^Merge"

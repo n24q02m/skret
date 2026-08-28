@@ -28,6 +28,8 @@ func newSetupCmd() *cobra.Command {
 		method string
 		rawOpt []string
 		yes    bool
+		force  bool
+		dryRun bool
 	)
 	cmd := &cobra.Command{
 		Use:   "setup",
@@ -37,37 +39,38 @@ func newSetupCmd() *cobra.Command {
 			"setup -> run loop.",
 		Example: "  skret setup",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			io.force = true // setup is idempotent; overwriting is expected
+			io.force = force
+			io.dryRun = dryRun
+			io.beforeCommit = func() error {
+				if io.provider == "local" || dryRun {
+					return nil
+				}
+				// Authenticating a non-local provider goes through a genuinely
+				// interactive step (AWS SSO device-code browser flow, or pasted
+				// access keys read from stdin -- see auth.Method.Interactive for
+				// aws's "sso"/"access-key" methods). Without a terminal to drive
+				// that, fail fast with an actionable message instead of hanging
+				// or failing deep inside the auth package.
+				if !yes && !isInteractiveStdin() {
+					return skret.NewError(skret.ExitValidationError,
+						"setup: authenticating "+io.provider+" needs an interactive step (browser SSO or pasted keys); "+
+							"re-run with --yes to attempt it anyway, or run 'skret auth login "+io.provider+
+							" --method=profile' (or --method=assume-role) for a non-interactive method", nil)
+				}
+				opts := map[string]string{}
+				for _, kv := range rawOpt {
+					if i := strings.IndexByte(kv, '='); i > 0 {
+						opts[kv[:i]] = kv[i+1:]
+					}
+				}
+				return setupAuthHook(io.provider, method, opts)
+			}
 			if err := io.run(cmd); err != nil {
 				return err
 			}
 			if io.provider == "local" {
 				cmd.PrintErrln("Local provider: no authentication needed. Next: skret run -- <cmd>")
 				return nil
-			}
-			// Authenticating a non-local provider goes through a genuinely
-			// interactive step (AWS SSO device-code browser flow, or pasted
-			// access keys read from stdin -- see auth.Method.Interactive for
-			// aws's "sso"/"access-key" methods). Without a terminal to drive
-			// that, fail fast with an actionable message instead of hanging
-			// or failing deep inside the auth package (mirrors bootstrap.go's
-			// existing --yes/isInteractiveStdin gate). --yes = "I know this
-			// may be interactive, proceed anyway" (fix for audit finding I4:
-			// --yes used to be declared and documented but never read).
-			if !yes && !isInteractiveStdin() {
-				return skret.NewError(skret.ExitValidationError,
-					"setup: authenticating "+io.provider+" needs an interactive step (browser SSO or pasted keys); "+
-						"re-run with --yes to attempt it anyway, or run 'skret auth login "+io.provider+
-						" --method=profile' (or --method=assume-role) for a non-interactive method", nil)
-			}
-			opts := map[string]string{}
-			for _, kv := range rawOpt {
-				if i := strings.IndexByte(kv, '='); i > 0 {
-					opts[kv[:i]] = kv[i+1:]
-				}
-			}
-			if err := setupAuthHook(io.provider, method, opts); err != nil {
-				return err
 			}
 			cmd.PrintErrln("Setup complete. Next: skret run -- <cmd>")
 			return nil
@@ -80,5 +83,7 @@ func newSetupCmd() *cobra.Command {
 	cmd.Flags().StringVar(&method, "method", "", "auth method (sso, access-key, profile)")
 	cmd.Flags().StringArrayVar(&rawOpt, "opt", nil, "auth option key=value (repeatable)")
 	cmd.Flags().BoolVar(&yes, "yes", false, "confirm running an interactive auth step non-interactively (required when stdin is not a terminal)")
+	cmd.Flags().BoolVar(&force, "force", false, "replace existing .skret.yaml instead of merging")
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "show the proposed config change without writing or authenticating")
 	return cmd
 }

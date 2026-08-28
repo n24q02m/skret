@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -24,6 +23,26 @@ type CloudflareSyncer struct {
 	baseURL    string
 	httpClient *http.Client
 }
+
+// cloudflareWorkerSyncer adapts the existing worker target to the optional
+// one-key capability without making Cloudflare Pages appear per-key capable.
+// The embedded target preserves the existing Sync, ExistingKeys, and Name
+// behavior for callers that use the long-standing CloudflareSyncer type.
+type cloudflareWorkerSyncer struct {
+	*CloudflareSyncer
+}
+
+func (c *cloudflareWorkerSyncer) SyncKey(ctx context.Context, secret *provider.Secret) error {
+	if c == nil || c.CloudflareSyncer == nil {
+		return fmt.Errorf("cloudflare: worker target is nil")
+	}
+	if secret == nil {
+		return fmt.Errorf("cloudflare: secret is nil")
+	}
+	return c.putWorkerSecret(ctx, SecretName(secret.Key), secret.Value)
+}
+
+var _ PerKeySyncer = (*cloudflareWorkerSyncer)(nil)
 
 // NewCloudflare builds a Cloudflare syncer. baseURL defaults to the public API.
 func NewCloudflare(accountID, worker, pages, token, baseURL string) Syncer {
@@ -89,24 +108,19 @@ func (c *CloudflareSyncer) putWorkerSecret(ctx context.Context, name, value stri
 	if err != nil {
 		return fmt.Errorf("cloudflare: marshal %q: %w", name, err)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPut, u.String(), strings.NewReader(string(body)))
-	if err != nil {
-		return fmt.Errorf("cloudflare: create request: %w", err)
-	}
-	req.Header.Set("Authorization", "Bearer "+c.token)
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := c.httpClient.Do(req)
+	resp, err := doWithRetry(ctx, c.httpClient, func() (*http.Request, error) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPut, u.String(), strings.NewReader(string(body)))
+		if err != nil {
+			return nil, fmt.Errorf("cloudflare: create request: %w", err)
+		}
+		req.Header.Set("Authorization", "Bearer "+c.token)
+		req.Header.Set("Content-Type", "application/json")
+		return req, nil
+	}, http.StatusOK)
 	if err != nil {
 		return fmt.Errorf("cloudflare: set %q: %w", name, err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		b, readErr := io.ReadAll(resp.Body)
-		if readErr != nil {
-			return fmt.Errorf("cloudflare: set %q: API returned %d (body unreadable: %w)", name, resp.StatusCode, readErr)
-		}
-		return fmt.Errorf("cloudflare: set %q: API returned %d: %s", name, resp.StatusCode, string(b))
-	}
 	return nil
 }
 
@@ -134,24 +148,19 @@ func (c *CloudflareSyncer) syncPages(ctx context.Context, secrets []*provider.Se
 		return fmt.Errorf("cloudflare: parse base url: %w", err)
 	}
 	u = u.JoinPath("accounts", c.accountID, "pages", "projects", c.pages)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, u.String(), strings.NewReader(string(body)))
-	if err != nil {
-		return fmt.Errorf("cloudflare: create request: %w", err)
-	}
-	req.Header.Set("Authorization", "Bearer "+c.token)
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := c.httpClient.Do(req)
+	resp, err := doWithRetry(ctx, c.httpClient, func() (*http.Request, error) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPatch, u.String(), strings.NewReader(string(body)))
+		if err != nil {
+			return nil, fmt.Errorf("cloudflare: create request: %w", err)
+		}
+		req.Header.Set("Authorization", "Bearer "+c.token)
+		req.Header.Set("Content-Type", "application/json")
+		return req, nil
+	}, http.StatusOK)
 	if err != nil {
 		return fmt.Errorf("cloudflare: patch pages: %w", err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		b, readErr := io.ReadAll(resp.Body)
-		if readErr != nil {
-			return fmt.Errorf("cloudflare: patch pages: API returned %d (body unreadable: %w)", resp.StatusCode, readErr)
-		}
-		return fmt.Errorf("cloudflare: patch pages: API returned %d: %s", resp.StatusCode, string(b))
-	}
 	return nil
 }
 
@@ -167,19 +176,18 @@ func (c *CloudflareSyncer) ExistingKeys(ctx context.Context) ([]string, error) {
 		return nil, fmt.Errorf("cloudflare: parse base url: %w", err)
 	}
 	u = u.JoinPath("accounts", c.accountID, "workers", "scripts", c.worker, "secrets")
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), http.NoBody)
-	if err != nil {
-		return nil, fmt.Errorf("cloudflare: create request: %w", err)
-	}
-	req.Header.Set("Authorization", "Bearer "+c.token)
-	resp, err := c.httpClient.Do(req)
+	resp, err := doWithRetry(ctx, c.httpClient, func() (*http.Request, error) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), http.NoBody)
+		if err != nil {
+			return nil, fmt.Errorf("cloudflare: create request: %w", err)
+		}
+		req.Header.Set("Authorization", "Bearer "+c.token)
+		return req, nil
+	}, http.StatusOK)
 	if err != nil {
 		return nil, fmt.Errorf("cloudflare: list worker secrets: %w", err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("cloudflare: list worker secrets: status %d", resp.StatusCode)
-	}
 	var body struct {
 		Result []struct {
 			Name string `json:"name"`
@@ -209,5 +217,9 @@ func newCloudflareFromConfig(tc TargetConfig) (Syncer, error) {
 	if tc.Token == "" {
 		return nil, fmt.Errorf("cloudflare: CLOUDFLARE_API_TOKEN is required")
 	}
-	return NewCloudflare(account, worker, pages, tc.Token, field(tc, "base_url")), nil
+	target := NewCloudflare(account, worker, pages, tc.Token, field(tc, "base_url"))
+	if worker != "" {
+		return &cloudflareWorkerSyncer{CloudflareSyncer: target.(*CloudflareSyncer)}, nil
+	}
+	return target, nil
 }

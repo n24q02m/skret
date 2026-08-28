@@ -142,3 +142,90 @@ func TestSetupCmd_AWS_YesBypassesNonInteractiveGuard(t *testing.T) {
 	require.NoError(t, cmd.Execute())
 	assert.True(t, called, "--yes must bypass the interactive guard and reach setupAuthHook")
 }
+
+func TestSetupAuthFailurePreservesExistingConfig(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".git"), 0o755))
+	orig, _ := os.Getwd()
+	defer os.Chdir(orig)
+	require.NoError(t, os.Chdir(dir))
+
+	original := []byte("version: \"1\"\nproject: keep-me\ndefault_env: prod\nenvironments:\n  prod:\n    provider: aws\n    path: /existing/prod\n    region: us-east-1\nrequired:\n  - API_KEY\nexclude:\n  - DEBUG_*\nsync:\n  targets:\n    - type: github\n      repo: n24q02m/example\n      no_overwrite: true\n")
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".skret.yaml"), original, 0o600))
+
+	origTTY := isInteractiveStdin
+	defer func() { isInteractiveStdin = origTTY }()
+	isInteractiveStdin = func() bool { return false }
+
+	origHook := setupAuthHook
+	defer func() { setupAuthHook = origHook }()
+	setupAuthHook = func(string, string, map[string]string) error {
+		return errors.New("auth failed")
+	}
+
+	cmd := NewRootCmd()
+	cmd.SetArgs([]string{"setup", "--provider=aws", "--yes"})
+	require.Error(t, cmd.Execute())
+
+	got, err := os.ReadFile(filepath.Join(dir, ".skret.yaml"))
+	require.NoError(t, err)
+	assert.Equal(t, original, got, "failed setup must not rewrite the existing config")
+}
+
+func TestSetupExistingLocalConfigUsesRetainedProvider(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".git"), 0o755))
+	orig, _ := os.Getwd()
+	defer os.Chdir(orig)
+	require.NoError(t, os.Chdir(dir))
+
+	original := []byte("version: \"1\"\ndefault_env: dev\nenvironments:\n  dev:\n    provider: local\n    file: .secrets.dev.yaml\n")
+	require.NoError(t, os.WriteFile(".skret.yaml", original, 0o600))
+
+	origTTY := isInteractiveStdin
+	defer func() { isInteractiveStdin = origTTY }()
+	isInteractiveStdin = func() bool { return false }
+
+	origHook := setupAuthHook
+	defer func() { setupAuthHook = origHook }()
+	called := false
+	setupAuthHook = func(string, string, map[string]string) error {
+		called = true
+		return errors.New("unexpected authentication")
+	}
+
+	cmd := NewRootCmd()
+	cmd.SetArgs([]string{"setup", "--yes"})
+	require.NoError(t, cmd.Execute())
+	assert.False(t, called, "setup must honor the retained local provider when --provider is omitted")
+	got, err := os.ReadFile(".skret.yaml")
+	require.NoError(t, err)
+	assert.Equal(t, original, got)
+}
+
+func TestSetupForceUsesReplacementProvider(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".git"), 0o755))
+	orig, _ := os.Getwd()
+	defer os.Chdir(orig)
+	require.NoError(t, os.Chdir(dir))
+
+	require.NoError(t, os.WriteFile(".skret.yaml", []byte("version: \"1\"\ndefault_env: dev\nenvironments:\n  dev:\n    provider: local\n    file: .secrets.dev.yaml\n"), 0o600))
+
+	origTTY := isInteractiveStdin
+	defer func() { isInteractiveStdin = origTTY }()
+	isInteractiveStdin = func() bool { return false }
+
+	origHook := setupAuthHook
+	defer func() { setupAuthHook = origHook }()
+	var authProvider string
+	setupAuthHook = func(provider, _ string, _ map[string]string) error {
+		authProvider = provider
+		return nil
+	}
+
+	cmd := NewRootCmd()
+	cmd.SetArgs([]string{"setup", "--force", "--yes"})
+	require.NoError(t, cmd.Execute())
+	assert.Equal(t, "aws", authProvider, "force replacement must authenticate the replacement provider")
+}

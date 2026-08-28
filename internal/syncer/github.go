@@ -30,6 +30,8 @@ type GitHubSyncer struct {
 	httpClient *http.Client
 }
 
+var _ PerKeySyncer = (*GitHubSyncer)(nil)
+
 // NewGitHub creates a GitHub Actions secrets syncer.
 func NewGitHub(owner, repo, token, baseURL string) Syncer {
 	if baseURL == "" {
@@ -47,6 +49,17 @@ func NewGitHub(owner, repo, token, baseURL string) Syncer {
 }
 
 func (g *GitHubSyncer) Name() string { return "github" }
+
+// SyncKey writes exactly one Actions secret while preserving the same
+// encryption, authentication, name normalization, and retry behavior as
+// Sync. It is used by durable operation journaling so a successful provider
+// response can be acknowledged before the next key is attempted.
+func (g *GitHubSyncer) SyncKey(ctx context.Context, secret *provider.Secret) error {
+	if secret == nil {
+		return fmt.Errorf("github: secret is nil")
+	}
+	return g.Sync(ctx, []*provider.Secret{secret})
+}
 
 func (g *GitHubSyncer) Sync(ctx context.Context, secrets []*provider.Secret) error {
 	if len(secrets) == 0 {
@@ -123,26 +136,19 @@ func (g *GitHubSyncer) getPublicKey(ctx context.Context) (string, string, error)
 	u = u.JoinPath("repos", g.owner, g.repo, "actions", "secrets", "public-key")
 	reqURL := u.String()
 
-	req, err := http.NewRequestWithContext(ctx, "GET", reqURL, http.NoBody)
-	if err != nil {
-		return "", "", fmt.Errorf("github: create request: %w", err)
-	}
-	req.Header.Set("Authorization", "Bearer "+g.token)
-	req.Header.Set("Accept", "application/vnd.github+json")
-
-	resp, err := g.httpClient.Do(req)
+	resp, err := doWithRetry(ctx, g.httpClient, func() (*http.Request, error) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, http.NoBody)
+		if err != nil {
+			return nil, fmt.Errorf("github: create request: %w", err)
+		}
+		req.Header.Set("Authorization", "Bearer "+g.token)
+		req.Header.Set("Accept", "application/vnd.github+json")
+		return req, nil
+	}, http.StatusOK)
 	if err != nil {
 		return "", "", fmt.Errorf("github: request: %w", err)
 	}
 	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, readErr := io.ReadAll(resp.Body)
-		if readErr != nil {
-			return "", "", fmt.Errorf("github: API returned %d (body unreadable: %w)", resp.StatusCode, readErr)
-		}
-		return "", "", fmt.Errorf("github: API returned %d: %s", resp.StatusCode, string(body))
-	}
 
 	var result struct {
 		KeyID string `json:"key_id"`
@@ -168,27 +174,20 @@ func (g *GitHubSyncer) putSecret(ctx context.Context, name, value string, recipi
 	reqURL := u.String()
 
 	body := fmt.Sprintf(`{"encrypted_value":%q,"key_id":%q}`, encValue, keyID)
-	req, err := http.NewRequestWithContext(ctx, "PUT", reqURL, strings.NewReader(body))
-	if err != nil {
-		return fmt.Errorf("github: create request: %w", err)
-	}
-	req.Header.Set("Authorization", "Bearer "+g.token)
-	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := g.httpClient.Do(req)
+	resp, err := doWithRetry(ctx, g.httpClient, func() (*http.Request, error) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPut, reqURL, strings.NewReader(body))
+		if err != nil {
+			return nil, fmt.Errorf("github: create request: %w", err)
+		}
+		req.Header.Set("Authorization", "Bearer "+g.token)
+		req.Header.Set("Accept", "application/vnd.github+json")
+		req.Header.Set("Content-Type", "application/json")
+		return req, nil
+	}, http.StatusCreated, http.StatusNoContent)
 	if err != nil {
 		return fmt.Errorf("github: request: %w", err)
 	}
 	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusNoContent {
-		respBody, readErr := io.ReadAll(resp.Body)
-		if readErr != nil {
-			return fmt.Errorf("github: API returned %d (body unreadable: %w)", resp.StatusCode, readErr)
-		}
-		return fmt.Errorf("github: API returned %d: %s", resp.StatusCode, string(respBody))
-	}
 	return nil
 }
 
@@ -218,14 +217,15 @@ func (g *GitHubSyncer) ExistingKeys(ctx context.Context) ([]string, error) {
 		q.Set("page", strconv.Itoa(page))
 		u.RawQuery = q.Encode()
 
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), http.NoBody)
-		if err != nil {
-			return nil, fmt.Errorf("github: create request: %w", err)
-		}
-		req.Header.Set("Authorization", "Bearer "+g.token)
-		req.Header.Set("Accept", "application/vnd.github+json")
-
-		resp, err := g.httpClient.Do(req)
+		resp, err := doWithRetry(ctx, g.httpClient, func() (*http.Request, error) {
+			req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), http.NoBody)
+			if err != nil {
+				return nil, fmt.Errorf("github: create request: %w", err)
+			}
+			req.Header.Set("Authorization", "Bearer "+g.token)
+			req.Header.Set("Accept", "application/vnd.github+json")
+			return req, nil
+		}, http.StatusOK)
 		if err != nil {
 			return nil, fmt.Errorf("github: list secrets: %w", err)
 		}
@@ -235,14 +235,11 @@ func (g *GitHubSyncer) ExistingKeys(ctx context.Context) ([]string, error) {
 				Name string `json:"name"`
 			} `json:"secrets"`
 		}
-		decodeErr := json.NewDecoder(resp.Body).Decode(&body)
+		if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+			resp.Body.Close()
+			return nil, fmt.Errorf("github: decode secrets list: %w", err)
+		}
 		resp.Body.Close()
-		if resp.StatusCode != http.StatusOK {
-			return nil, fmt.Errorf("github: list secrets: status %d", resp.StatusCode)
-		}
-		if decodeErr != nil {
-			return nil, fmt.Errorf("github: decode secrets list: %w", decodeErr)
-		}
 		for _, s := range body.Secrets {
 			names = append(names, s.Name)
 		}

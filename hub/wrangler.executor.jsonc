@@ -1,0 +1,33 @@
+// Source-only security executor Worker. The committed configuration is used
+// for explicit local dry-run bundle checks; runtime activation is external.
+{
+  "name": "skret-security-executor",
+  "main": "src/security-executor.ts",
+  "workers_dev": false,
+  "preview_urls": false,
+  "compatibility_date": "2026-06-14",
+  "durable_objects": {
+    "bindings": [
+      { "name": "EXECUTOR_REPLAY", "class_name": "SecurityExecutorReplay" },
+      { "name": "EXECUTOR_OPERATIONS", "class_name": "SecurityExecutorOperations" }
+    ]
+  },
+  // v2 adds the operation lifecycle/watchdog authority without rewriting the
+  // existing replay class.
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["SecurityExecutorReplay"] },
+    { "tag": "v2", "new_sqlite_classes": ["SecurityExecutorOperations"] }
+  ],
+  // Non-secret policy values are explicit. Envelope, StateManifest, provider
+  // control, and response keys are expected as out-of-band raw-safe secrets
+  // and intentionally have no source values.
+  "vars": {
+    "EXECUTOR_EXPECTED_AUDIENCE": "skret-security-executor",
+    "EXECUTOR_EXPECTED_ROLE": "operator",
+    "EXECUTOR_IMAGE_DIGEST": "<executor-image-digest>",
+    "EXECUTOR_CONFIG_DIGEST": "<executor-config-digest>"
+  },
+  // One bounded batch per invocation; this source bundle is checked locally
+  // and carries no runtime credentials or activation state.
+  "triggers": { "crons": ["*/15 * * * *"] }
+}

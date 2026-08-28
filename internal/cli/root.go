@@ -77,6 +77,7 @@ func NewRootCmd() *cobra.Command {
 	cmd.AddCommand(newRunCmd(opts))
 	cmd.AddCommand(newImportCmd(opts))
 	cmd.AddCommand(newSyncCmd(opts))
+	cmd.AddCommand(newSyncStateCmd())
 	cmd.AddCommand(newDiffCmd(opts))
 	cmd.AddCommand(newTemplateCmd(opts))
 	cmd.AddCommand(newScanCmd(opts))

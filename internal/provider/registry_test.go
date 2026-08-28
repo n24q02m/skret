@@ -128,3 +128,15 @@ func TestRegistry_Concurrent(t *testing.T) {
 	wg.Wait()
 	assert.Len(t, reg.Providers(), workers*iterations)
 }
+
+func TestCapabilityValid(t *testing.T) {
+	for _, capability := range []provider.Capability{
+		provider.CapabilityNativeCAS,
+		provider.CapabilityEnforcedExclusive,
+		provider.CapabilityOwnerRiskGate,
+		provider.CapabilityBlocked,
+	} {
+		assert.True(t, capability.Valid(), capability)
+	}
+	assert.False(t, provider.Capability("future").Valid())
+}

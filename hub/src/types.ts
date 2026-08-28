@@ -1,3 +1,4 @@
+import type { Fetcher } from "@cloudflare/workers-types";
 import type { SyncContainer } from "./container";
 import type { LoginGate } from "./gate";
 
@@ -14,18 +15,79 @@ export interface Env {
   // The counter that actually enforces the login limit; LOGIN_LIMIT is only
   // the free first pass in front of it (see router.ts loginAllowed).
   LOGIN_GATE: DurableObjectNamespace<LoginGate>;
-  // B2 cron sync worker: the SyncContainer Durable Object namespace plus the
-  // secrets forwarded into the container process (see index.ts SYNC_ENV_KEYS).
-  // The sync creds are optional because the dashboard/ingest request paths
-  // never read them — only scheduled() does, when it boots the container.
+  // Credential-free planner namespace. Health-only options below do not
+  // replace the required Durable Object binding.
   SYNC: DurableObjectNamespace<SyncContainer>;
-  GITHUB_TOKEN?: string;
-  CLOUDFLARE_API_TOKEN?: string;
-  CLOUDFLARE_ACCOUNT_ID?: string;
-  AWS_ACCESS_KEY_ID?: string;
-  AWS_SECRET_ACCESS_KEY?: string;
-  AWS_REGION?: string;
-  SKRET_HUB_URL?: string;
+  // Optional non-secret health inputs. Invalid values fail closed in the
+  // SyncContainer health RPC; absence uses the bounded source default.
+  SYNC_EXPECTED_FINGERPRINT?: string;
+  SYNC_STALE_THRESHOLD_SECONDS?: string;
+  // Paired private security executor. Ordinary Hub requests may be deployed
+  // without this binding, but the operator proxy must fail closed when it is
+  // absent rather than report a false success.
+  EXECUTOR?: Fetcher;
+}
+
+export interface SyncRunMetadata {
+  imageDigest?: string | null;
+  configFingerprint?: string | null;
+  targetCount?: number | null;
+}
+
+export type SyncRunStatus = "started" | "succeeded" | "failed";
+export type SyncRunClassification =
+  | "started"
+  | "clean_exit"
+  | "nonzero_exit"
+  | "runtime_signal"
+  | "start_failure";
+export type SyncRunStopReason = "exit" | "runtime_signal";
+export type SyncRunReason = SyncRunStopReason | "start_failure";
+
+export interface SyncRunRecord {
+  runId: string;
+  imageDigest: string | null;
+  configFingerprint: string | null;
+  targetCount: number | null;
+  startedAt: string;
+  endedAt: string | null;
+  /** Durable completion order; absent only on records written before schema migration. */
+  completionSequence?: number;
+  status: SyncRunStatus;
+  classification: SyncRunClassification;
+  exitCode: number | null;
+  reason: SyncRunReason | null;
+}
+export type SyncHealthStatus =
+  | "unknown"
+  | "active"
+  | "healthy"
+  | "degraded"
+  | "stale"
+  | "fingerprint_drift";
+
+export interface SyncHealth {
+  status: SyncHealthStatus;
+  active: boolean;
+  stale: boolean;
+  fingerprint_match: boolean | null;
+  last_success_at: string | null;
+  age_seconds: number | null;
+}
+
+export interface SyncHealthAlerts {
+  nonzero_completion: boolean;
+  stale: boolean;
+  fingerprint_drift: boolean;
+}
+
+export interface OperatorSyncHealth extends SyncHealth {
+  last_completion: SyncRunRecord | null;
+  last_success: SyncRunRecord | null;
+  active_run: SyncRunRecord | null;
+  expected_fingerprint: string | null;
+  stale_threshold_seconds: number;
+  alerts: SyncHealthAlerts;
 }
 
 export interface Manifest {

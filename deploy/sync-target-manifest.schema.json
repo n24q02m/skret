@@ -1,0 +1,130 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://skret.dev/schemas/sync-target-manifest-v1.json",
+  "title": "Skret candidate target manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "purpose",
+    "generation",
+    "owner",
+    "expires_at",
+    "source",
+    "targets",
+    "target_set_digest",
+    "egress_allowlist",
+    "operation_budget",
+    "production_denial_digest"
+  ],
+  "properties": {
+    "schema": { "const": "skret-target-manifest/v1" },
+    "purpose": { "const": "SK-CANDIDATE-TARGETS" },
+    "generation": { "type": "integer", "minimum": 1 },
+    "owner": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@+/-]{0,127}$" },
+    "expires_at": { "type": "string", "format": "date-time" },
+    "source": { "$ref": "#/$defs/source" },
+    "targets": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "uniqueItems": true,
+      "items": {
+        "oneOf": [
+          { "$ref": "#/$defs/githubTarget" },
+          { "$ref": "#/$defs/cloudflareTarget" }
+        ]
+      }
+    },
+    "target_set_digest": { "$ref": "#/$defs/digest" },
+    "egress_allowlist": {
+      "const": ["api.cloudflare.com", "api.github.com"]
+    },
+    "operation_budget": { "type": "integer", "minimum": 1, "maximum": 64 },
+    "production_denial_digest": { "$ref": "#/$defs/digest" }
+  },
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["identity", "version", "fingerprint", "digest"],
+      "properties": {
+        "identity": {
+          "type": "string",
+          "pattern": "^aws\\|[0-9]{12}\\|[a-z0-9-]+\\|/[^|]+\\|[1-9][0-9]*\\|[A-Za-z0-9._-]+$"
+        },
+        "version": { "type": "integer", "minimum": 1 },
+        "fingerprint": { "$ref": "#/$defs/digest" },
+        "digest": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "githubTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "provider",
+        "owner",
+        "repository",
+        "environment",
+        "secret_name",
+        "capability",
+        "operation",
+        "synthetic",
+        "before_state_oid",
+        "canonical"
+      ],
+      "properties": {
+        "provider": { "const": "github" },
+        "owner": { "const": "skret-candidate-fixture" },
+        "repository": { "const": "projection-canary" },
+        "environment": { "const": "candidate" },
+        "secret_name": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]{0,99}$" },
+        "capability": { "const": "owner_risk_gate" },
+        "operation": { "const": "upsert" },
+        "synthetic": { "const": true },
+        "before_state_oid": { "type": "null" },
+        "canonical": {
+          "type": "string",
+          "pattern": "^github\\|skret-candidate-fixture/projection-canary\\|candidate\\|[A-Z][A-Z0-9_]{0,99}$"
+        }
+      }
+    },
+    "cloudflareTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "provider",
+        "account_id",
+        "resource_kind",
+        "resource_name",
+        "environment",
+        "secret_name",
+        "capability",
+        "operation",
+        "synthetic",
+        "before_state_oid",
+        "canonical"
+      ],
+      "properties": {
+        "provider": { "const": "cloudflare" },
+        "account_id": { "const": "cccccccccccccccccccccccccccccccc" },
+        "resource_kind": { "enum": ["worker", "pages"] },
+        "resource_name": { "type": "string", "pattern": "^skret-candidate-[a-z0-9-]+$" },
+        "environment": { "const": "candidate" },
+        "secret_name": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]{0,99}$" },
+        "capability": { "const": "owner_risk_gate" },
+        "operation": { "const": "upsert" },
+        "synthetic": { "const": true },
+        "before_state_oid": { "type": "null" },
+        "canonical": {
+          "type": "string",
+          "pattern": "^cloudflare\\|c{32}\\|(worker|pages)\\|skret-candidate-[a-z0-9-]+\\|candidate\\|[A-Z][A-Z0-9_]{0,99}$"
+        }
+      }
+    }
+  }
+}

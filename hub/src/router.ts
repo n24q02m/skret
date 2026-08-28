@@ -1,7 +1,9 @@
-import type { Env } from "./types";
+import { getContainer } from "@cloudflare/containers";
+import type { Env, OperatorSyncHealth, SyncHealth, SyncHealthStatus, SyncRunRecord } from "./types";
 import { handleIngest } from "./ingest";
+import { handleExecutorEnvelope } from "./operator-executor-proxy";
 import { checkPassword, mintSession, verifySession, SESSION_TTL } from "./auth";
-import { getAllManifests } from "./store";
+import { getAllManifests, MAX_SYNC_STALE_THRESHOLD_SECONDS, MIN_SYNC_STALE_THRESHOLD_SECONDS } from "./store";
 import { renderDashboard, renderLogin } from "./render";
 
 const COOKIE = "session";
@@ -12,11 +14,17 @@ export async function handleRequest(req: Request, env: Env): Promise<Response> {
   if (req.method === "GET" && pathname === "/healthz") {
     return handleHealthz(env);
   }
+  if (pathname === "/operator/sync-health") {
+    return handleOperatorSyncHealth(req, env);
+  }
   if (req.method === "POST" && pathname === "/api/manifest") {
     if (!(await allow(env.INGEST_LIMIT, req))) {
       return rateLimited("rate limited");
     }
     return handleIngest(req, env);
+  }
+  if (pathname === "/operator/executor-envelope") {
+    return handleExecutorEnvelope(req, env);
   }
   if (req.method === "POST" && pathname === "/login") {
     // Ahead of reading the form and comparing the password, so a flood never
@@ -113,9 +121,321 @@ async function handleHealthz(env: Env): Promise<Response> {
   try {
     await env.VAULT_KV.get(HEALTH_PROBE_KEY);
   } catch {
-    return json({ ok: false, kv: "error" }, 503);
+    return json({ ok: false, kv: "error", sync: null }, 503);
   }
-  return json({ ok: true, kv: "ok" });
+
+  let sync: SyncHealth | null = null;
+  try {
+    const health = await getContainer(env.SYNC).getSyncHealth();
+    sync = projectSyncHealth(health);
+  } catch {
+    // Sync freshness is informative; a transient RPC failure must not turn
+    // the unauthenticated health probe into an internal-error disclosure.
+  }
+  return json({ ok: true, kv: "ok", sync });
+}
+async function handleOperatorSyncHealth(req: Request, env: Env): Promise<Response> {
+  if (req.method !== "GET") {
+    return operatorResponse("method not allowed", 405, { Allow: "GET" });
+  }
+
+  const cookie = readCookie(req, COOKIE);
+  let authorized = false;
+  try {
+    authorized = cookie !== null && (await verifySession(env.RELAY_PASSWORD, cookie));
+  } catch {
+    authorized = false;
+  }
+  if (!authorized) return operatorResponse("unauthorized", 401);
+
+  let raw: unknown;
+  try {
+    const container = getContainer(env.SYNC) as unknown as {
+      getOperatorSyncHealth?: () => Promise<unknown>;
+    };
+    if (typeof container.getOperatorSyncHealth !== "function") {
+      throw new Error("sync health RPC unavailable");
+    }
+    raw = await container.getOperatorSyncHealth();
+  } catch {
+    return operatorResponse("sync health unavailable", 503);
+  }
+
+  const health = projectOperatorSyncHealth(raw);
+  return health === null
+    ? operatorResponse("sync health unavailable", 503)
+    : json(health);
+}
+
+function projectSyncHealth(value: unknown): SyncHealth | null {
+  if (value === null || typeof value !== "object") return null;
+  const candidate = value as Partial<SyncHealth>;
+  if (
+    !isHealthStatus(candidate.status) ||
+    typeof candidate.active !== "boolean" ||
+    typeof candidate.stale !== "boolean"
+  ) {
+    return null;
+  }
+
+  const lastSuccessAt =
+    typeof candidate.last_success_at === "string" &&
+    Number.isFinite(Date.parse(candidate.last_success_at))
+      ? candidate.last_success_at
+      : null;
+  const ageSeconds =
+    typeof candidate.age_seconds === "number" &&
+    Number.isSafeInteger(candidate.age_seconds) &&
+    candidate.age_seconds >= 0
+      ? candidate.age_seconds
+      : null;
+  const fingerprintMatch =
+    candidate.fingerprint_match === null ||
+    typeof candidate.fingerprint_match === "boolean"
+      ? candidate.fingerprint_match
+      : null;
+
+  return {
+    status: candidate.status,
+    active: candidate.active,
+    stale: candidate.stale,
+    fingerprint_match: fingerprintMatch,
+    last_success_at: lastSuccessAt,
+    age_seconds: ageSeconds,
+  };
+}
+
+function projectOperatorSyncHealth(value: unknown): OperatorSyncHealth | null {
+  const publicHealth = projectSyncHealth(value);
+  if (publicHealth === null || value === null || typeof value !== "object") return null;
+  const candidate = value as Partial<OperatorSyncHealth>;
+  const lastCompletion = projectSyncRunRecord(candidate.last_completion);
+  const lastSuccess = projectSyncRunRecord(candidate.last_success);
+  const activeRun = projectSyncRunRecord(candidate.active_run);
+  const expectedFingerprint =
+    candidate.expected_fingerprint === null ||
+    typeof candidate.expected_fingerprint === "string"
+      ? projectFingerprint(candidate.expected_fingerprint)
+      : undefined;
+  const staleThreshold =
+    typeof candidate.stale_threshold_seconds === "number" &&
+    Number.isSafeInteger(candidate.stale_threshold_seconds) &&
+    candidate.stale_threshold_seconds >= MIN_SYNC_STALE_THRESHOLD_SECONDS &&
+    candidate.stale_threshold_seconds <= MAX_SYNC_STALE_THRESHOLD_SECONDS
+      ? candidate.stale_threshold_seconds
+      : null;
+  const alerts = projectSyncHealthAlerts(candidate.alerts);
+  if (
+    expectedFingerprint === undefined ||
+    staleThreshold === null ||
+    alerts === null ||
+    (candidate.last_completion !== null && lastCompletion === null) ||
+    (candidate.last_success !== null && lastSuccess === null) ||
+    (candidate.active_run !== null && activeRun === null) ||
+    candidate.last_completion === undefined ||
+    candidate.last_success === undefined ||
+    candidate.active_run === undefined
+  ) {
+    return null;
+  }
+  const expectedAgeStale =
+    lastSuccess === null ||
+    publicHealth.age_seconds === null ||
+    publicHealth.age_seconds >= staleThreshold;
+  const fingerprintMatch =
+    expectedFingerprint === null || lastSuccess === null
+      ? null
+      : lastSuccess.configFingerprint === expectedFingerprint;
+  const fingerprintDrift = fingerprintMatch === false;
+  const nonzeroCompletion = lastCompletion?.status === "failed";
+  const expectedStatus = deriveHealthStatus(
+    activeRun !== null,
+    lastSuccess !== null,
+    expectedAgeStale,
+    fingerprintDrift,
+    nonzeroCompletion,
+  );
+  if (
+    publicHealth.active !== (activeRun !== null) ||
+    publicHealth.stale !== expectedAgeStale ||
+    publicHealth.fingerprint_match !== fingerprintMatch ||
+    publicHealth.status !== expectedStatus ||
+    publicHealth.last_success_at !== (lastSuccess?.endedAt ?? null) ||
+    alerts.stale !== expectedAgeStale ||
+    alerts.fingerprint_drift !== fingerprintDrift ||
+    alerts.nonzero_completion !== nonzeroCompletion
+  ) {
+    return null;
+  }
+
+  return {
+    ...publicHealth,
+    last_completion: lastCompletion,
+    last_success: lastSuccess,
+    active_run: activeRun,
+    expected_fingerprint: expectedFingerprint,
+    stale_threshold_seconds: staleThreshold,
+    alerts,
+  };
+}
+
+function projectSyncHealthAlerts(value: unknown): OperatorSyncHealth["alerts"] | null {
+  if (value === null || typeof value !== "object") return null;
+  const candidate = value as Partial<OperatorSyncHealth["alerts"]>;
+  return typeof candidate.nonzero_completion === "boolean" &&
+    typeof candidate.stale === "boolean" &&
+    typeof candidate.fingerprint_drift === "boolean"
+    ? {
+        nonzero_completion: candidate.nonzero_completion,
+        stale: candidate.stale,
+        fingerprint_drift: candidate.fingerprint_drift,
+      }
+    : null;
+}
+
+function projectSyncRunRecord(value: unknown): SyncRunRecord | null {
+  if (value === null || typeof value !== "object") return null;
+  const candidate = value as Partial<SyncRunRecord>;
+  const runId = projectBoundedString(candidate.runId);
+  const imageDigest = projectNullableBoundedString(candidate.imageDigest);
+  const configFingerprint = projectNullableBoundedString(candidate.configFingerprint);
+  const targetCount =
+    candidate.targetCount === null
+      ? null
+      : typeof candidate.targetCount === "number" &&
+          Number.isSafeInteger(candidate.targetCount) &&
+          candidate.targetCount >= 0
+        ? candidate.targetCount
+        : undefined;
+  const startedAt =
+    typeof candidate.startedAt === "string" &&
+    Number.isFinite(Date.parse(candidate.startedAt))
+      ? candidate.startedAt
+      : null;
+  const endedAt =
+    candidate.endedAt === null
+      ? null
+      : typeof candidate.endedAt === "string" &&
+          Number.isFinite(Date.parse(candidate.endedAt))
+        ? candidate.endedAt
+        : undefined;
+  const status = candidate.status;
+  const classification = candidate.classification;
+  const reason = candidate.reason;
+  const exitCode =
+    candidate.exitCode === null
+      ? null
+      : typeof candidate.exitCode === "number" &&
+          Number.isSafeInteger(candidate.exitCode)
+        ? candidate.exitCode
+        : undefined;
+  if (
+    runId === null ||
+    imageDigest === undefined ||
+    configFingerprint === undefined ||
+    targetCount === undefined ||
+    startedAt === null ||
+    endedAt === undefined ||
+    exitCode === undefined ||
+    !isRunStatus(status) ||
+    !isRunClassification(classification) ||
+    !isRunReason(reason) ||
+    (status === "started" &&
+      (endedAt !== null || classification !== "started" || exitCode !== null || reason !== null)) ||
+    (status !== "started" &&
+      (endedAt === null || classification === "started" || reason === null)) ||
+    (status === "succeeded" &&
+      (classification !== "clean_exit" || exitCode !== 0 || reason !== "exit")) ||
+    (status === "failed" &&
+      (classification === "clean_exit" ||
+        (reason !== "exit" && reason !== "runtime_signal" && reason !== "start_failure")))
+  ) {
+    return null;
+  }
+  return {
+    runId,
+    imageDigest,
+    configFingerprint,
+    targetCount,
+    startedAt,
+    endedAt,
+    status,
+    classification,
+    exitCode,
+    reason,
+  };
+}
+
+function projectFingerprint(value: unknown): string | null | undefined {
+  if (value === null) return null;
+  if (value === undefined) return undefined;
+  return projectBoundedString(value) ?? undefined;
+}
+
+function projectBoundedString(value: unknown): string | null {
+  if (typeof value !== "string" || value.length === 0 || value.length > 256) return null;
+  return [...value].some((char) => char.charCodeAt(0) < 0x20 || char === "\u007f")
+    ? null
+    : value;
+}
+
+function projectNullableBoundedString(value: unknown): string | null | undefined {
+  if (value === null) return null;
+  return projectBoundedString(value);
+}
+
+function isCleanSuccessRecord(record: SyncRunRecord): boolean {
+  return (
+    record.status === "succeeded" &&
+    record.classification === "clean_exit" &&
+    record.exitCode === 0 &&
+    record.reason === "exit" &&
+    record.endedAt !== null
+  );
+}
+
+function isHealthStatus(value: unknown): value is SyncHealthStatus {
+  return (
+    value === "unknown" ||
+    value === "active" ||
+    value === "healthy" ||
+    value === "degraded" ||
+    value === "stale" ||
+    value === "fingerprint_drift"
+  );
+}
+
+function isRunStatus(value: unknown): value is SyncRunRecord["status"] {
+  return value === "started" || value === "succeeded" || value === "failed";
+}
+
+function isRunClassification(value: unknown): value is SyncRunRecord["classification"] {
+  return (
+    value === "started" ||
+    value === "clean_exit" ||
+    value === "nonzero_exit" ||
+    value === "runtime_signal" ||
+    value === "start_failure"
+  );
+}
+
+function isRunReason(value: unknown): value is SyncRunRecord["reason"] {
+  return value === null || value === "exit" || value === "runtime_signal" || value === "start_failure";
+}
+
+function deriveHealthStatus(
+  active: boolean,
+  hasSuccess: boolean,
+  stale: boolean,
+  fingerprintDrift: boolean,
+  nonzeroCompletion: boolean,
+): OperatorSyncHealth["status"] {
+  if (active) return "active";
+  if (!hasSuccess) return "unknown";
+  if (fingerprintDrift) return "fingerprint_drift";
+  if (stale) return "stale";
+  if (nonzeroCompletion) return "degraded";
+  return "healthy";
 }
 
 async function handleLogin(req: Request, env: Env): Promise<Response> {
@@ -193,10 +513,15 @@ const SECURITY_HEADERS: Record<string, string> = {
     "default-src 'none'; style-src 'unsafe-inline'; img-src data:; form-action 'self'; base-uri 'none'",
 };
 
-function withSecurityHeaders(body: BodyInit | null, status: number, contentType: string): Response {
+function withSecurityHeaders(
+  body: BodyInit | null,
+  status: number,
+  contentType: string,
+  extraHeaders?: Record<string, string>,
+): Response {
   return new Response(body, {
     status,
-    headers: { "Content-Type": contentType, ...SECURITY_HEADERS },
+    headers: { "Content-Type": contentType, ...SECURITY_HEADERS, ...extraHeaders },
   });
 }
 
@@ -204,6 +529,13 @@ export function json(obj: unknown, status = 200): Response {
   return withSecurityHeaders(JSON.stringify(obj), status, "application/json");
 }
 
+function operatorResponse(
+  body: string,
+  status: number,
+  extraHeaders?: Record<string, string>,
+): Response {
+  return withSecurityHeaders(body, status, "text/plain; charset=utf-8", extraHeaders);
+}
 function html(body: string, status: number): Response {
   return withSecurityHeaders(body, status, "text/html; charset=utf-8");
 }

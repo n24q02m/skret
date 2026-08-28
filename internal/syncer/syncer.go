@@ -14,6 +14,17 @@ type Syncer interface {
 	Sync(ctx context.Context, secrets []*provider.Secret) error
 }
 
+// PerKeySyncer is an optional target capability for destinations where one
+// provider request writes exactly one secret. Callers that need durable
+// acknowledgement may use SyncKey to journal each provider response before
+// attempting the next key. Targets whose API is whole-file or whole-patch
+// (for example dotenv and Cloudflare Pages) intentionally do not implement
+// this interface.
+type PerKeySyncer interface {
+	Syncer
+	SyncKey(ctx context.Context, secret *provider.Secret) error
+}
+
 // ExistingLister is implemented by syncers whose target can enumerate the
 // names it already holds. Values at these targets are write-only; names are
 // enough to make a sync non-destructive.

@@ -66,8 +66,7 @@ func TestGitHubSyncer_Internal_GetPublicKey_Errors(t *testing.T) {
 	g.baseURL = "http://api.github.com"
 	assert.Contains(t, err.Error(), "parse base url")
 
-	g.baseURL = "http://api.github.com"
-	// Test read body error
+	// A status error must not read or retain a provider response body.
 	g.httpClient.Transport = &mockTransport{
 		roundTrip: func(req *http.Request) (*http.Response, error) {
 			return &http.Response{
@@ -78,7 +77,8 @@ func TestGitHubSyncer_Internal_GetPublicKey_Errors(t *testing.T) {
 	}
 	_, _, err = g.getPublicKey(context.Background())
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "read error")
+	assert.Contains(t, err.Error(), "404")
+	assert.NotContains(t, err.Error(), "read error")
 
 	// Test invalid JSON
 	g.httpClient.Transport = &mockTransport{
@@ -117,7 +117,7 @@ func TestGitHubSyncer_Internal_PutSecret_Errors(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "network error")
 
-	// Test read body error on failure
+	// A status error must not read or retain a provider response body.
 	g.httpClient.Transport = &mockTransport{
 		roundTrip: func(req *http.Request) (*http.Response, error) {
 			return &http.Response{
@@ -128,7 +128,8 @@ func TestGitHubSyncer_Internal_PutSecret_Errors(t *testing.T) {
 	}
 	err = g.putSecret(context.Background(), "name", "value", &recipientKey, "key-id")
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "read error")
+	assert.Contains(t, err.Error(), "500")
+	assert.NotContains(t, err.Error(), "read error")
 
 	// Test parse base URL error
 	g.baseURL = "http://api.github.com\x7f"

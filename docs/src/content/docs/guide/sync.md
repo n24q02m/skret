@@ -102,6 +102,14 @@ skret sync --to=github --github-repo=myorg/myapp --skip-unchanged
 
 `--skip-unchanged` compares each secret's SHA256 hash against a local cache (`~/.skret/sync-state/`, one file per target) from the last successful sync and only pushes values that changed. This avoids unnecessary API calls on scheduled sync jobs where most secrets are unchanged run to run. The cache updates only after a fully successful sync to that target.
 
+## Explicit rotation: `--rotate`
+
+```bash
+skret sync --to=github --github-repo=myorg/myapp --rotate
+```
+
+`--rotate` is an explicit controlled overwrite intent: it sends every selected source key, bypasses `--skip-unchanged`, and overrides a target's `no_overwrite: true` setting. Rotation loads and saves the per-target sync-state journal so its operation ID, per-key outcomes, intent, and last-success state remain durable. It cannot be combined with `--no-overwrite`; that conflict is rejected before provider or target calls. Rotation does not claim canary, rollback, or production approval.
+
 ## Safety flags
 
 ### `--dry-run`
@@ -120,10 +128,12 @@ existing values are never overwritten:
   entry. Use this for targets that must behave as a cache of the provider.
 - For a whole run: `skret sync --no-overwrite` forces it on every target.
 
-Rotation under no-overwrite is deliberate: delete the key at the target
-(`gh secret delete <KEY> -R owner/repo`), and the next sync repopulates it
-from the provider. Deleting is recoverable (the provider still holds the
-value); overwriting is not (GitHub and Cloudflare secrets are write-only).
+Rotation under no-overwrite is deliberate only on the ordinary sync path:
+delete the key at the target (`gh secret delete <KEY> -R owner/repo`), and the
+next sync repopulates it from the provider. `--rotate` is the separate
+explicit overwrite intent for replacing an existing target value. Deleting is
+recoverable (the provider still holds the value); overwriting is not (GitHub
+and Cloudflare secrets are write-only).
 
 `--skip-unchanged` is ignored for a no-overwrite target: the target listing
 already determines the write set, and a warm value cache could otherwise
@@ -146,6 +156,20 @@ skret sync --to=dotenv --format json
     "source": "/myapp/prod",
     "target": "dotenv",
     "synced": 4
+  }
+]
+```
+
+With `--rotate`, the object also includes `"intent": "rotate"`; this records
+intent only and never includes secret values:
+
+```json
+[
+  {
+    "source": "/myapp/prod",
+    "target": "dotenv",
+    "synced": 4,
+    "intent": "rotate"
   }
 ]
 ```

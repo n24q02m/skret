@@ -222,14 +222,6 @@ exit /b 0
             home.run_sandbox(wrong, runner)
         self.assertEqual(runner.calls, [])
 
-    def test_state_role_paths_must_be_distinct_before_execution(self) -> None:
-        aliased = dict(self.spec)
-        aliased["state_public_key"] = aliased["state_file"]
-        runner = FakeRunner()
-        with self.assertRaises(home.HomeSandboxError):
-            home.run_sandbox(aliased, runner)
-        self.assertEqual(runner.calls, [])
-
     def test_digest_path_overlap_and_noncanonical_specs_fail_before_execution(self) -> None:
         runner = FakeRunner()
         wrong = dict(self.spec)

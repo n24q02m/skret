@@ -1,0 +1,47 @@
+{
+  "schema": "skret-target-manifest/v1",
+  "purpose": "SK-CANDIDATE-TARGETS",
+  "generation": 1,
+  "owner": "release-security-owner",
+  "expires_at": "{{EXPIRES_AT}}",
+  "source": {
+    "identity": "aws|000000000000|ap-southeast-1|/skret-candidate/fixture|101|candidate-generation-1",
+    "version": 101,
+    "fingerprint": "{{SOURCE_FINGERPRINT}}",
+    "digest": "{{SOURCE_DIGEST}}"
+  },
+  "targets": [
+    {
+      "provider": "cloudflare",
+      "account_id": "cccccccccccccccccccccccccccccccc",
+      "resource_kind": "worker",
+      "resource_name": "skret-candidate-projection-canary",
+      "environment": "candidate",
+      "secret_name": "SKRET_CANARY",
+      "capability": "owner_risk_gate",
+      "operation": "upsert",
+      "synthetic": true,
+      "before_state_oid": null,
+      "canonical": "cloudflare|cccccccccccccccccccccccccccccccc|worker|skret-candidate-projection-canary|candidate|SKRET_CANARY"
+    },
+    {
+      "provider": "github",
+      "owner": "skret-candidate-fixture",
+      "repository": "projection-canary",
+      "environment": "candidate",
+      "secret_name": "SKRET_CANARY",
+      "capability": "owner_risk_gate",
+      "operation": "upsert",
+      "synthetic": true,
+      "before_state_oid": null,
+      "canonical": "github|skret-candidate-fixture/projection-canary|candidate|SKRET_CANARY"
+    }
+  ],
+  "target_set_digest": "{{TARGET_SET_DIGEST}}",
+  "egress_allowlist": [
+    "api.cloudflare.com",
+    "api.github.com"
+  ],
+  "operation_budget": 2,
+  "production_denial_digest": "{{PRODUCTION_DENIAL_DIGEST}}"
+}

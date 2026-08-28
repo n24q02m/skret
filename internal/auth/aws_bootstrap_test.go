@@ -19,6 +19,7 @@ import (
 // fakeIAM records call counts + captured inputs and returns configured results.
 type fakeIAM struct {
 	getUserFn         func(*iam.GetUserInput) (*iam.GetUserOutput, error)
+	getUserPolicyFn   func(*iam.GetUserPolicyInput) (*iam.GetUserPolicyOutput, error)
 	createUserFn      func(*iam.CreateUserInput) (*iam.CreateUserOutput, error)
 	putUserPolicyFn   func(*iam.PutUserPolicyInput) (*iam.PutUserPolicyOutput, error)
 	listAccessKeysFn  func(*iam.ListAccessKeysInput) (*iam.ListAccessKeysOutput, error)
@@ -32,6 +33,13 @@ type fakeIAM struct {
 
 func (f *fakeIAM) GetUser(_ context.Context, in *iam.GetUserInput, _ ...func(*iam.Options)) (*iam.GetUserOutput, error) {
 	return f.getUserFn(in)
+}
+
+func (f *fakeIAM) GetUserPolicy(_ context.Context, in *iam.GetUserPolicyInput, _ ...func(*iam.Options)) (*iam.GetUserPolicyOutput, error) {
+	if f.getUserPolicyFn != nil {
+		return f.getUserPolicyFn(in)
+	}
+	return &iam.GetUserPolicyOutput{}, nil
 }
 
 func (f *fakeIAM) CreateUser(_ context.Context, in *iam.CreateUserInput, _ ...func(*iam.Options)) (*iam.CreateUserOutput, error) {
@@ -146,8 +154,9 @@ func TestProvision_HappyPath_CreatesUserAndScopedPolicy(t *testing.T) {
 	assert.ElementsMatch(t, []string{
 		"ssm:GetParameter", "ssm:GetParameters", "ssm:GetParametersByPath",
 		"ssm:GetParameterHistory", "ssm:PutParameter", "ssm:DeleteParameter",
+		"ssm:AddTagsToResource",
 	}, ssmStmt.Action)
-	assert.Len(t, ssmStmt.Action, 6)
+	assert.Len(t, ssmStmt.Action, 7)
 	assert.Equal(
 		t,
 		fmt.Sprintf("arn:aws:ssm:%s:%s:parameter/myapp/prod/*", testRegion, testAccount),
@@ -185,6 +194,31 @@ func TestProvision_UserExists_SkipsCreateUser(t *testing.T) {
 	assert.Equal(t, 1, iamFake.putPolicyCalls)
 	assert.Equal(t, 1, iamFake.createAccessKeyCalls)
 	assert.Equal(t, testKeyID, res.AccessKeyID)
+}
+
+func TestProvision_ExistingPolicyMismatchRefusesOverwrite(t *testing.T) {
+	iamFake := &fakeIAM{
+		getUserFn: func(*iam.GetUserInput) (*iam.GetUserOutput, error) {
+			return &iam.GetUserOutput{}, nil
+		},
+		getUserPolicyFn: func(*iam.GetUserPolicyInput) (*iam.GetUserPolicyOutput, error) {
+			return &iam.GetUserPolicyOutput{
+				PolicyDocument: aws.String(`{"Version":"2012-10-17","Statement":[]}`),
+			}, nil
+		},
+		createAccessKeyFn: okCreateAccessKey(),
+	}
+	flow := &BootstrapFlow{IAM: iamFake, STS: okSTS()}
+
+	res, err := flow.Provision(context.Background(), BootstrapOpts{
+		Project: "myapp", Path: "/myapp/prod", Region: testRegion,
+	})
+	require.Error(t, err)
+	assert.Nil(t, res)
+	assert.Contains(t, err.Error(), "BOOTSTRAP_POLICY_CONFLICT")
+	assert.Contains(t, err.Error(), "remediation")
+	assert.Equal(t, 0, iamFake.putPolicyCalls)
+	assert.Equal(t, 0, iamFake.createAccessKeyCalls)
 }
 
 func TestProvision_TwoKeyCap_Errors(t *testing.T) {

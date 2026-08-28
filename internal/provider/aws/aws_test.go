@@ -9,12 +9,23 @@ import (
 	awslib "github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
 	ssmtypes "github.com/aws/aws-sdk-go-v2/service/ssm/types"
+	"github.com/aws/smithy-go"
 	"github.com/n24q02m/skret/internal/config"
 	"github.com/n24q02m/skret/internal/provider"
 	skaws "github.com/n24q02m/skret/internal/provider/aws"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+type mockAWSAPIError struct {
+	code    string
+	message string
+}
+
+func (e *mockAWSAPIError) Error() string                 { return e.message }
+func (e *mockAWSAPIError) ErrorCode() string             { return e.code }
+func (e *mockAWSAPIError) ErrorMessage() string          { return e.message }
+func (e *mockAWSAPIError) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }
 
 type mockSSMClient struct {
 	params                  map[string]ssmtypes.Parameter
@@ -25,12 +36,17 @@ type mockSSMClient struct {
 	errDel                  error
 	errHistory              error
 	history                 map[string][]ssmtypes.ParameterHistory
+	callOrder               []string
+	putInputs               []*ssm.PutParameterInput
+	tagInputs               []*ssm.AddTagsToResourceInput
 	GetParametersByPathFunc func(ctx context.Context, input *ssm.GetParametersByPathInput) (*ssm.GetParametersByPathOutput, error)
 	GetParameterHistoryFunc func(ctx context.Context, input *ssm.GetParameterHistoryInput) (*ssm.GetParameterHistoryOutput, error)
 	PutParameterFunc        func(ctx context.Context, input *ssm.PutParameterInput) (*ssm.PutParameterOutput, error)
+	AddTagsToResourceFunc   func(ctx context.Context, input *ssm.AddTagsToResourceInput) (*ssm.AddTagsToResourceOutput, error)
 }
 
 func (m *mockSSMClient) GetParameter(_ context.Context, input *ssm.GetParameterInput, _ ...func(*ssm.Options)) (*ssm.GetParameterOutput, error) {
+	m.callOrder = append(m.callOrder, "GetParameter")
 	if m.errGet != nil {
 		return nil, m.errGet
 	}
@@ -39,6 +55,15 @@ func (m *mockSSMClient) GetParameter(_ context.Context, input *ssm.GetParameterI
 		return nil, &ssmtypes.ParameterNotFound{Message: awslib.String("not found")}
 	}
 	return &ssm.GetParameterOutput{Parameter: &p}, nil
+}
+
+func (m *mockSSMClient) AddTagsToResource(ctx context.Context, input *ssm.AddTagsToResourceInput, _ ...func(*ssm.Options)) (*ssm.AddTagsToResourceOutput, error) {
+	m.callOrder = append(m.callOrder, "AddTagsToResource")
+	m.tagInputs = append(m.tagInputs, input)
+	if m.AddTagsToResourceFunc != nil {
+		return m.AddTagsToResourceFunc(ctx, input)
+	}
+	return &ssm.AddTagsToResourceOutput{}, nil
 }
 
 func (m *mockSSMClient) GetParameters(_ context.Context, input *ssm.GetParametersInput, _ ...func(*ssm.Options)) (*ssm.GetParametersOutput, error) {
@@ -73,6 +98,8 @@ func (m *mockSSMClient) GetParametersByPath(ctx context.Context, input *ssm.GetP
 }
 
 func (m *mockSSMClient) PutParameter(ctx context.Context, input *ssm.PutParameterInput, optFns ...func(*ssm.Options)) (*ssm.PutParameterOutput, error) {
+	m.callOrder = append(m.callOrder, "PutParameter")
+	m.putInputs = append(m.putInputs, input)
 	if m.PutParameterFunc != nil {
 		return m.PutParameterFunc(ctx, input)
 	}
@@ -155,6 +182,25 @@ func TestAWS_Get(t *testing.T) {
 func TestAWS_GetNotFound(t *testing.T) {
 	p := newTestProvider(nil)
 	_, err := p.Get(context.Background(), "/test/prod/MISSING")
+	assert.ErrorIs(t, err, provider.ErrNotFound)
+}
+
+func TestAWS_GetVersionUsesExactSelectorAndRejectsMismatch(t *testing.T) {
+	p := newTestProvider(map[string]ssmtypes.Parameter{
+		"/test/prod/API_KEY:7": {
+			Name:    awslib.String("/test/prod/API_KEY"),
+			Value:   awslib.String("secret-v7"),
+			Version: 7,
+		},
+	})
+	reader, ok := p.(provider.VersionedReader)
+	require.True(t, ok)
+	secret, err := reader.GetVersion(context.Background(), "/test/prod/API_KEY", 7)
+	require.NoError(t, err)
+	assert.Equal(t, int64(7), secret.Version)
+	assert.Equal(t, "secret-v7", secret.Value)
+
+	_, err = reader.GetVersion(context.Background(), "/test/prod/API_KEY", 8)
 	assert.ErrorIs(t, err, provider.ErrNotFound)
 }
 
@@ -260,6 +306,198 @@ func TestAWS_SetWithMeta(t *testing.T) {
 	}
 	err := p.Set(context.Background(), "/test/prod/META", "val", meta)
 	require.NoError(t, err)
+}
+
+func TestAWS_SetUsesKMSKeyID(t *testing.T) {
+	mock := &mockSSMClient{params: make(map[string]ssmtypes.Parameter)}
+	var captured *ssm.PutParameterInput
+	mock.PutParameterFunc = func(_ context.Context, input *ssm.PutParameterInput) (*ssm.PutParameterOutput, error) {
+		captured = input
+		return &ssm.PutParameterOutput{Version: 1}, nil
+	}
+
+	p := skaws.NewWithClient(mock, "/test/prod", "alias/customer-key")
+	require.NoError(t, p.Set(context.Background(), "/test/prod/KMS", "value", provider.SecretMeta{}))
+	require.NotNil(t, captured)
+	assert.Equal(t, "alias/customer-key", awslib.ToString(captured.KeyId))
+}
+
+func TestAWS_SetWriteFailureFixtures(t *testing.T) {
+	const key = "/test/prod/FAILURE"
+	const value = "fixture-secret-value"
+
+	tests := []struct {
+		name       string
+		kmsKeyID   string
+		apiCode    string
+		apiMessage string
+	}{
+		{
+			name:       "custom KMS key access denied",
+			kmsKeyID:   "alias/fixture-kms-key",
+			apiCode:    "AccessDeniedException",
+			apiMessage: "kms access denied",
+		},
+		{
+			name:       "SSM throttling",
+			apiCode:    "ThrottlingException",
+			apiMessage: "ssm request throttled",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			apiErr := &mockAWSAPIError{code: tt.apiCode, message: tt.apiMessage}
+			mock := &mockSSMClient{params: make(map[string]ssmtypes.Parameter)}
+			mock.PutParameterFunc = func(_ context.Context, input *ssm.PutParameterInput) (*ssm.PutParameterOutput, error) {
+				return nil, apiErr
+			}
+
+			p := skaws.NewWithClient(mock, "/test/prod", tt.kmsKeyID)
+			err := p.Set(context.Background(), key, value, provider.SecretMeta{
+				Tags: map[string]string{"env": "fixture"},
+			})
+
+			require.Error(t, err)
+			var gotAPIError *mockAWSAPIError
+			require.ErrorAs(t, err, &gotAPIError)
+			assert.Contains(t, err.Error(), "aws: set")
+			assert.Contains(t, err.Error(), key)
+			assert.NotContains(t, err.Error(), value)
+			assert.Equal(t, []string{"GetParameter", "PutParameter"}, mock.callOrder)
+			require.Len(t, mock.putInputs, 1)
+			assert.Equal(t, key, awslib.ToString(mock.putInputs[0].Name))
+			assert.Equal(t, value, awslib.ToString(mock.putInputs[0].Value))
+			assert.Equal(t, tt.kmsKeyID, awslib.ToString(mock.putInputs[0].KeyId))
+			assert.Len(t, mock.putInputs[0].Tags, 1)
+			assert.Empty(t, mock.tagInputs, "failed PutParameter must not mutate tags")
+			assert.NotContains(t, mock.params, key, "failed writes must not report or create a parameter")
+		})
+	}
+}
+
+func TestAWS_SetExistingPutFailureSkipsTagMutation(t *testing.T) {
+	const key = "/test/prod/EXISTING_PUT_FAILURE"
+	const value = "fixture-secret-value"
+	apiErr := &mockAWSAPIError{code: "ThrottlingException", message: "ssm request throttled"}
+	mock := &mockSSMClient{params: map[string]ssmtypes.Parameter{
+		key: {Name: awslib.String(key), Value: awslib.String("old")},
+	}}
+	mock.PutParameterFunc = func(_ context.Context, _ *ssm.PutParameterInput) (*ssm.PutParameterOutput, error) {
+		return nil, apiErr
+	}
+
+	p := skaws.NewWithClient(mock, "/test/prod")
+	err := p.Set(context.Background(), key, value, provider.SecretMeta{
+		Tags: map[string]string{"env": "fixture"},
+	})
+
+	require.Error(t, err)
+	var gotAPIError *mockAWSAPIError
+	require.ErrorAs(t, err, &gotAPIError)
+	assert.Contains(t, err.Error(), "aws: set")
+	assert.Contains(t, err.Error(), key)
+	assert.NotContains(t, err.Error(), value)
+	assert.Equal(t, []string{"GetParameter", "PutParameter"}, mock.callOrder)
+	assert.Len(t, mock.putInputs, 1)
+	assert.Empty(t, mock.tagInputs, "AddTagsToResource must run only after a successful put")
+	assert.Equal(t, "old", awslib.ToString(mock.params[key].Value))
+}
+
+func TestAWS_SetExistingPutSucceedsTagAccessDenied(t *testing.T) {
+	const key = "/test/prod/EXISTING_TAG_FAILURE"
+	const value = "fixture-secret-value"
+	apiErr := &mockAWSAPIError{code: "AccessDeniedException", message: "tag access denied"}
+	mock := &mockSSMClient{params: map[string]ssmtypes.Parameter{
+		key: {Name: awslib.String(key), Value: awslib.String("old")},
+	}}
+	mock.AddTagsToResourceFunc = func(_ context.Context, _ *ssm.AddTagsToResourceInput) (*ssm.AddTagsToResourceOutput, error) {
+		return nil, apiErr
+	}
+
+	p := skaws.NewWithClient(mock, "/test/prod")
+	err := p.Set(context.Background(), key, value, provider.SecretMeta{
+		Tags: map[string]string{"team": "fixture", "env": "test"},
+	})
+
+	require.Error(t, err)
+	var gotAPIError *mockAWSAPIError
+	require.ErrorAs(t, err, &gotAPIError)
+	assert.Contains(t, err.Error(), "aws: set tags")
+	assert.Contains(t, err.Error(), key)
+	assert.NotContains(t, err.Error(), value)
+	assert.Equal(t, []string{"GetParameter", "PutParameter", "AddTagsToResource"}, mock.callOrder)
+	assert.Len(t, mock.putInputs, 1, "tag failure must not retry PutParameter")
+	assert.Len(t, mock.tagInputs, 1)
+	assert.Equal(t, ssmtypes.ResourceTypeForTaggingParameter, mock.tagInputs[0].ResourceType)
+	assert.Equal(t, key, awslib.ToString(mock.tagInputs[0].ResourceId))
+	require.Len(t, mock.tagInputs[0].Tags, 2)
+	assert.Equal(t, "env", awslib.ToString(mock.tagInputs[0].Tags[0].Key))
+	assert.Equal(t, "test", awslib.ToString(mock.tagInputs[0].Tags[0].Value))
+	assert.Equal(t, "team", awslib.ToString(mock.tagInputs[0].Tags[1].Key))
+	assert.Equal(t, "fixture", awslib.ToString(mock.tagInputs[0].Tags[1].Value))
+	assert.Equal(t, value, awslib.ToString(mock.params[key].Value), "successful put must precede tag failure")
+}
+
+func TestAWS_SetExistingUpdatesTagsSeparately(t *testing.T) {
+	key := "/test/prod/EXISTING"
+	mock := &mockSSMClient{params: map[string]ssmtypes.Parameter{
+		key: {Name: awslib.String(key), Value: awslib.String("old")},
+	}}
+	var capturedPut *ssm.PutParameterInput
+	var capturedTags *ssm.AddTagsToResourceInput
+	mock.PutParameterFunc = func(_ context.Context, input *ssm.PutParameterInput) (*ssm.PutParameterOutput, error) {
+		capturedPut = input
+		return &ssm.PutParameterOutput{Version: 2}, nil
+	}
+	mock.AddTagsToResourceFunc = func(_ context.Context, input *ssm.AddTagsToResourceInput) (*ssm.AddTagsToResourceOutput, error) {
+		capturedTags = input
+		return &ssm.AddTagsToResourceOutput{}, nil
+	}
+
+	p := skaws.NewWithClient(mock, "/test/prod", "alias/customer-key")
+	require.NoError(t, p.Set(context.Background(), key, "new", provider.SecretMeta{
+		Tags: map[string]string{"team": "infra", "env": "prod"},
+	}))
+	require.NotNil(t, capturedPut)
+	assert.Empty(t, capturedPut.Tags, "existing parameter tags must use AddTagsToResource")
+	assert.Equal(t, "alias/customer-key", awslib.ToString(capturedPut.KeyId))
+	require.NotNil(t, capturedTags)
+	assert.Equal(t, ssmtypes.ResourceTypeForTaggingParameter, capturedTags.ResourceType)
+	assert.Equal(t, key, awslib.ToString(capturedTags.ResourceId))
+	assert.Len(t, capturedTags.Tags, 2)
+	assert.Equal(t, "env", awslib.ToString(capturedTags.Tags[0].Key))
+	assert.Equal(t, "team", awslib.ToString(capturedTags.Tags[1].Key))
+}
+
+func TestAWS_SetLookupErrorSkipsWrite(t *testing.T) {
+	mock := &mockSSMClient{params: make(map[string]ssmtypes.Parameter), errGet: errors.New("lookup failed")}
+	putCalls := 0
+	mock.PutParameterFunc = func(_ context.Context, _ *ssm.PutParameterInput) (*ssm.PutParameterOutput, error) {
+		putCalls++
+		return &ssm.PutParameterOutput{Version: 1}, nil
+	}
+
+	p := skaws.NewWithClient(mock, "/test/prod")
+	err := p.Set(context.Background(), "/test/prod/LOOKUP", "value", provider.SecretMeta{})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "lookup failed")
+	assert.Zero(t, putCalls)
+}
+
+func TestAWS_SetExistingTagErrorIsReturned(t *testing.T) {
+	key := "/test/prod/TAG_ERROR"
+	mock := &mockSSMClient{params: map[string]ssmtypes.Parameter{
+		key: {Name: awslib.String(key), Value: awslib.String("old")},
+	}}
+	mock.AddTagsToResourceFunc = func(context.Context, *ssm.AddTagsToResourceInput) (*ssm.AddTagsToResourceOutput, error) {
+		return nil, errors.New("tag update failed")
+	}
+
+	p := skaws.NewWithClient(mock, "/test/prod")
+	err := p.Set(context.Background(), key, "new", provider.SecretMeta{Tags: map[string]string{"env": "prod"}})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "tag update failed")
 }
 
 func TestAWS_SetVerifiesOverwriteAndSecureString(t *testing.T) {

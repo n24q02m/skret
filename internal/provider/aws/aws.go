@@ -3,8 +3,10 @@ package aws
 import (
 	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -27,10 +29,15 @@ type SSMClient interface {
 	GetParameterHistory(ctx context.Context, params *ssm.GetParameterHistoryInput, optFns ...func(*ssm.Options)) (*ssm.GetParameterHistoryOutput, error)
 }
 
+type ssmTagger interface {
+	AddTagsToResource(ctx context.Context, params *ssm.AddTagsToResourceInput, optFns ...func(*ssm.Options)) (*ssm.AddTagsToResourceOutput, error)
+}
+
 // Provider wraps AWS SSM Parameter Store.
 type Provider struct {
-	client SSMClient
-	path   string
+	client   SSMClient
+	path     string
+	kmsKeyID string
 }
 
 // New creates an AWS SSM provider from resolved config.
@@ -62,12 +69,16 @@ func New(cfg *config.ResolvedConfig) (provider.SecretProvider, error) {
 			})
 		})
 	})
-	return &Provider{client: client, path: cfg.Path}, nil
+	return &Provider{client: client, path: cfg.Path, kmsKeyID: cfg.KMSKeyID}, nil
 }
 
 // NewWithClient creates a provider with a custom SSM client (for testing).
-func NewWithClient(client SSMClient, path string) provider.SecretProvider {
-	return &Provider{client: client, path: path}
+func NewWithClient(client SSMClient, path string, kmsKeyID ...string) provider.SecretProvider {
+	keyID := ""
+	if len(kmsKeyID) > 0 {
+		keyID = kmsKeyID[0]
+	}
+	return &Provider{client: client, path: path, kmsKeyID: keyID}
 }
 
 func (p *Provider) Name() string { return "aws" }
@@ -83,6 +94,9 @@ func (p *Provider) Capabilities() provider.Capabilities {
 }
 
 func (p *Provider) Get(ctx context.Context, key string) (*provider.Secret, error) {
+	if p == nil || p.client == nil || key == "" {
+		return nil, provider.ErrNotFound
+	}
 	output, err := p.client.GetParameter(ctx, &ssm.GetParameterInput{
 		Name:           awslib.String(key),
 		WithDecryption: awslib.Bool(true),
@@ -90,7 +104,9 @@ func (p *Provider) Get(ctx context.Context, key string) (*provider.Secret, error
 	if err != nil {
 		return nil, mapError("get", key, err)
 	}
-
+	if output == nil || output.Parameter == nil {
+		return nil, provider.ErrNotFound
+	}
 	param := output.Parameter
 	s := &provider.Secret{
 		Key:     awslib.ToString(param.Name),
@@ -101,6 +117,35 @@ func (p *Provider) Get(ctx context.Context, key string) (*provider.Secret, error
 		s.Meta.UpdatedAt = *param.LastModifiedDate
 	}
 	return s, nil
+}
+
+// GetVersion reads one immutable SSM parameter version using the documented
+// name:version selector and verifies that AWS returned that exact version.
+func (p *Provider) GetVersion(ctx context.Context, key string, version int64) (*provider.Secret, error) {
+	if p == nil || p.client == nil || key == "" || version <= 0 {
+		return nil, provider.ErrNotFound
+	}
+	selector := key + ":" + strconv.FormatInt(version, 10)
+	output, err := p.client.GetParameter(ctx, &ssm.GetParameterInput{
+		Name:           awslib.String(selector),
+		WithDecryption: awslib.Bool(true),
+	})
+	if err != nil {
+		return nil, mapError("get_version", key, err)
+	}
+	if output == nil || output.Parameter == nil || output.Parameter.Version != version {
+		return nil, provider.ErrNotFound
+	}
+	parameter := output.Parameter
+	secret := &provider.Secret{
+		Key:     awslib.ToString(parameter.Name),
+		Value:   awslib.ToString(parameter.Value),
+		Version: parameter.Version,
+	}
+	if parameter.LastModifiedDate != nil {
+		secret.Meta.UpdatedAt = *parameter.LastModifiedDate
+	}
+	return secret, nil
 }
 
 func (p *Provider) GetBatch(ctx context.Context, keys []string) ([]*provider.Secret, error) {
@@ -245,29 +290,68 @@ func hashLines(lines []string) string {
 }
 
 func (p *Provider) Set(ctx context.Context, key string, value string, meta provider.SecretMeta) error {
+	_, lookupErr := p.client.GetParameter(ctx, &ssm.GetParameterInput{
+		Name: awslib.String(key),
+	})
+	exists := lookupErr == nil
+	if lookupErr != nil {
+		var notFound *ssmtypes.ParameterNotFound
+		if !errors.As(lookupErr, &notFound) {
+			return mapError("set", key, lookupErr)
+		}
+	}
+
 	input := &ssm.PutParameterInput{
 		Name:      awslib.String(key),
 		Value:     awslib.String(value),
 		Type:      ssmtypes.ParameterTypeSecureString,
 		Overwrite: awslib.Bool(true),
 	}
+	if p.kmsKeyID != "" {
+		input.KeyId = awslib.String(p.kmsKeyID)
+	}
 	if meta.Description != "" {
 		input.Description = awslib.String(meta.Description)
 	}
-	if len(meta.Tags) > 0 {
-		for k, v := range meta.Tags {
-			input.Tags = append(input.Tags, ssmtypes.Tag{
-				Key:   awslib.String(k),
-				Value: awslib.String(v),
-			})
-		}
+	tags := tagsFromMeta(meta)
+	if !exists {
+		input.Tags = tags
 	}
 
-	_, err := p.client.PutParameter(ctx, input)
-	if err != nil {
+	if _, err := p.client.PutParameter(ctx, input); err != nil {
 		return mapError("set", key, err)
 	}
+	if exists && len(tags) > 0 {
+		tagger, ok := p.client.(ssmTagger)
+		if !ok {
+			return fmt.Errorf("set tags %q: SSM client does not support AddTagsToResource", key)
+		}
+		if _, err := tagger.AddTagsToResource(ctx, &ssm.AddTagsToResourceInput{
+			ResourceType: ssmtypes.ResourceTypeForTaggingParameter,
+			ResourceId:   awslib.String(key),
+			Tags:         tags,
+		}); err != nil {
+			return mapError("set tags", key, err)
+		}
+	}
 	return nil
+}
+
+func tagsFromMeta(meta provider.SecretMeta) []ssmtypes.Tag {
+	keys := make([]string, 0, len(meta.Tags))
+	for key := range meta.Tags {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	tags := make([]ssmtypes.Tag, 0, len(keys))
+	for _, key := range keys {
+		tags = append(tags, ssmtypes.Tag{
+			Key:   awslib.String(key),
+			Value: awslib.String(meta.Tags[key]),
+		})
+	}
+	return tags
 }
 
 func (p *Provider) Delete(ctx context.Context, key string) error {
