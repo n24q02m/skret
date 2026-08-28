@@ -175,6 +175,8 @@ def _validate_synthetic_state_root(
 ) -> None:
     if any(not _is_within(path, state_root) for path in (state_file, state_manifest, state_public_key)):
         _fail()
+    if len({state_file, state_manifest, state_public_key}) != 3:
+        _fail()
     try:
         document = json.loads(
             state_manifest.read_text(encoding="utf-8"),
