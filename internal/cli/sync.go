@@ -132,6 +132,9 @@ func (o *syncOptions) run(cmd *cobra.Command) error {
 	for i, s := range syncers {
 		tc := targets[i]
 		toSync := secrets
+		if err := syncer.ValidateDestinationMapping(s.Name(), toSync); err != nil {
+			return skret.NewError(skret.ExitConfigError, fmt.Sprintf("sync: %s", s.Name()), err)
+		}
 		noOv := !o.rotate && (tc.NoOverwrite || o.noOverwrite)
 
 		// Rotation and all external provider mutations use a durable state
@@ -566,10 +569,9 @@ func mutationMethod(s syncer.Syncer, tc syncer.TargetConfig) string {
 	}
 }
 
-// targetStateID returns the per-target identifier used to scope the sync
-// state file, derived from the resolved TargetConfig. Dotenv uses the
-// output file path; GitHub uses the repo string; Cloudflare uses
-// "worker/<name>" or "pages/<name>".
+// targetStateID returns the complete canonical target identity used to scope
+// external sync state. Dotenv keeps its output path for local compatibility;
+// GitHub and Cloudflare identities include endpoint/account/resource scope.
 func targetStateID(s syncer.Syncer, tc syncer.TargetConfig) string {
 	switch s.Name() {
 	case "dotenv":
@@ -577,13 +579,10 @@ func targetStateID(s syncer.Syncer, tc syncer.TargetConfig) string {
 			return file
 		}
 		return ".env"
-	case "github":
-		return tc.Fields["repo"]
-	case "cloudflare":
-		if w := tc.Fields["worker"]; w != "" {
-			return "worker/" + w
+	case "github", "cloudflare":
+		if identity, err := syncer.CanonicalTargetIdentity(tc); err == nil {
+			return identity
 		}
-		return "pages/" + tc.Fields["pages"]
 	}
 	return ""
 }
@@ -596,6 +595,12 @@ func syncerStateID(s syncer.Syncer, file, githubRepo string) string {
 			return ".env"
 		}
 		return file
+	}
+	if identity, err := syncer.CanonicalTargetIdentity(syncer.TargetConfig{
+		Type:   "github",
+		Fields: map[string]string{"repo": githubRepo},
+	}); err == nil {
+		return identity
 	}
 	return githubRepo
 }

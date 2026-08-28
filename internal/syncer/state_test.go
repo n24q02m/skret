@@ -30,24 +30,18 @@ func withFakeHome(t *testing.T) string {
 	return dir
 }
 
-func TestStatePathFor_SanitizesID(t *testing.T) {
-	tests := []struct {
-		name     string
-		id       string
-		wantPart string
-	}{
-		{"slash", "n24q02m/skret", "n24q02m-skret"},
-		{"colon", "github:owner:repo", "github-owner-repo"},
-		{"space", "my file path", "my_file_path"},
-		{"backslash", `windows\path`, "windows-path"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+func TestStatePathFor_EncodesIDWithoutPathSyntax(t *testing.T) {
+	ids := []string{"n24q02m/skret", "github:owner:repo", "my file path", `windows\path`}
+	for _, id := range ids {
+		t.Run(id, func(t *testing.T) {
 			withFakeHome(t)
-			path, err := StatePathFor("github", tt.id)
+			path, err := StatePathFor("github", id)
 			require.NoError(t, err)
-			assert.Contains(t, path, tt.wantPart)
-			assert.True(t, strings.HasSuffix(path, ".json"))
+			base := filepath.Base(path)
+			assert.True(t, strings.HasPrefix(base, "v1-"))
+			assert.True(t, strings.HasSuffix(base, ".json"))
+			assert.NotContains(t, base, string(filepath.Separator))
+			assert.NotContains(t, base, "..")
 		})
 	}
 }
@@ -155,10 +149,11 @@ func TestLoadSyncState_CorruptFile_ReturnsError(t *testing.T) {
 	home := withFakeHome(t)
 	dir := filepath.Join(home, ".skret", "sync-state")
 	require.NoError(t, os.MkdirAll(dir, 0o700))
-	path := filepath.Join(dir, "github-owner-repo.json")
+	path, err := StatePathFor("github", "owner/repo")
+	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(path, []byte("not json {"), 0o600))
 
-	_, err := LoadSyncState("github", "owner/repo")
+	_, err = LoadSyncState("github", "owner/repo")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "parse sync state")
 }
@@ -312,16 +307,15 @@ func TestStatePathFor_BlocksPathTraversal(t *testing.T) {
 	}
 }
 
-func TestStatePathFor_PathTraversalError(t *testing.T) {
-	withFakeHome(t)
-	// Force sanitizeID to return an un-sanitized string to hit the path traversal check
-	origReplacer := idReplacer
-	idReplacer = strings.NewReplacer()
-	defer func() { idReplacer = origReplacer }()
-
-	_, err := StatePathFor("target", "../../../etc/passwd")
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "sync state path traversal attempt detected")
+func TestStatePathFor_PathTraversalEncoding(t *testing.T) {
+	home := withFakeHome(t)
+	path, err := StatePathFor("target", "../../../etc/passwd")
+	require.NoError(t, err)
+	rel, err := filepath.Rel(filepath.Join(home, ".skret", "sync-state"), path)
+	require.NoError(t, err)
+	assert.NotContains(t, rel, "..")
+	assert.NotContains(t, rel, string(filepath.Separator))
+	assert.True(t, strings.HasPrefix(filepath.Base(path), "v1-"))
 }
 
 // TestSaveSyncState_PathTraversal verifies that even with a malicious id the
@@ -1098,4 +1092,27 @@ func testGenerationMetadata(capability provider.Capability, old, current uint64,
 		Deadline:           timePtr(deadline),
 		Attempts:           2,
 	}
+}
+
+func TestStatePathFor_InjectiveIdentityEncoding(t *testing.T) {
+	withFakeHome(t)
+	first, err := StatePathFor("github", "a-b/c")
+	require.NoError(t, err)
+	second, err := StatePathFor("github", "a/b-c")
+	require.NoError(t, err)
+	assert.NotEqual(t, first, second)
+}
+
+func TestLoadSyncState_RejectsStoredIdentityMismatch(t *testing.T) {
+	withFakeHome(t)
+	path, err := StatePathFor("github", "requested")
+	require.NoError(t, err)
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o700))
+	data, err := json.Marshal(&SyncState{Target: "github", ID: "stored-other", Hashes: map[string]string{}})
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(path, data, 0o600))
+
+	_, err = LoadSyncState("github", "requested")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "identity mismatch")
 }

@@ -220,3 +220,25 @@ func TestCloudflareSyncer_Pages_Errors(t *testing.T) {
 	require.ErrorContains(t, err, "500")
 	require.NotContains(t, err.Error(), "read error")
 }
+
+func TestCloudflareSyncer_RejectsDestinationNameCollisionBeforeTargetIO(t *testing.T) {
+	requests := 0
+	cf := &CloudflareSyncer{
+		accountID: "acc", worker: "worker", token: "token",
+		baseURL: "https://api.cloudflare.com/client/v4",
+		httpClient: &http.Client{Transport: &mockTransport{
+			roundTrip: func(*http.Request) (*http.Response, error) {
+				requests++
+				return nil, errors.New("target I/O must not run")
+			},
+		}},
+	}
+	err := cf.Sync(context.Background(), []*provider.Secret{
+		{Key: "/app/prod/API_TOKEN", Value: "first"},
+		{Key: "/app/prod/delegated/API_TOKEN", Value: "second"},
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "destination name")
+	assert.Contains(t, err.Error(), "API_TOKEN")
+	assert.Zero(t, requests)
+}

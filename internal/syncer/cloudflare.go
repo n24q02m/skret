@@ -63,6 +63,9 @@ func (c *CloudflareSyncer) Sync(ctx context.Context, secrets []*provider.Secret)
 	if len(secrets) == 0 {
 		return nil
 	}
+	if err := ValidateDestinationMapping(c.Name(), secrets); err != nil {
+		return err
+	}
 	if c.pages != "" {
 		return c.syncPages(ctx, secrets) // Task 4
 	}
@@ -125,6 +128,9 @@ func (c *CloudflareSyncer) putWorkerSecret(ctx context.Context, name, value stri
 }
 
 func (c *CloudflareSyncer) syncPages(ctx context.Context, secrets []*provider.Secret) error {
+	if err := ValidateDestinationMapping(c.Name(), secrets); err != nil {
+		return err
+	}
 	// CF Pages PATCH is a partial-merge (JSON Merge Patch): only the keys we
 	// send are updated; keys we omit are preserved server-side. So we send
 	// ONLY the keys being synced. We must NOT GET-merge-PATCH: secret_text

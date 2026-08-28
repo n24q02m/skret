@@ -65,6 +65,9 @@ func (g *GitHubSyncer) Sync(ctx context.Context, secrets []*provider.Secret) err
 	if len(secrets) == 0 {
 		return nil
 	}
+	if err := ValidateDestinationMapping(g.Name(), secrets); err != nil {
+		return err
+	}
 
 	// Deduplicate incoming secrets by key (last value wins).
 	dedup := make(map[string]*provider.Secret)

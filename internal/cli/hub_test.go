@@ -481,8 +481,9 @@ func TestTargetPresence_GitHub_PresentAndAbsent(t *testing.T) {
 	t.Setenv("GITHUB_TOKEN", "tok")
 
 	presence := targetPresence(context.Background(), NewRootCmd(), sc)
-	require.Contains(t, presence, "github:o/r")
-	got := presence["github:o/r"]
+	targetKey := "github:github|" + srv.URL + "|o/r"
+	require.Contains(t, presence, targetKey)
+	got := presence[targetKey]
 	assert.True(t, got.Ok)
 	assert.True(t, got.Names["HAVE_KEY"])
 	assert.False(t, got.Names["MISSING_KEY"])
@@ -497,11 +498,11 @@ func TestTargetPresence_GitHub_NoToken_UnknownWithWarning(t *testing.T) {
 	cmd := NewRootCmd()
 	var buf bytes.Buffer
 	cmd.SetErr(&buf)
-
 	presence := targetPresence(context.Background(), cmd, sc)
-	require.Contains(t, presence, "github:o/r")
-	assert.False(t, presence["github:o/r"].Ok)
-	assert.Contains(t, buf.String(), "warning: hub push: github:o/r: build target failed")
+	targetKey := "github:github|https://api.github.com|o/r"
+	require.Contains(t, presence, targetKey)
+	assert.False(t, presence[targetKey].Ok)
+	assert.Contains(t, buf.String(), "warning: hub push: "+targetKey+": build target failed")
 	assert.Contains(t, buf.String(), "GITHUB_TOKEN")
 }
 
@@ -519,11 +520,11 @@ func TestTargetPresence_GitHub_NetworkError_UnknownWithWarning(t *testing.T) {
 	cmd := NewRootCmd()
 	var buf bytes.Buffer
 	cmd.SetErr(&buf)
-
 	presence := targetPresence(context.Background(), cmd, sc)
-	require.Contains(t, presence, "github:o/r")
-	assert.False(t, presence["github:o/r"].Ok)
-	assert.Contains(t, buf.String(), "warning: hub push: github:o/r: list existing keys failed")
+	targetKey := "github:github|http://" + addr + "|o/r"
+	require.Contains(t, presence, targetKey)
+	assert.False(t, presence[targetKey].Ok)
+	assert.Contains(t, buf.String(), "warning: hub push: "+targetKey+": list existing keys failed")
 }
 
 func TestTargetPresence_CloudflarePages_Unknown_WithWarning(t *testing.T) {
@@ -534,11 +535,11 @@ func TestTargetPresence_CloudflarePages_Unknown_WithWarning(t *testing.T) {
 	cmd := NewRootCmd()
 	var buf bytes.Buffer
 	cmd.SetErr(&buf)
-
 	presence := targetPresence(context.Background(), cmd, sc)
-	require.Contains(t, presence, "cloudflare:pages/proj")
-	assert.False(t, presence["cloudflare:pages/proj"].Ok)
-	assert.Contains(t, buf.String(), "warning: hub push: cloudflare:pages/proj: list existing keys failed")
+	targetKey := "cloudflare:cloudflare|https://api.cloudflare.com/client/v4|acc|pages|proj"
+	require.Contains(t, presence, targetKey)
+	assert.False(t, presence[targetKey].Ok)
+	assert.Contains(t, buf.String(), "warning: hub push: "+targetKey+": list existing keys failed")
 	assert.Contains(t, buf.String(), "pages targets cannot enumerate")
 }
 
@@ -554,8 +555,9 @@ func TestTargetPresence_CloudflareWorker_Present(t *testing.T) {
 	t.Setenv("CLOUDFLARE_API_TOKEN", "tok")
 
 	presence := targetPresence(context.Background(), NewRootCmd(), sc)
-	require.Contains(t, presence, "cloudflare:worker/w")
-	got := presence["cloudflare:worker/w"]
+	targetKey := "cloudflare:cloudflare|" + srv.URL + "|acc|worker|w"
+	require.Contains(t, presence, targetKey)
+	got := presence[targetKey]
 	assert.True(t, got.Ok)
 	assert.True(t, got.Names["HAVE_KEY"])
 }
@@ -607,12 +609,13 @@ sync:
 
 	o := &hubOptions{global: &GlobalOpts{}}
 	require.NoError(t, o.runPush(NewRootCmd()))
-
 	var decoded syncer.Manifest
 	require.NoError(t, json.Unmarshal(gotBody, &decoded))
+
 	byName := map[string]syncer.ManifestTarget{}
+	targetKey := "github:github|" + ghSrv.URL + "|o/r"
 	for _, k := range decoded.Keys {
-		byName[k.Name] = k.Targets["github:o/r"]
+		byName[k.Name] = k.Targets[targetKey]
 	}
 	assert.Equal(t, "present", byName["HAVE_KEY"].Status)
 	assert.True(t, byName["HAVE_KEY"].Present)

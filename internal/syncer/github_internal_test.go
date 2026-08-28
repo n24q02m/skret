@@ -336,3 +336,25 @@ func TestNewGitHub(t *testing.T) {
 		assert.Equal(t, customURL, s.baseURL)
 	})
 }
+
+func TestGitHubSyncer_RejectsDestinationNameCollisionBeforeTargetIO(t *testing.T) {
+	requests := 0
+	g := &GitHubSyncer{
+		owner: "owner", repo: "repo", token: "token",
+		baseURL: "https://api.github.com",
+		httpClient: &http.Client{Transport: &mockTransport{
+			roundTrip: func(*http.Request) (*http.Response, error) {
+				requests++
+				return nil, errors.New("target I/O must not run")
+			},
+		}},
+	}
+	err := g.Sync(context.Background(), []*provider.Secret{
+		{Key: "/app/prod/API_TOKEN", Value: "first"},
+		{Key: "/app/prod/delegated/API_TOKEN", Value: "second"},
+	})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "destination name")
+	assert.Contains(t, err.Error(), "API_TOKEN")
+	assert.Zero(t, requests)
+}

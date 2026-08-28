@@ -115,10 +115,10 @@ environments:
 		t.Setenv("HOME", home)
 	}
 
-	// Create an invalid state file
-	stateDir := filepath.Join(home, ".skret", "sync-state")
-	require.NoError(t, os.MkdirAll(stateDir, 0o700))
-	stateFile := filepath.Join(stateDir, "dotenv-.env.json")
+	// Create an invalid state file at the encoded path used by production.
+	stateFile, err := syncer.StatePathFor("dotenv", ".env")
+	require.NoError(t, err)
+	require.NoError(t, os.MkdirAll(filepath.Dir(stateFile), 0o700))
 	require.NoError(t, os.WriteFile(stateFile, []byte("invalid json"), 0o600))
 
 	origDir, _ := os.Getwd()
@@ -132,7 +132,7 @@ environments:
 		skipUnchanged: true,
 	}
 	cmd := NewRootCmd()
-	err := o.run(cmd)
+	err = o.run(cmd)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "load state failed")
 }
@@ -373,17 +373,24 @@ func TestTokenForType(t *testing.T) {
 
 func TestTargetStateID_Cloudflare(t *testing.T) {
 	worker := syncer.NewCloudflare("acc", "worker-name", "", "tok", "")
-	assert.Equal(t, "worker/worker-name",
-		targetStateID(worker, syncer.TargetConfig{Fields: map[string]string{"worker": "worker-name"}}))
+	assert.Equal(t, "cloudflare|https://api.cloudflare.com/client/v4|acc|worker|worker-name",
+		targetStateID(worker, syncer.TargetConfig{
+			Type:   "cloudflare",
+			Fields: map[string]string{"account": "acc", "worker": "worker-name"},
+		}))
 
 	pages := syncer.NewCloudflare("acc", "", "pages-name", "tok", "")
-	assert.Equal(t, "pages/pages-name",
-		targetStateID(pages, syncer.TargetConfig{Fields: map[string]string{"pages": "pages-name"}}))
+	assert.Equal(t, "cloudflare|https://api.cloudflare.com/client/v4|acc|pages|pages-name",
+		targetStateID(pages, syncer.TargetConfig{
+			Type:   "cloudflare",
+			Fields: map[string]string{"account": "acc", "pages": "pages-name"},
+		}))
 }
 
 func TestTargetStateID_GithubAndDotenvDefault(t *testing.T) {
 	gh := syncer.NewGitHub("o", "r", "tok", "")
-	assert.Equal(t, "o/r", targetStateID(gh, syncer.TargetConfig{Fields: map[string]string{"repo": "o/r"}}))
+	assert.Equal(t, "github|https://api.github.com|o/r",
+		targetStateID(gh, syncer.TargetConfig{Type: "github", Fields: map[string]string{"repo": "o/r"}}))
 
 	dv := syncer.NewDotenv(".env")
 	assert.Equal(t, ".env", targetStateID(dv, syncer.TargetConfig{Fields: map[string]string{}}))
@@ -930,11 +937,10 @@ func TestSyncOptions_Run_NoOverwrite_RestoreAfterDeleteBypassesSkipUnchanged(t *
 	withGithubTarget(t, dir, "o/r", srv.URL, true /* no_overwrite */)
 	t.Setenv("GITHUB_TOKEN", "tok")
 
-	// Fabricate a warm sync-state cache for this target (stateID == "o/r",
-	// per targetStateID's github case) so that, absent the no-overwrite
-	// exemption, FilterUnchanged would drop both ALPHA and BETA -- the SSM
-	// values here are unchanged, only the target-side copy was deleted.
-	state, err := syncer.LoadSyncState("github", "o/r")
+	// Fabricate a warm sync-state cache for this target using its complete
+	// canonical identity so the no-overwrite exemption is exercised.
+	stateID := "github|" + srv.URL + "|o/r"
+	state, err := syncer.LoadSyncState("github", stateID)
 	require.NoError(t, err)
 	state.Update([]*provider.Secret{
 		{Key: "ALPHA", Value: "1"},

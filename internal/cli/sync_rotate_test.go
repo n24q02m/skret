@@ -42,7 +42,7 @@ func TestSyncOptions_Run_RotateBypassesWarmSkipAndWritesAllKeys(t *testing.T) {
 	withGithubTarget(t, dir, "o/r", srv.URL, false)
 	t.Setenv("GITHUB_TOKEN", "tok")
 
-	state, err := syncer.LoadSyncState("github", "o/r")
+	state, err := syncer.LoadSyncState("github", "github|"+srv.URL+"|o/r")
 	require.NoError(t, err)
 	state.Update([]*provider.Secret{{Key: "ALPHA", Value: "secret-alpha"}, {Key: "BETA", Value: "secret-beta"}})
 	require.NoError(t, syncer.SaveSyncState(state))
@@ -54,7 +54,7 @@ func TestSyncOptions_Run_RotateBypassesWarmSkipAndWritesAllKeys(t *testing.T) {
 	assert.Contains(t, putPaths, "/repos/o/r/actions/secrets/BETA")
 	assert.Contains(t, out, "Rotated 2 secrets to github")
 
-	state, err = syncer.LoadSyncState("github", "o/r")
+	state, err = syncer.LoadSyncState("github", "github|"+srv.URL+"|o/r")
 	require.NoError(t, err)
 	assert.Equal(t, "rotate", state.Intent)
 	assert.NotEmpty(t, state.OperationID)

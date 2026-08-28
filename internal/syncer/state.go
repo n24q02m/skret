@@ -3,6 +3,7 @@ package syncer
 import (
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -860,7 +861,7 @@ func StatePathFor(target, id string) (string, error) {
 	}
 
 	baseDir := filepath.Join(home, ".skret", "sync-state")
-	expectedName := fmt.Sprintf("%s-%s.json", sanitizeID(target), sanitizeID(id))
+	expectedName := "v1-" + encodeStatePath(target, id) + ".json"
 	constructedPath := filepath.Join(baseDir, expectedName)
 
 	rel, err := filepath.Rel(baseDir, constructedPath)
@@ -871,31 +872,12 @@ func StatePathFor(target, id string) (string, error) {
 	return constructedPath, nil
 }
 
-var idReplacer = strings.NewReplacer(
-	"..", "_",
-	"/", "-",
-	":", "-",
-	`\`, "-",
-	" ", "_",
-	"\x00", "_",
-)
-
-// sanitizeID neutralizes characters that could escape the sync-state
-// directory (path traversal) or break the on-disk file-name scheme.
-// "..", path separators and NULs are collapsed to inert runes.
-func sanitizeID(id string) string {
-	if !strings.ContainsAny(id, "./:\\ \x00") {
-		if id == "" {
-			return "_"
-		}
-		return id
-	}
-
-	out := idReplacer.Replace(id)
-	if out == "" || out == "." {
-		return "_"
-	}
-	return out
+// encodeStatePath is an injective, filename-safe encoding of both state
+// identity components. Encoding the pair as one JSON array avoids delimiter
+// collisions even when either component contains separators or punctuation.
+func encodeStatePath(target, id string) string {
+	data, _ := json.Marshal([2]string{target, id})
+	return base64.RawURLEncoding.EncodeToString(data)
 }
 
 func (s *SyncState) validatePersistedOperationMetadata() error {
@@ -971,14 +953,15 @@ func LoadSyncState(target, id string) (*SyncState, error) {
 	if err := json.Unmarshal(data, &s); err != nil {
 		return nil, fmt.Errorf("parse sync state %q: %w", path, err)
 	}
+	if s.Target != target || s.ID != id {
+		return nil, fmt.Errorf("sync state identity mismatch: stored %q/%q, requested %q/%q", s.Target, s.ID, target, id)
+	}
 	if s.Hashes == nil {
 		s.Hashes = map[string]string{}
 	}
 	if err := s.validatePersistedOperationMetadata(); err != nil {
 		return nil, err
 	}
-	s.Target = target
-	s.ID = id
 	return &s, nil
 }
 
@@ -1035,7 +1018,7 @@ func SaveSyncState(s *SyncState) error {
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("close sync state: %w", err)
 	}
-	if err := os.Rename(tmpPath, path); err != nil {
+	if err := durableReplace(tmpPath, path, filepath.Dir(path)); err != nil {
 		return fmt.Errorf("rename sync state: %w", err)
 	}
 	keepTemp = true

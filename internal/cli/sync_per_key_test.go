@@ -25,7 +25,8 @@ func TestSync_PerKeyTargetJournalsPartialFailureWithoutFalseSuccess(t *testing.T
 	var mu sync.Mutex
 	var names []string
 	var prewriteChecked bool
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, http.MethodPut, r.Method)
 		var payload map[string]string
 		require.NoError(t, json.NewDecoder(r.Body).Decode(&payload))
@@ -34,7 +35,7 @@ func TestSync_PerKeyTargetJournalsPartialFailureWithoutFalseSuccess(t *testing.T
 		names = append(names, payload["name"])
 		if !prewriteChecked {
 			prewriteChecked = true
-			persisted, stateErr := syncer.LoadSyncState("cloudflare", "worker/worker")
+			persisted, stateErr := syncer.LoadSyncState("cloudflare", cloudflareWorkerStateID(server.URL))
 			require.NoError(t, stateErr)
 			require.NotNil(t, persisted)
 			assert.Equal(t, "PUT", persisted.OperationMethod)
@@ -94,7 +95,7 @@ sync:
 	mu.Unlock()
 	assert.Equal(t, []string{"A", "B"}, gotNames, "failed key stops the one-key operation before unattempted keys")
 
-	state, err := syncer.LoadSyncState("cloudflare", "worker/worker")
+	state, err := syncer.LoadSyncState("cloudflare", cloudflareWorkerStateID(server.URL))
 	require.NoError(t, err)
 	assert.Equal(t, syncer.OperationPhaseNeedsReconciliation, state.Phase)
 	assert.Equal(t, syncer.OutcomeSucceeded, state.Outcomes["A"].Status)
@@ -159,7 +160,7 @@ sync:
 	started := time.Date(2026, 8, 24, 10, 0, 0, 0, time.UTC)
 	state := &syncer.SyncState{
 		Target:      "cloudflare",
-		ID:          "worker/worker",
+		ID:          cloudflareWorkerStateID(server.URL),
 		OperationID: "op-final-save",
 		Phase:       syncer.OperationPhasePending,
 		StartedAt:   &started,
@@ -183,7 +184,7 @@ sync:
 	assert.Contains(t, stdout.String(), `"synced": 0`)
 	assert.Equal(t, 0, requests, "recovery must not rewrite already acknowledged keys")
 
-	recovered, err := syncer.LoadSyncState("cloudflare", "worker/worker")
+	recovered, err := syncer.LoadSyncState("cloudflare", cloudflareWorkerStateID(server.URL))
 	require.NoError(t, err)
 	assert.Equal(t, syncer.OperationPhaseSucceeded, recovered.Phase)
 	assert.NotNil(t, recovered.CompletedAt)
@@ -248,7 +249,7 @@ sync:
 	assert.NotContains(t, err.Error(), "bravo")
 	assert.Equal(t, 2, requests, "provider acknowledgements happen before the final journal save")
 
-	state, err := syncer.LoadSyncState("cloudflare", "worker/worker")
+	state, err := syncer.LoadSyncState("cloudflare", cloudflareWorkerStateID(server.URL))
 	require.NoError(t, err)
 	assert.Equal(t, syncer.OperationPhasePending, state.Phase)
 	assert.Equal(t, syncer.OutcomeSucceeded, state.Outcomes["A"].Status)
@@ -257,4 +258,8 @@ sync:
 	assert.Equal(t, sha256Hex("bravo"), state.Hashes["B"])
 	assert.Nil(t, state.CompletedAt)
 	assert.Nil(t, state.LastSuccess)
+}
+
+func cloudflareWorkerStateID(baseURL string) string {
+	return "cloudflare|" + baseURL + "|account|worker|worker"
 }

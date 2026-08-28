@@ -58,3 +58,31 @@ func FilterAbsent(ctx context.Context, s Syncer, secrets []*provider.Secret) ([]
 	}
 	return kept, len(secrets) - len(kept), nil
 }
+
+// ValidateDestinationMapping rejects ambiguous many-to-one mappings before a
+// target can perform any provider I/O. GitHub Actions and Cloudflare store
+// secrets by the final source-key segment, so distinct full keys must never
+// acknowledge the same destination name.
+func ValidateDestinationMapping(target string, secrets []*provider.Secret) error {
+	if target != "github" && target != "cloudflare" {
+		return nil
+	}
+	nameToKey := make(map[string]string, len(secrets))
+	for _, secret := range secrets {
+		if secret == nil {
+			return fmt.Errorf("%s: secret is nil", target)
+		}
+		name := SecretName(secret.Key)
+		if previous, ok := nameToKey[name]; ok && previous != secret.Key {
+			return fmt.Errorf(
+				"%s: destination name %q is produced by distinct source keys %q and %q",
+				target,
+				name,
+				previous,
+				secret.Key,
+			)
+		}
+		nameToKey[name] = secret.Key
+	}
+	return nil
+}

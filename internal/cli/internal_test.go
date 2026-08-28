@@ -214,7 +214,8 @@ func TestSyncerStateID(t *testing.T) {
 
 	github, err := buildSyncers("github", "", "owner/repo")
 	require.NoError(t, err)
-	assert.Equal(t, "owner/repo", syncerStateID(github[0], "", "owner/repo"))
+	assert.Equal(t, "github|https://api.github.com|owner/repo",
+		syncerStateID(github[0], "", "owner/repo"))
 }
 
 func TestDefaultRegistry(t *testing.T) {
