@@ -47,15 +47,13 @@ func ResolvePath(raw string) (string, bool) {
 		}
 
 		count++
-
-		if idx == -1 {
-			endIdx = 0
-			break
-		}
 		endIdx = idx
 	}
 
 	if count >= 2 {
+		if endIdx == -1 {
+			endIdx = 0
+		}
 		return "/" + strings.TrimLeft(norm[endIdx:], "/"), true
 	}
 	return raw, true
