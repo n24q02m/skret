@@ -20,7 +20,7 @@ func fixtureAuthority() ServiceAuthority {
 		Networks:      []string{"backend"},
 		Restart:       "no",
 		OpenStdin:     true,
-		Health:        HealthSpec{Command: []string{"/bin/true"}, IntervalMS: 10, TimeoutMS: 10, Retries: 1},
+		Health:        HealthSpec{Command: []string{"/bin/true"}, IntervalMS: 30_000, TimeoutMS: 5_000, Retries: 1, HeartbeatIntervalMS: 1_000, HeartbeatTimeoutMS: 5_000},
 		Dependencies:  []string{},
 		Keys:          []ManifestKey{{Name: "APP_TOKEN", Version: "1", Env: "APP_TOKEN"}},
 		WrapperDigest: digestFixture("c"),

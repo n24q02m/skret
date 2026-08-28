@@ -17,6 +17,13 @@ const (
 	MaxValueLength  = 1 << 20
 	MaxFrameLength  = MaxValueLength + 4096
 	MaxManifestTTL  = 15 * time.Minute
+
+	// Heartbeats are a control-channel protocol, not Docker health checks.
+	// Keep their deadline comfortably above the cadence so a valid health
+	// interval cannot starve the secret channel.
+	HeartbeatSafetyFactor  uint32 = 3
+	MaxHeartbeatIntervalMS uint32 = 5 * 60 * 1000
+	MaxHeartbeatTimeoutMS  uint32 = 15 * 60 * 1000
 )
 
 // Manifest is the complete signed launch authority. It contains identities
@@ -55,7 +62,6 @@ type ManifestKey struct {
 	Version string `json:"version"`
 	Env     string `json:"env"`
 }
-
 type ChildSpec struct {
 	Argv        []string          `json:"argv"`
 	User        string            `json:"user"`
@@ -63,10 +69,12 @@ type ChildSpec struct {
 }
 
 type HealthSpec struct {
-	Command    []string `json:"command"`
-	IntervalMS uint32   `json:"interval_ms"`
-	TimeoutMS  uint32   `json:"timeout_ms"`
-	Retries    uint32   `json:"retries"`
+	Command             []string `json:"command"`
+	IntervalMS          uint32   `json:"interval_ms"`
+	TimeoutMS           uint32   `json:"timeout_ms"`
+	Retries             uint32   `json:"retries"`
+	HeartbeatIntervalMS uint32   `json:"heartbeat_interval_ms"`
+	HeartbeatTimeoutMS  uint32   `json:"heartbeat_timeout_ms"`
 }
 
 type ArtifactDigests struct {
@@ -284,6 +292,14 @@ func validArguments(values []string) error {
 
 func validHealth(health HealthSpec) error {
 	if health.IntervalMS == 0 || health.TimeoutMS == 0 || health.Retries == 0 {
+		return fail(ErrInvalidInput)
+	}
+	if health.HeartbeatIntervalMS == 0 ||
+		health.HeartbeatTimeoutMS == 0 ||
+		health.HeartbeatIntervalMS > MaxHeartbeatIntervalMS ||
+		health.HeartbeatTimeoutMS > MaxHeartbeatTimeoutMS ||
+		health.HeartbeatIntervalMS > ^uint32(0)/HeartbeatSafetyFactor ||
+		health.HeartbeatTimeoutMS < health.HeartbeatIntervalMS*HeartbeatSafetyFactor {
 		return fail(ErrInvalidInput)
 	}
 	return validArguments(health.Command)

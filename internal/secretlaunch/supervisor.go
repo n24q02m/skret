@@ -556,7 +556,29 @@ func SendEnvelope(
 		}
 		Zeroize(wire)
 	}
-	interval := time.Duration(service.Health.IntervalMS) * time.Millisecond
+	if err := validHealth(service.Health); err != nil {
+		session.Close()
+		return err
+	}
+	interval := time.Duration(service.Health.HeartbeatIntervalMS) * time.Millisecond
+	sendHeartbeat := func() error {
+		wire, heartbeatErr := session.SealHeartbeat()
+		if heartbeatErr != nil {
+			_ = stream.Close()
+			return heartbeatErr
+		}
+		if _, writeErr := stream.Write(wire); writeErr != nil {
+			Zeroize(wire)
+			_ = stream.Close()
+			return fail(ErrCrypto)
+		}
+		Zeroize(wire)
+		return nil
+	}
+	if err := sendHeartbeat(); err != nil {
+		session.Close()
+		return err
+	}
 	go func() {
 		defer session.Close()
 		ticker := time.NewTicker(interval)
@@ -564,17 +586,9 @@ func SendEnvelope(
 		for {
 			select {
 			case <-ticker.C:
-				wire, heartbeatErr := session.SealHeartbeat()
-				if heartbeatErr != nil {
-					_ = stream.Close()
+				if err := sendHeartbeat(); err != nil {
 					return
 				}
-				if _, writeErr := stream.Write(wire); writeErr != nil {
-					Zeroize(wire)
-					_ = stream.Close()
-					return
-				}
-				Zeroize(wire)
 			case <-ctx.Done():
 				_ = stream.Close()
 				return

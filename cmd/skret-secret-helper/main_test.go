@@ -45,7 +45,7 @@ func writeTempFiles(t *testing.T) (string, string) {
 		Networks:      []string{"backend"},
 		Restart:       "no",
 		OpenStdin:     true,
-		Health:        secretlaunch.HealthSpec{Command: []string{"/bin/true"}, IntervalMS: 10, TimeoutMS: 10, Retries: 1},
+		Health:        secretlaunch.HealthSpec{Command: []string{"/bin/true"}, IntervalMS: 30_000, TimeoutMS: 5_000, Retries: 1, HeartbeatIntervalMS: 1_000, HeartbeatTimeoutMS: 5_000},
 		Dependencies:  []string{},
 		Keys:          []secretlaunch.ManifestKey{{Name: "APP_TOKEN", Version: "1", Env: "APP_TOKEN"}},
 		WrapperDigest: "sha256:" + strings.Repeat("3", 64),
