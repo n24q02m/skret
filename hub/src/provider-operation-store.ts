@@ -15,6 +15,7 @@ const MAX_PROVIDER_OPERATION_LIFETIME_MS = 15 * 60_000;
 const MAX_CONTROL_DECISION_TTL_MS = 15 * 60_000;
 
 const OPERATION_PREFIX = "private:provider-operation:";
+const ACTIVE_OPERATION_KEY = `${OPERATION_PREFIX}active`;
 const FENCE_PREFIX = "private:provider-operation-fence:";
 const INVOCATION_PREFIX = "private:provider-invocation:";
 const DECISION_PREFIX = "private:provider-decision:";
@@ -185,6 +186,11 @@ export type ProviderOperationStartResult =
   | { readonly status: "fenced"; readonly operation: ProviderOperationRecord }
   | { readonly status: "conflict" };
 
+export interface ProviderOperationWatchdogResult {
+  readonly expired: readonly string[];
+  readonly reconciled: readonly string[];
+  readonly next_alarm_at: number | null;
+}
 export interface ProviderOperationTransaction extends ExecutorOperationTransaction {}
 export type ProviderOperationStorage = ExecutorOperationStorage;
 
@@ -197,6 +203,7 @@ export interface ProviderOperationStore {
     response: ProviderDispatchResponse,
     now?: number,
   ): Promise<ProviderOperationRecord>;
+  watchdog(now?: number): Promise<ProviderOperationWatchdogResult>;
   applyDecision(decision: ProviderControlDecision, now?: number): Promise<ProviderOperationRecord>;
   verify(operationID: string, verification: ProviderVerification, now?: number): Promise<ProviderOperationRecord>;
   read(operationID: string): Promise<ProviderOperationRecord | null>;
@@ -286,6 +293,7 @@ export class DurableProviderOperationStore implements ProviderOperationStore {
       const existing = await transaction.get<ProviderOperationRecord>(operationKey(request.operation_id));
       if (existing) {
         if (!sameStart(existing, request)) return { status: "conflict" } as const;
+        if (unresolved(existing.status)) await addActiveOperation(transaction, existing.operation_id);
         return { status: "existing", operation: copyRecord(existing) } as const;
       }
 
@@ -317,6 +325,7 @@ export class DurableProviderOperationStore implements ProviderOperationStore {
         target_identity: request.target_identity,
         target_digest: request.target_digest,
       } satisfies ProviderTargetFence);
+      await addActiveOperation(transaction, request.operation_id);
       return { status: "prepared", operation: copyRecord(operation) } as const;
     });
   }
@@ -340,6 +349,7 @@ export class DurableProviderOperationStore implements ProviderOperationStore {
         };
         await transaction.put(key, blocked);
         await releaseFence(transaction, blocked);
+        await removeActiveOperation(transaction, operationID);
         return null;
       }
       if (now >= current.deadline_at) {
@@ -351,6 +361,7 @@ export class DurableProviderOperationStore implements ProviderOperationStore {
           failure_code: "deadline",
         };
         await transaction.put(key, expired);
+        await removeActiveOperation(transaction, operationID);
         await releaseFence(transaction, expired);
         return null;
       }
@@ -430,7 +441,12 @@ export class DurableProviderOperationStore implements ProviderOperationStore {
           : response.error_code,
       };
       await transaction.put(operationKeyValue, finished);
-      if (isTerminal(nextStatus)) await releaseFence(transaction, finished);
+      if (isTerminal(nextStatus)) {
+        await releaseFence(transaction, finished);
+        await removeActiveOperation(transaction, operationID);
+      } else {
+        await addActiveOperation(transaction, operationID);
+      }
       return copyRecord(finished);
     });
   }
@@ -481,7 +497,12 @@ export class DurableProviderOperationStore implements ProviderOperationStore {
       } satisfies ProviderDecisionConsumption);
       if (next.status !== operation.status || next.updated_at !== operation.updated_at) {
         await transaction.put(key, next);
-        if (isTerminal(next.status)) await releaseFence(transaction, next);
+        if (isTerminal(next.status)) {
+          await releaseFence(transaction, next);
+          await removeActiveOperation(transaction, decision.operation_id);
+        } else {
+          await addActiveOperation(transaction, decision.operation_id);
+        }
       }
       return copyRecord(next);
     });
@@ -550,10 +571,79 @@ export class DurableProviderOperationStore implements ProviderOperationStore {
           completed_at: now,
         } satisfies ProviderLastSuccess);
       }
-      if (isTerminal(status)) await releaseFence(transaction, finished);
+      if (isTerminal(status)) {
+        await releaseFence(transaction, finished);
+        await removeActiveOperation(transaction, operationID);
+      } else {
+        await addActiveOperation(transaction, operationID);
+      }
       return copyRecord(finished);
     });
   }
+  async watchdog(now = Date.now()): Promise<ProviderOperationWatchdogResult> {
+    validateNow(now);
+    return this.storage.transaction(async (transaction) => {
+      const active = await readActiveProviderOperations(transaction);
+      const expired: string[] = [];
+      const reconciled: string[] = [];
+      const remaining: string[] = [];
+      let nextAlarm: number | null = null;
+
+      for (const operationID of active) {
+        const key = operationKey(operationID);
+        const operation = await transaction.get<ProviderOperationRecord>(key);
+        if (!operation || isTerminal(operation.status)) continue;
+        if (now < operation.deadline_at) {
+          remaining.push(operationID);
+          nextAlarm = earlierAlarm(nextAlarm, operation.deadline_at);
+          continue;
+        }
+
+        if (operation.status === "prepared") {
+          const failed: ProviderOperationRecord = {
+            ...operation,
+            status: "failed",
+            updated_at: now,
+            completed_at: now,
+            active_invocation_id: null,
+            failure_code: "deadline",
+          };
+          await transaction.put(key, failed);
+          await releaseFence(transaction, failed);
+          expired.push(operationID);
+          continue;
+        }
+
+        if (
+          operation.status === "dispatching" ||
+          operation.status === "awaiting_verification" ||
+          operation.status === "cancel_requested"
+        ) {
+          const needsCancellationReconciliation = operation.status === "cancel_requested";
+          const reconciledOperation: ProviderOperationRecord = {
+            ...operation,
+            status: needsCancellationReconciliation
+              ? "cancel_needs_reconciliation"
+              : "needs_reconciliation",
+            updated_at: now,
+            completed_at: null,
+            active_invocation_id: null,
+            failure_code: operation.failure_code ?? "watchdog_deadline",
+          };
+          await transaction.put(key, reconciledOperation);
+          reconciled.push(operationID);
+        }
+      }
+
+      await transaction.put(ACTIVE_OPERATION_KEY, remaining);
+      return {
+        expired,
+        reconciled,
+        next_alarm_at: nextAlarm === null ? null : Math.max(now + 1, nextAlarm),
+      };
+    });
+  }
+
 
   async read(operationID: string): Promise<ProviderOperationRecord | null> {
     validateOperationID(operationID);
@@ -688,13 +778,20 @@ function validateDecisionBinding(
   now: number,
   expectedIssuer: string | undefined,
 ): void {
+  const stateMatches =
+    decision.current_state_oid === operation.observed_state_oid ||
+    (
+      decision.action === "confirm_applied" &&
+      operation.observed_state_oid === null &&
+      decision.current_state_oid !== null
+    );
   if (
     decision.operation_id !== operation.operation_id ||
     decision.generation !== operation.generation ||
     decision.source_fingerprint !== operation.source_fingerprint ||
     decision.source_digest !== operation.source_digest ||
     decision.target_digest !== operation.target_digest ||
-    decision.current_state_oid !== operation.observed_state_oid ||
+    !stateMatches ||
     decision.issuer !== operation.operator_identity ||
     (expectedIssuer !== undefined && decision.issuer !== expectedIssuer)
   ) {
@@ -737,7 +834,12 @@ function applyDecisionTransition(
     };
   }
   if (decision.action === "confirm_applied") {
-    if (operation.status !== "needs_reconciliation" || operation.observed_state_oid === null) {
+    if (
+      operation.status !== "needs_reconciliation" ||
+      decision.current_state_oid === null ||
+      (operation.observed_state_oid !== null &&
+        operation.observed_state_oid !== decision.current_state_oid)
+    ) {
       throw new ProviderOperationDecisionRejectedError();
     }
     if (operation.capability !== "native_cas" && operation.capability !== "owner_risk_gate") {
@@ -1005,6 +1107,55 @@ function sameOutcome(left: ProviderInvocationOutcome, right: ProviderInvocationO
 
 function copyRecord(record: ProviderOperationRecord): ProviderOperationRecord {
   return { ...record };
+}
+
+function earlierAlarm(current: number | null, candidate: number): number {
+  return current === null ? candidate : Math.min(current, candidate);
+}
+
+type ProviderOperationListTransaction = ProviderOperationTransaction & {
+  list?: <T>(options?: { prefix?: string }) => Promise<Map<string, T>>;
+};
+
+async function readActiveProviderOperations(
+  transaction: ProviderOperationTransaction,
+): Promise<string[]> {
+  const ids = new Set<string>();
+  const indexed = await transaction.get<string[]>(ACTIVE_OPERATION_KEY);
+  for (const operationID of indexed ?? []) {
+    if (OPERATION_ID_PATTERN.test(operationID)) ids.add(operationID);
+  }
+
+  const list = (transaction as ProviderOperationListTransaction).list;
+  if (typeof list === "function") {
+    const records = await list.call(transaction, { prefix: OPERATION_PREFIX });
+    for (const key of records.keys()) {
+      if (key === ACTIVE_OPERATION_KEY || !key.startsWith(OPERATION_PREFIX)) continue;
+      const operationID = key.slice(OPERATION_PREFIX.length);
+      if (OPERATION_ID_PATTERN.test(operationID)) ids.add(operationID);
+    }
+  }
+  return [...ids];
+}
+
+async function addActiveOperation(
+  transaction: ProviderOperationTransaction,
+  operationID: string,
+): Promise<void> {
+  const active = await transaction.get<string[]>(ACTIVE_OPERATION_KEY) ?? [];
+  if (active.includes(operationID)) return;
+  await transaction.put(ACTIVE_OPERATION_KEY, [...active, operationID]);
+}
+
+async function removeActiveOperation(
+  transaction: ProviderOperationTransaction,
+  operationID: string,
+): Promise<void> {
+  const active = await transaction.get<string[]>(ACTIVE_OPERATION_KEY) ?? [];
+  await transaction.put(
+    ACTIVE_OPERATION_KEY,
+    active.filter((candidate) => candidate !== operationID),
+  );
 }
 
 async function releaseFence(transaction: ProviderOperationTransaction, operation: ProviderOperationRecord): Promise<void> {

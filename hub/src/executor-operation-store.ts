@@ -10,6 +10,7 @@ import {
   type ProviderOperationStartResult,
   type ProviderVerification,
   type ProviderInvocationOutcome,
+  type ProviderOperationWatchdogResult,
 } from "./provider-operation-store";
 
 const OPERATION_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
@@ -562,7 +563,7 @@ export class SecurityExecutorOperations extends DurableObject<SecurityExecutorOp
   private get operationStore(): DurableExecutorOperationStore {
     return new DurableExecutorOperationStore(
       this.ctx.storage,
-      (timestamp) => this.ctx.storage.setAlarm(timestamp),
+      (timestamp) => this.scheduleAlarmAt(timestamp),
     );
   }
 
@@ -582,7 +583,9 @@ export class SecurityExecutorOperations extends DurableObject<SecurityExecutorOp
     request: ProviderOperationStart,
     now = Date.now(),
   ): Promise<ProviderOperationStartResult> {
-    return this.providerStore().start(request, now);
+    const result = await this.providerStore().start(request, now);
+    if (result.status !== "conflict") await this.scheduleProviderWatchdog(result.operation, now);
+    return result;
   }
 
   async providerClaim(
@@ -590,7 +593,9 @@ export class SecurityExecutorOperations extends DurableObject<SecurityExecutorOp
     invocationID: string,
     now = Date.now(),
   ): Promise<ProviderDispatchRequest | null> {
-    return this.providerStore().claim(operationID, invocationID, now);
+    const result = await this.providerStore().claim(operationID, invocationID, now);
+    if (result !== null) await this.scheduleAlarmAt(Math.max(now + 1, result.deadline_at));
+    return result;
   }
 
   async providerRecordOutcome(
@@ -599,15 +604,18 @@ export class SecurityExecutorOperations extends DurableObject<SecurityExecutorOp
     response: ProviderDispatchResponse,
     now = Date.now(),
   ): Promise<ProviderOperationRecord> {
-    return this.providerStore().recordOutcome(operationID, invocationID, response, now);
+    const result = await this.providerStore().recordOutcome(operationID, invocationID, response, now);
+    await this.scheduleProviderWatchdog(result, now);
+    return result;
   }
-
 
   async providerApplyDecision(
     decision: ProviderControlDecision,
     now = Date.now(),
   ): Promise<ProviderOperationRecord> {
-    return this.providerControlStore().applyDecision(decision, now);
+    const result = await this.providerControlStore().applyDecision(decision, now);
+    await this.scheduleProviderWatchdog(result, now);
+    return result;
   }
 
   async providerVerify(
@@ -615,7 +623,27 @@ export class SecurityExecutorOperations extends DurableObject<SecurityExecutorOp
     verification: ProviderVerification,
     now = Date.now(),
   ): Promise<ProviderOperationRecord> {
-    return this.providerStore().verify(operationID, verification, now);
+    const result = await this.providerStore().verify(operationID, verification, now);
+    await this.scheduleProviderWatchdog(result, now);
+    return result;
+  }
+  async providerWatchdog(now = Date.now()): Promise<ProviderOperationWatchdogResult> {
+    return this.providerStore().watchdog(now);
+  }
+
+  private async scheduleProviderWatchdog(
+    operation: ProviderOperationRecord,
+    now: number,
+  ): Promise<void> {
+    if (
+      operation.status === "succeeded" ||
+      operation.status === "failed" ||
+      operation.status === "cancelled" ||
+      operation.status === "superseded"
+    ) {
+      return;
+    }
+    await this.scheduleAlarmAt(Math.max(now + 1, operation.deadline_at));
   }
 
   async providerRead(operationID: string): Promise<ProviderOperationRecord | null> {
@@ -679,22 +707,35 @@ export class SecurityExecutorOperations extends DurableObject<SecurityExecutorOp
     return this.operationStore.watchdog(now);
   }
 
+  private async scheduleAlarmAt(timestamp: number): Promise<void> {
+    try {
+      const storage = this.ctx.storage as typeof this.ctx.storage & {
+        getAlarm?: () => Promise<number | null>;
+      };
+      const current = typeof storage.getAlarm === "function"
+        ? await storage.getAlarm()
+        : null;
+      if (current === null || current === undefined || timestamp < current) {
+        await this.ctx.storage.setAlarm(timestamp);
+      }
+    } catch {
+      console.error("executor operation alarm scheduling unavailable");
+    }
+  }
+
   async alarm(): Promise<void> {
     const now = Date.now();
     let shouldReschedule = true;
     let nextAlarm = now + WATCHDOG_INTERVAL_MS;
     try {
-      const result = await this.watchdog(now);
-      shouldReschedule = result.next_alarm_at !== null;
-      if (result.next_alarm_at !== null) nextAlarm = result.next_alarm_at;
+      const executorResult = await this.watchdog(now);
+      const providerResult = await this.providerWatchdog(now);
+      const candidateAlarms = [executorResult.next_alarm_at, providerResult.next_alarm_at]
+        .filter((timestamp): timestamp is number => timestamp !== null);
+      shouldReschedule = candidateAlarms.length > 0;
+      if (shouldReschedule) nextAlarm = Math.min(...candidateAlarms);
     } finally {
-      if (shouldReschedule) {
-        try {
-          await this.ctx.storage.setAlarm(nextAlarm);
-        } catch {
-          console.error("executor operation alarm rescheduling unavailable");
-        }
-      }
+      if (shouldReschedule) await this.scheduleAlarmAt(nextAlarm);
     }
   }
 }

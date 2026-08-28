@@ -299,6 +299,107 @@ describe("provider operation store", () => {
     });
   });
 
+  it("watchdog expires prepared provider operations and releases their target fence", async () => {
+    const storage = fakeStorage();
+    const store = new DurableProviderOperationStore(storage);
+    const operation = startRequest("operation-watchdog-prepared");
+    await store.start(operation, NOW);
+
+    await expect(store.watchdog(operation.deadline_at)).resolves.toMatchObject({
+      expired: [operation.operation_id],
+      reconciled: [],
+      next_alarm_at: null,
+    });
+    await expect(store.read(operation.operation_id)).resolves.toMatchObject({
+      status: "failed",
+      completed_at: operation.deadline_at,
+      failure_code: "deadline",
+    });
+    await expect(storage.get("private:provider-operation-fence:" + operation.target_identity)).resolves.toBeUndefined();
+    await expect(storage.get("private:provider-operation:active")).resolves.toEqual([]);
+  });
+
+  it("watchdog reconciles in-flight provider operations without releasing their fence", async () => {
+    const storage = fakeStorage();
+    const store = new DurableProviderOperationStore(storage);
+    const operation = startRequest("operation-watchdog-dispatching");
+    await store.start(operation, NOW);
+    await expect(store.claim(operation.operation_id, "invocation-watchdog", NOW + 1)).resolves.toMatchObject({
+      operation_id: operation.operation_id,
+    });
+
+    await expect(store.watchdog(operation.deadline_at)).resolves.toMatchObject({
+      expired: [],
+      reconciled: [operation.operation_id],
+      next_alarm_at: null,
+    });
+    await expect(store.read(operation.operation_id)).resolves.toMatchObject({
+      status: "needs_reconciliation",
+      completed_at: null,
+      failure_code: "watchdog_deadline",
+      active_invocation_id: null,
+    });
+    await expect(storage.get("private:provider-operation-fence:" + operation.target_identity)).resolves.toBeDefined();
+    await expect(storage.get("private:provider-operation:active")).resolves.toEqual([]);
+    await expect(store.start(startRequest("operation-watchdog-successor"), NOW + 1)).resolves.toMatchObject({
+      status: "fenced",
+      operation: { operation_id: operation.operation_id },
+    });
+  });
+
+  it("watchdog reconciles a cancelled in-flight provider operation without releasing its fence", async () => {
+    const { privateKey, publicKey } = await keyPair();
+    const storage = fakeStorage();
+    const store = new DurableProviderOperationStore(storage, { control_public_key: publicKey });
+    const operation = startRequest("operation-watchdog-cancel-requested");
+    await store.start(operation, NOW);
+    await store.claim(operation.operation_id, "invocation-cancel-watchdog", NOW + 1);
+    const decision = await signedDecision(privateKey, operation, {
+      action: "cancel",
+      current_state_oid: null,
+      nonce: "cancel-watchdog",
+      reason: "cancel before watchdog deadline",
+    });
+    await expect(store.applyDecision(decision, NOW + 2)).resolves.toMatchObject({
+      status: "cancel_requested",
+    });
+
+    await expect(store.watchdog(operation.deadline_at)).resolves.toMatchObject({
+      expired: [],
+      reconciled: [operation.operation_id],
+      next_alarm_at: null,
+    });
+    await expect(store.read(operation.operation_id)).resolves.toMatchObject({
+      status: "cancel_needs_reconciliation",
+      failure_code: "watchdog_deadline",
+      active_invocation_id: null,
+    });
+    await expect(storage.get("private:provider-operation-fence:" + operation.target_identity)).resolves.toBeDefined();
+  });
+
+  it("binds an owner-confirmed provider OID when the ambiguous outcome had no OID", async () => {
+    const { privateKey, publicKey } = await keyPair();
+    const operation = startRequest("operation-confirm-applied-bind");
+    const store = new DurableProviderOperationStore(fakeStorage(), { control_public_key: publicKey });
+    await prepareDropped(store, operation, {
+      status: "unknown",
+      provider_state_oid: null,
+      canary: "unknown",
+      postconditions: "unknown",
+      error_code: "response-dropped",
+    });
+
+    const decision = await signedDecision(privateKey, operation, {
+      current_state_oid: "owner-readback-state",
+      nonce: "confirm-applied-bind",
+    });
+
+    await expect(store.applyDecision(decision, NOW + 3)).resolves.toMatchObject({
+      status: "awaiting_verification",
+      observed_state_oid: "owner-readback-state",
+    });
+  });
+
   it("rejects wrong issuer, current state, expiry, signature, and replayed decision nonce", async () => {
     const { privateKey, publicKey } = await keyPair();
     const operation = startRequest("operation-decision-reject");

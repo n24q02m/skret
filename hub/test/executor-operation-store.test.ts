@@ -311,6 +311,36 @@ describe("executor operation store", () => {
     expect(setAlarm).toHaveBeenCalledWith(expect.any(Number));
   });
 
+  it("alarm runs the provider watchdog and schedules the earliest provider deadline", async () => {
+    const setAlarm = vi.fn(async () => undefined);
+    const operations = Object.create(
+      SecurityExecutorOperations.prototype,
+    ) as SecurityExecutorOperations;
+    Object.defineProperty(operations, "ctx", {
+      value: { storage: { setAlarm } },
+    });
+    const now = vi.spyOn(Date, "now").mockReturnValue(NOW);
+    try {
+      operations.watchdog = vi.fn(async () => ({
+        marked_timeout: [],
+        terminalized: [],
+        next_alarm_at: NOW + 500,
+      }));
+      operations.providerWatchdog = vi.fn(async () => ({
+        expired: [],
+        reconciled: [],
+        next_alarm_at: NOW + 100,
+      }));
+
+      await operations.alarm();
+
+      expect(operations.providerWatchdog).toHaveBeenCalledWith(NOW);
+      expect(setAlarm).toHaveBeenCalledWith(NOW + 100);
+    } finally {
+      now.mockRestore();
+    }
+  });
+
   it("rejects malformed deadlines and digests before durable writes", async () => {
     const storage = fakeStorage();
     const store = new DurableExecutorOperationStore(storage);
