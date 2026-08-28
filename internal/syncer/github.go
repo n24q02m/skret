@@ -50,10 +50,10 @@ func NewGitHub(owner, repo, token, baseURL string) Syncer {
 
 func (g *GitHubSyncer) Name() string { return "github" }
 
-// SyncKey writes exactly one Actions secret while preserving the same
-// encryption, authentication, name normalization, and retry behavior as
-// Sync. It is used by durable operation journaling so a successful provider
-// response can be acknowledged before the next key is attempted.
+// SyncKey writes exactly one Actions secret. The provider mutation itself is a
+// single attempt; ambiguous responses are returned for reconciliation rather
+// than replayed. It is used by durable operation journaling so a successful
+// provider response can be acknowledged before the next key is attempted.
 func (g *GitHubSyncer) SyncKey(ctx context.Context, secret *provider.Secret) error {
 	if secret == nil {
 		return fmt.Errorf("github: secret is nil")
@@ -174,7 +174,7 @@ func (g *GitHubSyncer) putSecret(ctx context.Context, name, value string, recipi
 	reqURL := u.String()
 
 	body := fmt.Sprintf(`{"encrypted_value":%q,"key_id":%q}`, encValue, keyID)
-	resp, err := doWithRetry(ctx, g.httpClient, func() (*http.Request, error) {
+	resp, err := doMutation(ctx, g.httpClient, func() (*http.Request, error) {
 		req, err := http.NewRequestWithContext(ctx, http.MethodPut, reqURL, strings.NewReader(body))
 		if err != nil {
 			return nil, fmt.Errorf("github: create request: %w", err)

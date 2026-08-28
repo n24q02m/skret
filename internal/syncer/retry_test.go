@@ -166,7 +166,7 @@ func TestTransientHTTPStatusClassification(t *testing.T) {
 	}
 }
 
-func TestGitHubSyncer_RetriesGETAndPUT(t *testing.T) {
+func TestGitHubSyncer_RetriesGETButDoesNotReplayPUT(t *testing.T) {
 	var getAttempts, putAttempts atomic.Int32
 	pubKey, _, err := box.GenerateKey(rand.Reader)
 	require.NoError(t, err)
@@ -180,11 +180,9 @@ func TestGitHubSyncer_RetriesGETAndPUT(t *testing.T) {
 			}
 			_, _ = w.Write([]byte(`{"key_id":"id","key":"` + pubKeyB64 + `"}`))
 		case http.MethodPut:
-			if putAttempts.Add(1) == 1 {
-				w.WriteHeader(http.StatusBadGateway)
-				return
-			}
-			w.WriteHeader(http.StatusNoContent)
+			putAttempts.Add(1)
+			w.WriteHeader(http.StatusBadGateway)
+			_, _ = w.Write([]byte("ambiguous provider body"))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -200,10 +198,12 @@ func TestGitHubSyncer_RetriesGETAndPUT(t *testing.T) {
 	assert.Equal(t, "id", gotID)
 	var recipientKey [32]byte
 	copy(recipientKey[:], pubKey[:])
-	require.NoError(t, g.putSecret(context.Background(), "NAME", "value", &recipientKey, "id"))
+	err = g.putSecret(context.Background(), "NAME", "value", &recipientKey, "id")
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), "ambiguous provider body")
 	assert.Equal(t, int32(2), getAttempts.Load())
-	assert.Equal(t, int32(2), putAttempts.Load())
-	assert.Equal(t, int32(4), closed.Load())
+	assert.Equal(t, int32(1), putAttempts.Load(), "ambiguous writes must not be replayed")
+	assert.Equal(t, int32(3), closed.Load())
 }
 
 func TestGitHubSyncer_RetriesExistingKeysGET(t *testing.T) {
@@ -225,22 +225,18 @@ func TestGitHubSyncer_RetriesExistingKeysGET(t *testing.T) {
 	assert.Equal(t, int32(2), attempts.Load())
 }
 
-func TestCloudflareSyncer_RetriesPUTPATCHAndGET(t *testing.T) {
+func TestCloudflareSyncer_DoesNotReplayWritesButRetriesGET(t *testing.T) {
 	var putAttempts, patchAttempts, getAttempts atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodPut:
-			if putAttempts.Add(1) == 1 {
-				w.WriteHeader(http.StatusServiceUnavailable)
-				return
-			}
-			w.WriteHeader(http.StatusOK)
+			putAttempts.Add(1)
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte("ambiguous worker body"))
 		case http.MethodPatch:
-			if patchAttempts.Add(1) == 1 {
-				w.WriteHeader(http.StatusRequestTimeout)
-				return
-			}
-			w.WriteHeader(http.StatusOK)
+			patchAttempts.Add(1)
+			w.WriteHeader(http.StatusRequestTimeout)
+			_, _ = w.Write([]byte("ambiguous pages body"))
 		case http.MethodGet:
 			if getAttempts.Add(1) == 1 {
 				w.WriteHeader(http.StatusBadGateway)
@@ -257,18 +253,22 @@ func TestCloudflareSyncer_RetriesPUTPATCHAndGET(t *testing.T) {
 	client := retryTestClient(srv, &closed)
 	worker := NewCloudflare("account", "worker", "", "token", srv.URL).(*CloudflareSyncer)
 	worker.httpClient = client
-	require.NoError(t, worker.Sync(context.Background(), []*provider.Secret{{Key: "NAME", Value: "value"}}))
+	err := worker.Sync(context.Background(), []*provider.Secret{{Key: "NAME", Value: "value"}})
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), "ambiguous worker body")
 	names, err := worker.ExistingKeys(context.Background())
 	require.NoError(t, err)
 	assert.Equal(t, []string{"NAME"}, names)
 
 	pages := NewCloudflare("account", "", "pages", "token", srv.URL).(*CloudflareSyncer)
 	pages.httpClient = client
-	require.NoError(t, pages.Sync(context.Background(), []*provider.Secret{{Key: "NAME", Value: "value"}}))
-	assert.Equal(t, int32(2), putAttempts.Load())
-	assert.Equal(t, int32(2), patchAttempts.Load())
-	assert.Equal(t, int32(2), getAttempts.Load())
-	assert.Equal(t, int32(6), closed.Load())
+	err = pages.Sync(context.Background(), []*provider.Secret{{Key: "NAME", Value: "value"}})
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), "ambiguous pages body")
+	assert.Equal(t, int32(1), putAttempts.Load(), "worker writes must not be replayed")
+	assert.Equal(t, int32(1), patchAttempts.Load(), "pages writes must not be replayed")
+	assert.Equal(t, int32(2), getAttempts.Load(), "safe reads retain bounded retry")
+	assert.Equal(t, int32(4), closed.Load())
 }
 
 func TestHTTPStatusErrorHasNoWrappedBody(t *testing.T) {

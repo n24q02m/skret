@@ -742,6 +742,9 @@ func testPublicKeyB64(t *testing.T) string {
 }
 
 func TestSyncOptions_Run_NoOverwrite_GithubFiltersExisting(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	var putCount int
 	var putPaths []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -771,6 +774,9 @@ func TestSyncOptions_Run_NoOverwrite_GithubFiltersExisting(t *testing.T) {
 }
 
 func TestSyncOptions_Run_NoOverwriteFlag_ForcesAllTargets(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	// Target github does NOT declare no_overwrite in config (false/absent);
 	// the CLI flag must force it anyway. Same harness/expectations as
 	// TestSyncOptions_Run_NoOverwrite_GithubFiltersExisting.

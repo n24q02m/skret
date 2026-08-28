@@ -134,19 +134,18 @@ func (o *syncOptions) run(cmd *cobra.Command) error {
 		toSync := secrets
 		noOv := !o.rotate && (tc.NoOverwrite || o.noOverwrite)
 
-		// Rotation is an explicit overwrite intent. It always loads the
-		// target's journal so the operation lifecycle is durable, but it
-		// deliberately bypasses warm-cache filtering and no-overwrite's
-		// target-side existence check.
+		// Rotation and all external provider mutations use a durable state
+		// journal. Stateless mode remains available for local dotenv writes.
 		var state *syncer.SyncState
 		var operationID string
-		if o.rotate || (o.skipUnchanged && !noOv) {
+		journalByDefault := s.Name() == "github" || s.Name() == "cloudflare"
+		if journalByDefault || o.rotate || (o.skipUnchanged && !noOv) {
 			stateID := targetStateID(s, tc)
 			state, err = syncer.LoadSyncState(s.Name(), stateID)
 			if err != nil {
 				return skret.NewError(skret.ExitGenericError, "sync: load state failed", err)
 			}
-			if !o.rotate {
+			if o.skipUnchanged && !o.rotate && !noOv {
 				toSync = state.FilterUnchanged(secrets)
 				if skipped := len(secrets) - len(toSync); skipped > 0 {
 					cmd.PrintErrf("Skipped %d unchanged secret(s) for %s\n", skipped, s.Name())
@@ -180,6 +179,13 @@ func (o *syncOptions) run(cmd *cobra.Command) error {
 		}
 
 		if state != nil && len(toSync) > 0 {
+			if journalByDefault && state.RequiresReconciliation() {
+				return skret.NewError(
+					skret.ExitNetworkError,
+					fmt.Sprintf("sync: %s operation requires provider reconciliation before retry", s.Name()),
+					syncer.ErrOperationNeedsReconciliation,
+				)
+			}
 			operationID, err = syncer.NewOperationID()
 			if err != nil {
 				return skret.NewError(skret.ExitGenericError, "sync: create operation", err)
@@ -192,6 +198,9 @@ func (o *syncOptions) run(cmd *cobra.Command) error {
 			if err != nil {
 				return skret.NewError(skret.ExitGenericError, "sync: begin operation", err)
 			}
+			state.OperationMethod = mutationMethod(s, tc)
+			state.SourceIdentity = resolved.Provider + ":" + resolved.Path
+			state.SourceDigest = syncer.SourceDigest(toSync)
 			if err := saveSyncState(state); err != nil {
 				return skret.NewError(skret.ExitGenericError, "sync: save state failed", err)
 			}
@@ -523,6 +532,20 @@ func tokenForType(typ string) string {
 		return os.Getenv("CLOUDFLARE_API_TOKEN")
 	}
 	return ""
+}
+
+func mutationMethod(s syncer.Syncer, tc syncer.TargetConfig) string {
+	switch s.Name() {
+	case "github":
+		return "PUT"
+	case "cloudflare":
+		if tc.Fields["pages"] != "" {
+			return "PATCH"
+		}
+		return "PUT"
+	default:
+		return ""
+	}
 }
 
 // targetStateID returns the per-target identifier used to scope the sync

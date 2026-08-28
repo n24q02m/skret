@@ -24,13 +24,23 @@ import (
 func TestSync_PerKeyTargetJournalsPartialFailureWithoutFalseSuccess(t *testing.T) {
 	var mu sync.Mutex
 	var names []string
+	var prewriteChecked bool
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, http.MethodPut, r.Method)
 		var payload map[string]string
 		require.NoError(t, json.NewDecoder(r.Body).Decode(&payload))
 		mu.Lock()
+		defer mu.Unlock()
 		names = append(names, payload["name"])
-		mu.Unlock()
+		if !prewriteChecked {
+			prewriteChecked = true
+			persisted, stateErr := syncer.LoadSyncState("cloudflare", "worker/worker")
+			require.NoError(t, stateErr)
+			require.NotNil(t, persisted)
+			assert.Equal(t, "PUT", persisted.OperationMethod)
+			assert.Equal(t, "local:", persisted.SourceIdentity)
+			assert.Len(t, persisted.SourceDigest, 64)
+		}
 		if payload["name"] == "B" {
 			w.WriteHeader(http.StatusForbidden)
 			_, _ = w.Write([]byte(`{"errors":[{"message":"opaque provider failure"}]}`))
@@ -70,7 +80,7 @@ sync:
 	cmd := NewRootCmd()
 	cmd.SetOut(&stdout)
 	cmd.SetErr(&stderr)
-	cmd.SetArgs([]string{"sync", "--skip-unchanged", "--format=json"})
+	cmd.SetArgs([]string{"sync", "--format=json"})
 	err = cmd.Execute()
 	require.Error(t, err)
 	assert.Equal(t, skret.ExitNetworkError, skret.ExitCode(err))
@@ -94,6 +104,19 @@ sync:
 	assert.NotContains(t, state.Hashes, "B")
 	assert.NotContains(t, state.Hashes, "C")
 	assert.NotEqual(t, syncer.OperationPhaseSucceeded, state.Phase)
+	assert.Equal(t, "PUT", state.OperationMethod)
+	assert.Len(t, state.SourceDigest, 64)
+
+	retryCmd := NewRootCmd()
+	retryCmd.SetOut(&stdout)
+	retryCmd.SetErr(&stderr)
+	retryCmd.SetArgs([]string{"sync", "--format=json"})
+	retryErr := retryCmd.Execute()
+	require.Error(t, retryErr)
+	assert.Contains(t, retryErr.Error(), "reconciliation")
+	mu.Lock()
+	assert.Equal(t, gotNames, names, "a prior ambiguous operation must not be replayed automatically")
+	mu.Unlock()
 }
 
 func sha256Hex(value string) string {

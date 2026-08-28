@@ -63,6 +63,9 @@ func TestSyncOptions_Run_RotateBypassesWarmSkipAndWritesAllKeys(t *testing.T) {
 }
 
 func TestSyncOptions_Run_RotateOverridesTargetNoOverwrite(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	var putPaths []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {

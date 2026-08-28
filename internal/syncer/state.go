@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -17,12 +18,17 @@ import (
 )
 
 // SyncState tracks per-secret SHA256(value) hashes for drift detection.
-// Persisted at ~/.skret/sync-state/<target>-<sanitized-id>.json.
 type SyncState struct {
 	Target  string            `json:"target"`
 	ID      string            `json:"id"`
 	Hashes  map[string]string `json:"hashes"`
 	Updated time.Time         `json:"updated"`
+
+	// Mutation identity is persisted before an external write. It contains
+	// target scope plus a value-free source digest, never secret values.
+	OperationMethod string `json:"operation_method,omitempty"`
+	SourceIdentity  string `json:"source_identity,omitempty"`
+	SourceDigest    string `json:"source_digest,omitempty"`
 
 	OperationID string                `json:"operation_id,omitempty"`
 	Phase       OperationPhase        `json:"phase,omitempty"`
@@ -102,6 +108,7 @@ var (
 	ErrOperationOwnerRiskApprovalRequired = errors.New("sync operation requires owner-risk reconciliation")
 	ErrOperationVerificationRequired      = errors.New("sync operation requires canary and postcondition verification")
 	ErrOperationDeadlineExceeded          = errors.New("sync operation deadline exceeded")
+	ErrOperationNeedsReconciliation       = errors.New("sync operation needs provider reconciliation")
 )
 
 // NewOperationID returns a non-secret identifier for one sync attempt.
@@ -798,6 +805,26 @@ func (s *SyncState) operationPending() bool {
 	return false
 }
 
+// RequiresReconciliation reports whether starting another external mutation
+// would replay an incomplete or ambiguous operation. A pending operation whose
+// every owned key already succeeded is the sole recoverable case: callers may
+// finalize it without issuing provider requests.
+func (s *SyncState) RequiresReconciliation() bool {
+	if s == nil || s.OperationID == "" || s.Phase == OperationPhaseSucceeded {
+		return false
+	}
+	switch s.Phase {
+	case OperationPhaseNeedsReconciliation, OperationPhaseAwaitingVerification:
+		return true
+	}
+	for _, outcome := range s.Outcomes {
+		if outcome.OperationID == s.OperationID && outcome.Status != OutcomeSucceeded {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *SyncState) hasRetainedMetadataOperation() bool {
 	if s.OperationID == "" || s.Phase == OperationPhaseSucceeded {
 		return false
@@ -872,6 +899,15 @@ func sanitizeID(id string) string {
 }
 
 func (s *SyncState) validatePersistedOperationMetadata() error {
+	if s.OperationMethod != "" && !validOperationReference(s.OperationMethod) {
+		return fmt.Errorf("validate sync state operation method: invalid operation method")
+	}
+	if len(s.SourceIdentity) > 512 {
+		return fmt.Errorf("validate sync state source identity: too long")
+	}
+	if s.SourceDigest != "" && !validAcknowledgedHash(s.SourceDigest) {
+		return fmt.Errorf("validate sync state source digest: invalid digest")
+	}
 	currentMetadata := 0
 	for key, outcome := range s.Outcomes {
 		if outcome.Metadata == nil {
@@ -1004,6 +1040,23 @@ func SaveSyncState(s *SyncState) error {
 	}
 	keepTemp = true
 	return nil
+}
+
+// SourceDigest returns a deterministic value-free digest for a source batch.
+// It binds each source key to its SHA256(value), then sorts the pairs so
+// caller ordering cannot change the operation identity.
+func SourceDigest(secrets []*provider.Secret) string {
+	pairs := make([]string, 0, len(secrets))
+	for _, secret := range secrets {
+		if secret == nil {
+			pairs = append(pairs, "<nil>")
+			continue
+		}
+		pairs = append(pairs, secret.Key+"\x00"+hashSecret(secret.Value))
+	}
+	sort.Strings(pairs)
+	digest := sha256.Sum256([]byte(strings.Join(pairs, "\x00")))
+	return hex.EncodeToString(digest[:])
 }
 
 // hashSecret returns hex-encoded SHA256 of the secret value.

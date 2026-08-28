@@ -121,7 +121,8 @@ func TestCloudflareSyncer_Internal_PutWorkerSecret_Errors(t *testing.T) {
 
 	err := cf.putWorkerSecret(context.Background(), "name", "value")
 	require.Error(t, err)
-	require.ErrorContains(t, err, "network error")
+	assert.ErrorIs(t, err, ErrMutationNeedsReconciliation)
+	assert.NotContains(t, err.Error(), "network error")
 
 	cf.baseURL = "https://api.cloudflare.com/client/v4\x7f"
 	err = cf.putWorkerSecret(context.Background(), "name", "value")
@@ -194,10 +195,10 @@ func TestCloudflareSyncer_Pages_Errors(t *testing.T) {
 			},
 		}},
 	}
-
 	err := cf.syncPages(context.Background(), []*provider.Secret{{Key: "K", Value: "v"}})
 	require.Error(t, err)
-	require.ErrorContains(t, err, "network error")
+	assert.ErrorIs(t, err, ErrMutationNeedsReconciliation)
+	assert.NotContains(t, err.Error(), "network error")
 
 	cf.baseURL = "https://api.cloudflare.com/client/v4\x7f"
 	err = cf.syncPages(context.Background(), []*provider.Secret{{Key: "K", Value: "v"}})

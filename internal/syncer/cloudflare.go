@@ -108,7 +108,7 @@ func (c *CloudflareSyncer) putWorkerSecret(ctx context.Context, name, value stri
 	if err != nil {
 		return fmt.Errorf("cloudflare: marshal %q: %w", name, err)
 	}
-	resp, err := doWithRetry(ctx, c.httpClient, func() (*http.Request, error) {
+	resp, err := doMutation(ctx, c.httpClient, func() (*http.Request, error) {
 		req, err := http.NewRequestWithContext(ctx, http.MethodPut, u.String(), strings.NewReader(string(body)))
 		if err != nil {
 			return nil, fmt.Errorf("cloudflare: create request: %w", err)
@@ -148,7 +148,7 @@ func (c *CloudflareSyncer) syncPages(ctx context.Context, secrets []*provider.Se
 		return fmt.Errorf("cloudflare: parse base url: %w", err)
 	}
 	u = u.JoinPath("accounts", c.accountID, "pages", "projects", c.pages)
-	resp, err := doWithRetry(ctx, c.httpClient, func() (*http.Request, error) {
+	resp, err := doMutation(ctx, c.httpClient, func() (*http.Request, error) {
 		req, err := http.NewRequestWithContext(ctx, http.MethodPatch, u.String(), strings.NewReader(string(body)))
 		if err != nil {
 			return nil, fmt.Errorf("cloudflare: create request: %w", err)

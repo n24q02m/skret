@@ -58,17 +58,12 @@ func TestPerKeySyncer_GitHubAdapterWritesOneKey(t *testing.T) {
 	assert.NotEqual(t, "value", payload["encrypted_value"], "provider value must remain encrypted")
 }
 
-func TestPerKeySyncer_CloudflareWorkerAdapterWritesOneKeyAndRetries(t *testing.T) {
+func TestPerKeySyncer_CloudflareWorkerAdapterDoesNotReplayAmbiguousWrite(t *testing.T) {
 	var calls atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		attempt := calls.Add(1)
-		if attempt < 3 {
-			w.WriteHeader(http.StatusServiceUnavailable)
-			_, _ = w.Write([]byte("provider body must not escape"))
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"success":true}`))
+		calls.Add(1)
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = w.Write([]byte("provider body must not escape"))
 	}))
 	defer server.Close()
 	built, err := Build([]TargetConfig{{
@@ -80,8 +75,10 @@ func TestPerKeySyncer_CloudflareWorkerAdapterWritesOneKeyAndRetries(t *testing.T
 	worker, ok := built[0].(perKeySyncerContract)
 	require.True(t, ok, "Cloudflare Worker target must expose optional per-key sync")
 
-	require.NoError(t, worker.SyncKey(context.Background(), &provider.Secret{Key: "/prod/WORKER_KEY", Value: "value"}))
-	assert.Equal(t, int32(3), calls.Load(), "one-key writes retain the existing retry boundary")
+	err = worker.SyncKey(context.Background(), &provider.Secret{Key: "/prod/WORKER_KEY", Value: "value"})
+	require.Error(t, err)
+	assert.Equal(t, int32(1), calls.Load(), "ambiguous writes must be reconciled instead of replayed")
+	assert.NotContains(t, err.Error(), "provider body must not escape")
 
 	pages := NewCloudflare("account", "", "pages", "token", server.URL)
 	_, pagesSupportsPerKey := any(pages).(perKeySyncerContract)

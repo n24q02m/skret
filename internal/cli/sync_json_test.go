@@ -38,6 +38,9 @@ func TestSyncOptions_Run_JSONFormat_Dotenv(t *testing.T) {
 // than via --to flags) so the github target's base_url can point at the
 // httptest server instead of the real GitHub API.
 func TestSyncOptions_Run_JSONFormat_MultipleTargets(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/actions/secrets/public-key"):

@@ -115,7 +115,8 @@ func TestGitHubSyncer_Internal_PutSecret_Errors(t *testing.T) {
 
 	err := g.putSecret(context.Background(), "name", "value", &recipientKey, "key-id")
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "network error")
+	assert.ErrorIs(t, err, ErrMutationNeedsReconciliation)
+	assert.NotContains(t, err.Error(), "network error")
 
 	// A status error must not read or retain a provider response body.
 	g.httpClient.Transport = &mockTransport{
@@ -216,7 +217,8 @@ func TestGitHubSyncer_Internal_Sync_Errors(t *testing.T) {
 	}
 	err = g.Sync(context.Background(), []*provider.Secret{{Key: "key", Value: "val"}})
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "put failed")
+	assert.ErrorIs(t, err, ErrMutationNeedsReconciliation)
+	assert.NotContains(t, err.Error(), "put failed")
 
 	// Test context cancellation
 	ctx, cancel := context.WithCancel(context.Background())
