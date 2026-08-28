@@ -255,16 +255,16 @@ func (h *Helper) monitor(ctx context.Context, stream io.Reader, session *Session
 			return 1, fail(ErrChild)
 		case result := <-frames:
 			if result.err != nil {
-				_ = child.KillTree()
-				return h.waitAfterKill(child)
+				killErr := child.KillTree()
+				return h.waitAfterKill(wait, killErr)
 			}
 			if result.frame.Kind == HeartbeatMessage {
 				lastHeartbeat = h.Now()
 				Zeroize(result.frame.Value)
 			} else {
 				Zeroize(result.frame.Value)
-				_ = child.KillTree()
-				return 1, fail(ErrLifecycle)
+				killErr := child.KillTree()
+				return h.waitAfterKill(wait, killErr)
 			}
 			go func() {
 				wire, err := readWireFrame(stream)
@@ -279,32 +279,39 @@ func (h *Helper) monitor(ctx context.Context, stream io.Reader, session *Session
 		case signal := <-h.Signals:
 			if signal != nil {
 				if err := child.Signal(signal); err != nil {
-					_ = child.KillTree()
-					return h.waitAfterKill(child)
+					killErr := child.KillTree()
+					return h.waitAfterKill(wait, killErr)
 				}
 			}
 		case <-ticker.C:
 			if h.Now().Sub(lastHeartbeat) > h.HeartbeatTimeout {
-				_ = child.KillTree()
-				return h.waitAfterKill(child)
+				killErr := child.KillTree()
+				return h.waitAfterKill(wait, killErr)
 			}
 		case <-ctx.Done():
-			_ = child.KillTree()
-			return h.waitAfterKill(child)
+			killErr := child.KillTree()
+			return h.waitAfterKill(wait, killErr)
 		}
 	}
 }
 
-func (h *Helper) waitAfterKill(child ChildProcess) (int, error) {
-	result := make(chan childResult, 1)
-	go func() { result <- childResult{err: child.Wait(), code: child.ExitCode()} }()
+func (h *Helper) waitAfterKill(wait <-chan childResult, killErr error) (int, error) {
+	const reapTimeout = 2 * time.Second
+	timer := time.NewTimer(reapTimeout)
+	defer timer.Stop()
 	select {
-	case waited := <-result:
-		if waited.code >= 0 {
-			return waited.code, fail(ErrLifecycle)
+	case waited := <-wait:
+		if killErr != nil {
+			return 1, fail(ErrChild)
 		}
-		return 1, fail(ErrLifecycle)
-	case <-time.After(2 * time.Second):
+		if waited.err != nil || waited.code < 0 {
+			return 1, fail(ErrChild)
+		}
+		return waited.code, fail(ErrLifecycle)
+	case <-timer.C:
+		if killErr != nil {
+			return 1, fail(ErrChild)
+		}
 		return 1, fail(ErrLifecycle)
 	}
 }
