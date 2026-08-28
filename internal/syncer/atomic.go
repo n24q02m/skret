@@ -26,13 +26,17 @@ func atomicWrite(target string, dir string, prefix string, writeFunc func(f *os.
 		_ = os.Remove(tmpPath)
 		return fmt.Errorf("chmod: %w", err)
 	}
-
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		_ = os.Remove(tmpPath)
+		return fmt.Errorf("sync: %w", err)
+	}
 	if err := tmp.Close(); err != nil {
 		_ = os.Remove(tmpPath)
 		return fmt.Errorf("close: %w", err)
 	}
 
-	if err := os.Rename(tmpPath, target); err != nil {
+	if err := durableReplace(tmpPath, target, dir); err != nil {
 		_ = os.Remove(tmpPath)
 		return fmt.Errorf("rename: %w", err)
 	}

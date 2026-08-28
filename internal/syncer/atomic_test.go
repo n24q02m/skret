@@ -80,3 +80,16 @@ func TestAtomicWrite_Overwrite(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "new content", string(data))
 }
+
+func TestDurableReplace_SynchronizesInstalledEntry(t *testing.T) {
+	dir := t.TempDir()
+	source := filepath.Join(dir, ".state.tmp")
+	target := filepath.Join(dir, "state.json")
+	require.NoError(t, os.WriteFile(source, []byte("durable"), 0o600))
+
+	require.NoError(t, durableReplace(source, target, dir))
+	data, err := os.ReadFile(target)
+	require.NoError(t, err)
+	assert.Equal(t, "durable", string(data))
+	assert.NoFileExists(t, source)
+}
