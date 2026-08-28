@@ -33,6 +33,10 @@ type syncOptions struct {
 // failures at each acknowledgement boundary without touching real targets.
 var saveSyncState = syncer.SaveSyncState
 
+// acquireTargetLock is indirect so focused tests can verify release scope
+// without waiting on an interprocess file lock.
+var acquireTargetLock = syncer.AcquireTargetLock
+
 // SyncResult is the --format json payload for one successfully synced
 // target. Batch-only targets report the full batch count; durable operations
 // for per-key targets report the same count only after every key is
@@ -130,174 +134,179 @@ func (o *syncOptions) run(cmd *cobra.Command) error {
 
 	results := make([]SyncResult, 0, len(syncers))
 	for i, s := range syncers {
-		tc := targets[i]
-		toSync := secrets
-		if err := syncer.ValidateDestinationMapping(s.Name(), toSync); err != nil {
-			return skret.NewError(skret.ExitConfigError, fmt.Sprintf("sync: %s", s.Name()), err)
-		}
-		noOv := !o.rotate && (tc.NoOverwrite || o.noOverwrite)
+		if err := func() error {
+			tc := targets[i]
+			toSync := secrets
+			if err := syncer.ValidateDestinationMapping(s.Name(), toSync); err != nil {
+				return skret.NewError(skret.ExitConfigError, fmt.Sprintf("sync: %s", s.Name()), err)
+			}
+			noOv := !o.rotate && (tc.NoOverwrite || o.noOverwrite)
+			journalByDefault := s.Name() == "github" || s.Name() == "cloudflare"
 
-		// Rotation and all external provider mutations use a durable state
-		// journal. Stateless mode remains available for local dotenv writes.
-		var state *syncer.SyncState
-		var operationID string
-		journalByDefault := s.Name() == "github" || s.Name() == "cloudflare"
-		if journalByDefault || o.rotate || (o.skipUnchanged && !noOv) {
-			stateID := targetStateID(s, tc)
-			if !o.dryRun {
-				release, lockErr := syncer.AcquireTargetLock(s.Name(), stateID)
-				if lockErr != nil {
-					return skret.NewError(skret.ExitGenericError, "sync: lock target", lockErr)
+			// Rotation and all external provider mutations use a durable state
+			// journal. Stateless mode remains available for local dotenv writes.
+			var state *syncer.SyncState
+			var operationID string
+			if journalByDefault || o.rotate || (o.skipUnchanged && !noOv) {
+				stateID := targetStateID(s, tc)
+				if !o.dryRun {
+					release, lockErr := acquireTargetLock(s.Name(), stateID)
+					if lockErr != nil {
+						return skret.NewError(skret.ExitGenericError, "sync: lock target", lockErr)
+					}
+					defer func(release func() error) { _ = release() }(release)
 				}
-				defer func(release func() error) { _ = release() }(release)
-			}
-			state, err = syncer.LoadSyncState(s.Name(), stateID)
-			if err != nil {
-				return skret.NewError(skret.ExitGenericError, "sync: load state failed", err)
-			}
-			if o.skipUnchanged && !o.rotate && !noOv {
-				toSync = state.FilterUnchanged(secrets)
-				if skipped := len(secrets) - len(toSync); skipped > 0 {
-					cmd.PrintErrf("Skipped %d unchanged secret(s) for %s\n", skipped, s.Name())
+				state, err = syncer.LoadSyncState(s.Name(), stateID)
+				if err != nil {
+					return skret.NewError(skret.ExitGenericError, "sync: load state failed", err)
+				}
+				if o.skipUnchanged && !o.rotate && !noOv {
+					toSync = state.FilterUnchanged(secrets)
+					if skipped := len(secrets) - len(toSync); skipped > 0 {
+						cmd.PrintErrf("Skipped %d unchanged secret(s) for %s\n", skipped, s.Name())
+					}
 				}
 			}
-		}
 
-		if noOv {
-			kept, skippedExisting, ferr := syncer.FilterAbsent(ctx, s, toSync)
-			if ferr != nil {
-				return skret.NewError(skret.ExitConfigError, fmt.Sprintf("sync: %s", s.Name()), ferr)
+			if noOv {
+				kept, skippedExisting, ferr := syncer.FilterAbsent(ctx, s, toSync)
+				if ferr != nil {
+					return skret.NewError(skret.ExitConfigError, fmt.Sprintf("sync: %s", s.Name()), ferr)
+				}
+				toSync = kept
+				if skippedExisting > 0 {
+					cmd.PrintErrf("Skipped %d existing secret(s) for %s (no-overwrite)\n", skippedExisting, s.Name())
+				}
 			}
-			toSync = kept
-			if skippedExisting > 0 {
-				cmd.PrintErrf("Skipped %d existing secret(s) for %s (no-overwrite)\n", skippedExisting, s.Name())
-			}
-		}
 
-		if o.dryRun {
-			names := make([]string, 0, len(toSync))
-			for _, sec := range toSync {
-				names = append(names, syncer.SecretName(sec.Key))
+			if o.dryRun {
+				names := make([]string, 0, len(toSync))
+				for _, sec := range toSync {
+					names = append(names, syncer.SecretName(sec.Key))
+				}
+				sort.Strings(names)
+				if len(names) == 0 {
+					cmd.PrintErrf("[dry-run] %s: would write 0 secret(s)\n", s.Name())
+				} else {
+					cmd.PrintErrf("[dry-run] %s: would write %d secret(s): %s\n", s.Name(), len(names), strings.Join(names, ", "))
+				}
+				return nil
 			}
-			sort.Strings(names)
-			if len(names) == 0 {
-				cmd.PrintErrf("[dry-run] %s: would write 0 secret(s)\n", s.Name())
-			} else {
-				cmd.PrintErrf("[dry-run] %s: would write %d secret(s): %s\n", s.Name(), len(names), strings.Join(names, ", "))
-			}
-			continue
-		}
-		recoveredState := false
-		if journalByDefault && state != nil && state.RequiresReconciliation() {
-			return skret.NewError(
-				skret.ExitNetworkError,
-				fmt.Sprintf("sync: %s operation requires provider reconciliation before retry", s.Name()),
-				syncer.ErrOperationNeedsReconciliation,
-			)
-		}
-		if state != nil && syncStateNeedsRecovery(state) {
-			if err := state.FinalizeOperation(state.OperationID, time.Now().UTC()); err != nil {
-				return skret.NewError(skret.ExitGenericError, "sync: recover operation", err)
-			}
-			if err := saveSyncState(state); err != nil {
-				return skret.NewError(skret.ExitGenericError, "sync: save recovered state", err)
-			}
-			recoveredState = true
-			if journalByDefault {
-				toSync = state.FilterUnchanged(toSync)
-			}
-		}
-
-		if state != nil && len(toSync) > 0 {
-			recoveredState = false
-			if journalByDefault && state.RequiresReconciliation() {
+			recoveredState := false
+			if journalByDefault && state != nil && state.RequiresReconciliation() {
 				return skret.NewError(
 					skret.ExitNetworkError,
 					fmt.Sprintf("sync: %s operation requires provider reconciliation before retry", s.Name()),
 					syncer.ErrOperationNeedsReconciliation,
 				)
 			}
-			operationID, err = syncer.NewOperationID()
-			if err != nil {
-				return skret.NewError(skret.ExitGenericError, "sync: create operation", err)
-			}
-			if o.rotate {
-				err = state.BeginOperationWithIntent(operationID, syncer.OperationIntentRotate, toSync, time.Now().UTC())
-			} else {
-				err = state.BeginOperation(operationID, toSync, time.Now().UTC())
-			}
-			if err != nil {
-				return skret.NewError(skret.ExitGenericError, "sync: begin operation", err)
-			}
-			state.OperationMethod = mutationMethod(s, tc)
-			state.SourceIdentity = resolved.Provider + ":" + resolved.Path
-			state.SourceDigest = syncer.SourceDigest(toSync)
-			if err := saveSyncState(state); err != nil {
-				return skret.NewError(skret.ExitGenericError, "sync: save state failed", err)
-			}
-		}
-		durablePerKey := false
-		if state != nil && operationID != "" {
-			if keyer, ok := s.(syncer.PerKeySyncer); ok {
-				durablePerKey = true
-				if err := syncPerKeyOperation(ctx, keyer, state, operationID, toSync); err != nil {
-					exitCode := skret.ExitNetworkError
-					var journalErr *syncJournalError
-					if errors.As(err, &journalErr) {
-						exitCode = skret.ExitGenericError
-					}
-					return skret.NewError(exitCode, fmt.Sprintf("sync failed for %s", s.Name()), err)
+			if state != nil && syncStateNeedsRecovery(state) {
+				if err := state.FinalizeOperation(state.OperationID, time.Now().UTC()); err != nil {
+					return skret.NewError(skret.ExitGenericError, "sync: recover operation", err)
+				}
+				if err := saveSyncState(state); err != nil {
+					return skret.NewError(skret.ExitGenericError, "sync: save recovered state", err)
+				}
+				recoveredState = true
+				if journalByDefault {
+					toSync = state.FilterUnchanged(toSync)
 				}
 			}
-		}
-		if !durablePerKey {
-			if err := s.Sync(ctx, toSync); err != nil {
-				// dotenv writes a local file only -- a failure there is I/O, not
-				// network. github/cloudflare stay ExitNetworkError (audit I2).
-				exitCode := skret.ExitNetworkError
-				if tc.Type == "dotenv" {
-					exitCode = skret.ExitGenericError
-				}
-				if state != nil && operationID != "" {
-					journalErr := state.RecordNeedsReconciliation(operationID, toSync, time.Now().UTC())
-					if journalErr == nil {
-						journalErr = saveSyncState(state)
-					}
-					if journalErr != nil {
-						return skret.NewError(exitCode, fmt.Sprintf("sync failed for %s; state journal failed", s.Name()), journalErr)
-					}
-				}
-				return skret.NewError(exitCode, fmt.Sprintf("sync failed for %s", s.Name()), err)
-			}
-		}
 
-		// Durable state must be finalized and persisted before reporting target
-		// success. Per-key targets already journaled each acknowledgement and
-		// finalized in syncPerKeyOperation.
-		if state != nil {
-			if operationID != "" && !durablePerKey {
-				if err := state.RecordSuccess(operationID, toSync, time.Now().UTC()); err != nil {
-					return skret.NewError(skret.ExitGenericError, "sync: record success", err)
+			if state != nil && len(toSync) > 0 {
+				recoveredState = false
+				if journalByDefault && state.RequiresReconciliation() {
+					return skret.NewError(
+						skret.ExitNetworkError,
+						fmt.Sprintf("sync: %s operation requires provider reconciliation before retry", s.Name()),
+						syncer.ErrOperationNeedsReconciliation,
+					)
 				}
-			}
-			if !durablePerKey && !recoveredState {
+				operationID, err = syncer.NewOperationID()
+				if err != nil {
+					return skret.NewError(skret.ExitGenericError, "sync: create operation", err)
+				}
+				if o.rotate {
+					err = state.BeginOperationWithIntent(operationID, syncer.OperationIntentRotate, toSync, time.Now().UTC())
+				} else {
+					err = state.BeginOperation(operationID, toSync, time.Now().UTC())
+				}
+				if err != nil {
+					return skret.NewError(skret.ExitGenericError, "sync: begin operation", err)
+				}
+				state.OperationMethod = mutationMethod(s, tc)
+				state.SourceIdentity = resolved.Provider + ":" + resolved.Path
+				state.SourceDigest = syncer.SourceDigest(toSync)
 				if err := saveSyncState(state); err != nil {
 					return skret.NewError(skret.ExitGenericError, "sync: save state failed", err)
 				}
 			}
-		}
-
-		switch {
-		case o.format == "json":
-			result := SyncResult{Source: resolved.Path, Target: s.Name(), Synced: len(toSync)}
-			if o.rotate {
-				result.Intent = syncer.OperationIntentRotate
+			durablePerKey := false
+			if state != nil && operationID != "" {
+				if keyer, ok := s.(syncer.PerKeySyncer); ok {
+					durablePerKey = true
+					if err := syncPerKeyOperation(ctx, keyer, state, operationID, toSync); err != nil {
+						exitCode := skret.ExitNetworkError
+						var journalErr *syncJournalError
+						if errors.As(err, &journalErr) {
+							exitCode = skret.ExitGenericError
+						}
+						return skret.NewError(exitCode, fmt.Sprintf("sync failed for %s", s.Name()), err)
+					}
+				}
 			}
-			results = append(results, result)
-		case o.rotate:
-			cmd.PrintErrf("Rotated %d secrets to %s\n", len(toSync), s.Name())
-		default:
-			cmd.PrintErrf("Synced %d secrets to %s\n", len(toSync), s.Name())
+			if !durablePerKey {
+				if err := s.Sync(ctx, toSync); err != nil {
+					// dotenv writes a local file only -- a failure there is I/O, not
+					// network. github/cloudflare stay ExitNetworkError (audit I2).
+					exitCode := skret.ExitNetworkError
+					if tc.Type == "dotenv" {
+						exitCode = skret.ExitGenericError
+					}
+					if state != nil && operationID != "" {
+						journalErr := state.RecordNeedsReconciliation(operationID, toSync, time.Now().UTC())
+						if journalErr == nil {
+							journalErr = saveSyncState(state)
+						}
+						if journalErr != nil {
+							return skret.NewError(exitCode, fmt.Sprintf("sync failed for %s; state journal failed", s.Name()), journalErr)
+						}
+					}
+					return skret.NewError(exitCode, fmt.Sprintf("sync failed for %s", s.Name()), err)
+				}
+			}
+
+			// Durable state must be finalized and persisted before reporting target
+			// success. Per-key targets already journaled each acknowledgement and
+			// finalized in syncPerKeyOperation.
+			if state != nil {
+				if operationID != "" && !durablePerKey {
+					if err := state.RecordSuccess(operationID, toSync, time.Now().UTC()); err != nil {
+						return skret.NewError(skret.ExitGenericError, "sync: record success", err)
+					}
+				}
+				if !durablePerKey && !recoveredState {
+					if err := saveSyncState(state); err != nil {
+						return skret.NewError(skret.ExitGenericError, "sync: save state failed", err)
+					}
+				}
+			}
+
+			switch {
+			case o.format == "json":
+				result := SyncResult{Source: resolved.Path, Target: s.Name(), Synced: len(toSync)}
+				if o.rotate {
+					result.Intent = syncer.OperationIntentRotate
+				}
+				results = append(results, result)
+			case o.rotate:
+				cmd.PrintErrf("Rotated %d secrets to %s\n", len(toSync), s.Name())
+			default:
+				cmd.PrintErrf("Synced %d secrets to %s\n", len(toSync), s.Name())
+			}
+			return nil
+		}(); err != nil {
+			return err
 		}
 	}
 

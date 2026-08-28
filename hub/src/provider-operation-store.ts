@@ -301,6 +301,7 @@ export class DurableProviderOperationStore implements ProviderOperationStore {
       if (fence) {
         const fencedOperation = await transaction.get<ProviderOperationRecord>(operationKey(fence.operation_id));
         if (fencedOperation && unresolved(fencedOperation.status)) {
+          await addActiveOperation(transaction, fencedOperation.operation_id);
           return { status: "fenced", operation: copyRecord(fencedOperation) } as const;
         }
         await transaction.delete(fenceKey(request.target_identity));
@@ -582,8 +583,9 @@ export class DurableProviderOperationStore implements ProviderOperationStore {
   }
   async watchdog(now = Date.now()): Promise<ProviderOperationWatchdogResult> {
     validateNow(now);
+    const discovered = await listProviderOperationIDs(this.storage);
     return this.storage.transaction(async (transaction) => {
-      const active = await readActiveProviderOperations(transaction);
+      const active = await readActiveProviderOperations(transaction, discovered);
       const expired: string[] = [];
       const reconciled: string[] = [];
       const remaining: string[] = [];
@@ -1113,14 +1115,39 @@ function earlierAlarm(current: number | null, candidate: number): number {
   return current === null ? candidate : Math.min(current, candidate);
 }
 
+type ProviderOperationListStorage = ProviderOperationStorage & {
+  list?: <T>(options?: { prefix?: string }) => Promise<Map<string, T>>;
+};
+
 type ProviderOperationListTransaction = ProviderOperationTransaction & {
   list?: <T>(options?: { prefix?: string }) => Promise<Map<string, T>>;
 };
 
+function providerOperationIDFromKey(key: string): string | null {
+  if (key === ACTIVE_OPERATION_KEY || !key.startsWith(OPERATION_PREFIX)) return null;
+  const operationID = key.slice(OPERATION_PREFIX.length);
+  return OPERATION_ID_PATTERN.test(operationID) ? operationID : null;
+}
+
+async function listProviderOperationIDs(
+  storage: ProviderOperationStorage,
+): Promise<string[]> {
+  const list = (storage as ProviderOperationListStorage).list;
+  if (typeof list !== "function") return [];
+  const records = await list.call(storage, { prefix: OPERATION_PREFIX });
+  const ids: string[] = [];
+  for (const key of records.keys()) {
+    const operationID = providerOperationIDFromKey(key);
+    if (operationID !== null) ids.push(operationID);
+  }
+  return ids;
+}
+
 async function readActiveProviderOperations(
   transaction: ProviderOperationTransaction,
+  discovered: readonly string[] = [],
 ): Promise<string[]> {
-  const ids = new Set<string>();
+  const ids = new Set<string>(discovered);
   const indexed = await transaction.get<string[]>(ACTIVE_OPERATION_KEY);
   for (const operationID of indexed ?? []) {
     if (OPERATION_ID_PATTERN.test(operationID)) ids.add(operationID);
@@ -1130,9 +1157,8 @@ async function readActiveProviderOperations(
   if (typeof list === "function") {
     const records = await list.call(transaction, { prefix: OPERATION_PREFIX });
     for (const key of records.keys()) {
-      if (key === ACTIVE_OPERATION_KEY || !key.startsWith(OPERATION_PREFIX)) continue;
-      const operationID = key.slice(OPERATION_PREFIX.length);
-      if (OPERATION_ID_PATTERN.test(operationID)) ids.add(operationID);
+      const operationID = providerOperationIDFromKey(key);
+      if (operationID !== null) ids.add(operationID);
     }
   }
   return [...ids];

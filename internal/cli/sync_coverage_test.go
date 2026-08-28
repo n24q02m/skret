@@ -654,6 +654,46 @@ func appendSyncTarget(t *testing.T, dir, block string) {
 	require.NoError(t, err)
 }
 
+func TestSyncOptions_Run_ReleasesTargetLockBeforeNextTarget(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	dir := setupSyncRepoWithSecrets(t, map[string]string{"KEY": "value"})
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".skret.yaml"), []byte(`version: "1"
+default_env: dev
+environments:
+  dev:
+    provider: local
+    file: secrets.yaml
+sync:
+  targets:
+    - type: dotenv
+      file: first.env
+    - type: dotenv
+      file: second.env
+`), 0o644))
+
+	originalAcquireTargetLock := acquireTargetLock
+	defer func() { acquireTargetLock = originalAcquireTargetLock }()
+	var events []string
+	acquireTargetLock = func(_ string, id string) (func() error, error) {
+		events = append(events, "acquire:"+id)
+		return func() error {
+			events = append(events, "release:"+id)
+			return nil
+		}, nil
+	}
+
+	_, err := runSyncCmdCapture(t, dir, []string{"--skip-unchanged"})
+	require.NoError(t, err)
+	require.Equal(t, []string{
+		"acquire:first.env",
+		"release:first.env",
+		"acquire:second.env",
+		"release:second.env",
+	}, events)
+}
+
 func TestSyncOptions_Run_RejectsDuplicateTargetsBeforeProviderLoad(t *testing.T) {
 	dir := setupSyncRepoWithSecrets(t, map[string]string{})
 	require.NoError(t, os.WriteFile(filepath.Join(dir, ".skret.yaml"), []byte(`version: "1"

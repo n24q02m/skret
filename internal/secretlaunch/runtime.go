@@ -442,26 +442,39 @@ func OwnershipScopeLabels(manifest Manifest) map[string]string {
 	}
 }
 
-func olderOwnedGeneration(labels map[string]string, scope map[string]string, service ServiceSpec, current uint64) bool {
-	if !ContainsLabels(labels, scope) || labels["com.skret.secret-launch.service"] != service.Name {
+// currentOwnedGeneration validates only immutable ownership labels. Service
+// custom labels are mutable runtime metadata and must not make an owned
+// container undiscoverable during reconciliation.
+func currentOwnedGeneration(labels map[string]string, manifest Manifest, serviceName string) bool {
+	if serviceName == "" {
+		return false
+	}
+	expected := OwnershipLabels(manifest)
+	expected["com.skret.secret-launch.service"] = serviceName
+	return len(expected) != 0 && ContainsLabels(labels, expected)
+}
+
+// ownedGenerationInScope recognizes an owned container without requiring the
+// service to remain in the current signed model. This lets reconciliation
+// sweep removed services while rejecting malformed or future generations.
+func ownedGenerationInScope(labels, scope map[string]string, current uint64) bool {
+	if !ContainsLabels(labels, scope) || labels["com.skret.secret-launch.service"] == "" {
 		return false
 	}
 	generation, err := strconv.ParseUint(labels["com.skret.secret-launch.generation"], 10, 64)
-	if err != nil || generation == 0 || generation >= current ||
-		!validNonce(labels["com.skret.secret-launch.nonce"]) ||
-		!validDigest(labels["com.skret.secret-launch.manifest"]) {
+	return err == nil &&
+		generation > 0 &&
+		generation <= current &&
+		validNonce(labels["com.skret.secret-launch.nonce"]) &&
+		validDigest(labels["com.skret.secret-launch.manifest"])
+}
+
+func olderOwnedGeneration(labels map[string]string, scope map[string]string, service ServiceSpec, current uint64) bool {
+	if service.Name == "" || !ownedGenerationInScope(labels, scope, current) {
 		return false
 	}
-
-	expected := cloneLabels(service.Labels)
-	for key, value := range scope {
-		expected[key] = value
-	}
-	expected["com.skret.secret-launch.generation"] = labels["com.skret.secret-launch.generation"]
-	expected["com.skret.secret-launch.nonce"] = labels["com.skret.secret-launch.nonce"]
-	expected["com.skret.secret-launch.manifest"] = labels["com.skret.secret-launch.manifest"]
-	expected["com.skret.secret-launch.service"] = service.Name
-	return ExactLabels(labels, expected)
+	generation, err := strconv.ParseUint(labels["com.skret.secret-launch.generation"], 10, 64)
+	return err == nil && generation < current && labels["com.skret.secret-launch.service"] == service.Name
 }
 
 func LaunchLabels(manifest Manifest, service ServiceSpec) map[string]string {

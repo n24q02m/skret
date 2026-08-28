@@ -147,15 +147,24 @@ func (s *Supervisor) Reconcile(ctx context.Context, model RenderedModel, manifes
 	}
 
 	matches := make(map[string][]Container, len(containers))
+	staleOwned := make([]Container, 0)
 	for _, container := range containers {
+		serviceName := container.Labels["com.skret.secret-launch.service"]
 		service, desired := serviceByName[container.Name]
-		if !desired {
+		if desired &&
+			(serviceName == service.Name || serviceName == "") &&
+			(currentOwnedGeneration(container.Labels, manifest, service.Name) ||
+				olderOwnedGeneration(container.Labels, scopeLabels, service, manifest.Generation)) {
+			matches[container.Name] = append(matches[container.Name], container)
+		}
+		if !ownedGenerationInScope(container.Labels, scopeLabels, manifest.Generation) {
 			continue
 		}
-		current := ServiceLabels(manifest, service)
-		if ExactLabels(container.Labels, current) ||
-			olderOwnedGeneration(container.Labels, scopeLabels, service, manifest.Generation) {
-			matches[container.Name] = append(matches[container.Name], container)
+		if serviceName == "" {
+			continue
+		}
+		if wanted, ok := serviceByName[serviceName]; !ok || container.Name != wanted.Name {
+			staleOwned = append(staleOwned, container)
 		}
 	}
 
@@ -172,7 +181,7 @@ func (s *Supervisor) Reconcile(ctx context.Context, model RenderedModel, manifes
 		if len(existing) == 1 && existing[0].Running && s.hasSession(existing[0].ID) {
 			state, inspectErr := s.Runtime.Inspect(ctx, existing[0].ID)
 			if inspectErr == nil && state.Running && state.Healthy &&
-				ExactLabels(state.Labels, ServiceLabels(manifest, *service)) {
+				currentOwnedGeneration(state.Labels, manifest, service.Name) {
 				result.Reused = append(result.Reused, service.Name)
 				continue
 			}
@@ -207,7 +216,16 @@ func (s *Supervisor) Reconcile(ctx context.Context, model RenderedModel, manifes
 	sort.Strings(result.FetchedKeys)
 	result.FetchedKeys = uniqueStrings(result.FetchedKeys)
 
+	for _, stale := range staleOwned {
+		s.closeSession(stale.ID)
+		if err := s.Runtime.Remove(ctx, stale.ID, true); err != nil {
+			return ReconcileResult{}, err
+		}
+		result.Removed++
+	}
+
 	for i := range pendingServices {
+
 		pending := &pendingServices[i]
 		for _, old := range pending.old {
 			s.closeSession(old.ID)
@@ -371,13 +389,13 @@ func (s *Supervisor) checkDependencies(
 		}
 		found := false
 		for _, container := range containers {
-			if container.Name != dependency || !ExactLabels(container.Labels, ServiceLabels(manifest, expected)) {
+			if container.Name != dependency || !currentOwnedGeneration(container.Labels, manifest, expected.Name) {
 				continue
 			}
 			found = true
 			state, inspectErr := s.Runtime.Inspect(ctx, container.ID)
 			if inspectErr != nil || !state.Running || !state.Healthy ||
-				!ExactLabels(state.Labels, ServiceLabels(manifest, expected)) {
+				!currentOwnedGeneration(state.Labels, manifest, expected.Name) {
 				return fail(ErrRuntime)
 			}
 		}

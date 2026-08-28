@@ -398,6 +398,9 @@ func (p *Provider) reconcilePutFailure(
 	if putOutput != nil {
 		expectedVersion = putOutput.Version
 	}
+	if expectedVersion == 0 {
+		return p.reconcileVersionlessPutFailure(ctx, key, preVersion, tags, cause)
+	}
 	observedVersion, tagsMatch, tagState := p.readbackMutation(ctx, key, expectedVersion, tags)
 	if observedVersion <= preVersion {
 		if tagState == provider.TagReconciliationUnknown && observedVersion == 0 {
@@ -413,9 +416,6 @@ func (p *Provider) reconcilePutFailure(
 		}
 		return mapError("set", key, cause)
 	}
-	if expectedVersion == 0 {
-		expectedVersion = observedVersion
-	}
 	if tagsMatch && observedVersion == expectedVersion {
 		return nil
 	}
@@ -424,6 +424,39 @@ func (p *Provider) reconcilePutFailure(
 		Key:             key,
 		PreVersion:      preVersion,
 		Version:         expectedVersion,
+		ObservedVersion: observedVersion,
+		TagState:        tagState,
+	}
+}
+
+func (p *Provider) reconcileVersionlessPutFailure(
+	ctx context.Context,
+	key string,
+	preVersion int64,
+	tags []ssmtypes.Tag,
+	cause error,
+) error {
+	observedVersion, _, tagState := p.readbackMutation(ctx, key, 0, tags)
+	if observedVersion <= preVersion {
+		if tagState == provider.TagReconciliationUnknown && observedVersion == 0 {
+			return &provider.PartialCommitError{
+				Provider:        p.Name(),
+				Key:             key,
+				PreVersion:      preVersion,
+				CommitState:     provider.MutationCommitUnknown,
+				Version:         0,
+				ObservedVersion: observedVersion,
+				TagState:        tagState,
+			}
+		}
+		return mapError("set", key, cause)
+	}
+	return &provider.PartialCommitError{
+		Provider:        p.Name(),
+		Key:             key,
+		PreVersion:      preVersion,
+		CommitState:     provider.MutationCommitUnknown,
+		Version:         0,
 		ObservedVersion: observedVersion,
 		TagState:        tagState,
 	}
