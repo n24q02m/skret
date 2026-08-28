@@ -120,11 +120,11 @@ func (s *Supervisor) Reconcile(ctx context.Context, model RenderedModel, manifes
 	if err := ValidateManifestModel(manifest, rendered); err != nil {
 		return result, err
 	}
-	commonLabels := OwnershipLabels(manifest)
-	if len(commonLabels) == 0 {
+	scopeLabels := OwnershipScopeLabels(manifest)
+	if len(scopeLabels) == 0 {
 		return result, fail(ErrBinding)
 	}
-	containers, err := s.Runtime.List(ctx, commonLabels)
+	containers, err := s.Runtime.List(ctx, scopeLabels)
 	if err != nil {
 		return result, err
 	}
@@ -149,10 +149,14 @@ func (s *Supervisor) Reconcile(ctx context.Context, model RenderedModel, manifes
 	matches := make(map[string][]Container, len(containers))
 	for _, container := range containers {
 		service, desired := serviceByName[container.Name]
-		if !desired || !ExactLabels(container.Labels, ServiceLabels(manifest, service)) {
+		if !desired {
 			continue
 		}
-		matches[container.Name] = append(matches[container.Name], container)
+		current := ServiceLabels(manifest, service)
+		if ExactLabels(container.Labels, current) ||
+			olderOwnedGeneration(container.Labels, scopeLabels, service, manifest.Generation) {
+			matches[container.Name] = append(matches[container.Name], container)
+		}
 	}
 
 	type pending struct {

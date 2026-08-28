@@ -180,6 +180,45 @@ func TestSupervisorAttachesBeforeStartAndRefetchesPerRecreation(t *testing.T) {
 	}
 }
 
+func TestSupervisorRemovesOlderOwnedGenerationBeforeCreate(t *testing.T) {
+	runtime := newFakeRuntime()
+	manifest := fixtureManifest()
+	model := fixtureModel()
+	older := manifest
+	older.Generation--
+	older.Nonce = "older-nonce-1234567890"
+	runtime.containers["old-api"] = ContainerState{
+		Container: Container{
+			ID:      "old-api",
+			Name:    "api",
+			Labels:  ServiceLabels(older, model.Services[0]),
+			Running: false,
+		},
+	}
+	supervisor := NewSupervisor(runtime, FetchFunc(func(context.Context, string, string) ([]byte, error) {
+		return []byte("synthetic-sentinel"), nil
+	}))
+	supervisor.Send = func(context.Context, io.ReadWriteCloser, Manifest, ServiceAuthority, SecretSet) error {
+		return nil
+	}
+
+	result, err := supervisor.Reconcile(context.Background(), model, manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Created) != 1 || result.Created[0] != "api" || result.Removed != 1 {
+		t.Fatalf("reconcile result = %+v", result)
+	}
+	runtime.mu.Lock()
+	defer runtime.mu.Unlock()
+	for _, call := range runtime.calls {
+		if call == "remove:old-api" {
+			return
+		}
+	}
+	t.Fatalf("older owned container was not removed: calls = %v", runtime.calls)
+}
+
 func TestSupervisorScavengesOnlyExactLabelOrphans(t *testing.T) {
 	runtime := newFakeRuntime()
 	manifest := fixtureManifest()

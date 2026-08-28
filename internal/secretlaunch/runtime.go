@@ -430,6 +430,40 @@ func OwnershipLabels(manifest Manifest) map[string]string {
 	}
 }
 
+// OwnershipScopeLabels identifies the stable runtime/role namespace shared by
+// all generations of one launch. Generation, nonce, and manifest digest are
+// intentionally excluded so reconciliation can discover older owned
+// containers before creating the current generation.
+func OwnershipScopeLabels(manifest Manifest) map[string]string {
+	return map[string]string{
+		"com.skret.secret-launch":         ManifestVersion,
+		"com.skret.secret-launch.runtime": manifest.RuntimeID,
+		"com.skret.secret-launch.role":    manifest.Role,
+	}
+}
+
+func olderOwnedGeneration(labels map[string]string, scope map[string]string, service ServiceSpec, current uint64) bool {
+	if !ContainsLabels(labels, scope) || labels["com.skret.secret-launch.service"] != service.Name {
+		return false
+	}
+	generation, err := strconv.ParseUint(labels["com.skret.secret-launch.generation"], 10, 64)
+	if err != nil || generation == 0 || generation >= current ||
+		!validNonce(labels["com.skret.secret-launch.nonce"]) ||
+		!validDigest(labels["com.skret.secret-launch.manifest"]) {
+		return false
+	}
+
+	expected := cloneLabels(service.Labels)
+	for key, value := range scope {
+		expected[key] = value
+	}
+	expected["com.skret.secret-launch.generation"] = labels["com.skret.secret-launch.generation"]
+	expected["com.skret.secret-launch.nonce"] = labels["com.skret.secret-launch.nonce"]
+	expected["com.skret.secret-launch.manifest"] = labels["com.skret.secret-launch.manifest"]
+	expected["com.skret.secret-launch.service"] = service.Name
+	return ExactLabels(labels, expected)
+}
+
 func LaunchLabels(manifest Manifest, service ServiceSpec) map[string]string {
 	labels := OwnershipLabels(manifest)
 	labels["com.skret.secret-launch.service"] = service.Name
