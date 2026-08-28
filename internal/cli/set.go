@@ -94,7 +94,7 @@ func (o *setOptions) run(cmd *cobra.Command, args []string) error {
 	}
 
 	if err := p.Set(ctx, key, value, meta); err != nil {
-		return skret.NewError(skret.ExitProviderError, fmt.Sprintf("set %q", key), err)
+		return wrapProviderMutationError("set", key, err)
 	}
 
 	if o.format == "json" {

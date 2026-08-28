@@ -33,6 +33,14 @@ type ssmTagger interface {
 	AddTagsToResource(ctx context.Context, params *ssm.AddTagsToResourceInput, optFns ...func(*ssm.Options)) (*ssm.AddTagsToResourceOutput, error)
 }
 
+type ssmTagReader interface {
+	ListTagsForResource(ctx context.Context, params *ssm.ListTagsForResourceInput, optFns ...func(*ssm.Options)) (*ssm.ListTagsForResourceOutput, error)
+}
+
+// Readback has its own bounded budget so a tag failure cannot leave the caller
+// waiting indefinitely while the committed value remains ambiguous.
+const mutationReadbackTimeout = 5 * time.Second
+
 // Provider wraps AWS SSM Parameter Store.
 type Provider struct {
 	client   SSMClient
@@ -318,23 +326,105 @@ func (p *Provider) Set(ctx context.Context, key string, value string, meta provi
 		input.Tags = tags
 	}
 
-	if _, err := p.client.PutParameter(ctx, input); err != nil {
+	putOutput, err := p.client.PutParameter(ctx, input)
+	if err != nil {
 		return mapError("set", key, err)
 	}
 	if exists && len(tags) > 0 {
 		tagger, ok := p.client.(ssmTagger)
 		if !ok {
-			return fmt.Errorf("set tags %q: SSM client does not support AddTagsToResource", key)
+			return p.partialCommit(ctx, key, putOutput, tags)
 		}
 		if _, err := tagger.AddTagsToResource(ctx, &ssm.AddTagsToResourceInput{
 			ResourceType: ssmtypes.ResourceTypeForTaggingParameter,
 			ResourceId:   awslib.String(key),
 			Tags:         tags,
 		}); err != nil {
-			return mapError("set tags", key, err)
+			return p.partialCommit(ctx, key, putOutput, tags)
 		}
 	}
 	return nil
+}
+
+func (p *Provider) partialCommit(
+	ctx context.Context,
+	key string,
+	putOutput *ssm.PutParameterOutput,
+	tags []ssmtypes.Tag,
+) error {
+	var committedVersion int64
+	if putOutput != nil {
+		committedVersion = putOutput.Version
+	}
+	observedVersion, tagsMatch, tagState := p.readbackMutation(ctx, key, committedVersion, tags)
+	if committedVersion == 0 {
+		committedVersion = observedVersion
+	}
+	if tagsMatch && committedVersion > 0 && observedVersion == committedVersion {
+		return nil
+	}
+	return &provider.PartialCommitError{
+		Provider:        p.Name(),
+		Key:             key,
+		Version:         committedVersion,
+		ObservedVersion: observedVersion,
+		TagState:        tagState,
+	}
+}
+
+func (p *Provider) readbackMutation(
+	ctx context.Context,
+	key string,
+	expectedVersion int64,
+	expectedTags []ssmtypes.Tag,
+) (int64, bool, string) {
+	readCtx, cancel := context.WithTimeout(ctx, mutationReadbackTimeout)
+	defer cancel()
+	output, err := p.client.GetParameter(readCtx, &ssm.GetParameterInput{Name: awslib.String(key)})
+	if err != nil || output == nil || output.Parameter == nil {
+		return 0, false, provider.TagReconciliationUnknown
+	}
+	observedVersion := output.Parameter.Version
+	if expectedVersion > 0 && observedVersion != expectedVersion {
+		return observedVersion, false, provider.TagReconciliationRequired
+	}
+	reader, ok := p.client.(ssmTagReader)
+	if !ok {
+		return observedVersion, false, provider.TagReconciliationUnknown
+	}
+	tagOutput, err := reader.ListTagsForResource(readCtx, &ssm.ListTagsForResourceInput{
+		ResourceType: ssmtypes.ResourceTypeForTaggingParameter,
+		ResourceId:   awslib.String(key),
+	})
+	if err != nil || tagOutput == nil {
+		return observedVersion, false, provider.TagReconciliationUnknown
+	}
+	if equalTags(tagOutput.TagList, expectedTags) {
+		return observedVersion, true, ""
+	}
+	return observedVersion, false, provider.TagReconciliationRequired
+}
+
+func equalTags(first, second []ssmtypes.Tag) bool {
+	if len(first) != len(second) {
+		return false
+	}
+	observed := make(map[string]string, len(first))
+	for _, tag := range first {
+		key := awslib.ToString(tag.Key)
+		if _, exists := observed[key]; exists {
+			return false
+		}
+		observed[key] = awslib.ToString(tag.Value)
+	}
+	for _, tag := range second {
+		key := awslib.ToString(tag.Key)
+		value, exists := observed[key]
+		if !exists || value != awslib.ToString(tag.Value) {
+			return false
+		}
+	}
+	return true
 }
 
 func tagsFromMeta(meta provider.SecretMeta) []ssmtypes.Tag {

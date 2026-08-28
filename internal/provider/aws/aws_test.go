@@ -421,13 +421,14 @@ func TestAWS_SetExistingPutSucceedsTagAccessDenied(t *testing.T) {
 	})
 
 	require.Error(t, err)
-	var gotAPIError *mockAWSAPIError
-	require.ErrorAs(t, err, &gotAPIError)
-	assert.Contains(t, err.Error(), "aws: set tags")
+	var partial *provider.PartialCommitError
+	require.ErrorAs(t, err, &partial)
+	assert.ErrorIs(t, err, provider.ErrPartialCommit)
+	assert.Contains(t, err.Error(), "value committed")
+	assert.Contains(t, err.Error(), "tag reconciliation state unknown")
 	assert.Contains(t, err.Error(), key)
 	assert.NotContains(t, err.Error(), value)
-	assert.Equal(t, []string{"GetParameter", "PutParameter", "AddTagsToResource"}, mock.callOrder)
-	assert.Len(t, mock.putInputs, 1, "tag failure must not retry PutParameter")
+	assert.Equal(t, []string{"GetParameter", "PutParameter", "AddTagsToResource", "GetParameter"}, mock.callOrder)
 	assert.Len(t, mock.tagInputs, 1)
 	assert.Equal(t, ssmtypes.ResourceTypeForTaggingParameter, mock.tagInputs[0].ResourceType)
 	assert.Equal(t, key, awslib.ToString(mock.tagInputs[0].ResourceId))
@@ -493,11 +494,14 @@ func TestAWS_SetExistingTagErrorIsReturned(t *testing.T) {
 	mock.AddTagsToResourceFunc = func(context.Context, *ssm.AddTagsToResourceInput) (*ssm.AddTagsToResourceOutput, error) {
 		return nil, errors.New("tag update failed")
 	}
-
 	p := skaws.NewWithClient(mock, "/test/prod")
 	err := p.Set(context.Background(), key, "new", provider.SecretMeta{Tags: map[string]string{"env": "prod"}})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "tag update failed")
+	var partial *provider.PartialCommitError
+	require.ErrorAs(t, err, &partial)
+	assert.ErrorIs(t, err, provider.ErrPartialCommit)
+	assert.Equal(t, provider.TagReconciliationUnknown, partial.TagState)
+	assert.NotContains(t, err.Error(), "tag update failed")
 }
 
 func TestAWS_SetVerifiesOverwriteAndSecureString(t *testing.T) {

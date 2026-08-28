@@ -149,7 +149,7 @@ func (o *importOptions) runWithProvider(ctx context.Context, cmd *cobra.Command,
 			}
 		}
 		if err := p.Set(ctx, destKey, val, provider.SecretMeta{}); err != nil {
-			return skret.NewError(skret.ExitProviderError, fmt.Sprintf("import: set %q", destKey), err)
+			return wrapProviderMutationError("import", destKey, err)
 		}
 		imported++
 	}
