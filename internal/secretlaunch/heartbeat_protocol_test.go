@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"testing"
+	"time"
 )
 
 func TestValidHealthRequiresSafeSignedHeartbeatProtocol(t *testing.T) {
@@ -81,4 +82,20 @@ func TestSendEnvelopeSendsImmediateHeartbeatWithLongHealthInterval(t *testing.T)
 		t.Fatal("test no longer exercises a health interval longer than the old watchdog")
 	}
 	values.Zeroize()
+}
+
+func TestResolveHeartbeatTimeoutUsesSignedHealthTimeout(t *testing.T) {
+	health := fixtureAuthority().Health
+	health.HeartbeatTimeoutMS = 90_000
+	timeout, err := resolveHeartbeatTimeout(health, 0)
+	if err != nil {
+		t.Fatalf("resolveHeartbeatTimeout error=%v", err)
+	}
+	if timeout != 90*time.Second {
+		t.Fatalf("timeout=%s, want 90s from signed health", timeout)
+	}
+	health.HeartbeatTimeoutMS = 2_000
+	if _, err := resolveHeartbeatTimeout(health, 0); err == nil {
+		t.Fatal("unsafe signed heartbeat timeout accepted")
+	}
 }

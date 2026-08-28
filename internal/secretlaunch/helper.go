@@ -40,9 +40,18 @@ func NewHelperAt(signed []byte, policy TrustPolicy, starter ChildStarter, now ti
 		Manifest:          manifest,
 		CanonicalManifest: canonical,
 		Starter:           starter,
-		HeartbeatTimeout:  5 * time.Second,
 		Now:               time.Now,
 	}, nil
+}
+
+func resolveHeartbeatTimeout(health HealthSpec, configured time.Duration) (time.Duration, error) {
+	if err := validHealth(health); err != nil {
+		return 0, err
+	}
+	if configured > 0 {
+		return configured, nil
+	}
+	return time.Duration(health.HeartbeatTimeoutMS) * time.Millisecond, nil
 }
 
 func (h *Helper) Bind(binding LaunchBinding) error {
@@ -132,7 +141,6 @@ func readWireFrameContext(ctx context.Context, stream io.Reader) ([]byte, error)
 	}
 	return wire, err
 }
-
 func (h *Helper) Run(ctx context.Context, stream io.Reader, session *Session) (int, error) {
 	if h == nil || ctx == nil || h.Starter == nil || stream == nil || session == nil ||
 		h.binding.RuntimeID == "" || h.binding.Service == "" {
@@ -144,9 +152,11 @@ func (h *Helper) Run(ctx context.Context, stream io.Reader, session *Session) (i
 	if err := h.Manifest.ValidateAt(h.Now()); err != nil {
 		return 1, err
 	}
-	if h.HeartbeatTimeout <= 0 {
-		h.HeartbeatTimeout = 5 * time.Second
+	heartbeatTimeout, err := resolveHeartbeatTimeout(h.Service.Health, h.HeartbeatTimeout)
+	if err != nil {
+		return 1, err
 	}
+	h.HeartbeatTimeout = heartbeatTimeout
 	values := SecretSet{items: make(map[string]SecretBuffer, len(h.Service.Keys))}
 	defer values.Zeroize()
 	byKey := make(map[string]ManifestKey, len(h.Service.Keys))
