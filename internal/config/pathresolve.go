@@ -29,14 +29,34 @@ func ResolvePath(raw string) (string, bool) {
 		return raw, false
 	}
 
-	segs := strings.Split(strings.ReplaceAll(raw, `\`, "/"), "/")
-	end := len(segs)
-	start := end
-	for start > 0 && isSSMPathSegment(segs[start-1]) {
-		start--
+	norm := strings.ReplaceAll(raw, `\`, "/")
+	count := 0
+	endIdx := len(norm)
+
+	for endIdx > 0 {
+		idx := strings.LastIndexByte(norm[:endIdx], '/')
+		var segment string
+		if idx == -1 {
+			segment = norm[:endIdx]
+		} else {
+			segment = norm[idx+1 : endIdx]
+		}
+
+		if !isSSMPathSegment(segment) {
+			break
+		}
+
+		count++
+
+		if idx == -1 {
+			endIdx = 0
+			break
+		}
+		endIdx = idx
 	}
-	if end-start >= 2 {
-		return "/" + strings.Join(segs[start:end], "/"), true
+
+	if count >= 2 {
+		return "/" + strings.TrimLeft(norm[endIdx:], "/"), true
 	}
 	return raw, true
 }
