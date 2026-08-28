@@ -38,6 +38,7 @@ type mockSSMClient struct {
 	history                 map[string][]ssmtypes.ParameterHistory
 	callOrder               []string
 	putInputs               []*ssm.PutParameterInput
+	putRetryMaxAttempts     []int
 	tagInputs               []*ssm.AddTagsToResourceInput
 	GetParametersByPathFunc func(ctx context.Context, input *ssm.GetParametersByPathInput) (*ssm.GetParametersByPathOutput, error)
 	GetParameterHistoryFunc func(ctx context.Context, input *ssm.GetParameterHistoryInput) (*ssm.GetParameterHistoryOutput, error)
@@ -100,6 +101,13 @@ func (m *mockSSMClient) GetParametersByPath(ctx context.Context, input *ssm.GetP
 func (m *mockSSMClient) PutParameter(ctx context.Context, input *ssm.PutParameterInput, optFns ...func(*ssm.Options)) (*ssm.PutParameterOutput, error) {
 	m.callOrder = append(m.callOrder, "PutParameter")
 	m.putInputs = append(m.putInputs, input)
+	options := &ssm.Options{}
+	for _, optFn := range optFns {
+		optFn(options)
+	}
+	if options.Retryer != nil {
+		m.putRetryMaxAttempts = append(m.putRetryMaxAttempts, options.Retryer.MaxAttempts())
+	}
 	if m.PutParameterFunc != nil {
 		return m.PutParameterFunc(ctx, input)
 	}
@@ -359,12 +367,19 @@ func TestAWS_SetWriteFailureFixtures(t *testing.T) {
 			})
 
 			require.Error(t, err)
-			var gotAPIError *mockAWSAPIError
-			require.ErrorAs(t, err, &gotAPIError)
-			assert.Contains(t, err.Error(), "aws: set")
 			assert.Contains(t, err.Error(), key)
 			assert.NotContains(t, err.Error(), value)
-			assert.Equal(t, []string{"GetParameter", "PutParameter"}, mock.callOrder)
+			if tt.apiCode == "ThrottlingException" {
+				var partial *provider.PartialCommitError
+				require.ErrorAs(t, err, &partial)
+				assert.ErrorIs(t, err, provider.ErrPartialCommit)
+				assert.Equal(t, provider.MutationCommitUnknown, partial.CommitState)
+				assert.Equal(t, []string{"GetParameter", "PutParameter", "GetParameter"}, mock.callOrder)
+			} else {
+				var gotAPIError *mockAWSAPIError
+				require.ErrorAs(t, err, &gotAPIError)
+				assert.Equal(t, []string{"GetParameter", "PutParameter"}, mock.callOrder)
+			}
 			require.Len(t, mock.putInputs, 1)
 			assert.Equal(t, key, awslib.ToString(mock.putInputs[0].Name))
 			assert.Equal(t, value, awslib.ToString(mock.putInputs[0].Value))
@@ -381,7 +396,7 @@ func TestAWS_SetExistingPutFailureSkipsTagMutation(t *testing.T) {
 	const value = "fixture-secret-value"
 	apiErr := &mockAWSAPIError{code: "ThrottlingException", message: "ssm request throttled"}
 	mock := &mockSSMClient{params: map[string]ssmtypes.Parameter{
-		key: {Name: awslib.String(key), Value: awslib.String("old")},
+		key: {Name: awslib.String(key), Value: awslib.String("old"), Version: 4},
 	}}
 	mock.PutParameterFunc = func(_ context.Context, _ *ssm.PutParameterInput) (*ssm.PutParameterOutput, error) {
 		return nil, apiErr
@@ -398,7 +413,7 @@ func TestAWS_SetExistingPutFailureSkipsTagMutation(t *testing.T) {
 	assert.Contains(t, err.Error(), "aws: set")
 	assert.Contains(t, err.Error(), key)
 	assert.NotContains(t, err.Error(), value)
-	assert.Equal(t, []string{"GetParameter", "PutParameter"}, mock.callOrder)
+	assert.Equal(t, []string{"GetParameter", "PutParameter", "GetParameter"}, mock.callOrder)
 	assert.Len(t, mock.putInputs, 1)
 	assert.Empty(t, mock.tagInputs, "AddTagsToResource must run only after a successful put")
 	assert.Equal(t, "old", awslib.ToString(mock.params[key].Value))
@@ -552,8 +567,12 @@ func TestAWS_SetError(t *testing.T) {
 	mock := &mockSSMClient{params: make(map[string]ssmtypes.Parameter), errPut: errors.New("network err")}
 	p := skaws.NewWithClient(mock, "/test/prod")
 	err := p.Set(context.Background(), "/test/prod/META", "val", provider.SecretMeta{})
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "network err")
+	require.Error(t, err)
+	var partial *provider.PartialCommitError
+	require.ErrorAs(t, err, &partial)
+	assert.ErrorIs(t, err, provider.ErrPartialCommit)
+	assert.Equal(t, provider.MutationCommitUnknown, partial.CommitState)
+	assert.NotContains(t, err.Error(), "network err")
 }
 
 func TestAWS_Delete(t *testing.T) {
@@ -732,8 +751,12 @@ func TestAWS_Rollback_SetError(t *testing.T) {
 	p := skaws.NewWithClient(mock, "/test/prod")
 
 	err := p.Rollback(context.Background(), "/test/prod/KEY", 1)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "write denied")
+	require.Error(t, err)
+	var partial *provider.PartialCommitError
+	require.ErrorAs(t, err, &partial)
+	assert.ErrorIs(t, err, provider.ErrPartialCommit)
+	assert.Equal(t, provider.MutationCommitUnknown, partial.CommitState)
+	assert.NotContains(t, err.Error(), "write denied")
 }
 
 func TestAWS_Close(t *testing.T) {

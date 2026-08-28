@@ -77,3 +77,40 @@ func TestAWS_SetExistingTagFailureReturnsSuccessAfterExactReadback(t *testing.T)
 
 	assert.NoError(t, p.Set(context.Background(), key, "new", provider.SecretMeta{Tags: map[string]string{"env": "new"}}))
 }
+
+func TestAWS_SetAmbiguousPutUsesSingleAttemptAndReconcilesCommittedVersion(t *testing.T) {
+	const key = "/test/prod/AMBIGUOUS_PUT"
+	const value = "fixture-secret-value"
+	base := &mockSSMClient{params: map[string]ssmtypes.Parameter{
+		key: {Name: awslib.String(key), Value: awslib.String("old"), Version: 4},
+	}}
+	base.PutParameterFunc = func(_ context.Context, input *ssm.PutParameterInput) (*ssm.PutParameterOutput, error) {
+		base.params[key] = ssmtypes.Parameter{
+			Name:    awslib.String(key),
+			Value:   input.Value,
+			Version: 5,
+		}
+		return nil, errors.New("request timeout after commit")
+	}
+	mock := &tagReadbackMock{
+		mockSSMClient: base,
+		tags: map[string][]ssmtypes.Tag{
+			key: {{Key: awslib.String("env"), Value: awslib.String("old")}},
+		},
+	}
+	p := skaws.NewWithClient(mock, "/test/prod")
+	err := p.Set(context.Background(), key, value, provider.SecretMeta{
+		Tags: map[string]string{"env": "new"},
+	})
+
+	var partial *provider.PartialCommitError
+	require.ErrorAs(t, err, &partial)
+	assert.ErrorIs(t, err, provider.ErrPartialCommit)
+	assert.Equal(t, int64(5), partial.Version)
+	assert.Equal(t, int64(5), partial.ObservedVersion)
+	assert.Equal(t, int64(4), partial.PreVersion)
+	assert.Equal(t, provider.TagReconciliationRequired, partial.TagState)
+	assert.NotContains(t, err.Error(), value)
+	assert.Equal(t, []int{1}, mock.putRetryMaxAttempts)
+	assert.Equal(t, []string{"GetParameter", "PutParameter", "GetParameter", "ListTagsForResource"}, mock.callOrder)
+}

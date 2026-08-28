@@ -13,14 +13,26 @@ import (
 func wrapProviderMutationError(operation, key string, err error) error {
 	var partial *provider.PartialCommitError
 	if errors.As(err, &partial) {
-		message := fmt.Sprintf(
-			"%s %q partially committed; reconcile provider metadata before retry (committed version %d, observed version %d, tag state %s)",
-			operation,
-			key,
-			partial.Version,
-			partial.ObservedVersion,
-			partial.TagState,
-		)
+		var message string
+		if partial.CommitState == provider.MutationCommitUnknown {
+			message = fmt.Sprintf(
+				"%s %q mutation outcome unknown; reconcile before retry (pre-version %d, observed version %d, tag state %s)",
+				operation,
+				key,
+				partial.PreVersion,
+				partial.ObservedVersion,
+				partial.TagState,
+			)
+		} else {
+			message = fmt.Sprintf(
+				"%s %q partially committed; reconcile provider metadata before retry (committed version %d, observed version %d, tag state %s)",
+				operation,
+				key,
+				partial.Version,
+				partial.ObservedVersion,
+				partial.TagState,
+			)
+		}
 		return skret.NewError(skret.ExitProviderError, message, partial)
 	}
 	return skret.NewError(skret.ExitProviderError, fmt.Sprintf("%s %q", operation, key), err)

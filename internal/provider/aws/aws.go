@@ -297,12 +297,49 @@ func hashLines(lines []string) string {
 	return fmt.Sprintf("%x", sha256.Sum256([]byte(joined)))
 }
 
+func putMutationOptions(options *ssm.Options) {
+	options.Retryer = retry.NewStandard(func(settings *retry.StandardOptions) {
+		settings.MaxAttempts = 1
+	})
+}
+
+// putErrorMayHaveCommitted distinguishes provider errors that definitively
+// reject a request from transport/throttle/server failures whose response may
+// have been lost after SSM committed the new version.
+func putErrorMayHaveCommitted(err error) bool {
+	var coded interface{ ErrorCode() string }
+	if !errors.As(err, &coded) {
+		return true
+	}
+	switch coded.ErrorCode() {
+	case "AccessDeniedException",
+		"ExplicitDelegationAccessDeniedException",
+		"InvalidKeyId",
+		"InvalidKeyIdException",
+		"ParameterNotFound",
+		"ParameterAlreadyExists",
+		"ResourceNotFoundException",
+		"UnauthorizedOperation",
+		"ValidationException":
+		return false
+	default:
+		return true
+	}
+}
+
 func (p *Provider) Set(ctx context.Context, key string, value string, meta provider.SecretMeta) error {
-	_, lookupErr := p.client.GetParameter(ctx, &ssm.GetParameterInput{
-		Name: awslib.String(key),
+	lookup, lookupErr := p.client.GetParameter(ctx, &ssm.GetParameterInput{
+		Name:           awslib.String(key),
+		WithDecryption: awslib.Bool(false),
 	})
 	exists := lookupErr == nil
-	if lookupErr != nil {
+	preVersion := int64(0)
+	if exists {
+		if lookup == nil || lookup.Parameter == nil {
+			return fmt.Errorf("aws: set %q: invalid pre-write readback", key)
+		}
+		preVersion = lookup.Parameter.Version
+	} else {
 		var notFound *ssmtypes.ParameterNotFound
 		if !errors.As(lookupErr, &notFound) {
 			return mapError("set", key, lookupErr)
@@ -326,29 +363,76 @@ func (p *Provider) Set(ctx context.Context, key string, value string, meta provi
 		input.Tags = tags
 	}
 
-	putOutput, err := p.client.PutParameter(ctx, input)
+	putOutput, err := p.client.PutParameter(ctx, input, putMutationOptions)
 	if err != nil {
-		return mapError("set", key, err)
+		if !putErrorMayHaveCommitted(err) {
+			return mapError("set", key, err)
+		}
+		return p.reconcilePutFailure(ctx, key, preVersion, putOutput, tags, err)
 	}
 	if exists && len(tags) > 0 {
 		tagger, ok := p.client.(ssmTagger)
 		if !ok {
-			return p.partialCommit(ctx, key, putOutput, tags)
+			return p.partialCommit(ctx, key, preVersion, putOutput, tags)
 		}
 		if _, err := tagger.AddTagsToResource(ctx, &ssm.AddTagsToResourceInput{
 			ResourceType: ssmtypes.ResourceTypeForTaggingParameter,
 			ResourceId:   awslib.String(key),
 			Tags:         tags,
 		}); err != nil {
-			return p.partialCommit(ctx, key, putOutput, tags)
+			return p.partialCommit(ctx, key, preVersion, putOutput, tags)
 		}
 	}
 	return nil
 }
 
+func (p *Provider) reconcilePutFailure(
+	ctx context.Context,
+	key string,
+	preVersion int64,
+	putOutput *ssm.PutParameterOutput,
+	tags []ssmtypes.Tag,
+	cause error,
+) error {
+	expectedVersion := int64(0)
+	if putOutput != nil {
+		expectedVersion = putOutput.Version
+	}
+	observedVersion, tagsMatch, tagState := p.readbackMutation(ctx, key, expectedVersion, tags)
+	if observedVersion <= preVersion {
+		if tagState == provider.TagReconciliationUnknown && observedVersion == 0 {
+			return &provider.PartialCommitError{
+				Provider:        p.Name(),
+				Key:             key,
+				PreVersion:      preVersion,
+				CommitState:     provider.MutationCommitUnknown,
+				Version:         expectedVersion,
+				ObservedVersion: observedVersion,
+				TagState:        tagState,
+			}
+		}
+		return mapError("set", key, cause)
+	}
+	if expectedVersion == 0 {
+		expectedVersion = observedVersion
+	}
+	if tagsMatch && observedVersion == expectedVersion {
+		return nil
+	}
+	return &provider.PartialCommitError{
+		Provider:        p.Name(),
+		Key:             key,
+		PreVersion:      preVersion,
+		Version:         expectedVersion,
+		ObservedVersion: observedVersion,
+		TagState:        tagState,
+	}
+}
+
 func (p *Provider) partialCommit(
 	ctx context.Context,
 	key string,
+	preVersion int64,
 	putOutput *ssm.PutParameterOutput,
 	tags []ssmtypes.Tag,
 ) error {
@@ -360,12 +444,18 @@ func (p *Provider) partialCommit(
 	if committedVersion == 0 {
 		committedVersion = observedVersion
 	}
+	commitState := ""
+	if committedVersion == 0 && observedVersion == 0 && tagState == provider.TagReconciliationUnknown {
+		commitState = provider.MutationCommitUnknown
+	}
 	if tagsMatch && committedVersion > 0 && observedVersion == committedVersion {
 		return nil
 	}
 	return &provider.PartialCommitError{
 		Provider:        p.Name(),
 		Key:             key,
+		PreVersion:      preVersion,
+		CommitState:     commitState,
 		Version:         committedVersion,
 		ObservedVersion: observedVersion,
 		TagState:        tagState,
@@ -380,13 +470,19 @@ func (p *Provider) readbackMutation(
 ) (int64, bool, string) {
 	readCtx, cancel := context.WithTimeout(ctx, mutationReadbackTimeout)
 	defer cancel()
-	output, err := p.client.GetParameter(readCtx, &ssm.GetParameterInput{Name: awslib.String(key)})
+	output, err := p.client.GetParameter(readCtx, &ssm.GetParameterInput{
+		Name:           awslib.String(key),
+		WithDecryption: awslib.Bool(false),
+	})
 	if err != nil || output == nil || output.Parameter == nil {
 		return 0, false, provider.TagReconciliationUnknown
 	}
 	observedVersion := output.Parameter.Version
 	if expectedVersion > 0 && observedVersion != expectedVersion {
 		return observedVersion, false, provider.TagReconciliationRequired
+	}
+	if len(expectedTags) == 0 {
+		return observedVersion, true, ""
 	}
 	reader, ok := p.client.(ssmTagReader)
 	if !ok {
