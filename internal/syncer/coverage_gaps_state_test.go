@@ -446,12 +446,13 @@ func TestSyncState_SaveRejectsUncreatableStateDirectory(t *testing.T) {
 }
 
 func TestSyncState_LoadRejectsDirectoryAtStatePath(t *testing.T) {
-	home := withFakeHome(t)
-	path := filepath.Join(home, ".skret", "sync-state", "github-owner-repo.json")
+	withFakeHome(t)
+	path, err := StatePathFor("github", "owner/repo")
+	require.NoError(t, err)
 	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o700))
 	require.NoError(t, os.Mkdir(path, 0o700))
 
-	_, err := LoadSyncState("github", "owner/repo")
+	_, err = LoadSyncState("github", "owner/repo")
 	require.ErrorContains(t, err, "read sync state")
 	assert.NotContains(t, err.Error(), "secret")
 }
