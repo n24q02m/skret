@@ -156,7 +156,6 @@ sync:
 	t.Setenv("HOME", dir)
 	t.Setenv("USERPROFILE", dir)
 	t.Setenv("CLOUDFLARE_API_TOKEN", "token")
-
 	started := time.Date(2026, 8, 24, 10, 0, 0, 0, time.UTC)
 	state := &syncer.SyncState{
 		Target:      "cloudflare",
@@ -179,7 +178,7 @@ sync:
 	cmd := NewRootCmd()
 	cmd.SetOut(&stdout)
 	cmd.SetErr(&stdout)
-	cmd.SetArgs([]string{"sync", "--skip-unchanged", "--format=json"})
+	cmd.SetArgs([]string{"sync", "--format=json"})
 	require.NoError(t, cmd.Execute())
 	assert.Contains(t, stdout.String(), `"synced": 0`)
 	assert.Equal(t, 0, requests, "recovery must not rewrite already acknowledged keys")
