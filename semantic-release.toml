@@ -3,6 +3,14 @@ tag_format = "v{version}"
 commit_message = "fix(release): v{version} [skip ci]"
 major_on_zero = false
 
+[semantic_release.branches.main]
+match = "^(main|master)$"
+
+[semantic_release.branches.candidate]
+match = "^candidate/skret-a337-20260828$"
+prerelease = true
+prerelease_token = "candidate"
+
 [semantic_release.changelog]
 changelog_file = "CHANGELOG.md"
 

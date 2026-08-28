@@ -46,17 +46,17 @@ on:
   # Hand-pushing a tag no longer publishes anything. That flow was already
   # against policy (versions come from semantic-release; we never pick one by
   # hand), and it was the entry point for this corruption.
+  # This checkout is candidate-only: the branch and token are both exact, so
+  # this workflow cannot dispatch stable or beta from the candidate lane.
   workflow_dispatch:
     inputs:
       release_type:
         description: "Release type"
         required: true
-        default: "stable"
+        default: "candidate"
         type: choice
         options:
-          - stable
-          - beta
-
+          - candidate
 permissions:
   contents: read
 
@@ -76,11 +76,14 @@ jobs:
   # ==================== Release (workflow_dispatch) ====================
   release:
     name: Semantic Release
-    if: github.event_name == 'workflow_dispatch'
+    if: |
+      github.event_name == 'workflow_dispatch' &&
+      github.ref == 'refs/heads/candidate/skret-a337-20260828' &&
+      github.event.inputs.release_type == 'candidate'
     needs: [verify-readme-sync]
     runs-on: ubuntu-latest
     environment:
-      name: ${{ github.event.inputs.release_type == 'beta' && 'beta-publish' || 'stable-publish' }}
+      name: beta-publish
     permissions:
       contents: write
       id-token: write
@@ -105,8 +108,9 @@ jobs:
         uses: n24q02m/better-semantic-release@087b84e8d2ba75bdec350924d3bf8247088e0b1a # v1.4.0
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          prerelease: ${{ github.event.inputs.release_type == 'beta' }}
-          prerelease_token: beta
+          prerelease: true
+          prerelease_token: candidate
+          config_file: semantic-release.toml
       - if: steps.release.outputs.released == 'true'
         uses: python-semantic-release/publish-action@5a5718ce47b892ef699f2972dae122297771d641 # v10.6.1
         with:
@@ -261,7 +265,7 @@ jobs:
   sync-secrets:
     name: Sync Secrets from AWS SSM
     if: |
-      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+      github.event_name == 'push' &&
       github.ref == 'refs/heads/main' &&
       !startsWith(github.ref, 'refs/tags/v') &&
       vars.SYNC_SECRETS_ENABLED == 'true'
@@ -312,7 +316,8 @@ jobs:
   docs:
     name: Deploy Docs to Cloudflare Pages
     if: |
-      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main' &&
       !startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     # No `deployments: write`. It arrived with a pnpm bump in #273 rather than
@@ -354,11 +359,11 @@ jobs:
   # ==================== Vault Hub Deploy ====================
   deploy-hub:
     name: Deploy Vault Hub Worker
-    # workflow_dispatch (any release_type) also redeploys the hub even when
-    # only CLI code changed -- intentional: the hub isn't versioned with the
-    # CLI, and a redeploy of the same Worker source is idempotent/harmless.
+    # Candidate workflow_dispatch is release-only; provider deployment jobs
+    # remain push-only on main and never run from the candidate lane.
     if: |
-      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main' &&
       !startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
