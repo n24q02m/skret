@@ -4,6 +4,46 @@ All notable changes to this project will be documented in this file.
 
 <!-- version list -->
 
+## v1.18.0-candidate.1 (2026-08-28)
+
+### Bug Fixes
+
+- Align semantic release beta pin
+  ([`c3ea2e7`](https://github.com/n24q02m/skret/commit/c3ea2e744ab419ba0231269f3d6eb10cc5a32ba2))
+
+- Pass required Home migration identity flags ([#707](https://github.com/n24q02m/skret/pull/707),
+  [`ea5cb3a`](https://github.com/n24q02m/skret/commit/ea5cb3a6193200780ff63a46aa08bc61bafca5a4))
+
+- Reject aliased Home state roles ([#707](https://github.com/n24q02m/skret/pull/707),
+  [`ea5cb3a`](https://github.com/n24q02m/skret/commit/ea5cb3a6193200780ff63a46aa08bc61bafca5a4))
+
+- Remove Home sandbox slice
+  ([`23dea61`](https://github.com/n24q02m/skret/commit/23dea61d153c7f544cdaf974cc99821d6226861b))
+
+- **update**: Integrate isolated Home sandbox follow-up
+  ([#707](https://github.com/n24q02m/skret/pull/707),
+  [`ea5cb3a`](https://github.com/n24q02m/skret/commit/ea5cb3a6193200780ff63a46aa08bc61bafca5a4))
+
+### Chores
+
+- Bump better-semantic-release to v1.4.0 ([#701](https://github.com/n24q02m/skret/pull/701),
+  [`3d0783f`](https://github.com/n24q02m/skret/commit/3d0783fa5396a9928fb4a219208dab0174aa45e1))
+
+- **release**: Isolate candidate publication lane
+  ([`6cb5a08`](https://github.com/n24q02m/skret/commit/6cb5a086a9c7a0705f4de0614a6ee2ea7da5bce2))
+
+### Features
+
+- Restore Home sandbox slice
+  ([`a337ffa`](https://github.com/n24q02m/skret/commit/a337ffa8d5d4e563526292a0a07e8b68c261ada8))
+
+- **skret**: Isolate Home synthetic state root ([#707](https://github.com/n24q02m/skret/pull/707),
+  [`ea5cb3a`](https://github.com/n24q02m/skret/commit/ea5cb3a6193200780ff63a46aa08bc61bafca5a4))
+
+- **update**: Add isolated Home sandbox harness ([#707](https://github.com/n24q02m/skret/pull/707),
+  [`ea5cb3a`](https://github.com/n24q02m/skret/commit/ea5cb3a6193200780ff63a46aa08bc61bafca5a4))
+
+
 ## v1.17.1 (2026-08-09)
 
 
