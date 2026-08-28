@@ -141,6 +141,13 @@ func (o *syncOptions) run(cmd *cobra.Command) error {
 		journalByDefault := s.Name() == "github" || s.Name() == "cloudflare"
 		if journalByDefault || o.rotate || (o.skipUnchanged && !noOv) {
 			stateID := targetStateID(s, tc)
+			if !o.dryRun {
+				release, lockErr := syncer.AcquireTargetLock(s.Name(), stateID)
+				if lockErr != nil {
+					return skret.NewError(skret.ExitGenericError, "sync: lock target", lockErr)
+				}
+				defer func(release func() error) { _ = release() }(release)
+			}
 			state, err = syncer.LoadSyncState(s.Name(), stateID)
 			if err != nil {
 				return skret.NewError(skret.ExitGenericError, "sync: load state failed", err)
