@@ -80,6 +80,8 @@ homebrew_casks:
       name: homebrew-tap
       branch: main
       token: "{{ .Env.TAP_GITHUB_TOKEN }}"
+    ids:
+      - cli
     directory: Casks
     homepage: "https://skret.n24q02m.com"
     description: "Cloud-provider secret manager CLI with Doppler/Infisical-grade DX"
@@ -126,8 +128,9 @@ scoops:
       name: scoop-bucket
       branch: main
       token: "{{ .Env.TAP_GITHUB_TOKEN }}"
+    ids:
+      - cli
     directory: bucket
-    homepage: "https://skret.n24q02m.com"
     description: "Cloud-provider secret manager CLI with Doppler/Infisical-grade DX"
     license: Apache-2.0
     commit_author:
