@@ -4,6 +4,96 @@ All notable changes to this project will be documented in this file.
 
 <!-- version list -->
 
+## v1.18.0 (2026-08-29)
+
+### Bug Fixes
+
+- Align semantic release beta pin
+  ([`c3ea2e7`](https://github.com/n24q02m/skret/commit/c3ea2e744ab419ba0231269f3d6eb10cc5a32ba2))
+
+- Pass required Home migration identity flags ([#707](https://github.com/n24q02m/skret/pull/707),
+  [`ea5cb3a`](https://github.com/n24q02m/skret/commit/ea5cb3a6193200780ff63a46aa08bc61bafca5a4))
+
+- Reject aliased Home state roles ([#707](https://github.com/n24q02m/skret/pull/707),
+  [`ea5cb3a`](https://github.com/n24q02m/skret/commit/ea5cb3a6193200780ff63a46aa08bc61bafca5a4))
+
+- Remove Home sandbox slice
+  ([`23dea61`](https://github.com/n24q02m/skret/commit/23dea61d153c7f544cdaf974cc99821d6226861b))
+
+- Resolve target lock, generation drift, and AWS ambiguous put edge cases
+  ([`e901297`](https://github.com/n24q02m/skret/commit/e9012974ab34e5055f8c98d087af4a0b61d0bee2))
+
+- **cd**: Isolate release dispatch by skipping docs, hub, and secret sync
+  ([`8a6d7d4`](https://github.com/n24q02m/skret/commit/8a6d7d4a266e38fa46379694c49f7075d1a658af))
+
+- **hub**: Watchdog provider operations and bind readback OIDs
+  ([`6c7f942`](https://github.com/n24q02m/skret/commit/6c7f942659ab466c26cfdb9fbd8a0e9109a504e1))
+
+- **provider**: Fence ambiguous AWS parameter writes
+  ([`ea59849`](https://github.com/n24q02m/skret/commit/ea59849b18ced2465b19da1277030a9ebb6a193b))
+
+- **provider**: Surface partial metadata commits
+  ([`b42c814`](https://github.com/n24q02m/skret/commit/b42c81450d7b643244e2bb20c1e9a19ab91df590))
+
+- **release**: Scope homebrew cask and scoop bucket to cli archive
+  ([`2cc3589`](https://github.com/n24q02m/skret/commit/2cc3589c2f9839d65f4127287fecdb4dee76097f))
+
+- **secretlaunch**: Own child wait and surface kill failures
+  ([`e5efac1`](https://github.com/n24q02m/skret/commit/e5efac19aeba605da352853038462c619ef78580))
+
+- **secretlaunch**: Reconcile older owned generations
+  ([`6dd0ac7`](https://github.com/n24q02m/skret/commit/6dd0ac77173dfbdce62a4118b09784d36cdff8d5))
+
+- **secretlaunch**: Separate heartbeat protocol from health cadence
+  ([`9536883`](https://github.com/n24q02m/skret/commit/9536883a61eb32dd0061ef04ce033d7c7ce48a36))
+
+- **secretlaunch**: Use signed heartbeat timeout
+  ([`93c8fb3`](https://github.com/n24q02m/skret/commit/93c8fb31bfa299a888adde444b8a3a85effd5bed))
+
+- **sync**: Bind journals to targets and reject name collisions
+  ([`1c0dbc0`](https://github.com/n24q02m/skret/commit/1c0dbc0649099bd22400a188a67d295412af7e8b))
+
+- **sync**: Durably replace state journals
+  ([`17b41f6`](https://github.com/n24q02m/skret/commit/17b41f64be6215704a9232687a187b5d7004943e))
+
+- **sync**: Fence ambiguous provider mutations
+  ([`3dbbd57`](https://github.com/n24q02m/skret/commit/3dbbd573e3014716eb9cc0631a352c8ea7704121))
+
+- **sync**: Hold target lock across journal transaction
+  ([`2ea0849`](https://github.com/n24q02m/skret/commit/2ea084965790b4fd0a6db27ecce69327b41c80c6))
+
+- **sync**: Recover acknowledged operation before retry
+  ([`a82e756`](https://github.com/n24q02m/skret/commit/a82e7565b96cf74498141d895839f5b8dcbecbf2))
+
+- **update**: Integrate isolated Home sandbox follow-up
+  ([#707](https://github.com/n24q02m/skret/pull/707),
+  [`ea5cb3a`](https://github.com/n24q02m/skret/commit/ea5cb3a6193200780ff63a46aa08bc61bafca5a4))
+
+### Chores
+
+- Bump better-semantic-release to v1.4.0 ([#701](https://github.com/n24q02m/skret/pull/701),
+  [`3d0783f`](https://github.com/n24q02m/skret/commit/3d0783fa5396a9928fb4a219208dab0174aa45e1))
+
+- **skret**: Curate coherent runtime security slice
+  ([`d7a5821`](https://github.com/n24q02m/skret/commit/d7a58215ab38a32d6b0520e828b965c1dd9f46d9))
+
+### Features
+
+- Restore Home sandbox slice
+  ([`a337ffa`](https://github.com/n24q02m/skret/commit/a337ffa8d5d4e563526292a0a07e8b68c261ada8))
+
+- **skret**: Isolate Home synthetic state root ([#707](https://github.com/n24q02m/skret/pull/707),
+  [`ea5cb3a`](https://github.com/n24q02m/skret/commit/ea5cb3a6193200780ff63a46aa08bc61bafca5a4))
+
+- **update**: Add isolated Home sandbox harness ([#707](https://github.com/n24q02m/skret/pull/707),
+  [`ea5cb3a`](https://github.com/n24q02m/skret/commit/ea5cb3a6193200780ff63a46aa08bc61bafca5a4))
+
+### Testing
+
+- **sync**: Use canonical state path fixture
+  ([`a024f14`](https://github.com/n24q02m/skret/commit/a024f14b79e33ab3ab66aa77f8a3358a77ecad52))
+
+
 ## v1.17.1 (2026-08-09)
 
 
