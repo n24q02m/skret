@@ -57,3 +57,7 @@
 ## 2026-08-08 - [Empty States for Data Tables]
 **Learning:** A table rendered with a header row and an empty `<tbody>` is indistinguishable from a table whose data failed to load. A manifest can legitimately carry zero keys -- pushed before any secret was set, or emptied after deletions -- and the dashboard should say so.
 **Action:** Render an empty-state row (`<td colspan="N" class="empty">`) whose colspan matches the column count declared in `thead`, with a heading plus the command that populates the table. Implemented for `renderNamespace` in `hub/src/render.ts`; the dashboard-level empty state (no manifests at all) already existed and is a separate case.
+
+## 2026-08-29 - Scrollable Table Accessibility
+**Learning:** Horizontally scrollable containers (e.g., overflow-x: auto) require tabindex="0", role="region", and an aria-label to ensure keyboard users can scroll and screen readers announce the context properly. Focus styles must also be explicitly added to match native interactive elements.
+**Action:** Always add tabindex="0", role="region", aria-label, and :focus-visible rules to custom scrollable containers.
