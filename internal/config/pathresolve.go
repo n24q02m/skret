@@ -35,7 +35,7 @@ func ResolvePath(raw string) (string, bool) {
 	// Reduces execution time from ~354ns to ~115ns and heap allocations from 3 to 1.
 	validCount := 0
 	rem := norm
-	var startIdx int = len(norm)
+	startIdx := len(norm)
 
 	for {
 		idx := strings.LastIndexByte(rem, '/')
