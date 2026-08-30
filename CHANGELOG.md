@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 <!-- version list -->
 
+## v1.18.1-beta.1 (2026-08-30)
+
+### Bug Fixes
+
+- **ci**: Add cosign-installer to installer-smoke job in cd.yml
+  ([`a152a5b`](https://github.com/n24q02m/skret/commit/a152a5bb43baae4a630dcf6e453d195ddbb54929))
+
+
 ## v1.18.0 (2026-08-29)
 
 ### Bug Fixes
