@@ -388,14 +388,10 @@ jobs:
     # covered" to anyone auditing the gate, which is exactly the belief that let
     # the installers stay broken from 2026-05-26 through 1.16.0.
     #
-    # Release-time installer coverage (a cd.yml job running after assets are
-    # published, pinned to the exact tag) is NOT implemented yet: cd.yml is
-    # prepare-only by policy and publication is a separate gated capability.
-    # Until that lane lands, nothing covers the installer against a fresh
-    # release -- the gap is explicit, not silently assumed away. What stays
-    # here is the on-demand bed plus the stubbed-cosign failure-path assertions
-    # below, which prove the installer refuses a bad signature and need no
-    # freshly-published release to do it.
+    # Release-time coverage lives in cd.yml after the exact tag's assets are
+    # published. This on-demand bed instead exercises the latest published
+    # release plus the stubbed-cosign failure paths below; both need a real
+    # cosign binary before the hostile stub replaces it.
     if: github.event_name == 'workflow_dispatch'
     needs: [build]
     strategy:
@@ -405,6 +401,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
       - name: Install via install.sh (Unix)
         if: runner.os != 'Windows'
         run: |
