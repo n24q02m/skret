@@ -258,16 +258,3 @@ func TestDoWithRetry_ContextCancelledAfterTransientError(t *testing.T) {
 	assert.ErrorIs(t, err, context.Canceled)
 	assert.Nil(t, resp)
 }
-
-func TestDoWithRetry_ContextCancelledAfterTransientError(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	client := &http.Client{Transport: roundTripFuncCov(func(req *http.Request) (*http.Response, error) {
-		cancel() // cancel so wait for retry fails
-		return &http.Response{StatusCode: http.StatusBadGateway}, nil
-	})}
-	resp, err := doWithRetry(ctx, client, func() (*http.Request, error) {
-		return http.NewRequestWithContext(ctx, http.MethodGet, "http://localhost", http.NoBody)
-	}, http.StatusOK)
-	assert.ErrorIs(t, err, context.Canceled)
-	assert.Nil(t, resp)
-}
