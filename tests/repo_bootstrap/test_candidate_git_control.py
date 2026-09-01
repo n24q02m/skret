@@ -6,11 +6,12 @@ import tempfile
 import unittest
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from unittest.mock import patch
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS = REPO_ROOT / "scripts"
 sys.path.insert(0, str(SCRIPTS))
-
+import candidate_git_control as control  # noqa: E402
 from candidate_trust import (  # noqa: E402
     canonical_json_bytes,
     generate_keypair,
@@ -581,6 +582,102 @@ class CandidateGitControlTests(unittest.TestCase):
             )
             self.assertNotEqual(replay.returncode, 0)
             self.assertEqual(replay.stdout, "")
+
+    def test_executor_rechecks_expiry_after_remote_reads_before_claim(self) -> None:
+        expires_at = datetime(2026, 9, 1, 0, 0, 1, tzinfo=UTC)
+        self._assert_expiry_blocks_provider_push(
+            (expires_at,),
+            expected_claim_writes=0,
+        )
+
+    def test_executor_rechecks_expiry_after_claim_mint_before_push(self) -> None:
+        expires_at = datetime(2026, 9, 1, 0, 0, 1, tzinfo=UTC)
+        self._assert_expiry_blocks_provider_push(
+            (expires_at - timedelta(seconds=1), expires_at),
+            expected_claim_writes=1,
+        )
+
+    def _assert_expiry_blocks_provider_push(
+        self,
+        now_values: tuple[datetime, ...],
+        *,
+        expected_claim_writes: int,
+    ) -> None:
+        expires_at = datetime(2026, 9, 1, 0, 0, 1, tzinfo=UTC)
+        executor_private, executor_public = generate_keypair(bytes(range(32, 64)))
+        expected_oid = "1" * 40
+        desired_oid = "2" * 40
+        namespace = "refs/heads/bdrive-candidate/expiry/"
+        capability = {
+            "transaction_id": "bd-control-expiry",
+            "executor_id": "skret-candidate-executor-1",
+            "executor_public_key": executor_public.hex(),
+            "client_id": "better-drive-candidate-client-1",
+            "remote": "n24q02m/synthetic-control",
+            "remote_url_digest": "3" * 64,
+            "ref_namespace": namespace,
+            "claim_ref": namespace + "claim",
+            "completion_ref": namespace + "completion",
+            "operations": [
+                {
+                    "ref": namespace + "lease",
+                    "expected_oid": expected_oid,
+                    "desired_oid": desired_oid,
+                }
+            ],
+            "ref_escape_probe": "refs/heads/main",
+            "production_remote": "n24q02m/production-control",
+            "production_ref": "refs/heads/main",
+            "expires_at": self.timestamp(expires_at),
+        }
+        instants = iter(now_values)
+
+        class ExpiredDateTime(datetime):
+            @classmethod
+            def now(cls, tz: object = None) -> datetime:
+                return next(instants)
+
+        class Provider:
+            def __init__(self, *_: object) -> None:
+                self.readbacks = iter((None, None, expected_oid))
+
+            def read_optional(self, _remote: str, _ref: str) -> str | None:
+                return next(self.readbacks)
+
+            def push(self, _claim_oid: str) -> subprocess.CompletedProcess[str]:
+                raise AssertionError("expired capability reached provider push")
+
+        completed = subprocess.CompletedProcess(
+            args=["git"],
+            returncode=0,
+            stdout="",
+            stderr="",
+        )
+        with (
+            tempfile.TemporaryDirectory() as temporary,
+            patch.object(control, "datetime", ExpiredDateTime),
+            patch.object(control, "_run_git", return_value=completed),
+            patch.object(control, "_prepare_scratch_repository"),
+            patch.object(control, "_GitControlProvider", Provider),
+            patch.object(
+                control,
+                "_write_local_claim_commit",
+                return_value="4" * 40,
+            ) as write_claim,
+        ):
+            with self.assertRaisesRegex(
+                control.CandidateControlError,
+                "capability is not currently valid",
+            ):
+                control.execute(
+                    capability,
+                    Path(temporary),
+                    "file:///synthetic.git",
+                    executor_private,
+                    None,
+                    "file-fixture",
+                )
+            self.assertEqual(write_claim.call_count, expected_claim_writes)
 
     @staticmethod
     def git(cwd: Path, *arguments: str) -> str:

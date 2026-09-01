@@ -140,6 +140,13 @@ def _unsigned_capability(capability: Mapping[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in capability.items() if key != "signature"}
 
 
+def _require_capability_current(capability: Mapping[str, Any]) -> datetime:
+    now = datetime.now(UTC)
+    if now >= _parse_timestamp(capability["expires_at"]):
+        _fail("candidate control capability is not currently valid")
+    return now
+
+
 def _validate_capability(capability: Any, public_key: bytes, remote_url: str) -> dict[str, Any]:
     required = {
         "schema_version",
@@ -224,10 +231,10 @@ def _validate_capability(capability: Any, public_key: bytes, remote_url: str) ->
     _validate_digest(capability["teardown_intent_digest"], "teardown intent digest")
     issued_at = _parse_timestamp(capability["issued_at"])
     expires_at = _parse_timestamp(capability["expires_at"])
-    now = datetime.now(UTC)
     if expires_at <= issued_at or expires_at - issued_at > MAX_VALIDITY:
         _fail("candidate control validity interval is invalid")
-    if issued_at > now + timedelta(minutes=1) or now >= expires_at:
+    now = _require_capability_current(capability)
+    if issued_at > now + timedelta(minutes=1):
         _fail("candidate control capability is not currently valid")
     signature = capability["signature"]
     if not isinstance(signature, str) or _SIGNATURE.fullmatch(signature) is None:
@@ -412,6 +419,7 @@ def _claim_payload_record(
     capability: Mapping[str, Any],
     capability_digest: str,
     invocation_id: str,
+    claimed_at: datetime,
 ) -> dict[str, Any]:
     return {
         "schema_version": 1,
@@ -421,7 +429,7 @@ def _claim_payload_record(
         "executor_id": capability["executor_id"],
         "executor_public_key": capability["executor_public_key"],
         "invocation_id": invocation_id,
-        "claimed_at": _timestamp(datetime.now(UTC)),
+        "claimed_at": _timestamp(claimed_at),
     }
 
 
@@ -785,11 +793,13 @@ def execute(
         if operation_before != expected_oids:
             _fail("candidate control CAS precondition failed")
 
+        claim_time = _require_capability_current(capability)
         invocation_id = secrets.token_hex(16)
         claim_payload_record = _claim_payload_record(
             capability,
             capability_digest,
             invocation_id,
+            claim_time,
         )
         claim_payload = canonical_json_bytes(claim_payload_record)
         claim_oid = _write_local_claim_commit(
@@ -797,6 +807,7 @@ def execute(
             environment,
             claim_payload,
         )
+        _require_capability_current(capability)
         push = provider.push(claim_oid)
         claim_after = provider.read_optional(remote, capability["claim_ref"])
         completion_after = provider.read_optional(
@@ -835,6 +846,7 @@ def execute(
             capability,
             capability_digest,
             replay_invocation_id,
+            datetime.now(UTC),
         )
         replay_claim_oid = _write_local_claim_commit(
             scratch_repository,
