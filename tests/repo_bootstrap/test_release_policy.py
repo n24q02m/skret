@@ -1,4 +1,7 @@
+import json
 import re
+import subprocess
+import sys
 import unittest
 from pathlib import Path
 
@@ -7,6 +10,10 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 PUBLISH_CONFIG = REPO_ROOT / ".goreleaser.yaml"
 PREPARE_CONFIG = REPO_ROOT / ".goreleaser.prepare.yaml"
 SEMANTIC_RELEASE_CONFIG = REPO_ROOT / "semantic-release.toml"
+CI_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci.yml"
+COSIGN_VERSION_CHECK = (
+    REPO_ROOT / "scripts" / "repo-bootstrap" / "verify_cosign_version.py"
+)
 
 PARITY_SECTIONS = ("builds", "archives", "checksum", "sboms")
 TOP_LEVEL_KEY = re.compile(r"^[A-Za-z_][A-Za-z0-9_-]*$")
@@ -101,6 +108,42 @@ class ReleasePolicyTests(unittest.TestCase):
         self.assertIn("homebrew_casks:", source)
         self.assertIn("scoops:", source)
         self.assertIn("signs:", source)
+
+    def test_installer_smoke_pins_and_verifies_cosign_before_install(self) -> None:
+        source = CI_WORKFLOW.read_text(encoding="utf-8")
+        cosign_install = source.index("uses: sigstore/cosign-installer@")
+        version_pin = source.index("cosign-release: v3.0.6", cosign_install)
+        version_check = source.index(
+            "python scripts/repo-bootstrap/verify_cosign_version.py v3.0.6",
+            version_pin,
+        )
+        unix_install = source.index("name: Install via install.sh", version_check)
+        windows_install = source.index("name: Install via install.ps1", version_check)
+
+        self.assertLess(cosign_install, version_pin)
+        self.assertLess(version_pin, version_check)
+        self.assertLess(version_check, min(unix_install, windows_install))
+
+    def test_cosign_version_check_accepts_only_the_expected_version(self) -> None:
+        def run(version: str) -> subprocess.CompletedProcess[str]:
+            return subprocess.run(
+                [sys.executable, str(COSIGN_VERSION_CHECK), "v3.0.6"],
+                cwd=REPO_ROOT,
+                input=json.dumps({"gitVersion": version}),
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+
+        matching = run("v3.0.6")
+        self.assertEqual(matching.returncode, 0, matching.stderr)
+
+        mismatching = run("v3.0.5")
+        self.assertNotEqual(mismatching.returncode, 0)
+        self.assertEqual(
+            mismatching.stderr.strip(),
+            "expected cosign v3.0.6, got 'v3.0.5'",
+        )
 
     def test_semantic_release_uses_canonical_commit_message(self) -> None:
         source = SEMANTIC_RELEASE_CONFIG.read_text(encoding="utf-8")
