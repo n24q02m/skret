@@ -2,12 +2,13 @@ package syncer
 
 import (
 	"context"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestDoMutationDoesNotReplayAmbiguousTransientStatus(t *testing.T) {
@@ -19,8 +20,9 @@ func TestDoMutationDoesNotReplayAmbiguousTransientStatus(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	resp, err := doMutation(context.Background(), srv.Client(), func() (*http.Request, error) {
-		return http.NewRequest(http.MethodPut, srv.URL, http.NoBody)
+	ctx := context.Background()
+	resp, err := doMutation(ctx, srv.Client(), func() (*http.Request, error) {
+		return http.NewRequestWithContext(ctx, http.MethodPut, srv.URL, http.NoBody)
 	}, http.StatusNoContent)
 	require.Error(t, err)
 	assert.Nil(t, resp)

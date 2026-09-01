@@ -158,6 +158,10 @@ func newSyncPlanServerHandlerWithTimeout(maxBodyBytes int64, timeout time.Durati
 	timeoutHandler := http.TimeoutHandler(mux, timeout, `{"error":"request timeout"}`)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
+		if r.Context().Err() != nil {
+			writeSyncPlanError(w, http.StatusServiceUnavailable)
+			return
+		}
 		timeoutHandler.ServeHTTP(w, r)
 	})
 }
