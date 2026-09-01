@@ -5,7 +5,7 @@ import {
   handleSecurityExecutorRequest,
   type SecurityExecutorEnv,
 } from "../src/security-executor";
-const NOW = Date.now();
+const NOW = Math.floor(Date.now() / 1_000) * 1_000;
 const ROLE = "operator";
 const AUDIENCE = "skret-security-executor";
 const ROOT = "C:\\skret\\state";
