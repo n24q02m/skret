@@ -1,93 +1,490 @@
 name: CD
 
-# CD handles:
-#  - Release on workflow_dispatch (semantic-release -> tag -> goreleaser -> publish)
-#  - Docs deploy on push to main when docs/** changes (Cloudflare Pages)
-#  - Vault hub Worker deploy on push to main when hub/** changes (Cloudflare Workers)
-#  - Optional sync-secrets job that pulls /skret/ci/* from AWS SSM and pushes
-#    them to GitHub Actions repository secrets (opt-in via vars.SYNC_SECRETS_ENABLED)
-#
-# Repo Secrets required:
-#   GITHUB_TOKEN             - built-in
-#   AWS_ROLE_ARN             - OIDC role with read on /skret/ci/* in SSM
-#   CI_APP_KEY               - n24q02m-ci GitHub App private key (for skret sync to push GH Actions secrets)
-#   CLOUDFLARE_API_TOKEN     - CF Pages deploy
-#   CLOUDFLARE_ACCOUNT_ID    - CF account ID (also used by the vault hub deploy)
-#   TAP_GITHUB_TOKEN         - fine-grained PAT for tap repo updates
-#   HUB_CF_DEPLOY_TOKEN      - project-scoped CF token for the vault hub Worker (account Workers Scripts + KV write only; custom domain attached out-of-band, no zone perm); also used to push the sync container image to the Cloudflare managed registry -- verify it covers that scope, may need a Containers/Images permission added
-#   VAULT_KV_ID              - KV namespace id for the vault hub (from `wrangler kv namespace create VAULT_KV`)
-#
-# Repo Variables required:
-#   CI_APP_ID                - n24q02m-ci GitHub App ID (3200052)
-#   SYNC_SECRETS_ENABLED     - set to "true" to enable the SSM->GH-Actions sync job
+# The read-only prepare lane builds one local release commit/tag, immutable
+# artifacts, and an exact Git bundle. The protected publish lane verifies that
+# handoff, atomically advances the remote refs, and delegates create-once asset
+# publication to the signed BSR G1 publisher. No deploy job exists here.
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "docs/**"
-      - "hub/**"
-      - "Dockerfile.sync"
-      - "deploy/**"
-      - ".github/workflows/cd.yml"
-  # Deliberately NO `tags: ["v*"]`. semantic-release pushes the tag with an App
-  # token, so a tag trigger fires a SECOND CD run for every release we dispatch
-  # -- and both runs built and uploaded the same tag concurrently. On
-  # v1.17.1-beta.1 the two goreleaser jobs started 4 seconds apart and the
-  # release ended up carrying two archives from one build, four from the other,
-  # and a checksums.txt describing only the second. Every installer verifies
-  # checksums and is fail-closed, so that release was uninstallable.
-  #
-  # `concurrency` below cannot catch this: it keys on github.ref, which is
-  # refs/heads/main for the dispatch run and refs/tags/<v> for the tag run --
-  # two different groups, hence no serialization at the one collision that
-  # matters. Publishing is therefore owned by exactly one event: this dispatch.
-  #
-  # Hand-pushing a tag no longer publishes anything. That flow was already
-  # against policy (versions come from semantic-release; we never pick one by
-  # hand), and it was the entry point for this corruption.
   workflow_dispatch:
     inputs:
       release_type:
-        description: "Release type"
+        description: "Candidate channel"
         required: true
-        default: "stable"
+        default: beta
         type: choice
         options:
-          - stable
           - beta
+          - stable
 
 permissions:
   contents: read
 
 concurrency:
-  group: cd-${{ github.ref }}
+  group: skret-release-prepare
   cancel-in-progress: false
 
 jobs:
-  verify-readme-sync:
-    name: Verify README sync
+  prepare:
+    name: Prepare release artifacts
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      transaction_id: ${{ steps.journal.outputs.transaction_id }}
+      artifact_digest: ${{ steps.journal.outputs.artifact_digest }}
+      intent_digest: ${{ steps.journal.outputs.intent_digest }}
+      release_commit: ${{ steps.version.outputs.release_commit }}
+      git_bundle_digest: ${{ steps.git-bundle.outputs.git_bundle_digest }}
     steps:
+      - uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
+        with:
+          egress-policy: audit
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-      - name: Verify README sync
-        run: python scripts/repo-bootstrap/verify_readme_sync.py --repo-root=.
+        with:
+          fetch-depth: 0
+          persist-credentials: false
 
-  # ==================== Release (workflow_dispatch) ====================
-  release:
-    name: Semantic Release
-    if: github.event_name == 'workflow_dispatch'
-    needs: [verify-readme-sync]
+      # The signed G1 version action creates the release commit and tag only in
+      # this read-only checkout. Push, release creation, and asset publication
+      # remain impossible in the prepare job.
+      - id: release
+        name: Prepare local release commit and tag
+        uses: n24q02m/better-semantic-release@096ba88af5df375b958212a9fbc6b80ab66888d7 # v1.6.0-beta.8 G1 generation 3
+        with:
+          github_token: ${{ github.token }}
+          config_file: semantic-release.toml
+          commit: true
+          tag: true
+          push: false
+          vcs_release: false
+          build: false
+          prerelease: ${{ inputs.release_type == 'beta' }}
+          prerelease_token: beta
+          git_committer_name: n24q02m-ci
+          git_committer_email: 3200052+n24q02m-ci@users.noreply.github.com
+
+      - id: version
+        name: Bind prepared release identity
+        shell: bash
+        env:
+          BSR_RELEASED: ${{ steps.release.outputs.released }}
+          BSR_VERSION: ${{ steps.release.outputs.version }}
+          BSR_TAG: ${{ steps.release.outputs.tag }}
+          BASE_SOURCE_SHA: ${{ github.sha }}
+          CHANNEL_INPUT: ${{ inputs.release_type }}
+        run: |
+          set -euo pipefail
+          test "$BSR_RELEASED" = "true"
+          test -n "$BSR_VERSION"
+          test -n "$BSR_TAG"
+          release_commit="$(git rev-parse HEAD)"
+          test "$(git rev-parse "${release_commit}^")" = "$BASE_SOURCE_SHA"
+          test "$(git rev-parse "refs/tags/$BSR_TAG^{commit}")" = "$release_commit"
+          {
+            printf 'version=%s\n' "$BSR_VERSION"
+            printf 'tag=%s\n' "$BSR_TAG"
+            printf 'release_commit=%s\n' "$release_commit"
+          } >> "$GITHUB_OUTPUT"
+          {
+            printf 'BASE_SOURCE_SHA=%s\n' "$BASE_SOURCE_SHA"
+            printf 'SOURCE_SHA=%s\n' "$release_commit"
+            printf 'CHANNEL=%s\n' "$CHANNEL_INPUT"
+          } >> "$GITHUB_ENV"
+
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+      - uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          syft-version: v1.51.0
+      - uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+
+      - name: Set reproducible build epoch
+        shell: bash
+        run: |
+          set -euo pipefail
+          epoch="$(git show -s --format=%ct "$SOURCE_SHA")"
+          printf 'SOURCE_DATE_EPOCH=%s\n' "$epoch" >> "$GITHUB_ENV"
+
+
+
+      - name: Prepare CLI archives, checksums, and SBOMs
+        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
+        with:
+          distribution: goreleaser
+          version: v2.17.1
+          args: release --clean --skip=publish -f .goreleaser.prepare.yaml
+        env:
+          GORELEASER_CURRENT_TAG: ${{ steps.release.outputs.tag }}
+      - name: Build CLI OCI archive from prepared binaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -d '' -t amd64_archives < <(
+            find dist -maxdepth 1 -type f -name 'skret_*_linux_amd64.tar.gz' -print0
+          )
+          mapfile -d '' -t arm64_archives < <(
+            find dist -maxdepth 1 -type f -name 'skret_*_linux_arm64.tar.gz' -print0
+          )
+          test "${#amd64_archives[@]}" -eq 1
+          test "${#arm64_archives[@]}" -eq 1
+          amd64_archive="${amd64_archives[0]}"
+          arm64_archive="${arm64_archives[0]}"
+          context="$RUNNER_TEMP/cli-image"
+          rm -rf "$context"
+          mkdir -p "$context/linux/amd64" "$context/linux/arm64"
+          cp Dockerfile "$context/Dockerfile"
+          tar -xOf "$amd64_archive" skret > "$context/linux/amd64/skret"
+          tar -xOf "$arm64_archive" skret > "$context/linux/arm64/skret"
+          chmod 0755 "$context/linux/amd64/skret" "$context/linux/arm64/skret"
+          docker buildx build \
+            --file "$context/Dockerfile" \
+            --platform linux/amd64,linux/arm64 \
+            --label "org.opencontainers.image.revision=${{ github.sha }}" \
+            --label "org.opencontainers.image.version=${{ steps.release.outputs.version }}" \
+            --provenance=false \
+            --sbom=false \
+            --output type=oci,dest=dist/skret-cli.oci.tar \
+            "$context"
+
+
+      - name: Build sync OCI archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          docker buildx build \
+            --file Dockerfile.sync \
+            --platform linux/amd64,linux/arm64 \
+            --label "org.opencontainers.image.revision=${{ github.sha }}" \
+            --label "org.opencontainers.image.version=${{ steps.release.outputs.version }}" \
+            --provenance=false \
+            --sbom=false \
+            --output type=oci,dest=dist/skret-sync.oci.tar \
+            .
+      - name: Generate source manifest
+        shell: bash
+        env:
+          MANIFEST_SOURCE_SHA: ${{ github.sha }}
+          MANIFEST_VERSION: ${{ steps.release.outputs.version }}
+          MANIFEST_TAG: ${{ steps.release.outputs.tag }}
+          MANIFEST_CHANNEL: ${{ inputs.release_type }}
+        run: |
+          set -euo pipefail
+          python scripts/release_manifests.py source \
+            --root . \
+            --output dist/source-manifest.json \
+            --digest-output dist/source-manifest.sha256 \
+            --source-sha "$MANIFEST_SOURCE_SHA" \
+            --version "$MANIFEST_VERSION" \
+            --tag "$MANIFEST_TAG" \
+            --channel "$MANIFEST_CHANNEL" \
+            --exclude .git \
+            --exclude dist \
+            --exclude docs/dist \
+            --exclude hub/node_modules \
+            --exclude docs/node_modules
+
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 10
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: "24"
+          cache: pnpm
+          cache-dependency-path: |
+            hub/pnpm-lock.yaml
+            docs/pnpm-lock.yaml
+
+      - name: Install Hub dependencies
+        working-directory: hub
+        run: pnpm install --frozen-lockfile
+      - name: Verify Hub sources
+        working-directory: hub
+        run: |
+          pnpm test
+          pnpm typecheck
+
+      - name: Build ordinary Hub bundle
+        working-directory: hub
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf "$RUNNER_TEMP/hub-bundle"
+          pnpm exec wrangler deploy --dry-run --config wrangler.jsonc --outdir "$RUNNER_TEMP/hub-bundle"
+
+      - name: Build security executor bundle
+        working-directory: hub
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf "$RUNNER_TEMP/security-executor-bundle"
+          pnpm exec wrangler deploy --dry-run --config wrangler.executor.jsonc --outdir "$RUNNER_TEMP/security-executor-bundle"
+
+      - name: Install docs dependencies
+        working-directory: docs
+        run: pnpm install --frozen-lockfile
+
+      - name: Build docs bundle
+        shell: bash
+        env:
+          MANIFEST_SOURCE_SHA: ${{ github.sha }}
+          MANIFEST_VERSION: ${{ steps.release.outputs.version }}
+          MANIFEST_TAG: ${{ steps.release.outputs.tag }}
+          MANIFEST_CHANNEL: ${{ inputs.release_type }}
+        run: |
+          set -euo pipefail
+          cp install.sh docs/public/install.sh
+          cp install.ps1 docs/public/install.ps1
+          pnpm --dir docs astro build
+          mkdir -p docs/dist/.well-known
+          source_manifest_digest="sha256:$(tr -d '\r\n' < dist/source-manifest.sha256)"
+          python scripts/release_manifests.py deployment \
+            --root docs/dist \
+            --output docs/dist/.well-known/skret-deployment-manifest.json \
+            --digest-output dist/deployment-manifest.sha256 \
+            --source-sha "$MANIFEST_SOURCE_SHA" \
+            --version "$MANIFEST_VERSION" \
+            --tag "$MANIFEST_TAG" \
+            --channel "$MANIFEST_CHANNEL" \
+            --source-manifest-digest "$source_manifest_digest" \
+            --manifest-path .well-known/skret-deployment-manifest.json \
+            --signature-path .well-known/skret-deployment-manifest.sig
+          rm -f dist/hub.bundle.tar dist/security-executor.bundle.tar dist/docs.bundle.tar
+          tar --sort=name --mtime="@${SOURCE_DATE_EPOCH}" --owner=0 --group=0 --numeric-owner \
+            -cf dist/hub.bundle.tar -C "$RUNNER_TEMP/hub-bundle" .
+          tar --sort=name --mtime="@${SOURCE_DATE_EPOCH}" --owner=0 --group=0 --numeric-owner \
+            -cf dist/security-executor.bundle.tar -C "$RUNNER_TEMP/security-executor-bundle" .
+          tar --sort=name --mtime="@${SOURCE_DATE_EPOCH}" --owner=0 --group=0 --numeric-owner \
+            -cf dist/docs.bundle.tar -C docs/dist .
+      - name: Generate auxiliary SBOMs
+        shell: bash
+        run: |
+          set -euo pipefail
+          syft "oci-archive:dist/skret-cli.oci.tar" -o "spdx-json=dist/cli-oci.sbom.json"
+          syft "oci-archive:dist/skret-sync.oci.tar" -o "spdx-json=dist/sync-oci.sbom.json"
+          syft "dir:$RUNNER_TEMP/hub-bundle" -o "spdx-json=dist/hub.sbom.json"
+          syft "dir:$RUNNER_TEMP/security-executor-bundle" -o "spdx-json=dist/security-executor.sbom.json"
+          syft "dir:docs/dist" -o "spdx-json=dist/docs.sbom.json"
+
+      - name: Generate artifact manifest
+        shell: bash
+        env:
+          MANIFEST_SOURCE_SHA: ${{ github.sha }}
+          MANIFEST_VERSION: ${{ steps.release.outputs.version }}
+          MANIFEST_TAG: ${{ steps.release.outputs.tag }}
+          MANIFEST_CHANNEL: ${{ inputs.release_type }}
+        run: |
+          set -euo pipefail
+          find dist -maxdepth 1 -type f \
+            ! -name 'auxiliary-checksums.txt' \
+            ! -name 'source-manifest.json' \
+            ! -name 'source-manifest.sha256' \
+            ! -name 'artifact-manifest.json' \
+            ! -name 'artifact-manifest.sha256' \
+            -print0 | LC_ALL=C sort -z | xargs -0 sha256sum > dist/auxiliary-checksums.txt
+          source_manifest_digest="sha256:$(tr -d '\r\n' < dist/source-manifest.sha256)"
+          python scripts/release_manifests.py artifact \
+            --root dist \
+            --output dist/artifact-manifest.json \
+            --digest-output dist/artifact-manifest.sha256 \
+            --source-sha "$MANIFEST_SOURCE_SHA" \
+            --version "$MANIFEST_VERSION" \
+            --tag "$MANIFEST_TAG" \
+            --channel "$MANIFEST_CHANNEL" \
+            --source-manifest-digest "$source_manifest_digest" \
+            --exclude source-manifest.json \
+            --exclude source-manifest.sha256 \
+            --exclude artifact-manifest.json \
+            --exclude artifact-manifest.sha256
+
+      - id: journal
+        name: Initialize release transaction journal
+        shell: bash
+        env:
+          JOURNAL_CHANNEL: ${{ inputs.release_type }}
+          CANDIDATE_TAG: ${{ steps.release.outputs.tag }}
+          CANDIDATE_VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          set -euo pipefail
+          artifact_digest="sha256:$(sha256sum dist/artifact-manifest.json | cut -d ' ' -f 1)"
+          intent_input="${SOURCE_SHA}\n${CANDIDATE_TAG}\n${CANDIDATE_VERSION}\n${JOURNAL_CHANNEL}\n${artifact_digest}"
+          intent_digest="sha256:$(printf '%b' "$intent_input" | sha256sum | cut -d ' ' -f 1)"
+          transaction_id="cd-${GITHUB_RUN_ID}"
+          timestamp="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          python scripts/release_transaction.py init \
+            --journal "$RUNNER_TEMP/release-journal.jsonl" \
+            --transaction-id "$transaction_id" \
+            --channel "$JOURNAL_CHANNEL" \
+            --source-sha "$SOURCE_SHA" \
+            --artifact-digest "$artifact_digest" \
+            --intent-digest "$intent_digest" \
+            --timestamp "$timestamp"
+          {
+            printf 'transaction_id=%s\n' "$transaction_id"
+            printf 'artifact_digest=%s\n' "$artifact_digest"
+            printf 'intent_digest=%s\n' "$intent_digest"
+          } >> "$GITHUB_OUTPUT"
+      - id: git-bundle
+        name: Bundle prepared release commit and tag
+        shell: bash
+        env:
+          BASE_SOURCE_SHA: ${{ github.sha }}
+          PREPARED_TAG: ${{ steps.version.outputs.tag }}
+          PREPARED_VERSION: ${{ steps.version.outputs.version }}
+          RELEASE_COMMIT: ${{ steps.version.outputs.release_commit }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse "${RELEASE_COMMIT}^")" = "$BASE_SOURCE_SHA"
+          test "$(git rev-parse "refs/tags/$PREPARED_TAG^{commit}")" = "$RELEASE_COMMIT"
+          git update-ref refs/heads/release-candidate "$RELEASE_COMMIT"
+          tag_object="$(git rev-parse "refs/tags/$PREPARED_TAG")"
+          tag_type="$(git cat-file -t "$tag_object")"
+          git bundle create dist/release.git.bundle \
+            refs/heads/release-candidate \
+            "refs/tags/$PREPARED_TAG" \
+            "^$BASE_SOURCE_SHA"
+          git bundle verify dist/release.git.bundle
+          git_bundle_digest="sha256:$(sha256sum dist/release.git.bundle | cut -d ' ' -f 1)"
+          jq -n \
+            --arg base_source_sha "$BASE_SOURCE_SHA" \
+            --arg git_bundle_sha256 "$git_bundle_digest" \
+            --arg release_commit "$RELEASE_COMMIT" \
+            --arg tag "$PREPARED_TAG" \
+            --arg tag_object "$tag_object" \
+            --arg tag_type "$tag_type" \
+            --arg version "$PREPARED_VERSION" \
+            '{
+              schema_version: "skret-release-git/v1",
+              base_source_sha: $base_source_sha,
+              release_commit: $release_commit,
+              tag: $tag,
+              tag_object: $tag_object,
+              tag_type: $tag_type,
+              version: $version,
+              git_bundle_sha256: $git_bundle_sha256
+            }' > dist/release-git.json
+          printf 'git_bundle_digest=%s\n' "$git_bundle_digest" >> "$GITHUB_OUTPUT"
+
+      - name: Upload CLI artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: cli
+          path: |
+            dist/skret_*/skret
+            dist/skret_*/skret.exe
+            dist/skret-secret-helper_*/skret-secret-helper
+            dist/skret-compose-supervisor_*/skret-compose-supervisor
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload archive artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: archives
+          path: |
+            dist/*.tar.gz
+            dist/*.zip
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload checksum artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: checksums
+          path: |
+            dist/CHANGELOG.md
+            dist/artifacts.json
+            dist/config.yaml
+            dist/metadata.json
+            dist/checksums.txt
+            dist/auxiliary-checksums.txt
+            dist/source-manifest.json
+            dist/source-manifest.sha256
+            dist/artifact-manifest.json
+            dist/artifact-manifest.sha256
+            dist/deployment-manifest.sha256
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload SBOM artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sbom
+          path: dist/*.sbom.json
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload CLI OCI artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: cli-oci
+          path: dist/skret-cli.oci.tar
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload sync OCI artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sync-oci
+          path: dist/skret-sync.oci.tar
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload ordinary Hub artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: hub
+          path: dist/hub.bundle.tar
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload security executor artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: security-executor
+          path: dist/security-executor.bundle.tar
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload docs artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: docs
+          path: dist/docs.bundle.tar
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload release journal
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-journal
+          path: ${{ runner.temp }}/release-journal.jsonl
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload prepared release Git bundle
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-git
+          path: |
+            dist/release.git.bundle
+            dist/release-git.json
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish candidate release
+    # Plan Task 7A: the winning dispatch run uploads immutable assets, signs
+    # the checksum manifest (keyless cosign bundle), attests build provenance,
+    # and binds the tag/release identity to the prepare job's outputs. Any
+    # drift between the recomputed and prepared identity fails before upload.
+    # Stable-channel dispatch remains an explicit user gate.
+    needs: [prepare]
     runs-on: ubuntu-latest
     environment:
       name: ${{ github.event.inputs.release_type == 'beta' && 'beta-publish' || 'stable-publish' }}
     permissions:
       contents: write
       id-token: write
+      attestations: write
     outputs:
-      released: ${{ steps.release.outputs.released }}
-      tag: ${{ steps.release.outputs.tag }}
-      version: ${{ steps.release.outputs.version }}
+      tag: ${{ steps.cas.outputs.tag }}
+      version: ${{ steps.cas.outputs.version }}
     steps:
       - uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
         with:
@@ -101,332 +498,271 @@ jobs:
         with:
           fetch-depth: 0
           token: ${{ steps.app-token.outputs.token }}
-      - id: release
-        uses: n24q02m/better-semantic-release@087b84e8d2ba75bdec350924d3bf8247088e0b1a # v1.4.0
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          prerelease: ${{ github.event.inputs.release_type == 'beta' }}
-          prerelease_token: beta
-      - if: steps.release.outputs.released == 'true'
-        uses: python-semantic-release/publish-action@5a5718ce47b892ef699f2972dae122297771d641 # v10.6.1
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          tag: ${{ steps.release.outputs.tag }}
-
-  # ==================== Goreleaser ====================
-  # The one and only publisher of a tag's artifacts. See the `on:` block for
-  # why the second entry point was removed.
-  goreleaser:
-    name: Build and Publish Binaries
-    # No `always()` any more. It existed solely so this job would survive
-    # `release` being skipped on the tag-push path; with that path gone,
-    # `release` runs in every scenario where this job could, and the default
-    # needs-semantics (run only if all dependencies succeeded) is precisely the
-    # intent. `always()` here was actively harmful: combined with a `result ==
-    # 'success'` check on only ONE of the two dependencies, it let this job
-    # start while the other had failed.
-    if: needs.release.outputs.released == 'true'
-    needs: [release, verify-readme-sync]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      packages: write
-      id-token: write
-    steps:
-      - uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
-        with:
-          egress-policy: audit
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-        with:
-          fetch-depth: 0
-          ref: ${{ needs.release.outputs.tag }}
-      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
-        with:
-          go-version-file: go.mod
-      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
-      - uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
-      - uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      # Both are required by the dockers_v2 block in .goreleaser.yaml, which
-      # builds a linux/amd64 + linux/arm64 manifest. The runner's default
-      # buildx driver is `docker`, which refuses multi-platform builds, and the
-      # image's `RUN apk add ca-certificates` executes in the target
-      # architecture, so the arm64 leg needs binfmt emulation to run at all.
-      - uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0
-      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
-      - uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
-        with:
-          distribution: goreleaser
-          version: latest
-          args: release --clean
+          path: dist
+          merge-multiple: true
+      - id: cas
+        name: Verify and atomically push the prepared release identity
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Pin goreleaser to the exact tag semantic-release produced.
-          # Without this, git-describe is ambiguous when a stable tag and
-          # a prerelease tag (e.g. v1.5.1 + v1.5.1-beta.1) point at the same
-          # commit, and goreleaser may pick the wrong one (duplicate-asset 422).
-          GORELEASER_CURRENT_TAG: ${{ needs.release.outputs.tag }}
-          # Fine-grained PAT with `contents:write` on
-          # n24q02m/homebrew-tap + n24q02m/scoop-bucket. Goreleaser
-          # uses this to push formula/manifest updates on release.
-          TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+          EXPECTED_BUNDLE_DIGEST: ${{ needs.prepare.outputs.git_bundle_digest }}
+          EXPECTED_RELEASE_COMMIT: ${{ needs.prepare.outputs.release_commit }}
+          EXPECTED_SHA: ${{ github.sha }}
+          EXPECTED_TAG: ${{ needs.prepare.outputs.tag }}
+          EXPECTED_VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+          test -n "$EXPECTED_VERSION"
+          test -n "$EXPECTED_TAG"
+          test -n "$EXPECTED_RELEASE_COMMIT"
+          test "sha256:$(sha256sum dist/release.git.bundle | cut -d ' ' -f 1)" = "$EXPECTED_BUNDLE_DIGEST"
+          test "$(jq -er .git_bundle_sha256 dist/release-git.json)" = "$EXPECTED_BUNDLE_DIGEST"
+          test "$(jq -er .base_source_sha dist/release-git.json)" = "$EXPECTED_SHA"
+          test "$(jq -er .release_commit dist/release-git.json)" = "$EXPECTED_RELEASE_COMMIT"
+          test "$(jq -er .tag dist/release-git.json)" = "$EXPECTED_TAG"
+          test "$(jq -er .version dist/release-git.json)" = "$EXPECTED_VERSION"
+          git bundle verify dist/release.git.bundle
+          git fetch dist/release.git.bundle \
+            refs/heads/release-candidate:refs/heads/release-candidate \
+            "refs/tags/$EXPECTED_TAG:refs/tags/$EXPECTED_TAG"
+          test "$(git rev-parse "refs/heads/release-candidate^")" = "$EXPECTED_SHA"
+          test "$(git rev-parse "refs/heads/release-candidate")" = "$EXPECTED_RELEASE_COMMIT"
+          test "$(git rev-parse "refs/tags/$EXPECTED_TAG")" = "$(jq -er .tag_object dist/release-git.json)"
+          test "$(git rev-parse "refs/tags/$EXPECTED_TAG^{commit}")" = "$EXPECTED_RELEASE_COMMIT"
 
-  # ==================== Installer smoke (post-publish) ====================
-  # The installers can only be exercised against a release that already exists,
-  # which is why this cannot live on the tag-push event the way ci.yml's copy
-  # tried to: semantic-release creates the tag, and goreleaser only uploads the
-  # assets afterwards. A smoke test wired to the tag would download files that
-  # do not exist yet and fail every release for the wrong reason.
-  #
-  # ci.yml keeps a `workflow_dispatch` copy as the on-demand bed (and owns the
-  # stubbed-cosign failure-path assertions, which need no real release). This
-  # job is the one that fires on every release -- the gate that was missing
-  # while the installers stayed broken from 2026-05-26 through 1.16.0.
+          remote_main="$(git ls-remote origin refs/heads/main | cut -f1)"
+          remote_tag="$(git ls-remote origin "refs/tags/$EXPECTED_TAG" | cut -f1)"
+          prepared_tag="$(git rev-parse "refs/tags/$EXPECTED_TAG")"
+          if [ "$remote_main" = "$EXPECTED_SHA" ] && [ -z "$remote_tag" ]; then
+            git push --atomic origin \
+              refs/heads/release-candidate:refs/heads/main \
+              "refs/tags/$EXPECTED_TAG:refs/tags/$EXPECTED_TAG"
+          elif [ "$remote_main" != "$EXPECTED_RELEASE_COMMIT" ] || [ "$remote_tag" != "$prepared_tag" ]; then
+            echo "remote release refs drifted from the exact prepared transaction" >&2
+            exit 1
+          fi
+          test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$EXPECTED_RELEASE_COMMIT"
+          test "$(git ls-remote origin "refs/tags/$EXPECTED_TAG" | cut -f1)" = "$prepared_tag"
+          {
+            printf 'version=%s\n' "$EXPECTED_VERSION"
+            printf 'tag=%s\n' "$EXPECTED_TAG"
+            printf 'release_commit=%s\n' "$EXPECTED_RELEASE_COMMIT"
+          } >> "$GITHUB_OUTPUT"
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: v3.0.6
+      - name: Verify Cosign version before signing
+        run: |
+          cosign version --json |
+            python scripts/repo-bootstrap/verify_cosign_version.py v3.0.6
+      - name: Sign checksum manifest
+        env:
+          COSIGN_YES: "true"
+        run: |
+          set -euo pipefail
+          cosign sign-blob --yes --bundle dist/checksums.txt.bundle dist/checksums.txt
+      - name: Build exact create-once release manifest
+        env:
+          CHANNEL: ${{ inputs.release_type }}
+          EXPECTED_RELEASE_COMMIT: ${{ steps.cas.outputs.release_commit }}
+          EXPECTED_TAG: ${{ steps.cas.outputs.tag }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from __future__ import annotations
+
+          import hashlib
+          import json
+          import mimetypes
+          import os
+          from pathlib import Path
+
+          dist = Path("dist")
+          fixed_names = {
+              "CHANGELOG.md",
+              "artifact-manifest.json",
+              "artifact-manifest.sha256",
+              "artifacts.json",
+              "auxiliary-checksums.txt",
+              "checksums.txt",
+              "checksums.txt.bundle",
+              "cli-oci.sbom.json",
+              "config.yaml",
+              "deployment-manifest.sha256",
+              "docs.bundle.tar",
+              "docs.sbom.json",
+              "hub.bundle.tar",
+              "hub.sbom.json",
+              "metadata.json",
+              "release-journal.jsonl",
+              "security-executor.bundle.tar",
+              "security-executor.sbom.json",
+              "skret-cli.oci.tar",
+              "skret-sync.oci.tar",
+              "source-manifest.json",
+              "source-manifest.sha256",
+              "sync-oci.sbom.json",
+          }
+          generated_names = {
+              path.name
+              for pattern in ("*.tar.gz", "*.zip", "*.sbom.json")
+              for path in dist.glob(pattern)
+          }
+          asset_names = sorted(fixed_names | generated_names)
+          missing = [name for name in asset_names if not (dist / name).is_file()]
+          if missing:
+              raise SystemExit(f"release assets missing: {missing}")
+          if any(name in {"release.git.bundle", "release-git.json"} for name in asset_names):
+              raise SystemExit("internal release Git handoff entered release asset set")
+
+          asset_set = []
+          for name in asset_names:
+              path = dist / name
+              content = path.read_bytes()
+              content_type = mimetypes.guess_type(name)[0] or "application/octet-stream"
+              asset_set.append(
+                  {
+                      "name": name,
+                      "path": path.as_posix(),
+                      "size": len(content),
+                      "sha256": "sha256:" + hashlib.sha256(content).hexdigest(),
+                      "content_type": content_type,
+                  }
+              )
+
+          tag = os.environ["EXPECTED_TAG"]
+          channel = os.environ["CHANNEL"]
+          release_body = Path("release-body.md")
+          release_body.write_bytes((dist / "CHANGELOG.md").read_bytes())
+          manifest = {
+              "schema_version": "bsr-release-manifest/v1",
+              "repository": os.environ["GITHUB_REPOSITORY"],
+              "transaction_id": (
+                  f"skret-release-{os.environ['GITHUB_RUN_ID']}-"
+                  f"{os.environ['GITHUB_RUN_ATTEMPT']}"
+              ),
+              "tag": tag,
+              "target_sha": os.environ["EXPECTED_RELEASE_COMMIT"],
+              "release": {
+                  "name": tag,
+                  "body_path": release_body.as_posix(),
+                  "body_sha256": hashlib.sha256(release_body.read_bytes()).hexdigest(),
+                  "draft": False,
+                  "prerelease": channel == "beta",
+                  "make_latest": channel == "stable",
+              },
+              "assets": asset_set,
+          }
+          Path("release-manifest.json").write_text(
+              json.dumps(
+                  manifest,
+                  ensure_ascii=False,
+                  sort_keys=False,
+                  separators=(",", ":"),
+                  allow_nan=False,
+              )
+              + "\n",
+              encoding="utf-8",
+          )
+          PY
+      - id: publisher
+        name: Publish exact release assets through signed G1 publisher
+        uses: n24q02m/better-semantic-release/publish-action@096ba88af5df375b958212a9fbc6b80ab66888d7 # v1.6.0-beta.8 G1 generation 3
+        with:
+          manifest: release-manifest.json
+          token: ${{ steps.app-token.outputs.token }}
+      - name: Read back exact published release
+        env:
+          ASSET_SET_SHA256: ${{ steps.publisher.outputs.asset_set_sha256 }}
+          CREATED: ${{ steps.publisher.outputs.created }}
+          EXPECTED_RELEASE_COMMIT: ${{ steps.cas.outputs.release_commit }}
+          EXPECTED_TAG: ${{ steps.cas.outputs.tag }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PUBLISH_TRANSACTION_ID: ${{ steps.publisher.outputs.transaction_id }}
+          RESULT_SHA256: ${{ steps.publisher.outputs.result_sha256 }}
+        run: |
+          set -euo pipefail
+          test -n "$PUBLISH_TRANSACTION_ID"
+          test -n "$ASSET_SET_SHA256"
+          test -n "$RESULT_SHA256"
+          case "$CREATED" in true|false|True|False) ;; *) exit 1 ;; esac
+          test "$(git rev-parse "refs/tags/$EXPECTED_TAG^{commit}")" = "$EXPECTED_RELEASE_COMMIT"
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$EXPECTED_TAG" > release.json
+          python3 - <<'PY'
+          import json
+          import os
+
+          manifest = json.load(open("release-manifest.json", encoding="utf-8"))
+          release = json.load(open("release.json", encoding="utf-8"))
+          assert release["tag_name"] == os.environ["EXPECTED_TAG"]
+          assert release["target_commitish"] == os.environ["EXPECTED_RELEASE_COMMIT"]
+          assert release["draft"] is False
+          assert release["prerelease"] is manifest["release"]["prerelease"]
+          expected = {
+              asset["name"]: (asset["size"], asset["sha256"])
+              for asset in manifest["assets"]
+          }
+          observed = {
+              asset["name"]: (asset["size"], asset["digest"])
+              for asset in release["assets"]
+          }
+          assert observed == expected
+          PY
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/skret-cli.oci.tar
+            dist/skret-sync.oci.tar
+            dist/hub.bundle.tar
+            dist/security-executor.bundle.tar
+            dist/docs.bundle.tar
+
   installer-smoke:
-    name: Installer smoke test (${{ matrix.os }})
-    # No `if:` at all -- default needs-semantics already means "only when both
-    # dependencies succeeded", which is the whole requirement. The `always()`
-    # this used to carry was inherited from goreleaser's tag-push workaround.
-    needs: [release, goreleaser]
+    name: Release installer smoke (${{ matrix.os }})
+    # Plan Task 7A: verify Windows and native ARM64 install using the exact
+    # published candidate artifacts. Installs the exact tag and asserts the
+    # reported version; the arm64 leg runs on a native arm64 runner.
+    needs: [prepare, publish]
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest, ubuntu-24.04-arm]
     runs-on: ${{ matrix.os }}
-    env:
-      # The exact tag just published. The scripts can detect a version on their
-      # own, but that path must not be used here: they ask the GitHub API for
-      # the *latest* release, and on a beta run that is the previous STABLE. The
-      # job would install a release this run never produced and report green.
-      TAG: ${{ needs.release.outputs.tag }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
-      - name: Install via install.sh (Unix)
-        if: runner.os != 'Windows'
+        with:
+          cosign-release: v3.0.6
+      - name: Verify Cosign version before install
         run: |
-          ./install.sh --user --quiet "--version=$TAG"
-          got=$("$HOME/.local/bin/skret" --version)
-          echo "$got"
-          # Asserting the version, not just a zero exit: an installer that
-          # silently falls back to an older release still exits 0. Anchored on
-          # `version <v> (` rather than a bare substring, because 1.17.0 is a
-          # substring of 1.17.0-beta.1 and a loose match would accept a
-          # prerelease as its own stable.
-          case "$got" in
-            *"version ${TAG#v} ("*) ;;
-            *) echo "FAIL: installed '$got', expected $TAG"; exit 1 ;;
+          cosign version --json |
+            python scripts/repo-bootstrap/verify_cosign_version.py v3.0.6
+      - name: Install exact candidate (Unix)
+        if: runner.os != 'Windows'
+        env:
+          CANDIDATE_TAG: ${{ needs.publish.outputs.tag }}
+          EXPECTED_VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+          ./install.sh --user --quiet --version="$CANDIDATE_TAG"
+          out="$("$HOME/.local/bin/skret" --version)"
+          echo "$out"
+          case "$out" in
+            *"$EXPECTED_VERSION"*) ;;
+            *) echo "version mismatch: $out" >&2; exit 1 ;;
           esac
-      - name: Install via install.ps1 (Windows)
+      - name: Install exact candidate (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
-        run: |
-          .\install.ps1 -Quiet -Version $env:TAG
-          $got = & "$env:LOCALAPPDATA\Programs\skret\skret.exe" --version
-          Write-Host $got
-          # Same anchoring as the Unix leg: a bare substring would let
-          # 1.17.0-beta.1 satisfy an assertion for 1.17.0.
-          $want = "version " + $env:TAG.TrimStart('v') + " ("
-          if ($got -notlike "*$want*") { throw "FAIL: installed '$got', expected $env:TAG" }
-      # The tap and the bucket are part of a release too, and they break on
-      # their own terms -- #649 was a cask that named a shell homebrew does not
-      # support, invisible from the archive path. Stable only: a prerelease
-      # carries skip_upload for both, so on a beta these would install the
-      # previous stable and assert nothing about this run.
-      - name: Install via brew (macOS, stable only)
-        if: runner.os == 'macOS' && !contains(env.TAG, '-')
-        run: |
-          brew install n24q02m/tap/skret
-          skret --version
-      - name: Install via scoop (Windows, stable only)
-        if: runner.os == 'Windows' && !contains(env.TAG, '-')
-        shell: pwsh
-        run: |
-          if (-not (Get-Command scoop -ErrorAction SilentlyContinue)) {
-            iwr -useb get.scoop.sh | iex
-          }
-          scoop bucket add n24q02m https://github.com/n24q02m/scoop-bucket
-          scoop install skret
-          skret --version
-
-  # ==================== Sync Secrets (opt-in) ====================
-  # Pulls /skret/ci/* from AWS SSM and pushes the values into this repo's
-  # GitHub Actions secrets. Opt-in via vars.SYNC_SECRETS_ENABLED.
-  #
-  # Uses an n24q02m-ci App token (consistent with the rest of the n24q02m
-  # repos). Requires `Secrets: Read & write` granted on the App and accepted
-  # on the skret installation.
-  sync-secrets:
-    name: Sync Secrets from AWS SSM
-    if: |
-      github.event_name == 'push' &&
-      github.ref == 'refs/heads/main' &&
-      !startsWith(github.ref, 'refs/tags/v') &&
-      vars.SYNC_SECRETS_ENABLED == 'true'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
-    steps:
-      - uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
-        with:
-          egress-policy: audit
-      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
-        id: app-token
-        with:
-          app-id: ${{ vars.CI_APP_ID }}
-          private-key: ${{ secrets.CI_APP_KEY }}
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
-        with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: ap-southeast-1
-      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
-        with:
-          go-version-file: go.mod
-      - name: Build skret
-        run: go build -o skret ./cmd/skret
-      - name: Write minimal .skret.yaml for CI invocation
-        run: |
-          cat > .skret.yaml <<EOF
-          version: "1"
-          default_env: prod
-          environments:
-            prod:
-              provider: aws
-              path: /skret/ci
-              region: ap-southeast-1
-          EOF
-      - name: Sync secrets to GitHub
         env:
-          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+          CANDIDATE_TAG: ${{ needs.publish.outputs.tag }}
+          EXPECTED_VERSION: ${{ needs.prepare.outputs.version }}
         run: |
-          ./skret sync --to=github \
-            --github-repo=${{ github.repository }} \
-            -e prod
-
-  # ==================== Docs Deploy ====================
-  docs:
-    name: Deploy Docs to Cloudflare Pages
-    if: |
-      github.event_name == 'push' &&
-      github.ref == 'refs/heads/main' &&
-      !startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
-    # No `deployments: write`. It arrived with a pnpm bump in #273 rather than
-    # with any code that needed it, and nothing in this job touches the GitHub
-    # Deployments API -- the publish step is cloudflare/wrangler-action, which
-    # talks to Cloudflare.
-    permissions:
-      contents: read
-    steps:
-      - uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
-        with:
-          egress-policy: audit
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
-        with:
-          version: 10
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
-        with:
-          node-version: "24"
-          cache: pnpm
-          cache-dependency-path: docs/pnpm-lock.yaml
-      - name: Install dependencies
-        working-directory: docs
-        run: pnpm install --frozen-lockfile
-      - name: Sync install scripts into docs/public
-        run: |
-          cp install.sh docs/public/install.sh
-          cp install.ps1 docs/public/install.ps1
-      - name: Build Astro Starlight site
-        working-directory: docs
-        run: pnpm astro build
-      - name: Deploy to Cloudflare Pages
-        uses: cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0 # v4.0.0
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy docs/dist --project-name=skret --branch=main
-
-  # ==================== Vault Hub Deploy ====================
-  deploy-hub:
-    name: Deploy Vault Hub Worker
-    # workflow_dispatch (any release_type) also redeploys the hub even when
-    # only CLI code changed -- intentional: the hub isn't versioned with the
-    # CLI, and a redeploy of the same Worker source is idempotent/harmless.
-    if: |
-      github.event_name == 'push' &&
-      github.ref == 'refs/heads/main' &&
-      !startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
-        with:
-          egress-policy: audit
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
-        with:
-          version: 10
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
-        with:
-          node-version: "24"
-          cache: pnpm
-          cache-dependency-path: hub/pnpm-lock.yaml
-      - name: Install
-        working-directory: hub
-        run: pnpm install --frozen-lockfile
-      # Fail-safe deploy gate: never publish a build that fails tests or types.
-      # cd.yml and ci.yml are independent workflows with no cross-ordering, so
-      # the gate is repeated here rather than relying on the CI hub job landing.
-      - name: Test
-        working-directory: hub
-        run: pnpm test
-      - name: Typecheck
-        working-directory: hub
-        run: pnpm typecheck
-      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
-      - name: Compute sync container image tag
-        env:
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: |
-          echo "SKRET_SYNC_IMAGE=registry.cloudflare.com/${CLOUDFLARE_ACCOUNT_ID}/skret-sync:${GITHUB_SHA::7}" >> "$GITHUB_ENV"
-      - name: Build sync container image
-        run: |
-          docker buildx build \
-            --platform linux/amd64 \
-            --load \
-            --file Dockerfile.sync \
-            --tag "$SKRET_SYNC_IMAGE" \
-            .
-      # Pushes to the Cloudflare managed registry (registry.cloudflare.com),
-      # not a standard docker registry -- auth is via CLOUDFLARE_API_TOKEN /
-      # CLOUDFLARE_ACCOUNT_ID env vars, which Wrangler reads directly.
-      - name: Push sync container image
-        working-directory: hub
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.HUB_CF_DEPLOY_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: |
-          npx wrangler containers push "$SKRET_SYNC_IMAGE"
-      - name: Render deploy config from secrets
-        working-directory: hub
-        env:
-          VAULT_KV_ID: ${{ secrets.VAULT_KV_ID }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: |
-          envsubst '${VAULT_KV_ID} ${SKRET_SYNC_IMAGE} ${CLOUDFLARE_ACCOUNT_ID}' \
-            < wrangler.deploy.template.jsonc > wrangler.deploy.jsonc
-      - name: Deploy Worker
-        uses: cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0 # v4.0.0
-        with:
-          apiToken: ${{ secrets.HUB_CF_DEPLOY_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          workingDirectory: hub
-          command: deploy --config wrangler.deploy.jsonc
+          & pwsh -NoProfile -File .\install.ps1 -Version $env:CANDIDATE_TAG -Quiet
+          $exe = "$env:LOCALAPPDATA\Programs\skret\skret.exe"
+          $out = & $exe --version
+          Write-Output $out
+          if ($out -notlike "*$($env:EXPECTED_VERSION)*") { throw "version mismatch: $out" }
