@@ -50,12 +50,7 @@ func ResolvePath(raw string) (string, bool) {
 	}
 
 	if count >= 2 {
-		if idx == -1 {
-			idx = 0
-		} else {
-			idx++ // skip the last slash
-		}
-		return "/" + norm[idx:], true
+		return "/" + norm[idx+1:], true
 	}
 	return raw, true
 }
