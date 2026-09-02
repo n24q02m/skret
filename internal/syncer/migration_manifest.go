@@ -409,6 +409,21 @@ func sameStateManifestFiles(expected, actual []StateManifestFile) bool {
 	return true
 }
 
+// reservedStateManifestNames are transport files that live beside the state
+// root but are never part of the protected state set: the manifest carries its
+// own signature and cannot self-report a digest, and the public key verifies
+// the manifest. Scans exclude them so a signed manifest can coexist with the
+// state files it protects.
+var reservedStateManifestNames = map[string]struct{}{
+	"state-manifest.json": {},
+	"state-public-key":    {},
+}
+
+func isReservedStateManifestName(normalizedPath string) bool {
+	_, found := reservedStateManifestNames[normalizedPath]
+	return found
+}
+
 func stateManifestError(message string) error {
 	return errors.New("state manifest: " + message)
 }

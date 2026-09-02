@@ -472,18 +472,21 @@ def run_sandbox(spec: Mapping[str, Any], runner: CommandRunner | None = None) ->
             environment,
             sandbox,
         )
+        # sync-state migrate verifies --state against manifest.SourceRoot; the
+        # synthetic state therefore migrates in place at its signed root instead
+        # of a sandbox copy (the synthetic root is value-free executor-owned).
         migration = [
             str(staged_candidate),
             "sync-state",
             "migrate",
             "--state-manifest",
-            str(staged_manifest),
+            str(Path(spec["state_manifest"])),
             "--journal",
             str(staged_journal),
             "--state",
-            str(staged_state),
+            str(Path(spec["state_file"])),
             "--public-key",
-            str(staged_public_key),
+            str(Path(spec["state_public_key"])),
             "--role",
             "operator",
             "--audience",

@@ -290,3 +290,25 @@ func TestRevalidateStateManifestDirectories_RejectsReplacementIdentity(t *testin
 	assert.NotContains(t, err.Error(), originalPath)
 	assert.NotContains(t, err.Error(), replacementPath)
 }
+
+func TestReservedTransportNamesAreExcludedFromStateManifestScan(t *testing.T) {
+	root := t.TempDir()
+	now := time.Now()
+	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(root, "state.v1.json"), []byte(`{"schema_version":1}`), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "state-manifest.json"), []byte("previous-manifest-bytes"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "state-public-key"), publicKey, 0o600))
+
+	manifest, err := BuildStateManifest(root, "operator", "hub", "reserved-names", now.Add(5*time.Minute), privateKey, now)
+	require.NoError(t, err)
+	if len(manifest.Files) != 1 || manifest.Files[0].Path != "state.v1.json" {
+		t.Fatalf("reserved transport files must be excluded from the scan, got %d files", len(manifest.Files))
+	}
+	// The signed manifest now overwrites the placeholder in the protected root;
+	// verification must still pass because transport files are excluded.
+	serialized, err := json.Marshal(manifest)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(root, "state-manifest.json"), serialized, 0o600))
+	require.NoError(t, VerifyStateManifest(manifest, root, "operator", "hub", publicKey, now.Add(time.Minute)))
+}

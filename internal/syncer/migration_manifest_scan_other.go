@@ -52,6 +52,9 @@ func scanStateManifestRoot(root string) ([]StateManifestFile, error) {
 		if !validStateManifestPath(normalized) {
 			return stateManifestError("invalid file path")
 		}
+		if isReservedStateManifestName(normalized) {
+			continue
+		}
 		size, digest, err := hashStateManifestFile(currentPath, info)
 		if err != nil {
 			return err
