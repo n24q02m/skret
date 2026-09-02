@@ -3,15 +3,14 @@ package cli
 import (
 	"context"
 	"errors"
-	"os"
-	"path/filepath"
-	"testing"
-
 	"github.com/n24q02m/skret/internal/provider"
 	"github.com/n24q02m/skret/pkg/skret"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"os"
+	"path/filepath"
+	"testing"
 )
 
 func TestWrapProviderMutationErrorSurfacesPartialStateForSetAndImport(t *testing.T) {

@@ -141,7 +141,6 @@ func readWireFrameContext(ctx context.Context, stream io.Reader) ([]byte, error)
 	}
 	return wire, err
 }
-
 func (h *Helper) Run(ctx context.Context, stream io.Reader, session *Session) (int, error) {
 	if h == nil || ctx == nil || h.Starter == nil || stream == nil || session == nil ||
 		h.binding.RuntimeID == "" || h.binding.Service == "" {
