@@ -4,6 +4,71 @@ All notable changes to this project will be documented in this file.
 
 <!-- version list -->
 
+## v1.19.0 (2026-09-02)
+
+### Bug Fixes
+
+- Satisfy gofumpt lint ([#721](https://github.com/n24q02m/skret/pull/721),
+  [`92934ac`](https://github.com/n24q02m/skret/commit/92934ac8418620054509d2013b358eada3f06fac))
+
+- Satisfy gofumpt lint ([#716](https://github.com/n24q02m/skret/pull/716),
+  [`4afc8d7`](https://github.com/n24q02m/skret/commit/4afc8d71cd386d308d5e7701393a7426b0b934ee))
+
+- Satisfy syncer lint checks ([#721](https://github.com/n24q02m/skret/pull/721),
+  [`92934ac`](https://github.com/n24q02m/skret/commit/92934ac8418620054509d2013b358eada3f06fac))
+
+- Satisfy syncer lint checks ([#716](https://github.com/n24q02m/skret/pull/716),
+  [`4afc8d7`](https://github.com/n24q02m/skret/commit/4afc8d71cd386d308d5e7701393a7426b0b934ee))
+
+- **ci**: Install cosign for on-demand installer smoke
+  ([#721](https://github.com/n24q02m/skret/pull/721),
+  [`92934ac`](https://github.com/n24q02m/skret/commit/92934ac8418620054509d2013b358eada3f06fac))
+
+- **ci**: Install cosign for on-demand installer smoke
+  ([#716](https://github.com/n24q02m/skret/pull/716),
+  [`4afc8d7`](https://github.com/n24q02m/skret/commit/4afc8d71cd386d308d5e7701393a7426b0b934ee))
+
+- **ci**: Stabilize Linux coverage gate ([#721](https://github.com/n24q02m/skret/pull/721),
+  [`92934ac`](https://github.com/n24q02m/skret/commit/92934ac8418620054509d2013b358eada3f06fac))
+
+- **ci**: Stabilize Linux coverage gate ([#716](https://github.com/n24q02m/skret/pull/716),
+  [`4afc8d7`](https://github.com/n24q02m/skret/commit/4afc8d71cd386d308d5e7701393a7426b0b934ee))
+
+- **ci**: Verify installer Cosign version ([#721](https://github.com/n24q02m/skret/pull/721),
+  [`92934ac`](https://github.com/n24q02m/skret/commit/92934ac8418620054509d2013b358eada3f06fac))
+
+- **ci**: Verify installer Cosign version ([#716](https://github.com/n24q02m/skret/pull/716),
+  [`4afc8d7`](https://github.com/n24q02m/skret/commit/4afc8d71cd386d308d5e7701393a7426b0b934ee))
+
+- **release**: Bind Skret candidate to signed G1 ([#723](https://github.com/n24q02m/skret/pull/723),
+  [`979dc0e`](https://github.com/n24q02m/skret/commit/979dc0e0b40d09d77577372ba66be05fa0aca1ff))
+
+- **skret**: Repair Wave 1 live contract barriers
+  ([#726](https://github.com/n24q02m/skret/pull/726),
+  [`2060db4`](https://github.com/n24q02m/skret/commit/2060db41935fb9fb9f515b60219e735aa3522261))
+
+- **syncer**: WalkDir callback must return nil not continue for reserved transport names
+  ([#727](https://github.com/n24q02m/skret/pull/727),
+  [`8bdfb4d`](https://github.com/n24q02m/skret/commit/8bdfb4d64226cd113e4650ebf13f518e9b93a347))
+
+### Features
+
+- **candidate**: Add bounded Git control executor
+  ([#721](https://github.com/n24q02m/skret/pull/721),
+  [`92934ac`](https://github.com/n24q02m/skret/commit/92934ac8418620054509d2013b358eada3f06fac))
+
+### Testing
+
+- **hub**: Stabilize signed manifest timestamps ([#723](https://github.com/n24q02m/skret/pull/723),
+  [`979dc0e`](https://github.com/n24q02m/skret/commit/979dc0e0b40d09d77577372ba66be05fa0aca1ff))
+
+- **provider**: Cover partial commit diagnostics ([#721](https://github.com/n24q02m/skret/pull/721),
+  [`92934ac`](https://github.com/n24q02m/skret/commit/92934ac8418620054509d2013b358eada3f06fac))
+
+- **provider**: Cover partial commit diagnostics ([#716](https://github.com/n24q02m/skret/pull/716),
+  [`4afc8d7`](https://github.com/n24q02m/skret/commit/4afc8d71cd386d308d5e7701393a7426b0b934ee))
+
+
 ## v1.18.1-beta.1 (2026-08-30)
 
 ### Bug Fixes
