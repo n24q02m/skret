@@ -124,6 +124,9 @@ describe("renderDashboard", () => {
     const html = renderDashboard([m], FIXED_NOW);
     expect(html).toContain('class="tablewrap"');
     expect(html).toContain('class="keyname"');
+    expect(html).toContain('tabindex="0"');
+    expect(html).toContain('role="region"');
+    expect(html).toContain('aria-label="/klprism/prod keys"');
   });
   describe("namespace with no keys", () => {
     const noKeys: Manifest = { ...m, keys: [] };
