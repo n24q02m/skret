@@ -695,7 +695,9 @@ jobs:
           manifest = json.load(open("release-manifest.json", encoding="utf-8"))
           release = json.load(open("release.json", encoding="utf-8"))
           assert release["tag_name"] == os.environ["EXPECTED_TAG"]
-          assert release["target_commitish"] == os.environ["EXPECTED_RELEASE_COMMIT"]
+          # target_commitish is creation-time metadata: for a release attached to a
+          # pre-existing tag, GitHub reports the default branch here, not the SHA.
+          # The tag->commit binding is already enforced by the git rev-parse check above.
           assert release["draft"] is False
           assert release["prerelease"] is manifest["release"]["prerelease"]
           expected = {
