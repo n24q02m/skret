@@ -226,6 +226,9 @@ func scanWindowsStateManifestDirectory(dir *os.File, dirFinalPath, relativeRoot,
 		if !validStateManifestPath(normalized) {
 			return stateManifestError("invalid file path")
 		}
+		if isReservedStateManifestName(normalized) {
+			continue
+		}
 
 		childPath := filepath.Join(dirFinalPath, entry.Name())
 		child, err := openWindowsStateManifestHandle(childPath)

@@ -142,10 +142,9 @@ class HomeSandboxTests(unittest.TestCase):
             self.assertEqual(command[command.index("--role") + 1], "operator")
             self.assertEqual(command[command.index("--audience") + 1], "hub")
             self.assertEqual(command[command.index("--operation-id") + 1], "home-sandbox-local")
-            self.assertEqual(Path(command[command.index("--state") + 1]), Path(self.spec["sandbox_root"]) / "state.v1.json")
-            self.assertEqual(Path(command[command.index("--state-manifest") + 1]), Path(self.spec["sandbox_root"]) / "state-manifest.json")
-            self.assertEqual(Path(command[command.index("--public-key") + 1]), Path(self.spec["sandbox_root"]) / "state-public-key")
-            self.assertIn(str(Path(self.spec["sandbox_root"])), command[command.index("--state") + 1])
+            self.assertEqual(Path(command[command.index("--state") + 1]), Path(self.spec["state_file"]))
+            self.assertEqual(Path(command[command.index("--state-manifest") + 1]), Path(self.spec["state_manifest"]))
+            self.assertEqual(Path(command[command.index("--public-key") + 1]), Path(self.spec["state_public_key"]))
         for command, environment, cwd in runner.calls:
             self.assertNotIn("env", command)
             self.assertNotIn("AWS_ACCESS_KEY_ID", environment)
