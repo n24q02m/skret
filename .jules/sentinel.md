@@ -24,7 +24,7 @@ Added `ReadTimeout` and `WriteTimeout` to `http.Server` in `internal/auth/infisi
 ## 2026-06-05 - Safe Shell Metacharacter Rejection
 **Vulnerability:** URL command injection checks were incomplete. `OpenBrowser` rejected `$ ` and `;`, but allowed `|`, `<`, `>`, and backticks, which are also shell metacharacters capable of command injection.
 **Learning:** When sanitizing arguments for shell-like execution (e.g., `xdg-open`), checking a narrow list of metacharacters is insufficient. However, blindly rejecting all special characters breaks legitimate URL functionality (e.g., `&` for query parameters, or `'` in query values).
-**Prevention:** Use a refined blocklist: `strings.ContainsAny(safeURL, "|;<>` + "`" + `\\()$\"")`. Explicitly allow standard URL delimiters like `&` to preserve functionality while mitigating injection risks.
+**Prevention:** Use a refined blocklist: `strings.ContainsAny(safeURL, "|;<>` + "\`" + `\\()$\"")`. Explicitly allow standard URL delimiters like `&` to preserve functionality while mitigating injection risks.
 
 ## 2026-06-05 - Avoid URL Injection via fmt.Sprintf
 **Vulnerability:** URL strings constructed using `fmt.Sprintf` with user-supplied path segments or query parameters are vulnerable to URL injection and path traversal if the inputs contain unescaped characters.
@@ -54,4 +54,9 @@ Added `ReadTimeout` and `WriteTimeout` to `http.Server` in `internal/auth/infisi
 ## 2026-08-06 - Fix Length Oracle Timing Attack in String Comparisons
 **Vulnerability:** The `timingSafeEqualStr` function implemented a length check that exited early before performing a constant-time comparison on user-provided secrets. This creates a length oracle timing attack vulnerability where attackers can deduce the length of secrets.
 **Learning:** Checking string lengths and exiting early avoids throwing exceptions in `timingSafeEqual` but exposes the secret's length via timing differences.
+**Prevention:** Always hash both inputs (e.g., using SHA-256) before performing a constant-time comparison when dealing with potentially variable-length secrets. This ensures the comparison operates in constant time regardless of the original inputs' lengths.
+
+## 2026-09-02 - Fix Length Oracle Timing Attack in Infisical PKCE Browser Flow
+**Vulnerability:** The OAuth state comparison in the Infisical browser flow used a simple string comparison (`gotState != state`), which is vulnerable to timing attacks. An attacker could potentially deduce the state character by character.
+**Learning:** The state comparison must use a constant-time comparison algorithm to prevent an attacker from guessing the state parameter byte-by-byte. Using `crypto/subtle.ConstantTimeCompare` with SHA-256 hashes of both strings prevents length oracle timing attacks and provides a constant-time check.
 **Prevention:** Always hash both inputs (e.g., using SHA-256) before performing a constant-time comparison when dealing with potentially variable-length secrets. This ensures the comparison operates in constant time regardless of the original inputs' lengths.
