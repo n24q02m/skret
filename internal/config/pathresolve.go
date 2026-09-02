@@ -29,41 +29,15 @@ func ResolvePath(raw string) (string, bool) {
 		return raw, false
 	}
 
-	norm := strings.ReplaceAll(raw, `\`, "/")
-
-	// perf: ⚡ bolt: manual reverse-parsing loop replaces strings.Split and strings.Join
-	// Reduces execution time from ~354ns to ~115ns and heap allocations from 3 to 1.
-	validCount := 0
-	rem := norm
-	startIdx := len(norm)
-
-	for {
-		idx := strings.LastIndexByte(rem, '/')
-
-		var segment string
-		if idx == -1 {
-			segment = rem
-		} else {
-			segment = rem[idx+1:]
-		}
-
-		if isSSMPathSegment(segment) {
-			validCount++
-			if idx == -1 {
-				startIdx = 0
-				break
-			}
-			startIdx = idx
-			rem = rem[:idx]
-		} else {
-			break
-		}
+	segs := strings.Split(strings.ReplaceAll(raw, `\`, "/"), "/")
+	end := len(segs)
+	start := end
+	for start > 0 && isSSMPathSegment(segs[start-1]) {
+		start--
 	}
-
-	if validCount >= 2 {
-		return "/" + strings.TrimLeft(norm[startIdx:], "/"), true
+	if end-start >= 2 {
+		return "/" + strings.Join(segs[start:end], "/"), true
 	}
-
 	return raw, true
 }
 

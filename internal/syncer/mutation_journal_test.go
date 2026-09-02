@@ -1,12 +1,11 @@
 package syncer
 
 import (
-	"strings"
-	"testing"
-
 	"github.com/n24q02m/skret/internal/provider"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"strings"
+	"testing"
 )
 
 func TestSourceDigestBindsSortedKeysAndValueHashesWithoutValues(t *testing.T) {
