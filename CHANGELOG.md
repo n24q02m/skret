@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 <!-- version list -->
 
+## v1.19.1 (2026-09-03)
+
+### Bug Fixes
+
+- **ci**: Drop target_commitish assert in release readback
+  ([#731](https://github.com/n24q02m/skret/pull/731),
+  [`31fa1e5`](https://github.com/n24q02m/skret/commit/31fa1e5f2ef06f2989ec3f1a68b2bc8917d88540))
+
+
 ## v1.19.0 (2026-09-02)
 
 ### Bug Fixes
