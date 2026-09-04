@@ -22,16 +22,14 @@ import type { ExecutorEnvelope } from "./executor-envelope-verifier";
 import type {
   PrivateExecutorHandlerOptions,
   PrivateExecutorReplayStore,
+  PrivateExecutorRoleAuthority,
+  PrivateExecutorRoleAuthorityBinding,
 } from "./private-executor-handler";
 
 export const PROVIDER_DISPATCH_SCHEMA = "skret/executor/provider-dispatch/v1" as const;
 export const PROVIDER_VERIFICATION_SCHEMA = "skret/executor/provider-verification/v1" as const;
 export const PROVIDER_DISPATCH_ROLE = "provider-sync";
 export const PROVIDER_VERIFICATION_ROLE = "provider-sync-verification";
-export const PROVIDER_EXECUTOR_ROLES = Object.freeze([
-  PROVIDER_DISPATCH_ROLE,
-  PROVIDER_VERIFICATION_ROLE,
-] as const);
 
 const MAX_PROVIDER_BODY_BYTES = 256 * 1024;
 const OPERATION_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
@@ -115,12 +113,24 @@ interface ProviderDispatchDocument {
   readonly kms_key_reference: string;
 }
 
+export type ProviderPrivateExecutorRoleAuthority = Omit<
+  PrivateExecutorRoleAuthorityBinding,
+  "role"
+>;
+
 export interface ProviderPrivateExecutorOptionsInput {
   readonly expectedAudience: string;
-  readonly publicKey: Uint8Array;
+  readonly dispatchAuthority: ProviderPrivateExecutorRoleAuthority;
+  readonly verificationAuthority: ProviderPrivateExecutorRoleAuthority;
   readonly replayStore: PrivateExecutorReplayStore;
   readonly dependencies: ProviderExecutorDependencies;
   readonly now?: number;
+}
+
+export interface ProviderAuthorityBinding {
+  readonly dispatchGeneration: number;
+  readonly verificationGeneration: number;
+  readonly capabilityDigest: string;
 }
 
 export function buildProviderPrivateExecutorOptions(
@@ -135,22 +145,55 @@ export function buildProviderPrivateExecutorOptions(
       input.expectedAudience.length > 256 ||
       input.expectedAudience.trim() !== input.expectedAudience ||
       /[\u0000-\u001f\u007f]/u.test(input.expectedAudience) ||
-      !(input.publicKey instanceof Uint8Array) ||
-      input.publicKey.byteLength !== 32 ||
+      !isProviderPrivateAuthority(input.dispatchAuthority) ||
+      !isProviderPrivateAuthority(input.verificationAuthority) ||
+      input.dispatchAuthority.capabilityDigest !== input.verificationAuthority.capabilityDigest ||
       !input.replayStore ||
       typeof input.replayStore.consume !== "function" ||
       (input.now !== undefined && (!Number.isSafeInteger(input.now) || input.now < 0))
     ) {
       return null;
     }
+    let keysDiffer = false;
+    for (let index = 0; index < input.dispatchAuthority.publicKey.byteLength; index += 1) {
+      keysDiffer ||= input.dispatchAuthority.publicKey[index] !== input.verificationAuthority.publicKey[index];
+    }
+    if (!keysDiffer) return null;
+
     validateDependencies(input.dependencies);
+    const roleAuthorities: readonly PrivateExecutorRoleAuthorityBinding[] = [
+      {
+        role: PROVIDER_DISPATCH_ROLE,
+        publicKey: input.dispatchAuthority.publicKey.slice(),
+        generation: input.dispatchAuthority.generation,
+        notAfter: input.dispatchAuthority.notAfter,
+        capabilityDigest: input.dispatchAuthority.capabilityDigest,
+      },
+      {
+        role: PROVIDER_VERIFICATION_ROLE,
+        publicKey: input.verificationAuthority.publicKey.slice(),
+        generation: input.verificationAuthority.generation,
+        notAfter: input.verificationAuthority.notAfter,
+        capabilityDigest: input.verificationAuthority.capabilityDigest,
+      },
+    ];
+    const authorityBinding = Object.freeze({
+      dispatchGeneration: input.dispatchAuthority.generation,
+      verificationGeneration: input.verificationAuthority.generation,
+      capabilityDigest: input.dispatchAuthority.capabilityDigest,
+    });
     return {
       expectedAudience: input.expectedAudience,
-      expectedRoles: PROVIDER_EXECUTOR_ROLES,
-      publicKey: input.publicKey.slice(),
+      roleAuthorities,
       replayStore: input.replayStore,
-      execute: (body, envelope) =>
-        executeProviderExecutorRole(body, envelope, input.dependencies),
+      execute: (body, envelope, authority) =>
+        executeProviderExecutorRole(
+          body,
+          envelope,
+          input.dependencies,
+          authority,
+          authorityBinding,
+        ),
       ...(input.now === undefined ? {} : { now: input.now }),
     };
   } catch {
@@ -158,16 +201,111 @@ export function buildProviderPrivateExecutorOptions(
   }
 }
 
+function isProviderPrivateAuthority(value: unknown): value is ProviderPrivateExecutorRoleAuthority {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const candidate = value as Record<string, unknown>;
+  const fields = Object.keys(candidate);
+  return (
+    fields.length === 4 &&
+    Object.prototype.hasOwnProperty.call(candidate, "publicKey") &&
+    Object.prototype.hasOwnProperty.call(candidate, "generation") &&
+    Object.prototype.hasOwnProperty.call(candidate, "notAfter") &&
+    Object.prototype.hasOwnProperty.call(candidate, "capabilityDigest") &&
+    candidate.publicKey instanceof Uint8Array &&
+    candidate.publicKey.byteLength === 32 &&
+    typeof candidate.generation === "number" &&
+    Number.isSafeInteger(candidate.generation) &&
+    candidate.generation > 0 &&
+    typeof candidate.notAfter === "number" &&
+    Number.isSafeInteger(candidate.notAfter) &&
+    candidate.notAfter > 0 &&
+    typeof candidate.capabilityDigest === "string" &&
+    SHA256_DIGEST.test(candidate.capabilityDigest)
+  );
+}
+
+export function providerAuthorityIdentity(
+  dispatchGeneration: number,
+  verificationGeneration: number,
+): string {
+  if (
+    !Number.isSafeInteger(dispatchGeneration) ||
+    dispatchGeneration <= 0 ||
+    !Number.isSafeInteger(verificationGeneration) ||
+    verificationGeneration <= 0
+  ) {
+    throw new ProviderExecutorInvalidRequestError();
+  }
+  return `provider-authority:dispatch-${dispatchGeneration}:verification-${verificationGeneration}`;
+}
+
+function validateProviderAuthorityBinding(binding: ProviderAuthorityBinding): void {
+  if (
+    !binding ||
+    typeof binding !== "object" ||
+    Object.keys(binding).length !== 3 ||
+    !Object.prototype.hasOwnProperty.call(binding, "dispatchGeneration") ||
+    !Object.prototype.hasOwnProperty.call(binding, "verificationGeneration") ||
+    !Object.prototype.hasOwnProperty.call(binding, "capabilityDigest") ||
+    !Number.isSafeInteger(binding.dispatchGeneration) ||
+    binding.dispatchGeneration <= 0 ||
+    !Number.isSafeInteger(binding.verificationGeneration) ||
+    binding.verificationGeneration <= 0 ||
+    typeof binding.capabilityDigest !== "string" ||
+    !SHA256_DIGEST.test(binding.capabilityDigest)
+  ) {
+    throw new ProviderExecutorInvalidRequestError();
+  }
+}
+
+function validateProviderExecutionAuthority(
+  authority: PrivateExecutorRoleAuthority,
+  expectedRole: string,
+  now: number,
+  binding: ProviderAuthorityBinding,
+): void {
+  validateProviderAuthorityBinding(binding);
+  const expectedGeneration = expectedRole === PROVIDER_DISPATCH_ROLE
+    ? binding.dispatchGeneration
+    : binding.verificationGeneration;
+  if (
+    !authority ||
+    typeof authority !== "object" ||
+    Object.keys(authority).length !== 4 ||
+    !Object.prototype.hasOwnProperty.call(authority, "role") ||
+    !Object.prototype.hasOwnProperty.call(authority, "generation") ||
+    !Object.prototype.hasOwnProperty.call(authority, "notAfter") ||
+    !Object.prototype.hasOwnProperty.call(authority, "capabilityDigest") ||
+    authority.role !== expectedRole ||
+    authority.generation !== expectedGeneration ||
+    !Number.isSafeInteger(authority.notAfter) ||
+    authority.notAfter <= now ||
+    authority.capabilityDigest !== binding.capabilityDigest
+  ) {
+    throw new ProviderExecutorInvalidRequestError();
+  }
+}
 export async function executeProviderExecutorRole(
   body: Uint8Array,
-  envelope: Pick<ExecutorEnvelope, "role">,
+  envelope: Pick<ExecutorEnvelope, "role" | "manifest_digest">,
   dependencies: ProviderExecutorDependencies,
+  authority: PrivateExecutorRoleAuthority,
+  binding: ProviderAuthorityBinding,
 ): Promise<Uint8Array> {
+  if (
+    !authority ||
+    typeof authority !== "object" ||
+    envelope.role !== authority.role ||
+    envelope.manifest_digest !== authority.capabilityDigest ||
+    authority.capabilityDigest !== binding.capabilityDigest
+  ) {
+    throw new ProviderExecutorInvalidRequestError();
+  }
   if (envelope.role === PROVIDER_DISPATCH_ROLE) {
-    return executeProviderDispatchBody(body, dependencies);
+    return executeProviderDispatchBody(body, dependencies, authority, binding);
   }
   if (envelope.role === PROVIDER_VERIFICATION_ROLE) {
-    return executeProviderVerificationBody(body, dependencies);
+    return executeProviderVerificationBody(body, dependencies, authority, binding);
   }
   throw new ProviderExecutorInvalidRequestError();
 }
@@ -184,10 +322,13 @@ interface ProviderVerificationDocument {
 export async function executeProviderDispatchBody(
   body: Uint8Array,
   dependencies: ProviderExecutorDependencies,
+  authority: PrivateExecutorRoleAuthority,
+  binding: ProviderAuthorityBinding,
 ): Promise<Uint8Array> {
   const document = await parseDispatchDocument(body);
   validateDependencies(dependencies);
   const now = readNow(dependencies);
+  validateProviderExecutionAuthority(authority, PROVIDER_DISPATCH_ROLE, now, binding);
   let targetSet;
   try {
     targetSet = await canonicalTargetSet([document.target]);
@@ -196,12 +337,18 @@ export async function executeProviderDispatchBody(
   }
   if (
     targetSet.digest !== document.operation.target_digest ||
+    authority.capabilityDigest !== targetSet.digest ||
+    document.operation.operator_identity !== providerAuthorityIdentity(
+      binding.dispatchGeneration,
+      binding.verificationGeneration,
+    ) ||
     document.operation.target_identity !== document.target.canonical ||
     document.operation.capability !== document.target.capability ||
     document.operation.generation !== document.source_identity.lifecycleLabel ||
     document.operation.intended_generation_ref !== document.operation.generation ||
     document.operation.deadline_at <= now ||
     document.operation.deadline_at > now + 15 * 60_000 ||
+    document.operation.deadline_at > authority.notAfter ||
     document.operation.kms_envelope_ref !== `provider-envelope:${document.operation.operation_id}`
   ) {
     throw new ProviderExecutorInvalidRequestError();
@@ -332,10 +479,13 @@ export async function executeProviderDispatchBody(
 export async function executeProviderVerificationBody(
   body: Uint8Array,
   dependencies: ProviderExecutorDependencies,
+  authority: PrivateExecutorRoleAuthority,
+  binding: ProviderAuthorityBinding,
 ): Promise<Uint8Array> {
   const document = parseVerificationDocument(body);
   validateDependencies(dependencies);
   const now = readNow(dependencies);
+  validateProviderExecutionAuthority(authority, PROVIDER_VERIFICATION_ROLE, now, binding);
   let existing: ProviderOperationRecord | null;
   try {
     existing = await dependencies.operations.read(document.operation_id);
@@ -343,7 +493,14 @@ export async function executeProviderVerificationBody(
     throw new ProviderExecutorUnavailableError();
   }
   if (existing === null) throw new ProviderExecutorInvalidRequestError();
-  if (existing.target_identity !== document.acknowledged_target_identity) {
+  if (
+    existing.target_identity !== document.acknowledged_target_identity ||
+    existing.target_digest !== authority.capabilityDigest ||
+    existing.operator_identity !== providerAuthorityIdentity(
+      binding.dispatchGeneration,
+      binding.verificationGeneration,
+    )
+  ) {
     throw new ProviderExecutorInvalidRequestError();
   }
   let record: ProviderOperationRecord;

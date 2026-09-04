@@ -10,8 +10,10 @@ import type { DurableExecutorReplayStore } from "./executor-replay-store";
 export const PRIVATE_EXECUTOR_PATH = "/operator/executor-envelope";
 export const PRIVATE_EXECUTOR_CALLER_CONTEXT_HEADER = "X-Skret-Caller-Context";
 export const MAX_PRIVATE_EXECUTOR_BYTES = 1 << 20;
+export const MAX_PRIVATE_EXECUTOR_ROLES = 16;
 
 const CALLER_CONTEXT_PATTERN = /^sha256:[a-f0-9]{64}$/u;
+const CAPABILITY_DIGEST_PATTERN = /^sha256:[a-f0-9]{64}$/u;
 
 const SECURITY_HEADERS: Record<string, string> = {
   "Cache-Control": "no-store",
@@ -24,14 +26,25 @@ const SECURITY_HEADERS: Record<string, string> = {
 type ReplayStore = Pick<DurableExecutorReplayStore, "consume">;
 type OperationResult = Uint8Array | ArrayBuffer | ArrayBufferView;
 
+export interface PrivateExecutorRoleAuthority {
+  readonly role: string;
+  readonly generation: number;
+  readonly notAfter: number;
+  readonly capabilityDigest: string;
+}
+
+export interface PrivateExecutorRoleAuthorityBinding extends PrivateExecutorRoleAuthority {
+  readonly publicKey: Uint8Array;
+}
+
 export interface PrivateExecutorHandlerOptions {
   readonly expectedAudience: string;
-  readonly expectedRoles: readonly string[];
-  readonly publicKey: Uint8Array;
+  readonly roleAuthorities: readonly PrivateExecutorRoleAuthorityBinding[];
   readonly replayStore: ReplayStore;
   readonly execute: (
     body: Uint8Array,
     envelope: ExecutorEnvelope,
+    authority: PrivateExecutorRoleAuthority,
   ) => OperationResult | Promise<OperationResult>;
   readonly now?: number;
 }
@@ -81,10 +94,27 @@ export async function handlePrivateExecutorEnvelope(
   if (!isEnvelopeRecord(parsed)) {
     return emptyResponse(400);
   }
-  if (typeof parsed.audience !== "string" || typeof parsed.role !== "string") {
+  if (!isValidScopeField(parsed.audience) || !isValidScopeField(parsed.role)) {
     return emptyResponse(400);
   }
-  if (parsed.audience !== options.expectedAudience || !options.expectedRoles.includes(parsed.role)) {
+  if (parsed.audience !== options.expectedAudience) {
+    return emptyResponse(403);
+  }
+  const authority = authorityForRole(options.roleAuthorities, parsed.role);
+  if (authority === null) {
+    return emptyResponse(403);
+  }
+  const requestNow = options.now ?? Date.now();
+  if (requestNow >= authority.notAfter) {
+    return emptyResponse(403);
+  }
+  if (
+    typeof parsed.manifest_digest !== "string" ||
+    !CAPABILITY_DIGEST_PATTERN.test(parsed.manifest_digest)
+  ) {
+    return emptyResponse(400);
+  }
+  if (parsed.manifest_digest !== authority.capabilityDigest) {
     return emptyResponse(403);
   }
 
@@ -92,17 +122,27 @@ export async function handlePrivateExecutorEnvelope(
   try {
     verifiedBody = await verifyAndConsumeExecutorEnvelope(
       parsed,
-      options.publicKey,
+      authority.publicKey,
       options.replayStore,
-      options.now,
+      requestNow,
     );
   } catch (error) {
     return verifierFailureResponse(error);
   }
 
+  const executionAuthority = Object.freeze({
+    role: authority.role,
+    generation: authority.generation,
+    notAfter: authority.notAfter,
+    capabilityDigest: authority.capabilityDigest,
+  });
   let operationResult: OperationResult;
   try {
-    operationResult = await options.execute(verifiedBody, parsed as unknown as ExecutorEnvelope);
+    operationResult = await options.execute(
+      verifiedBody,
+      parsed as unknown as ExecutorEnvelope,
+      executionAuthority,
+    );
   } catch {
     return emptyResponse(502);
   }
@@ -126,25 +166,80 @@ function hasValidDependencies(options: PrivateExecutorHandlerOptions | undefined
   return Boolean(
     options &&
       typeof options === "object" &&
-      typeof options.expectedAudience === "string" &&
-      options.expectedAudience.length > 0 &&
-      Array.isArray(options.expectedRoles) &&
-      options.expectedRoles.length > 0 &&
-      options.expectedRoles.length <= 16 &&
-      options.expectedRoles.every((role) =>
-        typeof role === "string" &&
-        role.length > 0 &&
-        role.length <= 256 &&
-        role.trim() === role &&
-        !/[\u0000-\u001f\u007f]/u.test(role)
-      ) &&
-      new Set(options.expectedRoles).size === options.expectedRoles.length &&
-      options.publicKey instanceof Uint8Array &&
-      options.publicKey.byteLength === 32 &&
+      isValidScopeField(options.expectedAudience) &&
+      hasValidRoleAuthorities(options.roleAuthorities) &&
       options.replayStore &&
       typeof options.replayStore.consume === "function" &&
-      typeof options.execute === "function",
+      typeof options.execute === "function" &&
+      (options.now === undefined || (Number.isSafeInteger(options.now) && options.now >= 0)),
   );
+}
+
+function hasValidRoleAuthorities(value: unknown): value is readonly PrivateExecutorRoleAuthorityBinding[] {
+  if (!Array.isArray(value) || value.length === 0 || value.length > MAX_PRIVATE_EXECUTOR_ROLES) return false;
+
+  const roles = new Set<string>();
+  const publicKeys: Uint8Array[] = [];
+  for (const candidate of value) {
+    if (!isEnvelopeRecord(candidate)) return false;
+    const fields = Object.keys(candidate);
+    if (
+      fields.length !== 5 ||
+      !Object.prototype.hasOwnProperty.call(candidate, "role") ||
+      !Object.prototype.hasOwnProperty.call(candidate, "publicKey") ||
+      !Object.prototype.hasOwnProperty.call(candidate, "generation") ||
+      !Object.prototype.hasOwnProperty.call(candidate, "notAfter") ||
+      !Object.prototype.hasOwnProperty.call(candidate, "capabilityDigest") ||
+      !isValidScopeField(candidate.role) ||
+      !(candidate.publicKey instanceof Uint8Array) ||
+      candidate.publicKey.byteLength !== 32 ||
+      typeof candidate.generation !== "number" ||
+      !Number.isSafeInteger(candidate.generation) ||
+      candidate.generation <= 0 ||
+      typeof candidate.notAfter !== "number" ||
+      !Number.isSafeInteger(candidate.notAfter) ||
+      candidate.notAfter <= 0 ||
+      typeof candidate.capabilityDigest !== "string" ||
+      !CAPABILITY_DIGEST_PATTERN.test(candidate.capabilityDigest) ||
+      roles.has(candidate.role)
+    ) {
+      return false;
+    }
+    for (const publicKey of publicKeys) {
+      if (sameBytes(publicKey, candidate.publicKey)) return false;
+    }
+    roles.add(candidate.role);
+    publicKeys.push(candidate.publicKey);
+  }
+  return true;
+}
+
+function authorityForRole(
+  roleAuthorities: readonly PrivateExecutorRoleAuthorityBinding[],
+  role: string,
+): PrivateExecutorRoleAuthorityBinding | null {
+  for (const authority of roleAuthorities) {
+    if (authority.role === role) return authority;
+  }
+  return null;
+}
+
+function isValidScopeField(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    value.length > 0 &&
+    value.length <= 256 &&
+    value.trim() === value &&
+    !/[\u0000-\u001f\u007f]/u.test(value)
+  );
+}
+
+function sameBytes(left: Uint8Array, right: Uint8Array): boolean {
+  if (left.byteLength !== right.byteLength) return false;
+  for (let index = 0; index < left.byteLength; index += 1) {
+    if (left[index] !== right[index]) return false;
+  }
+  return true;
 }
 
 function hasPrivateExecutorPath(req: Request): boolean {

@@ -5,12 +5,20 @@ import {
   ExecutorReplayRejectedError,
   ExecutorReplayStoreUnavailableError,
 } from "../src/executor-replay-store";
-import { PRIVATE_EXECUTOR_CALLER_CONTEXT_HEADER, PRIVATE_EXECUTOR_PATH } from "../src/private-executor-handler";
+import {
+  handlePrivateExecutorEnvelope,
+  PRIVATE_EXECUTOR_CALLER_CONTEXT_HEADER,
+  PRIVATE_EXECUTOR_PATH,
+} from "../src/private-executor-handler";
 import securityExecutor, {
+  MAX_EXECUTOR_CLIENT_AUTHORITY_HORIZON_MS,
+  MAX_EXECUTOR_CLIENT_PUBLIC_KEYS_JSON_LENGTH,
   MAX_METADATA_MIGRATION_BODY_BYTES,
   MAX_METADATA_MIGRATION_SOURCE_SIZE,
   METADATA_ACK_AAD_PREFIX,
+  METADATA_MIGRATION_EXECUTOR_ROLE,
   SecurityExecutorReplay,
+  buildSecurityExecutorOptions,
   createReplayStoreAdapter,
   handleSecurityExecutorRequest,
   type SecurityExecutorEnv,
@@ -18,7 +26,7 @@ import securityExecutor, {
 
 const NOW = Date.now();
 const AUDIENCE = "skret-security-executor";
-const ROLE = "operator";
+const ROLE = METADATA_MIGRATION_EXECUTOR_ROLE;
 let MANIFEST_DIGEST = "";
 let STATE_MANIFEST_PUBLIC_KEY = new Uint8Array();
 const SOURCE_HASH = "b".repeat(64);
@@ -27,6 +35,7 @@ const IMAGE_DIGEST = `sha256:${"d".repeat(64)}`;
 const CONFIG_DIGEST = `sha256:${"e".repeat(64)}`;
 type ReplayNamespace = NonNullable<SecurityExecutorEnv["EXECUTOR_REPLAY"]>;
 const RESPONSE_KEY_BYTES = new Uint8Array(Array.from({ length: 32 }, (_, index) => index + 1));
+const CLIENT_AUTHORITY_NOT_AFTER = new Date(NOW + 24 * 60 * 60 * 1000).toISOString();
 
 function toBase64(bytes: Uint8Array): string {
   let binary = "";
@@ -203,6 +212,35 @@ function namespaceFor(status: string = "accepted") {
   };
 }
 
+function clientAuthority(
+  publicKey: Uint8Array,
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    public_key: toBase64(publicKey),
+    generation: 1,
+    not_after: CLIENT_AUTHORITY_NOT_AFTER,
+    capability_digest: MANIFEST_DIGEST || `sha256:${"a".repeat(64)}`,
+    ...overrides,
+  };
+}
+
+function clientPublicKeys(publicKey: Uint8Array): string {
+  const roleKey = (mask: number): Uint8Array => {
+    const key = publicKey.slice();
+    key[0] ^= mask;
+    return key;
+  };
+  return JSON.stringify({
+    operator: clientAuthority(roleKey(1)),
+    "bd-client": clientAuthority(roleKey(2)),
+    [ROLE]: clientAuthority(publicKey),
+    "sync-client": clientAuthority(roleKey(3)),
+    "provider-sync": clientAuthority(roleKey(4)),
+    "provider-sync-verification": clientAuthority(roleKey(5)),
+  });
+}
+
 function envFor(
   publicKey: Uint8Array,
   namespace: unknown,
@@ -211,8 +249,7 @@ function envFor(
   const operationNamespace = namespaceFor().operationNamespace;
   return {
     EXECUTOR_EXPECTED_AUDIENCE: AUDIENCE,
-    EXECUTOR_EXPECTED_ROLE: ROLE,
-    EXECUTOR_PUBLIC_KEY: toBase64(publicKey),
+    EXECUTOR_CLIENT_PUBLIC_KEYS: clientPublicKeys(publicKey),
     EXECUTOR_STATE_MANIFEST_PUBLIC_KEY: toBase64(STATE_MANIFEST_PUBLIC_KEY),
     EXECUTOR_RESPONSE_KEY: toBase64(RESPONSE_KEY_BYTES),
     EXECUTOR_REPLAY: namespace as SecurityExecutorEnv["EXECUTOR_REPLAY"],
@@ -231,8 +268,8 @@ describe.sequential("security executor Worker", () => {
     const candidates: Array<Partial<SecurityExecutorEnv>> = [
       { EXECUTOR_EXPECTED_AUDIENCE: "" },
       { EXECUTOR_OPERATIONS: undefined },
-      { EXECUTOR_EXPECTED_ROLE: "" },
-      { EXECUTOR_PUBLIC_KEY: "not-a-key" },
+      { EXECUTOR_CLIENT_PUBLIC_KEYS: "" },
+      { EXECUTOR_CLIENT_PUBLIC_KEYS: "not-json" },
       { EXECUTOR_RESPONSE_KEY: "00" },
       { EXECUTOR_REPLAY: undefined },
       { EXECUTOR_EXPECTED_AUDIENCE: "a".repeat(257) },
@@ -249,6 +286,142 @@ describe.sequential("security executor Worker", () => {
       expect(response.status).toBe(503);
       expect(await response.text()).toBe("");
     }
+  });
+
+  it("activates only the exact migration-client authority from the validated role map", async () => {
+    await defaultManifestFixture();
+    const { publicKey } = await keyPair();
+    const { namespace } = namespaceFor();
+
+    const options = await buildSecurityExecutorOptions(envFor(publicKey, namespace), NOW);
+
+    expect(options?.roleAuthorities.map((authority) => ({
+      role: authority.role,
+      generation: authority.generation,
+      notAfter: authority.notAfter,
+      capabilityDigest: authority.capabilityDigest,
+      publicKey: toBase64(authority.publicKey),
+    }))).toEqual([{
+      role: ROLE,
+      generation: 1,
+      notAfter: Date.parse(CLIENT_AUTHORITY_NOT_AFTER),
+      capabilityDigest: MANIFEST_DIGEST,
+      publicKey: toBase64(publicKey),
+    }]);
+  });
+
+  it("rechecks role authority expiry after options construction before replay or execution", async () => {
+    await defaultManifestFixture();
+    const { publicKey, privateKey } = await keyPair();
+    const operation = namespaceFor();
+    const buildNow = Date.now();
+    const authorityNotAfter = buildNow + 1_000;
+    const clock = vi.spyOn(Date, "now").mockReturnValue(buildNow);
+
+    try {
+      const options = await buildSecurityExecutorOptions(
+        envFor(publicKey, operation.namespace, {
+          EXECUTOR_CLIENT_PUBLIC_KEYS: JSON.stringify({
+            [ROLE]: clientAuthority(publicKey, {
+              not_after: new Date(authorityNotAfter).toISOString(),
+            }),
+          }),
+          EXECUTOR_OPERATIONS: operation.operationNamespace as unknown as SecurityExecutorEnv["EXECUTOR_OPERATIONS"],
+        }),
+      );
+      if (!options) throw new Error("expected valid executor options");
+      expect(options.now).toBeUndefined();
+
+      const envelope = await makeEnvelope(privateKey, undefined, {
+        nonce: "nonce-authority-expired-after-build",
+      });
+      clock.mockReturnValue(authorityNotAfter);
+
+      const response = await handlePrivateExecutorEnvelope(
+        request(JSON.stringify(envelope)),
+        options,
+      );
+
+      expect(response.status).toBe(403);
+      expect(await response.text()).toBe("");
+      expect(operation.consume).not.toHaveBeenCalled();
+      expect(operation.begin).not.toHaveBeenCalled();
+      expect(operation.complete).not.toHaveBeenCalled();
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  it("rejects duplicate, malformed, expired, overlong-horizon, and noncanonical authority config", async () => {
+    await defaultManifestFixture();
+    const { publicKey } = await keyPair();
+    const { publicKey: otherPublicKey } = await keyPair();
+    const { namespace } = namespaceFor();
+    const valid = clientAuthority(publicKey);
+    const other = clientAuthority(otherPublicKey);
+    const duplicateRole = `{"operator":${JSON.stringify(valid)},"operator":${JSON.stringify(other)}}`;
+    const duplicateField = JSON.stringify({ operator: valid })
+      .replace('"generation":1', '"generation":1,"generation":2');
+    const tooMany = Object.fromEntries(
+      Array.from({ length: 17 }, (_, index) => [
+        `role-${index}`,
+        clientAuthority(new Uint8Array(32).fill(index + 20)),
+      ]),
+    );
+    const cases = [
+      "{}",
+      "[]",
+      "not-json",
+      ` ${JSON.stringify({ operator: valid })}`,
+      duplicateRole,
+      duplicateField,
+      JSON.stringify({ operator: toBase64(publicKey) }),
+      JSON.stringify({ operator: { ...valid, unknown: true } }),
+      JSON.stringify({ operator: clientAuthority(publicKey, { generation: 0 }) }),
+      JSON.stringify({ operator: clientAuthority(publicKey, { generation: 1.5 }) }),
+      JSON.stringify({ operator: clientAuthority(publicKey, { not_after: new Date(NOW).toISOString() }) }),
+      JSON.stringify({
+        operator: clientAuthority(publicKey, {
+          not_after: new Date(NOW + MAX_EXECUTOR_CLIENT_AUTHORITY_HORIZON_MS + 1).toISOString(),
+        }),
+      }),
+      JSON.stringify({ operator: clientAuthority(publicKey, { not_after: "not-rfc3339" }) }),
+      JSON.stringify({ operator: clientAuthority(publicKey, { not_after: NOW + 60_000 }) }),
+      JSON.stringify({ operator: clientAuthority(publicKey, { capability_digest: "sha256:bad" }) }),
+      JSON.stringify({ operator: clientAuthority(publicKey, { public_key: "not-base64" }) }),
+      JSON.stringify({ operator: clientAuthority(new Uint8Array(31)) }),
+      JSON.stringify({
+        operator: clientAuthority(new Uint8Array(32).fill(255), {
+          public_key: toBase64Url(new Uint8Array(32).fill(255)),
+        }),
+      }),
+      JSON.stringify({ operator: valid, "bd-client": clientAuthority(publicKey) }),
+      JSON.stringify({ "bad\u0000role": valid }),
+      JSON.stringify(tooMany),
+      "x".repeat(MAX_EXECUTOR_CLIENT_PUBLIC_KEYS_JSON_LENGTH + 1),
+    ];
+
+    for (const configured of cases) {
+      const options = await buildSecurityExecutorOptions(
+        envFor(publicKey, namespace, { EXECUTOR_CLIENT_PUBLIC_KEYS: configured }),
+        NOW,
+      );
+      expect(options, configured.slice(0, 80)).toBeNull();
+    }
+  });
+
+  it("does not fall back to legacy shared role or public-key bindings", async () => {
+    await defaultManifestFixture();
+    const { publicKey } = await keyPair();
+    const { namespace } = namespaceFor();
+    const legacy = {
+      ...envFor(publicKey, namespace),
+      EXECUTOR_CLIENT_PUBLIC_KEYS: undefined,
+      EXECUTOR_EXPECTED_ROLE: ROLE,
+      EXECUTOR_PUBLIC_KEY: toBase64(publicKey),
+    } as SecurityExecutorEnv;
+
+    expect(await buildSecurityExecutorOptions(legacy, NOW)).toBeNull();
   });
 
   it("enforces method and fixed path before accepting an envelope", async () => {
@@ -283,18 +456,76 @@ describe.sequential("security executor Worker", () => {
     expect(consume).not.toHaveBeenCalled();
   });
 
-  it("rejects wrong role and invalid signatures without execution", async () => {
+  it("routes only migration-client and rejects every non-migration role before replay or operation", async () => {
+    await defaultManifestFixture();
     const { publicKey, privateKey } = await keyPair();
-    const wrongRole = await makeEnvelope(privateKey, await migrationBody(), { role: "reader" });
-    const tampered = await makeEnvelope(privateKey);
-    tampered.signature = toBase64(new Uint8Array(64));
-    const { namespace, consume } = namespaceFor();
-    const env = envFor(publicKey, namespace);
-    const worker = { fetch: handleSecurityExecutorRequest };
+    const operation = namespaceFor();
+    const env = envFor(publicKey, operation.namespace, {
+      EXECUTOR_OPERATIONS: operation.operationNamespace as unknown as SecurityExecutorEnv["EXECUTOR_OPERATIONS"],
+    });
+    const accepted = await makeEnvelope(privateKey);
 
-    expect((await worker.fetch(request(JSON.stringify(wrongRole)), env)).status).toBe(403);
-    expect((await worker.fetch(request(JSON.stringify(tampered)), env)).status).toBe(400);
-    expect(consume).not.toHaveBeenCalled();
+    const acceptedResponse = await handleSecurityExecutorRequest(
+      request(JSON.stringify(accepted)),
+      env,
+    );
+
+    expect(acceptedResponse.status).toBe(200);
+    expect(operation.consume).toHaveBeenCalledTimes(1);
+    expect(operation.begin).toHaveBeenCalledTimes(1);
+
+    for (const [index, role] of [
+      "operator",
+      "bd-client",
+      "sync-client",
+      "provider-sync",
+      "provider-sync-verification",
+      "reader",
+    ].entries()) {
+      const denied = await makeEnvelope(privateKey, await migrationBody(), {
+        role,
+        nonce: `nonce-denied-role-${index}`,
+      });
+      const deniedResponse = await handleSecurityExecutorRequest(
+        request(JSON.stringify(denied)),
+        env,
+      );
+      expect(deniedResponse.status, role).toBe(403);
+      expect(await deniedResponse.text()).toBe("");
+    }
+    expect(operation.consume).toHaveBeenCalledTimes(1);
+    expect(operation.begin).toHaveBeenCalledTimes(1);
+    expect(operation.complete).toHaveBeenCalledTimes(1);
+
+    const tampered = await makeEnvelope(privateKey, await migrationBody(), {
+      nonce: "nonce-invalid-signature",
+    });
+    tampered.signature = toBase64(new Uint8Array(64));
+    expect((await handleSecurityExecutorRequest(request(JSON.stringify(tampered)), env)).status).toBe(400);
+    expect(operation.consume).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects a configured capability mismatch before replay or durable operation side effects", async () => {
+    const { publicKey, privateKey } = await keyPair();
+    const envelope = await makeEnvelope(privateKey);
+    const operation = namespaceFor();
+    const configured = JSON.stringify({
+      [ROLE]: clientAuthority(publicKey, {
+        capability_digest: `sha256:${"f".repeat(64)}`,
+      }),
+    });
+    const env = envFor(publicKey, operation.namespace, {
+      EXECUTOR_CLIENT_PUBLIC_KEYS: configured,
+      EXECUTOR_OPERATIONS: operation.operationNamespace as unknown as SecurityExecutorEnv["EXECUTOR_OPERATIONS"],
+    });
+
+    const response = await handleSecurityExecutorRequest(request(JSON.stringify(envelope)), env);
+
+    expect(response.status).toBe(403);
+    expect(await response.text()).toBe("");
+    expect(operation.consume).not.toHaveBeenCalled();
+    expect(operation.begin).not.toHaveBeenCalled();
+    expect(operation.complete).not.toHaveBeenCalled();
   });
   it("uses an arithmetic 1 TiB source-size bound", () => {
     expect(MAX_METADATA_MIGRATION_SOURCE_SIZE).toBe(2 ** 40);
@@ -408,6 +639,7 @@ describe.sequential("security executor Worker", () => {
         operation_id: "migration-20260824-001",
         exclusive: false,
         fingerprint: expect.stringMatching(/^sha256:[a-f0-9]{64}$/u),
+        generation: `authority-1-manifest-${MANIFEST_DIGEST.slice("sha256:".length)}`,
         config_digest: CONFIG_DIGEST,
       }),
       expect.any(Number),
@@ -444,6 +676,36 @@ describe.sequential("security executor Worker", () => {
       source_size: 128,
       status: "accepted",
     });
+  });
+
+  it("changes the durable schedule and fingerprint when the client authority generation renews", async () => {
+    const { publicKey, privateKey } = await keyPair();
+    const body = await migrationBody();
+    const envelope = await makeEnvelope(privateKey, body, { nonce: "nonce-authority-generation" });
+    const firstOperation = namespaceFor();
+    const renewedOperation = namespaceFor();
+    const firstEnv = envFor(publicKey, firstOperation.namespace, {
+      EXECUTOR_CLIENT_PUBLIC_KEYS: JSON.stringify({
+        [ROLE]: clientAuthority(publicKey, { generation: 1 }),
+      }),
+      EXECUTOR_OPERATIONS: firstOperation.operationNamespace as unknown as SecurityExecutorEnv["EXECUTOR_OPERATIONS"],
+    });
+    const renewedEnv = envFor(publicKey, renewedOperation.namespace, {
+      EXECUTOR_CLIENT_PUBLIC_KEYS: JSON.stringify({
+        [ROLE]: clientAuthority(publicKey, { generation: 2 }),
+      }),
+      EXECUTOR_OPERATIONS: renewedOperation.operationNamespace as unknown as SecurityExecutorEnv["EXECUTOR_OPERATIONS"],
+    });
+
+    expect((await securityExecutor.fetch(request(JSON.stringify(envelope)), firstEnv)).status).toBe(200);
+    expect((await securityExecutor.fetch(request(JSON.stringify(envelope)), renewedEnv)).status).toBe(200);
+
+    const firstStart = firstOperation.begin.mock.calls[0]?.[0];
+    const renewedStart = renewedOperation.begin.mock.calls[0]?.[0];
+    expect(firstStart?.generation).toBe(`authority-1-manifest-${MANIFEST_DIGEST.slice("sha256:".length)}`);
+    expect(renewedStart?.generation).toBe(`authority-2-manifest-${MANIFEST_DIGEST.slice("sha256:".length)}`);
+    expect(renewedStart?.schedule_digest).not.toBe(firstStart?.schedule_digest);
+    expect(renewedStart?.fingerprint).not.toBe(firstStart?.fingerprint);
   });
 
   it("re-encrypts a persisted redacted result for a fresh-envelope retry", async () => {
@@ -493,13 +755,16 @@ describe.sequential("security executor Worker", () => {
   it("rejects extra or malformed migration metadata and oversized metadata bodies", async () => {
     const { publicKey, privateKey } = await keyPair();
     const worker = { fetch: handleSecurityExecutorRequest };
-    const { namespace } = namespaceFor();
-    const env = envFor(publicKey, namespace);
+    const operation = namespaceFor();
+    const env = envFor(publicKey, operation.namespace, {
+      EXECUTOR_OPERATIONS: operation.operationNamespace as unknown as SecurityExecutorEnv["EXECUTOR_OPERATIONS"],
+    });
     const cases = [
       await migrationBody({ extra: true }),
       await migrationBody({ target: "v1" }),
       await migrationBody({ state_path: "C:\\skret\\state\\..\\secret.json" }),
       await migrationBody({ manifest_digest: "sha256:bad" }),
+      await migrationBody({ manifest_digest: `sha256:${"f".repeat(64)}` }),
       await migrationBody({ source_hash: "not-a-digest" }),
       await migrationBody({ source_size: -1 }),
       await migrationBody({ source_size: Number.MAX_SAFE_INTEGER + 1 }),
@@ -515,6 +780,8 @@ describe.sequential("security executor Worker", () => {
     oversized.fill(120);
     const oversizedEnvelope = await makeEnvelope(privateKey, oversized, { nonce: "nonce-oversized-metadata" });
     expect((await worker.fetch(request(JSON.stringify(oversizedEnvelope)), env)).status).toBe(502);
+    expect(operation.begin).not.toHaveBeenCalled();
+    expect(operation.complete).not.toHaveBeenCalled();
   });
 
   it("maps replay rejection without invoking the metadata acknowledgement", async () => {
