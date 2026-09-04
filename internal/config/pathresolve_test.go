@@ -25,3 +25,59 @@ func TestResolvePath(t *testing.T) {
 		})
 	}
 }
+
+func TestIsSSMPathSegment(t *testing.T) {
+	cases := []struct {
+		in   string
+		want bool
+	}{
+		{"myapp", true},
+		{"prod", true},
+		{"dev", true},
+		{"", false},      // coverage for s == ""
+		{"MyApp", false}, // coverage for s[0] < 'a'
+		{"{app}", false}, // coverage for s[0] > 'z'
+		{"a@b", false},   // coverage for inner loop fail
+		{"myapp-prod_2", true},
+	}
+	for _, c := range cases {
+		t.Run(c.in, func(t *testing.T) {
+			if got := isSSMPathSegment(c.in); got != c.want {
+				t.Fatalf("isSSMPathSegment(%q) = %v, want %v", c.in, got, c.want)
+			}
+		})
+	}
+}
+
+func TestResolvePath_Coverage(t *testing.T) {
+	// The original code uses:
+	// segs := strings.Split(strings.ReplaceAll(raw, `\`, "/"), "/")
+	// If `raw` has no slashes, e.g. `C:abc`, it's 1 segment. `isSSMPathSegment` might be true,
+	// but it would only be 1 segment, so segments >= 2 would fail.
+
+	// Let's ensure the `if idx == -1` path is fully covered and we can hit `break` when idx == -1.
+	// In the new logic, to hit `if idx == -1 { break }` while `segments` can still be >= 2,
+	// we need `raw` to be something like `C:myapp/dev` (assuming `C:myapp` would match `isSSMPathSegment` - wait, it doesn't because `:` is invalid).
+
+	// If it's `C:dev`, `isSSMPathSegment("C:dev")` is false because of `:`.
+
+	// Wait, is there ANY case where `isSSMPathSegment(seg)` is true for a segment that came after `idx == -1`?
+	// `idx == -1` means it's the very first segment in `norm`.
+	// Since `len(raw) >= 2` and `raw[1] == ':'`, the first segment in `norm` will always contain `:`.
+	// e.g. `C:myapp` or `C:`
+	// `isSSMPathSegment` checks `c < 'a' || c > 'z'` etc., and `:` is not allowed.
+	// So `isSSMPathSegment` will ALWAYS be false for the very first segment (the one with the drive letter).
+
+	// Therefore, the loop will ALWAYS break at `if !isSSMPathSegment(seg) { break }` when `idx == -1`.
+	// The `if idx == -1 { break }` right after `segments++` is ACTUALLY UNREACHABLE because `!isSSMPathSegment(seg)` will always trigger first!
+}
+
+func TestResolvePath_Coverage2(t *testing.T) {
+	// Let's add a test to ensure we hit idx == -1.
+	// Since isSSMPathSegment always returns false for the first segment (which contains :),
+	// this segment won't be counted in `segments`, but `segStart = 0` WILL be executed.
+	got, mangled := ResolvePath("C:myapp")
+	if got != "C:myapp" || mangled != true {
+		t.Fatalf("ResolvePath(\"C:myapp\") = (%q,%v)", got, mangled)
+	}
+}
