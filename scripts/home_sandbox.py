@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import hashlib
+import importlib.util
 import json
 import os
 import re
@@ -12,12 +14,14 @@ import shutil
 import stat
 import subprocess
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Mapping, NamedTuple, Protocol, Sequence
 
 SCHEMA = "skret-home-sandbox/v1"
 _DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
 _VERSION = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$")
+_STAGED_STATE_DIRECTORY = "synthetic-state"
 _SPEC_FIELDS = {
     "schema",
     "candidate_binary",
@@ -34,6 +38,11 @@ _SPEC_FIELDS = {
     "state_public_key",
     "sandbox_root",
 }
+_MANIFEST_EXPIRY = re.compile(
+    r"^(?P<second>[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2})(?:\.(?P<fraction>[0-9]{1,9}))?Z$"
+)
+_MANIFEST_MAX_TTL = timedelta(minutes=15)
+_CANDIDATE_TRUST_MODULE: Any | None = None
 _ALLOWED_ENV = ("PATH", "SystemRoot", "WINDIR")
 
 
@@ -130,12 +139,33 @@ def _is_reparse(details: os.stat_result) -> bool:
     return bool(marker and getattr(details, "st_file_attributes", 0) & marker)
 
 
-def _regular_path(value: Any) -> Path:
+def _absolute_path(value: Any) -> Path:
     if not isinstance(value, str) or not value or "\x00" in value:
+        _fail()
+    if any(component in {".", ".."} for component in re.split(r"[\\/]", value)):
         _fail()
     path = Path(value)
     if not path.is_absolute():
         _fail()
+    return path
+
+
+def _normalized_path(path: Path) -> Path:
+    return Path(os.path.abspath(os.path.normpath(path)))
+
+
+def _strict_relative(path: Path, root: Path) -> Path:
+    try:
+        relative = _normalized_path(path).relative_to(_normalized_path(root))
+    except ValueError:
+        _fail()
+    if relative == Path(".") or any(component in {".", ".."} for component in relative.parts):
+        _fail()
+    return relative
+
+
+def _regular_path(value: Any) -> Path:
+    path = _absolute_path(value)
     try:
         details = os.lstat(path)
     except OSError as exc:
@@ -144,12 +174,9 @@ def _regular_path(value: Any) -> Path:
         _fail()
     return path
 
+
 def _regular_directory(value: Any) -> Path:
-    if not isinstance(value, str) or not value or "\x00" in value:
-        _fail()
-    path = Path(value)
-    if not path.is_absolute():
-        _fail()
+    path = _absolute_path(value)
     try:
         details = os.lstat(path)
     except OSError as exc:
@@ -161,10 +188,168 @@ def _regular_directory(value: Any) -> Path:
 
 def _is_within(path: Path, root: Path) -> bool:
     try:
-        path.relative_to(root)
+        _normalized_path(path).relative_to(_normalized_path(root))
     except ValueError:
         return False
     return True
+
+
+def _candidate_trust_module() -> Any:
+    global _CANDIDATE_TRUST_MODULE
+    if _CANDIDATE_TRUST_MODULE is not None:
+        return _CANDIDATE_TRUST_MODULE
+    module_path = Path(__file__).resolve().with_name("candidate_trust.py")
+    module_spec = importlib.util.spec_from_file_location("_skret_candidate_trust", module_path)
+    if module_spec is None or module_spec.loader is None:
+        _fail("candidate trust implementation unavailable")
+    module = importlib.util.module_from_spec(module_spec)
+    module_spec.loader.exec_module(module)
+    _CANDIDATE_TRUST_MODULE = module
+    return module
+
+
+def _go_json_bytes(value: Any) -> bytes:
+    try:
+        encoded = json.dumps(
+            value,
+            ensure_ascii=False,
+            allow_nan=False,
+            separators=(",", ":"),
+        )
+    except (TypeError, ValueError, UnicodeError) as exc:
+        raise HomeSandboxError("invalid state manifest JSON") from exc
+    return (
+        encoded.replace("&", "\\u0026")
+        .replace("<", "\\u003c")
+        .replace(">", "\\u003e")
+        .replace("\u2028", "\\u2028")
+        .replace("\u2029", "\\u2029")
+        .encode("utf-8", errors="strict")
+    )
+
+
+def _canonical_manifest_expiry(value: Any) -> tuple[str, datetime]:
+    if not isinstance(value, str):
+        _fail()
+    match = _MANIFEST_EXPIRY.fullmatch(value)
+    if match is None:
+        _fail()
+    fraction = match.group("fraction") or ""
+    microseconds = int((fraction[:6]).ljust(6, "0")) if fraction else 0
+    try:
+        expiry = datetime.strptime(match.group("second"), "%Y-%m-%dT%H:%M:%S").replace(
+            microsecond=microseconds,
+            tzinfo=timezone.utc,
+        )
+    except ValueError as exc:
+        raise HomeSandboxError("invalid synthetic state manifest") from exc
+    canonical_fraction = fraction.rstrip("0")
+    canonical = match.group("second")
+    if canonical_fraction:
+        canonical += "." + canonical_fraction
+    return canonical + "Z", expiry
+
+
+def _read_public_key(path: Path) -> bytes:
+    try:
+        encoded = path.read_bytes()
+        if len(encoded) == 32:
+            return encoded
+        decoded = bytes.fromhex(encoded.decode("ascii").strip())
+    except (OSError, UnicodeError, ValueError) as exc:
+        raise HomeSandboxError("invalid synthetic state public key") from exc
+    if len(decoded) != 32:
+        _fail()
+    return decoded
+
+
+def _verify_state_manifest(
+    manifest_path: Path,
+    public_key_path: Path,
+    expected_source_root: Path,
+    state_path: Path,
+    state_relative: str,
+) -> dict[str, Any]:
+    try:
+        document = json.loads(
+            manifest_path.read_text(encoding="utf-8"),
+            object_pairs_hook=_object_pairs,
+            parse_constant=_reject_constant,
+        )
+    except (OSError, UnicodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
+        raise HomeSandboxError("invalid synthetic state manifest") from exc
+    if not isinstance(document, dict) or set(document) != {
+        "version",
+        "role",
+        "audience",
+        "source_root",
+        "files",
+        "nonce",
+        "expires_at",
+        "signature",
+    }:
+        _fail()
+    files = document.get("files")
+    if (
+        type(document.get("version")) is not int
+        or document["version"] != 1
+        or document.get("role") != "operator"
+        or document.get("audience") != "hub"
+        or not isinstance(document.get("nonce"), str)
+        or not document["nonce"].strip()
+        or "\x00" in document["nonce"]
+        or not isinstance(document.get("source_root"), str)
+        or Path(document["source_root"]) != expected_source_root
+        or document["source_root"] != str(expected_source_root)
+        or not isinstance(files, list)
+        or len(files) != 1
+    ):
+        _fail()
+    row = files[0]
+    state_digest = _digest_file(state_path).removeprefix("sha256:")
+    state_size = os.lstat(state_path).st_size
+    if (
+        not isinstance(row, dict)
+        or set(row) != {"path", "size", "sha256"}
+        or row.get("path") != state_relative
+        or type(row.get("size")) is not int
+        or row.get("size") != state_size
+        or row.get("sha256") != state_digest
+    ):
+        _fail()
+    canonical_expiry, expiry = _canonical_manifest_expiry(document.get("expires_at"))
+    now = datetime.now(timezone.utc)
+    if expiry <= now or expiry - now > _MANIFEST_MAX_TTL:
+        _fail()
+    signature_text = document.get("signature")
+    if not isinstance(signature_text, str) or len(signature_text) != 88 or not signature_text.endswith("=="):
+        _fail()
+    try:
+        signature = base64.b64decode(signature_text, validate=True)
+    except ValueError as exc:
+        raise HomeSandboxError("invalid synthetic state manifest") from exc
+    if len(signature) != 64 or base64.b64encode(signature).decode("ascii") != signature_text:
+        _fail()
+    signing_document = {
+        "version": document["version"],
+        "role": document["role"],
+        "audience": document["audience"],
+        "source_root": document["source_root"],
+        "files": [
+            {
+                "path": row["path"],
+                "size": row["size"],
+                "sha256": row["sha256"],
+            }
+        ],
+        "nonce": document["nonce"],
+        "expires_at": canonical_expiry,
+    }
+    public_key = _read_public_key(public_key_path)
+    trust = _candidate_trust_module()
+    if not trust.verify_bytes(_go_json_bytes(signing_document), signature, public_key):
+        _fail()
+    return signing_document
 
 
 def _validate_synthetic_state_root(
@@ -175,34 +360,34 @@ def _validate_synthetic_state_root(
 ) -> None:
     if any(not _is_within(path, state_root) for path in (state_file, state_manifest, state_public_key)):
         _fail()
-    try:
-        document = json.loads(
-            state_manifest.read_text(encoding="utf-8"),
-            object_pairs_hook=_object_pairs,
-            parse_constant=_reject_constant,
-        )
-    except (OSError, UnicodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
-        raise HomeSandboxError("invalid synthetic state manifest") from exc
-    if not isinstance(document, dict):
+    if (
+        state_manifest.parent != state_root
+        or state_manifest.name != "state-manifest.json"
+        or state_public_key.parent != state_root
+        or state_public_key.name != "state-public-key"
+    ):
         _fail()
-    source_root = document.get("source_root")
-    files = document.get("files")
-    if not isinstance(source_root, str) or Path(source_root) != state_root or not isinstance(files, list):
+    state_relative = _strict_relative(state_file, state_root).as_posix()
+    manifest_files = {
+        row["path"]
+        for row in _directory_snapshot(state_root)
+        if row["kind"] == "file"
+        and row["path"] not in {"state-manifest.json", "state-public-key"}
+    }
+    if manifest_files != {state_relative}:
         _fail()
-    state_relative = state_file.relative_to(state_root).as_posix()
-    matches = sum(
-        isinstance(row, dict) and row.get("path") == state_relative
-        for row in files
+    _verify_state_manifest(
+        state_manifest,
+        state_public_key,
+        state_root,
+        state_file,
+        state_relative,
     )
-    if matches != 1:
-        _fail()
 
 
 def _new_sandbox_path(value: Any) -> Path:
-    if not isinstance(value, str) or not value or "\x00" in value:
-        _fail()
-    path = Path(value)
-    if not path.is_absolute() or path.exists() or path.is_symlink():
+    path = _absolute_path(value)
+    if path.exists() or path.is_symlink():
         _fail()
     return path
 
@@ -219,11 +404,17 @@ def _validate_spec(spec: Mapping[str, Any]) -> None:
         _fail()
     candidate = _regular_path(spec.get("candidate_binary"))
     live_binary = _regular_path(spec.get("live_binary"))
+    sandbox = _new_sandbox_path(spec.get("sandbox_root"))
     state_root = _regular_directory(spec.get("synthetic_state_root"))
     state_file = _regular_path(spec.get("state_file"))
     state_manifest = _regular_path(spec.get("state_manifest"))
     state_public_key = _regular_path(spec.get("state_public_key"))
-    _validate_synthetic_state_root(state_root, state_file, state_manifest, state_public_key)
+    _validate_synthetic_state_root(
+        state_root,
+        state_file,
+        state_manifest,
+        state_public_key,
+    )
     input_roles = [
         candidate,
         live_binary,
@@ -242,7 +433,6 @@ def _validate_spec(spec: Mapping[str, Any]) -> None:
             _fail()
     if candidate == live_binary:
         _fail()
-    sandbox = _new_sandbox_path(spec.get("sandbox_root"))
     if _is_within(sandbox, state_root) or _is_within(state_root, sandbox):
         _fail()
     for source in inputs:
@@ -354,6 +544,95 @@ def _copy_regular(source: Path, destination: Path, mode: int = 0o600) -> None:
                 pass
 
 
+def _write_new_file(destination: Path, content: bytes, mode: int = 0o600) -> None:
+    descriptor: int | None = None
+    success = False
+    try:
+        descriptor = os.open(
+            destination,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0),
+            mode,
+        )
+        offset = 0
+        while offset < len(content):
+            written = os.write(descriptor, content[offset:])
+            if written <= 0:
+                raise OSError("short sandbox write")
+            offset += written
+        os.fsync(descriptor)
+        os.chmod(destination, mode)
+        success = True
+    except OSError as exc:
+        raise HomeSandboxError("sandbox write failed") from exc
+    finally:
+        if descriptor is not None:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+        if not success:
+            try:
+                destination.unlink()
+            except OSError:
+                pass
+
+
+def _create_staged_state_manifest(
+    source_manifest: Path,
+    source_public_key: Path,
+    source_root: Path,
+    staged_root: Path,
+    staged_state: Path,
+    staged_manifest: Path,
+    staged_public_key: Path,
+) -> None:
+    state_relative = staged_state.relative_to(staged_root).as_posix()
+    source_document = _verify_state_manifest(
+        source_manifest,
+        source_public_key,
+        source_root,
+        staged_state,
+        state_relative,
+    )
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+    source_expiry_text, source_expiry = _canonical_manifest_expiry(source_document["expires_at"])
+    local_expiry = now + timedelta(minutes=5)
+    staged_expiry = (
+        source_expiry_text
+        if source_expiry <= local_expiry
+        else local_expiry.isoformat().replace("+00:00", "Z")
+    )
+    signing_document = {
+        "version": source_document["version"],
+        "role": source_document["role"],
+        "audience": source_document["audience"],
+        "source_root": str(staged_root),
+        "files": [
+            {
+                "path": state_relative,
+                "size": os.lstat(staged_state).st_size,
+                "sha256": _digest_file(staged_state).removeprefix("sha256:"),
+            }
+        ],
+        "nonce": "home-sandbox-" + os.urandom(16).hex(),
+        "expires_at": staged_expiry,
+    }
+    trust = _candidate_trust_module()
+    private_key, public_key = trust.generate_keypair()
+    signature = trust.sign_bytes(_go_json_bytes(signing_document), private_key)
+    staged_document = dict(signing_document)
+    staged_document["signature"] = base64.b64encode(signature).decode("ascii")
+    _write_new_file(staged_manifest, _go_json_bytes(staged_document))
+    _write_new_file(staged_public_key, public_key)
+    _verify_state_manifest(
+        staged_manifest,
+        staged_public_key,
+        staged_root,
+        staged_state,
+        state_relative,
+    )
+
+
 def _clean_environment(sandbox: Path) -> dict[str, str]:
     home = sandbox / "home"
     temporary = sandbox / "tmp"
@@ -389,6 +668,34 @@ def _live_snapshot(paths: list[Path]) -> list[dict[str, Any]]:
     return [{"index": index, "digest": _digest_file(path)} for index, path in enumerate(paths)]
 
 
+def _directory_snapshot(root: Path) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+
+    def visit(directory: Path) -> None:
+        details = os.lstat(directory)
+        if stat.S_ISLNK(details.st_mode) or _is_reparse(details) or not stat.S_ISDIR(details.st_mode):
+            _fail("synthetic state root changed")
+        for entry in sorted(directory.iterdir(), key=lambda path: path.name):
+            entry_details = os.lstat(entry)
+            if stat.S_ISLNK(entry_details.st_mode) or _is_reparse(entry_details):
+                _fail("unsafe synthetic state input")
+            relative = entry.relative_to(root).as_posix()
+            if stat.S_ISDIR(entry_details.st_mode):
+                rows.append({"kind": "directory", "path": relative})
+                visit(entry)
+            elif stat.S_ISREG(entry_details.st_mode):
+                rows.append({"kind": "file", "path": relative, "digest": _digest_file(entry)})
+            else:
+                _fail("unsafe synthetic state input")
+
+    visit(root)
+    return rows
+
+
+def _snapshot_digest(snapshot: list[dict[str, str]]) -> str:
+    return "sha256:" + hashlib.sha256(canonical_json_bytes(snapshot)).hexdigest()
+
+
 def _version_matches(result: CommandResult, expected: str) -> bool:
     try:
         text = result.stdout.decode("utf-8", errors="strict")
@@ -408,6 +715,9 @@ def run_sandbox(spec: Mapping[str, Any], runner: CommandRunner | None = None) ->
     if _digest_file(candidate) != expected_candidate_digest:
         _fail("candidate digest mismatch")
     live_before = _live_snapshot(live_paths)
+    state_root = Path(spec["synthetic_state_root"])
+    synthetic_state_before = _directory_snapshot(state_root)
+    synthetic_state_digest_before = _snapshot_digest(synthetic_state_before)
     sandbox = Path(spec["sandbox_root"])
     result: dict[str, Any] | None = None
     original_error: Exception | None = None
@@ -420,10 +730,19 @@ def run_sandbox(spec: Mapping[str, Any], runner: CommandRunner | None = None) ->
         staged_config = sandbox / "synthetic.skret.yaml"
         staged_values = sandbox / "synthetic-values.yaml"
         staged_sentinel = sandbox / ("sentinel-check" + Path(spec["sentinel_program"]).suffix)
-        staged_state = sandbox / "state.v1.json"
-        staged_manifest = sandbox / "state-manifest.json"
-        staged_public_key = sandbox / "state-public-key"
-        staged_journal = sandbox / "migration.journal.json"
+        staged_state_root = sandbox / _STAGED_STATE_DIRECTORY
+        staged_state_root.mkdir(mode=0o700)
+        state_relative = _strict_relative(Path(spec["state_file"]), state_root)
+        staged_state = staged_state_root / state_relative
+        if not _is_within(staged_state, staged_state_root):
+            _fail("staged state escaped sandbox")
+        staged_manifest = staged_state_root / "state-manifest.json"
+        staged_public_key = staged_state_root / "state-public-key"
+        staged_journal = staged_state_root / "migration.journal.json"
+        staged_source_root = sandbox / "source-state-inputs"
+        staged_source_root.mkdir(mode=0o700)
+        staged_source_manifest = staged_source_root / "state-manifest.json"
+        staged_source_public_key = staged_source_root / "state-public-key"
 
         for source, destination, mode in (
             (candidate, staged_candidate, 0o700),
@@ -432,10 +751,19 @@ def run_sandbox(spec: Mapping[str, Any], runner: CommandRunner | None = None) ->
             (Path(spec["synthetic_values"]), staged_values, 0o600),
             (Path(spec["sentinel_program"]), staged_sentinel, 0o700),
             (Path(spec["state_file"]), staged_state, 0o600),
-            (Path(spec["state_manifest"]), staged_manifest, 0o600),
-            (Path(spec["state_public_key"]), staged_public_key, 0o600),
+            (Path(spec["state_manifest"]), staged_source_manifest, 0o600),
+            (Path(spec["state_public_key"]), staged_source_public_key, 0o600),
         ):
             _copy_regular(source, destination, mode)
+        _create_staged_state_manifest(
+            staged_source_manifest,
+            staged_source_public_key,
+            state_root,
+            staged_state_root,
+            staged_state,
+            staged_manifest,
+            staged_public_key,
+        )
         if _digest_file(staged_candidate) != expected_candidate_digest:
             _fail("candidate staging mismatch")
 
@@ -472,21 +800,20 @@ def run_sandbox(spec: Mapping[str, Any], runner: CommandRunner | None = None) ->
             environment,
             sandbox,
         )
-        # sync-state migrate verifies --state against manifest.SourceRoot; the
-        # synthetic state therefore migrates in place at its signed root instead
-        # of a sandbox copy (the synthetic root is value-free executor-owned).
+        # The external signed manifest authorizes the copied source bytes. A
+        # short-lived sandbox-only manifest binds both migrations to staged paths.
         migration = [
             str(staged_candidate),
             "sync-state",
             "migrate",
             "--state-manifest",
-            str(Path(spec["state_manifest"])),
+            str(staged_manifest),
             "--journal",
             str(staged_journal),
             "--state",
-            str(Path(spec["state_file"])),
+            str(staged_state),
             "--public-key",
-            str(Path(spec["state_public_key"])),
+            str(staged_public_key),
             "--role",
             "operator",
             "--audience",
@@ -519,6 +846,10 @@ def run_sandbox(spec: Mapping[str, Any], runner: CommandRunner | None = None) ->
         live_after = _live_snapshot(live_paths)
         if live_after != live_before:
             raise HomeSandboxError("live Home state changed")
+        synthetic_state_after = _directory_snapshot(state_root)
+        if synthetic_state_after != synthetic_state_before:
+            raise HomeSandboxError("external synthetic state changed")
+        synthetic_state_digest_after = _snapshot_digest(synthetic_state_after)
         result = {
             "schema": SCHEMA,
             "status": "passed",
@@ -527,6 +858,8 @@ def run_sandbox(spec: Mapping[str, Any], runner: CommandRunner | None = None) ->
             "rollback_digest": rollback_digest,
             "live_before": live_before,
             "live_after": live_after,
+            "synthetic_state_before": synthetic_state_digest_before,
+            "synthetic_state_after": synthetic_state_digest_after,
             "checks": [
                 "candidate-version",
                 "names-only-list",
@@ -546,6 +879,12 @@ def run_sandbox(spec: Mapping[str, Any], runner: CommandRunner | None = None) ->
                 original_error = HomeSandboxError("live Home state changed")
         except Exception as exc:
             original_error = HomeSandboxError("live Home verification failed")
+            original_error.__cause__ = exc
+        try:
+            if _directory_snapshot(state_root) != synthetic_state_before:
+                original_error = HomeSandboxError("external synthetic state changed")
+        except Exception as exc:
+            original_error = HomeSandboxError("external synthetic state verification failed")
             original_error.__cause__ = exc
         try:
             if sandbox.exists() or sandbox.is_symlink():
