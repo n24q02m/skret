@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -73,7 +74,9 @@ func (f *InfisicalBrowserFlow) Login(ctx context.Context, _ map[string]string) (
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			query := r.URL.Query()
 			gotState := query.Get("state")
-			if gotState == "" || gotState != state {
+			gotStateHash := sha256.Sum256([]byte(gotState))
+			stateHash := sha256.Sum256([]byte(state))
+			if gotState == "" || subtle.ConstantTimeCompare(gotStateHash[:], stateHash[:]) != 1 {
 				http.Error(w, "invalid state", http.StatusBadRequest)
 				errCh <- fmt.Errorf("infisical browser: callback missing or invalid state")
 				return
