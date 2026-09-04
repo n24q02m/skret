@@ -9,6 +9,7 @@ import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from unittest import mock
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -219,6 +220,27 @@ class HomeSandboxTests(unittest.TestCase):
         after = {path.name: digest(path) for path in external_paths}
         self.assertEqual(after, before)
         self.assertEqual(result["synthetic_state_before"], result["synthetic_state_after"])
+        self.assertFalse(Path(self.spec["sandbox_root"]).exists())
+
+    def test_manifest_recheck_rejects_extra_file_before_candidate_execution(self) -> None:
+        added = self.state_root / "unmanifested.json"
+        original_copy = home._copy_regular
+        injected = False
+
+        def copy_with_injection(source: Path, destination: Path, mode: int = 0o600) -> None:
+            nonlocal injected
+            original_copy(source, destination, mode)
+            if not injected and source == self.state:
+                added.write_bytes(b'{"schema_version":1,"unmanifested":true}')
+                injected = True
+
+        runner = FakeRunner()
+        with mock.patch.object(home, "_copy_regular", side_effect=copy_with_injection):
+            with self.assertRaises(home.HomeSandboxError):
+                home.run_sandbox(self.spec, runner)
+
+        self.assertTrue(injected)
+        self.assertEqual(runner.calls, [])
         self.assertFalse(Path(self.spec["sandbox_root"]).exists())
 
     def test_staged_manifest_never_outlives_source_authority(self) -> None:

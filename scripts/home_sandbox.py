@@ -142,8 +142,6 @@ def _is_reparse(details: os.stat_result) -> bool:
 def _absolute_path(value: Any) -> Path:
     if not isinstance(value, str) or not value or "\x00" in value:
         _fail()
-    if any(component in {".", ".."} for component in re.split(r"[\\/]", value)):
-        _fail()
     path = Path(value)
     if not path.is_absolute():
         _fail()
@@ -349,6 +347,26 @@ def _verify_state_manifest(
     trust = _candidate_trust_module()
     if not trust.verify_bytes(_go_json_bytes(signing_document), signature, public_key):
         _fail()
+    actual_files = {
+        entry["path"]: entry
+        for entry in _directory_snapshot(expected_source_root)
+        if entry["kind"] == "file"
+        and entry["path"] not in {"state-manifest.json", "state-public-key"}
+    }
+    if set(actual_files) != {state_relative}:
+        _fail()
+    source_state = expected_source_root.joinpath(*state_relative.split("/"))
+    if not _is_within(source_state, expected_source_root):
+        _fail()
+    try:
+        source_size = os.lstat(source_state).st_size
+    except OSError as exc:
+        raise HomeSandboxError("synthetic state changed during verification") from exc
+    if (
+        source_size != row["size"]
+        or actual_files[state_relative]["digest"] != "sha256:" + row["sha256"]
+    ):
+        _fail()
     return signing_document
 
 
@@ -368,14 +386,6 @@ def _validate_synthetic_state_root(
     ):
         _fail()
     state_relative = _strict_relative(state_file, state_root).as_posix()
-    manifest_files = {
-        row["path"]
-        for row in _directory_snapshot(state_root)
-        if row["kind"] == "file"
-        and row["path"] not in {"state-manifest.json", "state-public-key"}
-    }
-    if manifest_files != {state_relative}:
-        _fail()
     _verify_state_manifest(
         state_manifest,
         state_public_key,
