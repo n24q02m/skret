@@ -2,11 +2,12 @@ import { describe, expect, it } from "vitest";
 import { PRIVATE_EXECUTOR_CALLER_CONTEXT_HEADER, PRIVATE_EXECUTOR_PATH } from "../src/private-executor-handler";
 import {
   MAX_METADATA_MIGRATION_BODY_BYTES,
+  METADATA_MIGRATION_EXECUTOR_ROLE,
   handleSecurityExecutorRequest,
   type SecurityExecutorEnv,
 } from "../src/security-executor";
 const NOW = Math.floor(Date.now() / 1_000) * 1_000;
-const ROLE = "operator";
+const ROLE = METADATA_MIGRATION_EXECUTOR_ROLE;
 const AUDIENCE = "skret-security-executor";
 const ROOT = "C:\\skret\\state";
 const STATE_PATH = "C:\\skret\\state\\state.json";
@@ -156,8 +157,14 @@ function operationNamespace() {
 function envFor(fixture: ManifestFixture, envelopePublicKey: Uint8Array, overrides: Partial<SecurityExecutorEnv> = {}): SecurityExecutorEnv {
   return {
     EXECUTOR_EXPECTED_AUDIENCE: AUDIENCE,
-    EXECUTOR_EXPECTED_ROLE: ROLE,
-    EXECUTOR_PUBLIC_KEY: toBase64(envelopePublicKey),
+    EXECUTOR_CLIENT_PUBLIC_KEYS: JSON.stringify({
+      [ROLE]: {
+        public_key: toBase64(envelopePublicKey),
+        generation: 1,
+        not_after: new Date(NOW + 24 * 60 * 60 * 1000).toISOString(),
+        capability_digest: fixture.digest,
+      },
+    }),
     EXECUTOR_STATE_MANIFEST_PUBLIC_KEY: toBase64(fixture.publicKey),
     EXECUTOR_RESPONSE_KEY: toBase64(RESPONSE_KEY),
     EXECUTOR_REPLAY: namespace() as unknown as SecurityExecutorEnv["EXECUTOR_REPLAY"],

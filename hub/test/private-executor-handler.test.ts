@@ -8,6 +8,8 @@ import {
   PRIVATE_EXECUTOR_PATH,
   type PrivateExecutorHandlerOptions,
   type PrivateExecutorReplayStore,
+  type PrivateExecutorRoleAuthority,
+  type PrivateExecutorRoleAuthorityBinding,
 } from "../src/private-executor-handler";
 
 
@@ -19,6 +21,7 @@ const NONCE = "nonce-handler-123";
 const MANIFEST_DIGEST = `sha256:${"a".repeat(64)}`;
 const BODY = new TextEncoder().encode('{"operation":"sync"}');
 const CALLER_CONTEXT = `sha256:${"b".repeat(64)}`;
+const AUTHORITY_NOT_AFTER = NOW + 24 * 60 * 60 * 1000;
 
 function toBase64(bytes: Uint8Array): string {
   let binary = "";
@@ -119,6 +122,21 @@ function storeThat(records: string[] = []): PrivateExecutorReplayStore {
   };
 }
 
+function authority(
+  role: string,
+  publicKey: Uint8Array,
+  overrides: Partial<PrivateExecutorRoleAuthorityBinding> = {},
+): PrivateExecutorRoleAuthorityBinding {
+  return {
+    role,
+    publicKey,
+    generation: 1,
+    notAfter: AUTHORITY_NOT_AFTER,
+    capabilityDigest: MANIFEST_DIGEST,
+    ...overrides,
+  };
+}
+
 async function options(
   publicKey: Uint8Array,
   replayStore: PrivateExecutorReplayStore = storeThat(),
@@ -126,8 +144,7 @@ async function options(
 ): Promise<PrivateExecutorHandlerOptions> {
   return {
     expectedAudience: AUDIENCE,
-    expectedRoles: [ROLE],
-    publicKey,
+    roleAuthorities: [authority(ROLE, publicKey)],
     replayStore,
     execute,
     now: NOW,
@@ -141,10 +158,21 @@ describe("private executor envelope handler", () => {
     const order: string[] = [];
     const result = new Uint8Array([1, 2, 3]);
     const replayStore = storeThat(order);
-    const execute = vi.fn(async (body: Uint8Array, received: ExecutorEnvelope) => {
+    const execute = vi.fn(async (
+      body: Uint8Array,
+      received: ExecutorEnvelope,
+      receivedAuthority: PrivateExecutorRoleAuthority,
+    ) => {
       order.push("execute");
       expect(body).toEqual(BODY);
       expect(received).toEqual(envelope);
+      expect(receivedAuthority).toEqual({
+        role: ROLE,
+        generation: 1,
+        notAfter: AUTHORITY_NOT_AFTER,
+        capabilityDigest: MANIFEST_DIGEST,
+      });
+      expect(Object.isFrozen(receivedAuthority)).toBe(true);
       return result;
     });
 
@@ -222,17 +250,93 @@ describe("private executor envelope handler", () => {
     expect(execute).not.toHaveBeenCalled();
   });
 
-  it("accepts a signed envelope for any explicitly configured role", async () => {
-    const { privateKey, publicKey } = await keyPair();
-    const envelope = await makeEnvelope(privateKey, { role: "provider-sync" });
+  it("accepts a signed envelope with the distinct key configured for its role", async () => {
+    const operator = await keyPair();
+    const provider = await keyPair();
+    const envelope = await makeEnvelope(provider.privateKey, { role: "provider-sync" });
     const execute = vi.fn(async () => new Uint8Array([7]));
-    const base = await options(publicKey, storeThat(), execute);
+    const base = await options(operator.publicKey, storeThat(), execute);
     const response = await handlePrivateExecutorEnvelope(
       request(JSON.stringify(envelope)),
-      { ...base, expectedRoles: [ROLE, "provider-sync"] },
+      {
+        ...base,
+        roleAuthorities: [
+          authority(ROLE, operator.publicKey),
+          authority("provider-sync", provider.publicKey),
+        ],
+      },
     );
     expect(response.status).toBe(200);
     expect(execute).toHaveBeenCalledOnce();
+  });
+
+  it("rejects a signature from another configured role before replay consumption or execution", async () => {
+    const operator = await keyPair();
+    const provider = await keyPair();
+    const envelope = await makeEnvelope(operator.privateKey, { role: "provider-sync" });
+    const consume = vi.fn();
+    const execute = vi.fn();
+    const base = await options(operator.publicKey, { consume }, execute);
+
+    const response = await handlePrivateExecutorEnvelope(
+      request(JSON.stringify(envelope)),
+      {
+        ...base,
+        roleAuthorities: [
+          authority(ROLE, operator.publicKey),
+          authority("provider-sync", provider.publicKey),
+        ],
+      },
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.text()).toBe("");
+    expect(consume).not.toHaveBeenCalled();
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it("rejects an expired role authority independently of envelope expiry before replay or execution", async () => {
+    const { privateKey, publicKey } = await keyPair();
+    const envelope = await makeEnvelope(privateKey);
+    const consume = vi.fn();
+    const execute = vi.fn();
+    const base = await options(publicKey, { consume }, execute);
+
+    const response = await handlePrivateExecutorEnvelope(
+      request(JSON.stringify(envelope)),
+      {
+        ...base,
+        roleAuthorities: [authority(ROLE, publicKey, { notAfter: NOW })],
+      },
+    );
+
+    expect(response.status).toBe(403);
+    expect(await response.text()).toBe("");
+    expect(consume).not.toHaveBeenCalled();
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it("rejects a capability digest mismatch before replay consumption or execution", async () => {
+    const { privateKey, publicKey } = await keyPair();
+    const envelope = await makeEnvelope(privateKey);
+    const consume = vi.fn();
+    const execute = vi.fn();
+    const base = await options(publicKey, { consume }, execute);
+
+    const response = await handlePrivateExecutorEnvelope(
+      request(JSON.stringify(envelope)),
+      {
+        ...base,
+        roleAuthorities: [
+          authority(ROLE, publicKey, { capabilityDigest: `sha256:${"c".repeat(64)}` }),
+        ],
+      },
+    );
+
+    expect(response.status).toBe(403);
+    expect(await response.text()).toBe("");
+    expect(consume).not.toHaveBeenCalled();
+    expect(execute).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -288,15 +392,26 @@ describe("private executor envelope handler", () => {
     expect(execute).not.toHaveBeenCalled();
   });
 
-  it("rejects missing or invalid dependencies with a generic no-body response", async () => {
+  it("rejects malformed, duplicate, empty, and oversized role-key dependencies", async () => {
     const { privateKey, publicKey } = await keyPair();
+    const { publicKey: otherPublicKey } = await keyPair();
     const envelope = await makeEnvelope(privateKey);
+    const tooManyRoleAuthorities = Array.from({ length: 17 }, (_, index) =>
+      authority(`role-${index}`, new Uint8Array(32).fill(index)),
+    );
     const incomplete = [
-      { expectedAudience: AUDIENCE, expectedRoles: [ROLE], publicKey: new Uint8Array(31), replayStore: storeThat(), execute: vi.fn() },
-      { expectedAudience: AUDIENCE, expectedRoles: [ROLE], publicKey, replayStore: undefined, execute: vi.fn() },
-      { expectedAudience: AUDIENCE, expectedRoles: [ROLE], publicKey, replayStore: storeThat(), execute: undefined },
-      { expectedAudience: AUDIENCE, expectedRoles: [], publicKey, replayStore: storeThat(), execute: vi.fn() },
-      { expectedAudience: AUDIENCE, expectedRoles: [ROLE, ROLE], publicKey, replayStore: storeThat(), execute: vi.fn() },
+      { expectedAudience: AUDIENCE, roleAuthorities: [authority(ROLE, new Uint8Array(31))], replayStore: storeThat(), execute: vi.fn() },
+      { expectedAudience: AUDIENCE, roleAuthorities: [authority(ROLE, publicKey)], replayStore: undefined, execute: vi.fn() },
+      { expectedAudience: AUDIENCE, roleAuthorities: [authority(ROLE, publicKey)], replayStore: storeThat(), execute: undefined },
+      { expectedAudience: AUDIENCE, roleAuthorities: [], replayStore: storeThat(), execute: vi.fn() },
+      { expectedAudience: AUDIENCE, roleAuthorities: tooManyRoleAuthorities, replayStore: storeThat(), execute: vi.fn() },
+      { expectedAudience: AUDIENCE, roleAuthorities: [authority(ROLE, publicKey), authority(ROLE, otherPublicKey)], replayStore: storeThat(), execute: vi.fn() },
+      { expectedAudience: AUDIENCE, roleAuthorities: [authority(ROLE, publicKey), authority("provider-sync", publicKey.slice())], replayStore: storeThat(), execute: vi.fn() },
+      { expectedAudience: AUDIENCE, roleAuthorities: [authority("bad\u0000role", publicKey)], replayStore: storeThat(), execute: vi.fn() },
+      { expectedAudience: AUDIENCE, roleAuthorities: [authority(ROLE, publicKey, { generation: 0 })], replayStore: storeThat(), execute: vi.fn() },
+      { expectedAudience: AUDIENCE, roleAuthorities: [authority(ROLE, publicKey, { notAfter: Number.NaN })], replayStore: storeThat(), execute: vi.fn() },
+      { expectedAudience: AUDIENCE, roleAuthorities: [authority(ROLE, publicKey, { capabilityDigest: "bad" })], replayStore: storeThat(), execute: vi.fn() },
+      { expectedAudience: AUDIENCE, roleAuthorities: [{ ...authority(ROLE, publicKey), extra: true }], replayStore: storeThat(), execute: vi.fn() },
     ];
 
     for (const candidate of incomplete) {

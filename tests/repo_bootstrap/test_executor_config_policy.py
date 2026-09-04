@@ -103,15 +103,16 @@ class ExecutorConfigPolicyTests(unittest.TestCase):
             config["vars"],
             {
                 "EXECUTOR_EXPECTED_AUDIENCE": "skret-security-executor",
-                "EXECUTOR_EXPECTED_ROLE": "operator",
+                "EXECUTOR_CLIENT_PUBLIC_KEYS": "<executor-client-public-keys-json>",
                 "EXECUTOR_IMAGE_DIGEST": "<executor-image-digest>",
                 "EXECUTOR_CONFIG_DIGEST": "<executor-config-digest>",
             },
         )
-        self.assertNotIn("EXECUTOR_PUBLIC_KEY", config)
-        self.assertNotIn("EXECUTOR_STATE_MANIFEST_PUBLIC_KEY", config)
-        self.assertNotIn("EXECUTOR_RESPONSE_KEY", config)
-        self.assertNotIn("EXECUTOR_PROVIDER_CONTROL_PUBLIC_KEY", config)
+        self.assertNotIn("EXECUTOR_EXPECTED_ROLE", config["vars"])
+        self.assertNotIn("EXECUTOR_PUBLIC_KEY", config["vars"])
+        self.assertNotIn("EXECUTOR_STATE_MANIFEST_PUBLIC_KEY", config["vars"])
+        self.assertNotIn("EXECUTOR_RESPONSE_KEY", config["vars"])
+        self.assertNotIn("EXECUTOR_PROVIDER_CONTROL_PUBLIC_KEY", config["vars"])
 
 
 if __name__ == "__main__":

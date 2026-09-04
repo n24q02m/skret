@@ -18,6 +18,7 @@ import {
   type TargetWriteResult,
 } from "../src/executor-provider-clients";
 import type { ExecutorEnvelope } from "../src/executor-envelope-verifier";
+import type { PrivateExecutorRoleAuthority } from "../src/private-executor-handler";
 import {
   DurableProviderOperationStore,
   type ProviderOperationStorage,
@@ -31,6 +32,8 @@ import {
   buildProviderPrivateExecutorOptions,
   executeProviderDispatchBody,
   executeProviderVerificationBody,
+  providerAuthorityIdentity,
+  type ProviderAuthorityBinding,
   type ProviderExecutorDependencies,
   type ProviderTargetClient,
 } from "../src/provider-executor";
@@ -40,6 +43,8 @@ const VALUE = new TextEncoder().encode("synthetic-provider-value");
 const VALUE_DIGEST = "sha256:1604a44f3c506bae9ec71fa3ae12f60affc9922a155a664f182d8309c4f26c75";
 const SOURCE_FINGERPRINT = `sha256:${"f".repeat(64)}`;
 const KMS_KEY = "arn:aws:kms:ap-southeast-1:123456789012:key/fixture";
+const AUTHORITY_GENERATION = 1;
+const AUTHORITY_NOT_AFTER = NOW + 24 * 60 * 60 * 1000;
 
 class MemoryStorage implements ProviderOperationStorage {
   private readonly values = new Map<string, unknown>();
@@ -172,6 +177,23 @@ async function fixture() {
     capability: "owner_risk_gate",
   });
   const targetSet = await canonicalTargetSet([target]);
+  const dispatchAuthority: PrivateExecutorRoleAuthority = {
+    role: PROVIDER_DISPATCH_ROLE,
+    generation: AUTHORITY_GENERATION,
+    notAfter: AUTHORITY_NOT_AFTER,
+    capabilityDigest: targetSet.digest,
+  };
+  const verificationAuthority: PrivateExecutorRoleAuthority = {
+    role: PROVIDER_VERIFICATION_ROLE,
+    generation: AUTHORITY_GENERATION,
+    notAfter: AUTHORITY_NOT_AFTER,
+    capabilityDigest: targetSet.digest,
+  };
+  const authorityBinding: ProviderAuthorityBinding = {
+    dispatchGeneration: dispatchAuthority.generation,
+    verificationGeneration: verificationAuthority.generation,
+    capabilityDigest: targetSet.digest,
+  };
   const dependencies: ProviderExecutorDependencies = {
     operations,
     lifecycle,
@@ -179,10 +201,27 @@ async function fixture() {
       identity.canonical === target.canonical ? targetClient : null,
     now: () => NOW,
   };
-  return { operations, generations, source, targetClient, target, targetSet, dependencies };
+  return {
+    operations,
+    generations,
+    source,
+    targetClient,
+    target,
+    targetSet,
+    dependencies,
+    dispatchAuthority,
+    verificationAuthority,
+    authorityBinding,
+  };
 }
 
-function dispatchBody(target: CanonicalTargetIdentity, targetDigest: string, sourceDigest = VALUE_DIGEST): Uint8Array {
+function dispatchBody(
+  target: CanonicalTargetIdentity,
+  targetDigest: string,
+  sourceDigest = VALUE_DIGEST,
+  dispatchAuthorityGeneration = AUTHORITY_GENERATION,
+  verificationAuthorityGeneration = AUTHORITY_GENERATION,
+): Uint8Array {
   return new TextEncoder().encode(JSON.stringify({
     schema: PROVIDER_DISPATCH_SCHEMA,
     operation: {
@@ -196,7 +235,10 @@ function dispatchBody(target: CanonicalTargetIdentity, targetDigest: string, sou
       current_generation_ref: null,
       intended_generation_ref: "generation-1",
       kms_envelope_ref: "provider-envelope:provider-op-1",
-      operator_identity: "fixture-operator",
+      operator_identity: providerAuthorityIdentity(
+        dispatchAuthorityGeneration,
+        verificationAuthorityGeneration,
+      ),
       capability: "owner_risk_gate",
       deadline_at: NOW + 60_000,
     },
@@ -227,6 +269,8 @@ describe("provider executor metadata wiring", () => {
     const response = await executeProviderDispatchBody(
       dispatchBody(context.target, context.targetSet.digest),
       context.dependencies,
+      context.dispatchAuthority,
+      context.authorityBinding,
     );
     expect(JSON.parse(new TextDecoder().decode(response))).toEqual({
       operation_id: "provider-op-1",
@@ -239,8 +283,41 @@ describe("provider executor metadata wiring", () => {
     const replay = await executeProviderDispatchBody(
       dispatchBody(context.target, context.targetSet.digest),
       context.dependencies,
+      context.dispatchAuthority,
+      context.authorityBinding,
     );
     expect(JSON.parse(new TextDecoder().decode(replay)).status).toBe("awaiting_verification");
+    expect(context.targetClient.values).toHaveLength(1);
+  });
+
+  it("fences a renewed authority generation from satisfying a prior durable operation", async () => {
+    const context = await fixture();
+    await executeProviderDispatchBody(
+      dispatchBody(context.target, context.targetSet.digest),
+      context.dependencies,
+      context.dispatchAuthority,
+      context.authorityBinding,
+    );
+
+    await expect(executeProviderDispatchBody(
+      dispatchBody(
+        context.target,
+        context.targetSet.digest,
+        VALUE_DIGEST,
+        AUTHORITY_GENERATION + 1,
+      ),
+      context.dependencies,
+      { ...context.dispatchAuthority, generation: AUTHORITY_GENERATION + 1 },
+      {
+        ...context.authorityBinding,
+        dispatchGeneration: AUTHORITY_GENERATION + 1,
+      },
+    )).rejects.toThrow("provider executor invalid request");
+
+    const operation = await context.operations.read("provider-op-1");
+    expect(operation?.operator_identity).toBe(
+      providerAuthorityIdentity(AUTHORITY_GENERATION, AUTHORITY_GENERATION),
+    );
     expect(context.targetClient.values).toHaveLength(1);
   });
 
@@ -250,6 +327,8 @@ describe("provider executor metadata wiring", () => {
     const response = await executeProviderDispatchBody(
       dispatchBody(context.target, context.targetSet.digest),
       context.dependencies,
+      context.dispatchAuthority,
+      context.authorityBinding,
     );
     expect(JSON.parse(new TextDecoder().decode(response)).status).toBe("needs_reconciliation");
     expect(context.targetClient.values).toHaveLength(1);
@@ -261,6 +340,8 @@ describe("provider executor metadata wiring", () => {
     const response = await executeProviderDispatchBody(
       dispatchBody(context.target, context.targetSet.digest),
       context.dependencies,
+      context.dispatchAuthority,
+      context.authorityBinding,
     );
     expect(JSON.parse(new TextDecoder().decode(response)).status).toBe("needs_reconciliation");
     expect(context.targetClient.values).toHaveLength(1);
@@ -271,6 +352,8 @@ describe("provider executor metadata wiring", () => {
     const response = await executeProviderDispatchBody(
       dispatchBody(context.target, context.targetSet.digest, `sha256:${"0".repeat(64)}`),
       context.dependencies,
+      context.dispatchAuthority,
+      context.authorityBinding,
     );
     expect(JSON.parse(new TextDecoder().decode(response)).status).toBe("needs_reconciliation");
     expect(context.targetClient.values).toHaveLength(0);
@@ -279,10 +362,17 @@ describe("provider executor metadata wiring", () => {
 
   it("verifies provider readback and cleans the retained source label", async () => {
     const context = await fixture();
-    await executeProviderDispatchBody(dispatchBody(context.target, context.targetSet.digest), context.dependencies);
+    await executeProviderDispatchBody(
+      dispatchBody(context.target, context.targetSet.digest),
+      context.dependencies,
+      context.dispatchAuthority,
+      context.authorityBinding,
+    );
     const response = await executeProviderVerificationBody(
       verificationBody(context.target),
       context.dependencies,
+      context.verificationAuthority,
+      context.authorityBinding,
     );
     expect(JSON.parse(new TextDecoder().decode(response))).toEqual({
       operation_id: "provider-op-1",
@@ -294,11 +384,18 @@ describe("provider executor metadata wiring", () => {
 
   it("rejects an acknowledgement for another target before verification mutation", async () => {
     const context = await fixture();
-    await executeProviderDispatchBody(dispatchBody(context.target, context.targetSet.digest), context.dependencies);
+    await executeProviderDispatchBody(
+      dispatchBody(context.target, context.targetSet.digest),
+      context.dependencies,
+      context.dispatchAuthority,
+      context.authorityBinding,
+    );
     await expect(
       executeProviderVerificationBody(
         verificationBody(context.target, `${context.target.canonical}|wrong`),
         context.dependencies,
+        context.verificationAuthority,
+        context.authorityBinding,
       ),
     ).rejects.toThrow("provider executor invalid request");
     const operation = await context.operations.read("provider-op-1");
@@ -306,49 +403,140 @@ describe("provider executor metadata wiring", () => {
     expect(context.generations.records.has("provider-op-1")).toBe(true);
   });
 
-  it("builds an explicit two-role private executor route without exposing provider values", async () => {
+  it("rejects mismatched verification authority metadata before verification mutation", async () => {
     const context = await fixture();
-    const options = buildProviderPrivateExecutorOptions({
+    await executeProviderDispatchBody(
+      dispatchBody(context.target, context.targetSet.digest),
+      context.dependencies,
+      context.dispatchAuthority,
+      context.authorityBinding,
+    );
+
+    await expect(executeProviderVerificationBody(
+      verificationBody(context.target),
+      context.dependencies,
+      { ...context.verificationAuthority, capabilityDigest: `sha256:${"8".repeat(64)}` },
+      context.authorityBinding,
+    )).rejects.toThrow("provider executor invalid request");
+    await expect(executeProviderVerificationBody(
+      verificationBody(context.target),
+      context.dependencies,
+      { ...context.verificationAuthority, generation: AUTHORITY_GENERATION + 1 },
+      context.authorityBinding,
+    )).rejects.toThrow("provider executor invalid request");
+
+    const operation = await context.operations.read("provider-op-1");
+    expect(operation?.status).toBe("awaiting_verification");
+    expect(context.generations.records.has("provider-op-1")).toBe(true);
+  });
+
+  it("builds an explicit two-role authority route with distinct keys and bound metadata", async () => {
+    const context = await fixture();
+    const dispatchPublicKey = new Uint8Array(32).fill(1);
+    const verificationPublicKey = new Uint8Array(32).fill(2);
+    const dispatchAuthority = {
+      publicKey: dispatchPublicKey,
+      generation: AUTHORITY_GENERATION,
+      notAfter: AUTHORITY_NOT_AFTER,
+      capabilityDigest: context.targetSet.digest,
+    };
+    const verificationAuthority = {
+      publicKey: verificationPublicKey,
+      generation: AUTHORITY_GENERATION + 1,
+      notAfter: AUTHORITY_NOT_AFTER,
+      capabilityDigest: context.targetSet.digest,
+    };
+    const input = {
       expectedAudience: "skret-security-executor",
-      publicKey: new Uint8Array(32),
+      dispatchAuthority,
+      verificationAuthority,
       replayStore: { async consume() {} },
       dependencies: context.dependencies,
       now: NOW,
-    });
-    expect(options?.expectedRoles).toEqual([PROVIDER_DISPATCH_ROLE, PROVIDER_VERIFICATION_ROLE]);
+    };
+    const options = buildProviderPrivateExecutorOptions(input);
+
+    expect(options?.roleAuthorities).toEqual([
+      { role: PROVIDER_DISPATCH_ROLE, ...dispatchAuthority },
+      { role: PROVIDER_VERIFICATION_ROLE, ...verificationAuthority },
+    ]);
     const dispatch = await options!.execute(
-      dispatchBody(context.target, context.targetSet.digest),
-      { role: PROVIDER_DISPATCH_ROLE } as ExecutorEnvelope,
+      dispatchBody(
+        context.target,
+        context.targetSet.digest,
+        VALUE_DIGEST,
+        AUTHORITY_GENERATION,
+        AUTHORITY_GENERATION + 1,
+      ),
+      { role: PROVIDER_DISPATCH_ROLE, manifest_digest: context.targetSet.digest } as ExecutorEnvelope,
+      context.dispatchAuthority,
     );
     expect(JSON.parse(new TextDecoder().decode(dispatch as Uint8Array)).status).toBe("awaiting_verification");
     const verified = await options!.execute(
       verificationBody(context.target),
-      { role: PROVIDER_VERIFICATION_ROLE } as ExecutorEnvelope,
+      { role: PROVIDER_VERIFICATION_ROLE, manifest_digest: context.targetSet.digest } as ExecutorEnvelope,
+      { ...context.verificationAuthority, generation: AUTHORITY_GENERATION + 1 },
     );
     expect(JSON.parse(new TextDecoder().decode(verified as Uint8Array)).status).toBe("succeeded");
     await expect(options!.execute(
       dispatchBody(context.target, context.targetSet.digest),
-      { role: "wrong-role" } as ExecutorEnvelope,
+      { role: "wrong-role", manifest_digest: context.targetSet.digest } as ExecutorEnvelope,
+      context.dispatchAuthority,
     )).rejects.toThrow("provider executor invalid request");
-    expect(buildProviderPrivateExecutorOptions({
-      expectedAudience: "skret-security-executor",
-      publicKey: new Uint8Array(31),
-      replayStore: { async consume() {} },
-      dependencies: context.dependencies,
-    })).toBeNull();
+
+    const invalidInputs = [
+      { ...input, dispatchAuthority: { ...dispatchAuthority, publicKey: new Uint8Array(31) } },
+      { ...input, verificationAuthority: { ...verificationAuthority, publicKey: dispatchPublicKey.slice() } },
+      { ...input, verificationAuthority: { ...verificationAuthority, generation: 0 } },
+      { ...input, verificationAuthority: { ...verificationAuthority, capabilityDigest: `sha256:${"9".repeat(64)}` } },
+    ];
+    for (const invalid of invalidInputs) {
+      expect(buildProviderPrivateExecutorOptions(invalid)).toBeNull();
+    }
   });
 
-  it("rejects noncanonical bodies and target digest substitution with zero provider calls", async () => {
+  it("rejects noncanonical bodies and target or authority digest substitution with zero provider calls", async () => {
     const context = await fixture();
     const canonical = new TextDecoder().decode(dispatchBody(context.target, context.targetSet.digest));
-    await expect(executeProviderDispatchBody(new TextEncoder().encode(` ${canonical}`), context.dependencies))
-      .rejects.toThrow("provider executor invalid request");
+    await expect(executeProviderDispatchBody(
+      new TextEncoder().encode(` ${canonical}`),
+      context.dependencies,
+      context.dispatchAuthority,
+      context.authorityBinding,
+    )).rejects.toThrow("provider executor invalid request");
     await expect(
       executeProviderDispatchBody(
         dispatchBody(context.target, `sha256:${"9".repeat(64)}`),
         context.dependencies,
+        context.dispatchAuthority,
+        context.authorityBinding,
       ),
     ).rejects.toThrow("provider executor invalid request");
+    await expect(
+      executeProviderDispatchBody(
+        dispatchBody(context.target, context.targetSet.digest),
+        context.dependencies,
+        { ...context.dispatchAuthority, capabilityDigest: `sha256:${"8".repeat(64)}` },
+        context.authorityBinding,
+      ),
+    ).rejects.toThrow("provider executor invalid request");
+    await expect(
+      executeProviderDispatchBody(
+        dispatchBody(context.target, context.targetSet.digest),
+        context.dependencies,
+        { ...context.dispatchAuthority, generation: AUTHORITY_GENERATION + 1 },
+        context.authorityBinding,
+      ),
+    ).rejects.toThrow("provider executor invalid request");
+    await expect(
+      executeProviderDispatchBody(
+        dispatchBody(context.target, context.targetSet.digest),
+        context.dependencies,
+        { ...context.dispatchAuthority, notAfter: NOW + 30_000 },
+        context.authorityBinding,
+      ),
+    ).rejects.toThrow("provider executor invalid request");
+    expect(await context.operations.read("provider-op-1")).toBeNull();
     expect(context.source.calls).toHaveLength(0);
     expect(context.targetClient.values).toHaveLength(0);
   });

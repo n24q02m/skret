@@ -10,9 +10,12 @@ import {
 import type { ExecutorEnvelope } from "./executor-envelope-verifier";
 import {
   handlePrivateExecutorEnvelope,
+  MAX_PRIVATE_EXECUTOR_ROLES,
   PRIVATE_EXECUTOR_PATH,
   type PrivateExecutorHandlerOptions,
   type PrivateExecutorReplayStore,
+  type PrivateExecutorRoleAuthority,
+  type PrivateExecutorRoleAuthorityBinding,
 } from "./private-executor-handler";
 
 import {
@@ -30,6 +33,9 @@ export const MAX_METADATA_MIGRATION_BODY_BYTES = 256 * 1024;
 export const MAX_METADATA_MIGRATION_SOURCE_SIZE = 2 ** 40;
 export const MAX_STATE_MANIFEST_BYTES = 256 * 1024;
 export const METADATA_ACK_AAD_PREFIX = "skret/security-executor/metadata-ack/v1";
+export const MAX_EXECUTOR_CLIENT_PUBLIC_KEYS_JSON_LENGTH = 32 * 1024;
+export const MAX_EXECUTOR_CLIENT_AUTHORITY_HORIZON_MS = 7 * 24 * 60 * 60 * 1000;
+export const METADATA_MIGRATION_EXECUTOR_ROLE = "migration-client";
 
 const ED25519_PUBLIC_KEY_BYTES = 32;
 const AES_GCM_KEY_BYTES = 32;
@@ -44,6 +50,12 @@ const STANDARD_BASE64_PATTERN = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-
 const CONFIG_HEX_PATTERN = /^[0-9a-fA-F]+$/u;
 const CONTROL_CHARACTER_PATTERN = /[\u0000-\u001f\u007f]/u;
 const WINDOWS_CANONICAL_ABSOLUTE_PATH_PATTERN = /^[A-Za-z]:\\(?:[^\\/]+(?:\\[^\\/]+)*)?$/u;
+const EXECUTOR_CLIENT_AUTHORITY_FIELDS = [
+  "public_key",
+  "generation",
+  "not_after",
+  "capability_digest",
+] as const;
 const UNC_CANONICAL_ABSOLUTE_PATH_PATTERN = /^\\\\[^\\/]+\\[^\\/]+(?:\\[^\\/]+)*$/u;
 const POSIX_CANONICAL_ABSOLUTE_PATH_PATTERN = /^\/(?:[^/]+(?:\/[^/]+)*)?$/u;
 const SECURITY_HEADERS: Record<string, string> = {
@@ -72,8 +84,7 @@ export interface SecurityExecutorEnv {
   readonly EXECUTOR_REPLAY?: DurableObjectNamespace<SecurityExecutorReplay>;
   readonly EXECUTOR_OPERATIONS?: DurableObjectNamespace<SecurityExecutorOperations>;
   readonly EXECUTOR_EXPECTED_AUDIENCE?: string;
-  readonly EXECUTOR_EXPECTED_ROLE?: string;
-  readonly EXECUTOR_PUBLIC_KEY?: string;
+  readonly EXECUTOR_CLIENT_PUBLIC_KEYS?: string;
   readonly EXECUTOR_STATE_MANIFEST_PUBLIC_KEY?: string;
   readonly EXECUTOR_RESPONSE_KEY?: string;
   readonly EXECUTOR_PROVIDER_CONTROL_PUBLIC_KEY?: string;
@@ -163,11 +174,24 @@ export function createReplayStoreAdapter(
  */
 export async function buildSecurityExecutorOptions(
   env: SecurityExecutorEnv,
+  now = Date.now(),
 ): Promise<PrivateExecutorHandlerOptions | null> {
-  if (!env || typeof env !== "object") return null;
+  if (
+    !env ||
+    typeof env !== "object" ||
+    !Number.isSafeInteger(now) ||
+    now < 0
+  ) {
+    return null;
+  }
   const expectedAudience = readConfigText(env.EXECUTOR_EXPECTED_AUDIENCE);
-  const expectedRole = readConfigText(env.EXECUTOR_EXPECTED_ROLE);
-  const publicKey = decodeConfiguredBytes(env.EXECUTOR_PUBLIC_KEY, ED25519_PUBLIC_KEY_BYTES);
+  const configuredRoleAuthorities = parseExecutorClientAuthorities(
+    env.EXECUTOR_CLIENT_PUBLIC_KEYS,
+    now,
+  );
+  const migrationAuthority = configuredRoleAuthorities?.find(
+    (authority) => authority.role === METADATA_MIGRATION_EXECUTOR_ROLE,
+  );
   const stateManifestPublicKey = decodeConfiguredBytes(
     env.EXECUTOR_STATE_MANIFEST_PUBLIC_KEY,
     ED25519_PUBLIC_KEY_BYTES,
@@ -179,8 +203,8 @@ export async function buildSecurityExecutorOptions(
   const operationNamespace = env.EXECUTOR_OPERATIONS;
   if (
     !expectedAudience ||
-    !expectedRole ||
-    !publicKey ||
+    !configuredRoleAuthorities ||
+    !migrationAuthority ||
     !stateManifestPublicKey ||
     !responseKeyBytes ||
     !imageDigest ||
@@ -203,19 +227,28 @@ export async function buildSecurityExecutorOptions(
   const operationStore = createOperationStoreAdapter(operationNamespace);
   return {
     expectedAudience,
-    expectedRoles: [expectedRole],
-    publicKey,
+    roleAuthorities: [migrationAuthority],
     replayStore: createReplayStoreAdapter(replayNamespace),
-    execute: (body, envelope) =>
-      executeMetadataMigration(
+    execute: (body, envelope, authority) => {
+      if (
+        envelope.role !== METADATA_MIGRATION_EXECUTOR_ROLE ||
+        authority.role !== METADATA_MIGRATION_EXECUTOR_ROLE
+      ) {
+        throw new Error("executor role unavailable");
+      }
+      return executeMetadataMigration(
         body,
         envelope,
+        authority,
         responseKey,
         stateManifestKey,
         operationStore,
         imageDigest,
         configDigest,
-      ),
+        now,
+      );
+    },
+    now,
   };
 }
 
@@ -281,28 +314,38 @@ export default worker;
 async function executeMetadataMigration(
   body: Uint8Array,
   envelope: ExecutorEnvelope,
+  authority: PrivateExecutorRoleAuthority,
   responseKey: CryptoKey,
   stateManifestKey: CryptoKey,
   operationStore: ExecutorOperationStore,
   imageDigest: string,
   configDigest: string,
+  now: number,
 ): Promise<Uint8Array> {
   const metadata = parseMetadataMigrationRequest(body, envelope);
   if (!metadata) throw new Error("invalid migration metadata");
-  if (!(await verifyStateManifestAuthority(metadata, envelope, stateManifestKey))) {
+  if (
+    envelope.manifest_digest !== authority.capabilityDigest ||
+    metadata.manifest_digest !== authority.capabilityDigest
+  ) {
+    throw new Error("invalid executor capability authority");
+  }
+  if (!(await verifyStateManifestAuthority(metadata, envelope, stateManifestKey, now))) {
     throw new Error("invalid state manifest authority");
   }
 
   const encoder = new TextEncoder();
-  const startedAt = Date.now();
+  const startedAt = now;
   const invocationDigest = await sha256Digest(
     encoder.encode(`${envelope.nonce}\u0000${envelope.signature}`),
   );
   const invocationID = `inv-${invocationDigest.slice("sha256:".length)}`;
   const scheduleDigest = await sha256Digest(
-    encoder.encode(`${envelope.role}\u0000${metadata.manifest_digest}`),
+    encoder.encode(
+      `skret/executor-client-authority/v1\u0000${authority.role}\u0000${authority.generation}\u0000${authority.notAfter}\u0000${authority.capabilityDigest}\u0000${metadata.manifest_digest}`,
+    ),
   );
-  const generation = `manifest-${metadata.manifest_digest.slice("sha256:".length)}`;
+  const generation = `authority-${authority.generation}-manifest-${metadata.manifest_digest.slice("sha256:".length)}`;
   const sourceDigest = `sha256:${metadata.source_hash}`;
   const operationFingerprint = await executorOperationFingerprint({
     schedule_digest: scheduleDigest,
@@ -324,7 +367,7 @@ async function executeMetadataMigration(
       source_digest: sourceDigest,
       target_digest: metadata.manifest_digest,
       config_digest: configDigest,
-      deadline_at: startedAt + 14 * 60 * 1000,
+      deadline_at: Math.min(authority.notAfter, startedAt + 14 * 60 * 1000),
     },
     startedAt,
   );
@@ -352,7 +395,7 @@ async function executeMetadataMigration(
       invocationID,
       "succeeded",
       await sha256Digest(redactedResult),
-      Date.now(),
+      now,
       redactedResult,
     );
   } catch (error) {
@@ -362,7 +405,7 @@ async function executeMetadataMigration(
         invocationID,
         "failed",
         null,
-        Date.now(),
+        now,
       );
     } catch {
       // The watchdog retains the active operation when terminal persistence
@@ -499,8 +542,9 @@ async function verifyStateManifestAuthority(
   metadata: MetadataMigrationRequest,
   envelope: ExecutorEnvelope,
   stateManifestKey: CryptoKey,
+  now: number,
 ): Promise<boolean> {
-  const manifest = await parseStateManifest(metadata.state_manifest, envelope, Date.now());
+  const manifest = await parseStateManifest(metadata.state_manifest, envelope, now);
   if (!manifest || manifest.digest !== envelope.manifest_digest || manifest.digest !== metadata.manifest_digest) return false;
 
   const matchingRows = manifest.files.filter((file) => file.path === relativeManifestPath(manifest.source_root, metadata.state_path));
@@ -898,6 +942,82 @@ function skipJsonWhitespace(text: string, start: number): number {
 
 function validMetadataPath(value: string): boolean {
   return validCanonicalAbsolutePath(value, false);
+}
+
+function parseExecutorClientAuthorities(
+  value: unknown,
+  now: number,
+): readonly PrivateExecutorRoleAuthorityBinding[] | null {
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    value.length > MAX_EXECUTOR_CLIENT_PUBLIC_KEYS_JSON_LENGTH ||
+    value.trim() !== value ||
+    hasDuplicateJsonKeys(value)
+  ) {
+    return null;
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    return null;
+  }
+  if (!isRecord(parsed)) return null;
+
+  const entries = Object.entries(parsed);
+  if (entries.length === 0 || entries.length > MAX_PRIVATE_EXECUTOR_ROLES) return null;
+
+  const roleAuthorities: PrivateExecutorRoleAuthorityBinding[] = [];
+  const expectedFields = EXECUTOR_CLIENT_AUTHORITY_FIELDS;
+  for (const [role, candidate] of entries) {
+    if (readConfigText(role) === null || !isRecord(candidate)) return null;
+    const fields = Object.keys(candidate);
+    if (
+      fields.length !== expectedFields.length ||
+      expectedFields.some((field) => !Object.prototype.hasOwnProperty.call(candidate, field))
+    ) {
+      return null;
+    }
+
+    const publicKey = decodeStandardBase64(candidate.public_key, ED25519_PUBLIC_KEY_BYTES);
+    const expiry = typeof candidate.not_after === "string"
+      ? parseStateManifestRFC3339(candidate.not_after)
+      : null;
+    if (
+      publicKey === null ||
+      typeof candidate.generation !== "number" ||
+      !Number.isSafeInteger(candidate.generation) ||
+      candidate.generation <= 0 ||
+      expiry === null ||
+      expiry.expiresAtMs <= now ||
+      expiry.expiresAtMs - now > MAX_EXECUTOR_CLIENT_AUTHORITY_HORIZON_MS ||
+      typeof candidate.capability_digest !== "string" ||
+      !SHA256_DIGEST_PATTERN.test(candidate.capability_digest)
+    ) {
+      return null;
+    }
+
+    for (const existing of roleAuthorities) {
+      let duplicate = true;
+      for (let index = 0; index < publicKey.byteLength; index += 1) {
+        if (publicKey[index] !== existing.publicKey[index]) {
+          duplicate = false;
+          break;
+        }
+      }
+      if (duplicate) return null;
+    }
+    roleAuthorities.push({
+      role,
+      publicKey,
+      generation: candidate.generation,
+      notAfter: expiry.expiresAtMs,
+      capabilityDigest: candidate.capability_digest,
+    });
+  }
+  return roleAuthorities;
 }
 
 function readConfigText(value: unknown): string | null {
