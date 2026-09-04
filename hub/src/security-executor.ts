@@ -174,20 +174,21 @@ export function createReplayStoreAdapter(
  */
 export async function buildSecurityExecutorOptions(
   env: SecurityExecutorEnv,
-  now = Date.now(),
+  now?: number,
 ): Promise<PrivateExecutorHandlerOptions | null> {
+  const buildNow = now ?? Date.now();
   if (
     !env ||
     typeof env !== "object" ||
-    !Number.isSafeInteger(now) ||
-    now < 0
+    !Number.isSafeInteger(buildNow) ||
+    buildNow < 0
   ) {
     return null;
   }
   const expectedAudience = readConfigText(env.EXECUTOR_EXPECTED_AUDIENCE);
   const configuredRoleAuthorities = parseExecutorClientAuthorities(
     env.EXECUTOR_CLIENT_PUBLIC_KEYS,
-    now,
+    buildNow,
   );
   const migrationAuthority = configuredRoleAuthorities?.find(
     (authority) => authority.role === METADATA_MIGRATION_EXECUTOR_ROLE,
@@ -245,10 +246,10 @@ export async function buildSecurityExecutorOptions(
         operationStore,
         imageDigest,
         configDigest,
-        now,
+        now ?? Date.now(),
       );
     },
-    now,
+    ...(now === undefined ? {} : { now }),
   };
 }
 

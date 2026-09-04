@@ -5,7 +5,11 @@ import {
   ExecutorReplayRejectedError,
   ExecutorReplayStoreUnavailableError,
 } from "../src/executor-replay-store";
-import { PRIVATE_EXECUTOR_CALLER_CONTEXT_HEADER, PRIVATE_EXECUTOR_PATH } from "../src/private-executor-handler";
+import {
+  handlePrivateExecutorEnvelope,
+  PRIVATE_EXECUTOR_CALLER_CONTEXT_HEADER,
+  PRIVATE_EXECUTOR_PATH,
+} from "../src/private-executor-handler";
 import securityExecutor, {
   MAX_EXECUTOR_CLIENT_AUTHORITY_HORIZON_MS,
   MAX_EXECUTOR_CLIENT_PUBLIC_KEYS_JSON_LENGTH,
@@ -304,6 +308,48 @@ describe.sequential("security executor Worker", () => {
       capabilityDigest: MANIFEST_DIGEST,
       publicKey: toBase64(publicKey),
     }]);
+  });
+
+  it("rechecks role authority expiry after options construction before replay or execution", async () => {
+    await defaultManifestFixture();
+    const { publicKey, privateKey } = await keyPair();
+    const operation = namespaceFor();
+    const buildNow = Date.now();
+    const authorityNotAfter = buildNow + 1_000;
+    const clock = vi.spyOn(Date, "now").mockReturnValue(buildNow);
+
+    try {
+      const options = await buildSecurityExecutorOptions(
+        envFor(publicKey, operation.namespace, {
+          EXECUTOR_CLIENT_PUBLIC_KEYS: JSON.stringify({
+            [ROLE]: clientAuthority(publicKey, {
+              not_after: new Date(authorityNotAfter).toISOString(),
+            }),
+          }),
+          EXECUTOR_OPERATIONS: operation.operationNamespace as unknown as SecurityExecutorEnv["EXECUTOR_OPERATIONS"],
+        }),
+      );
+      if (!options) throw new Error("expected valid executor options");
+      expect(options.now).toBeUndefined();
+
+      const envelope = await makeEnvelope(privateKey, undefined, {
+        nonce: "nonce-authority-expired-after-build",
+      });
+      clock.mockReturnValue(authorityNotAfter);
+
+      const response = await handlePrivateExecutorEnvelope(
+        request(JSON.stringify(envelope)),
+        options,
+      );
+
+      expect(response.status).toBe(403);
+      expect(await response.text()).toBe("");
+      expect(operation.consume).not.toHaveBeenCalled();
+      expect(operation.begin).not.toHaveBeenCalled();
+      expect(operation.complete).not.toHaveBeenCalled();
+    } finally {
+      clock.mockRestore();
+    }
   });
 
   it("rejects duplicate, malformed, expired, overlong-horizon, and noncanonical authority config", async () => {
