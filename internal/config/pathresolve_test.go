@@ -25,3 +25,11 @@ func TestResolvePath(t *testing.T) {
 		})
 	}
 }
+
+func TestIsSSMPathSegment_Coverage(t *testing.T) {
+	// 73.75: character out of bounds in isSSMPathSegment
+	got, _ := ResolvePath("C:/myapp/dev.prod/test")
+	if got != "C:/myapp/dev.prod/test" {
+		t.Errorf("Expected C:/myapp/dev.prod/test, got %v", got)
+	}
+}
