@@ -22,21 +22,40 @@ import "strings"
 // guessed, since a wrong guess is worse than an unchanged value the
 // operator can see and correct.
 func ResolvePath(raw string) (string, bool) {
-	if raw == "" || strings.HasPrefix(raw, "/") {
+	if raw == "" || raw[0] == '/' {
 		return raw, false
 	}
 	if len(raw) < 2 || raw[1] != ':' {
 		return raw, false
 	}
 
-	segs := strings.Split(strings.ReplaceAll(raw, `\`, "/"), "/")
-	end := len(segs)
-	start := end
-	for start > 0 && isSSMPathSegment(segs[start-1]) {
-		start--
+	count := 0
+	idx := len(raw)
+
+	for idx > 0 {
+		start := idx - 1
+		for start >= 0 && raw[start] != '/' && raw[start] != '\\' {
+			start--
+		}
+
+		if start+1 >= idx {
+			break
+		}
+
+		seg := raw[start+1 : idx]
+		if !isSSMPathSegment(seg) {
+			break
+		}
+		count++
+		idx = start
 	}
-	if end-start >= 2 {
-		return "/" + strings.Join(segs[start:end], "/"), true
+
+	if count >= 2 {
+		s := raw[idx+1:]
+		if strings.IndexByte(s, '\\') != -1 {
+			return "/" + strings.ReplaceAll(s, "\\", "/"), true
+		}
+		return "/" + s, true
 	}
 	return raw, true
 }
