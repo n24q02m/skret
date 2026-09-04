@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 <!-- version list -->
 
+## v1.19.2-beta.1 (2026-09-04)
+
+### Bug Fixes
+
+- **release**: Cut pinned G1 tuple to generation 4 (v1.6.0-beta.10)
+  ([#735](https://github.com/n24q02m/skret/pull/735),
+  [`caacb01`](https://github.com/n24q02m/skret/commit/caacb01a67da22ddd5b3320c580163760eaf5013))
+
+
 ## v1.19.1 (2026-09-03)
 
 ### Bug Fixes
