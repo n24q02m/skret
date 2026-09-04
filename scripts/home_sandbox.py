@@ -142,6 +142,8 @@ def _is_reparse(details: os.stat_result) -> bool:
 def _absolute_path(value: Any) -> Path:
     if not isinstance(value, str) or not value or "\x00" in value:
         _fail()
+    if any(component in {".", ".."} for component in re.split(r"[\\/]", value)):
+        _fail()
     path = Path(value)
     if not path.is_absolute():
         _fail()

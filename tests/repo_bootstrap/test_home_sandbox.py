@@ -319,6 +319,21 @@ exit /b 0
             home.run_sandbox(self.spec, runner)
         self.assertEqual(runner.calls, [])
 
+    def test_dot_segment_state_path_is_rejected_even_when_normalized_in_root(self) -> None:
+        nested = self.state_root / "nested"
+        nested.mkdir()
+        alias = nested / ".." / self.state.name
+        self.assertTrue(alias.is_file())
+        wrong = dict(self.spec)
+        wrong["state_file"] = str(alias)
+        runner = FakeRunner()
+
+        with self.assertRaises(home.HomeSandboxError):
+            home.run_sandbox(wrong, runner)
+
+        self.assertEqual(runner.calls, [])
+        self.assertFalse(Path(self.spec["sandbox_root"]).exists())
+
     def test_dot_segment_state_path_cannot_escape_the_sandbox(self) -> None:
         outside_source = self.root.parent / f"{self.root.name}-outside-state.json"
         outside_source.write_bytes(b'{"schema_version":1}')
