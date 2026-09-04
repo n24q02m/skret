@@ -52,7 +52,7 @@ jobs:
       # remain impossible in the prepare job.
       - id: release
         name: Prepare local release commit and tag
-        uses: n24q02m/better-semantic-release@096ba88af5df375b958212a9fbc6b80ab66888d7 # v1.6.0-beta.8 G1 generation 3
+        uses: n24q02m/better-semantic-release@291a5b6222bc9c13c184953469f8389f24b02c37 # v1.6.0-beta.10 G1 generation 4
         with:
           github_token: ${{ github.token }}
           config_file: semantic-release.toml
@@ -667,7 +667,7 @@ jobs:
           PY
       - id: publisher
         name: Publish exact release assets through signed G1 publisher
-        uses: n24q02m/better-semantic-release/publish-action@096ba88af5df375b958212a9fbc6b80ab66888d7 # v1.6.0-beta.8 G1 generation 3
+        uses: n24q02m/better-semantic-release/publish-action@291a5b6222bc9c13c184953469f8389f24b02c37 # v1.6.0-beta.10 G1 generation 4
         with:
           manifest: release-manifest.json
           token: ${{ steps.app-token.outputs.token }}
