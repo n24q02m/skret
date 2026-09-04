@@ -4,6 +4,27 @@ All notable changes to this project will be documented in this file.
 
 <!-- version list -->
 
+## v1.19.2-beta.2 (2026-09-04)
+
+### Bug Fixes
+
+- Isolate Home state migration ([#737](https://github.com/n24q02m/skret/pull/737),
+  [`401b0f7`](https://github.com/n24q02m/skret/commit/401b0f7bc6aa9ddb8ef7e0c83e7ff466e2720a42))
+
+- Resample executor authority clock ([#736](https://github.com/n24q02m/skret/pull/736),
+  [`834ec98`](https://github.com/n24q02m/skret/commit/834ec988829554c12d76a7d5131d5c1e706d8f57))
+
+- **hub**: Bind executor clients to role authorities
+  ([#736](https://github.com/n24q02m/skret/pull/736),
+  [`834ec98`](https://github.com/n24q02m/skret/commit/834ec988829554c12d76a7d5131d5c1e706d8f57))
+
+- **release**: Recheck Home state manifest files ([#738](https://github.com/n24q02m/skret/pull/738),
+  [`8500a38`](https://github.com/n24q02m/skret/commit/8500a387a52718edfc58ddce555b3d0f2b4899dc))
+
+- **release**: Reject Home dot-segment paths ([#739](https://github.com/n24q02m/skret/pull/739),
+  [`ca8fb56`](https://github.com/n24q02m/skret/commit/ca8fb569e9652dac2837542838994a7f8b6998b6))
+
+
 ## v1.19.2-beta.1 (2026-09-04)
 
 ### Bug Fixes
