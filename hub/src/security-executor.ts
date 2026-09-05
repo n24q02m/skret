@@ -8,6 +8,11 @@ import {
   executeCandidateLifecycleAuthorization,
 } from "./candidate-lifecycle-authorizer";
 import {
+  CANDIDATE_GITHUB_ROLE,
+  candidateGithubTargetDigest,
+  executeCandidateGithubAuthorization,
+} from "./candidate-github-authorizer";
+import {
   DEFAULT_EXECUTOR_REPLAY_SWEEP_LIMIT,
   DurableExecutorReplayStore,
   ExecutorReplayInvalidRequestError,
@@ -101,6 +106,10 @@ export interface SecurityExecutorEnv {
   readonly CANDIDATE_LIFECYCLE_ACCOUNT_ID?: string;
   readonly CANDIDATE_LIFECYCLE_SCRIPT_NAME?: string;
   readonly CANDIDATE_LIFECYCLE_TRANSACTION_DIGEST?: string;
+  readonly CANDIDATE_GITHUB_TRANSACTION_DIGEST?: string;
+  readonly CANDIDATE_GITHUB_SOURCE_DIGEST?: string;
+  readonly CANDIDATE_GITHUB_FIXTURE_DIGEST?: string;
+  readonly CANDIDATE_GITHUB_FIXTURE_COMMIT_OID?: string;
 }
 
 interface MetadataMigrationRequest {
@@ -222,6 +231,18 @@ export async function buildSecurityExecutorOptions(
   const candidateTransactionDigest = readConfigDigest(
     env.CANDIDATE_LIFECYCLE_TRANSACTION_DIGEST,
   );
+  const githubAuthority = configuredRoleAuthorities?.find(
+    (authority) => authority.role === CANDIDATE_GITHUB_ROLE,
+  );
+  const githubLifecycleRequested = githubAuthority !== undefined ||
+    env.CANDIDATE_GITHUB_TRANSACTION_DIGEST !== undefined ||
+    env.CANDIDATE_GITHUB_SOURCE_DIGEST !== undefined ||
+    env.CANDIDATE_GITHUB_FIXTURE_DIGEST !== undefined ||
+    env.CANDIDATE_GITHUB_FIXTURE_COMMIT_OID !== undefined;
+  const githubTransactionDigest = readConfigDigest(env.CANDIDATE_GITHUB_TRANSACTION_DIGEST);
+  const githubSourceDigest = readConfigDigest(env.CANDIDATE_GITHUB_SOURCE_DIGEST);
+  const githubFixtureDigest = readConfigDigest(env.CANDIDATE_GITHUB_FIXTURE_DIGEST);
+  const githubFixtureCommitOid = readConfigText(env.CANDIDATE_GITHUB_FIXTURE_COMMIT_OID);
   const stateManifestPublicKey = decodeConfiguredBytes(
     env.EXECUTOR_STATE_MANIFEST_PUBLIC_KEY,
     ED25519_PUBLIC_KEY_BYTES,
@@ -248,7 +269,13 @@ export async function buildSecurityExecutorOptions(
         candidateScriptName !== CANDIDATE_EXECUTOR_SCRIPT ||
         !candidateTransactionDigest ||
         candidateDeployAuthority.capabilityDigest !== candidateTransactionDigest ||
-        candidateScheduleAuthority.capabilityDigest !== candidateTransactionDigest))
+        candidateScheduleAuthority.capabilityDigest !== candidateTransactionDigest)) ||
+    (githubLifecycleRequested &&
+      (!githubAuthority || !githubTransactionDigest || !githubSourceDigest ||
+        !githubFixtureDigest || !githubFixtureCommitOid ||
+        githubTransactionDigest === candidateTransactionDigest ||
+        !/^[a-f0-9]{40}$/u.test(githubFixtureCommitOid) ||
+        githubAuthority.capabilityDigest !== githubTransactionDigest))
   ) {
     return null;
   }
@@ -274,9 +301,13 @@ export async function buildSecurityExecutorOptions(
       return null;
     }
   }
+  const githubTargetDigest = githubLifecycleRequested
+    ? await candidateGithubTargetDigest()
+    : null;
   const roleAuthorities = candidateLifecycleRequested
     ? [migrationAuthority, candidateDeployAuthority!, candidateScheduleAuthority!]
     : [migrationAuthority];
+  if (githubLifecycleRequested) roleAuthorities.push(githubAuthority!);
   return {
     expectedAudience,
     roleAuthorities,
@@ -312,6 +343,23 @@ export async function buildSecurityExecutorOptions(
           scriptName: candidateScriptName,
           transactionDigest: candidateTransactionDigest,
           targetDigest: candidateTargetDigest,
+          executorImageDigest: imageDigest,
+          executorConfigDigest: configDigest,
+          operations: operationStore,
+          ...(now === undefined ? {} : { now }),
+        });
+      }
+      if (
+        githubLifecycleRequested && githubTargetDigest && githubTransactionDigest &&
+        githubSourceDigest && githubFixtureDigest && githubFixtureCommitOid &&
+        authority.role === CANDIDATE_GITHUB_ROLE
+      ) {
+        return executeCandidateGithubAuthorization(body, envelope, authority, {
+          transactionDigest: githubTransactionDigest,
+          sourceDigest: githubSourceDigest,
+          fixtureDigest: githubFixtureDigest,
+          fixtureCommitOid: githubFixtureCommitOid,
+          targetDigest: githubTargetDigest,
           executorImageDigest: imageDigest,
           executorConfigDigest: configDigest,
           operations: operationStore,
