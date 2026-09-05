@@ -327,35 +327,6 @@ jobs:
           # submit a second CodeQL configuration.
           upload: never
 
-  scorecard:
-    name: Scorecard analysis
-    if: github.event_name != 'pull_request'
-    runs-on: ubuntu-latest
-    permissions:
-      security-events: write
-      id-token: write
-      contents: read
-      actions: read
-    steps:
-      - uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
-        with:
-          egress-policy: audit
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-        with:
-          persist-credentials: false
-      - uses: ossf/scorecard-action@2d1146689b8cda280b9bc96326124645441f03bc # v2.4.4
-        with:
-          results_file: results.sarif
-          results_format: sarif
-          publish_results: true
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: scorecard-sarif
-          path: results.sarif
-          retention-days: 5
-      - uses: github/codeql-action/upload-sarif@5595ccaf912efad79be6eef63a5619ff05969be3 # v4.37.6
-        with:
-          sarif_file: results.sarif
 
 
 
@@ -531,6 +502,10 @@ jobs:
   hub:
     name: Vault hub Worker (TS)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
     steps:
       - uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
         with:
@@ -553,6 +528,64 @@ jobs:
       - name: Typecheck
         working-directory: hub
         run: pnpm typecheck
-      - name: Build check
+      - name: Build deployable Worker bundles
         working-directory: hub
-        run: pnpm dryrun
+        run: |
+          pnpm exec wrangler deploy --dry-run --outdir dist/hub
+          pnpm exec wrangler deploy --dry-run --config wrangler.executor.jsonc --outdir dist/executor
+      - uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          syft-version: v1.51.0
+      - name: Bind candidate bundle manifests and SBOMs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/hub-source" hub/dist/publication
+          git archive "$GITHUB_SHA" | tar -x -C "$RUNNER_TEMP/hub-source"
+          source_epoch="$(git show -s --format=%ct "$GITHUB_SHA")"
+          candidate_version="ci-${GITHUB_SHA:0:12}"
+          python scripts/release_manifests.py source \
+            --root "$RUNNER_TEMP/hub-source" \
+            --output hub/dist/publication/source-manifest.json \
+            --digest-output hub/dist/publication/source-manifest.sha256 \
+            --source-sha "$GITHUB_SHA" --version "$candidate_version" \
+            --tag "$candidate_version" --channel candidate
+          tar --sort=name --mtime="@${source_epoch}" --owner=0 --group=0 --numeric-owner \
+            -cf hub/dist/publication/hub.bundle.tar -C hub/dist/hub .
+          tar --sort=name --mtime="@${source_epoch}" --owner=0 --group=0 --numeric-owner \
+            -cf hub/dist/publication/security-executor.bundle.tar -C hub/dist/executor .
+          syft "dir:hub/dist/hub" -o "spdx-json=hub/dist/publication/hub.sbom.json"
+          syft "dir:hub/dist/executor" -o "spdx-json=hub/dist/publication/security-executor.sbom.json"
+          source_manifest_digest="sha256:$(tr -d '\r\n' < hub/dist/publication/source-manifest.sha256)"
+          python scripts/release_manifests.py artifact \
+            --root hub/dist/publication \
+            --output hub/dist/publication/artifact-manifest.json \
+            --digest-output hub/dist/publication/artifact-manifest.sha256 \
+            --source-sha "$GITHUB_SHA" --version "$candidate_version" \
+            --tag "$candidate_version" --channel candidate \
+            --source-manifest-digest "$source_manifest_digest" \
+            --exclude source-manifest.json --exclude source-manifest.sha256 \
+            --exclude artifact-manifest.json --exclude artifact-manifest.sha256
+      - name: Attest candidate bundle provenance
+        if: github.event_name != 'pull_request'
+        id: hub-provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            hub/dist/publication/*.bundle.tar
+            hub/dist/publication/*.sbom.json
+            hub/dist/publication/*-manifest.json
+      - name: Preserve candidate provenance bundle
+        if: github.event_name != 'pull_request'
+        env:
+          PROVENANCE_BUNDLE: ${{ steps.hub-provenance.outputs.bundle-path }}
+        run: cp "$PROVENANCE_BUNDLE" hub/dist/publication/provenance.sigstore.json
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: hub-worker-bundles-${{ github.sha }}
+          path: |
+            hub/dist/hub
+            hub/dist/executor
+            hub/dist/publication
+          if-no-files-found: error
+          retention-days: 5

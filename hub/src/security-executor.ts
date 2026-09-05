@@ -1,5 +1,18 @@
 import { DurableObject } from "cloudflare:workers";
 import {
+  CANDIDATE_ACCOUNT_ID,
+  CANDIDATE_DEPLOY_ROLE,
+  CANDIDATE_EXECUTOR_SCRIPT,
+  CANDIDATE_SCHEDULE_ROLE,
+  candidateLifecycleTargetDigest,
+  executeCandidateLifecycleAuthorization,
+} from "./candidate-lifecycle-authorizer";
+import {
+  CANDIDATE_GITHUB_ROLE,
+  candidateGithubTargetDigest,
+  executeCandidateGithubAuthorization,
+} from "./candidate-github-authorizer";
+import {
   DEFAULT_EXECUTOR_REPLAY_SWEEP_LIMIT,
   DurableExecutorReplayStore,
   ExecutorReplayInvalidRequestError,
@@ -90,6 +103,13 @@ export interface SecurityExecutorEnv {
   readonly EXECUTOR_PROVIDER_CONTROL_PUBLIC_KEY?: string;
   readonly EXECUTOR_IMAGE_DIGEST?: string;
   readonly EXECUTOR_CONFIG_DIGEST?: string;
+  readonly CANDIDATE_LIFECYCLE_ACCOUNT_ID?: string;
+  readonly CANDIDATE_LIFECYCLE_SCRIPT_NAME?: string;
+  readonly CANDIDATE_LIFECYCLE_TRANSACTION_DIGEST?: string;
+  readonly CANDIDATE_GITHUB_TRANSACTION_DIGEST?: string;
+  readonly CANDIDATE_GITHUB_SOURCE_DIGEST?: string;
+  readonly CANDIDATE_GITHUB_FIXTURE_DIGEST?: string;
+  readonly CANDIDATE_GITHUB_FIXTURE_COMMIT_OID?: string;
 }
 
 interface MetadataMigrationRequest {
@@ -193,6 +213,36 @@ export async function buildSecurityExecutorOptions(
   const migrationAuthority = configuredRoleAuthorities?.find(
     (authority) => authority.role === METADATA_MIGRATION_EXECUTOR_ROLE,
   );
+  const candidateDeployAuthority = configuredRoleAuthorities?.find(
+    (authority) => authority.role === CANDIDATE_DEPLOY_ROLE,
+  );
+  const candidateScheduleAuthority = configuredRoleAuthorities?.find(
+    (authority) => authority.role === CANDIDATE_SCHEDULE_ROLE,
+  );
+  const candidateScopePresent =
+    env.CANDIDATE_LIFECYCLE_ACCOUNT_ID !== undefined ||
+    env.CANDIDATE_LIFECYCLE_SCRIPT_NAME !== undefined ||
+    env.CANDIDATE_LIFECYCLE_TRANSACTION_DIGEST !== undefined;
+  const candidateRolePresent =
+    candidateDeployAuthority !== undefined || candidateScheduleAuthority !== undefined;
+  const candidateLifecycleRequested = candidateScopePresent || candidateRolePresent;
+  const candidateAccountId = readConfigText(env.CANDIDATE_LIFECYCLE_ACCOUNT_ID);
+  const candidateScriptName = readConfigText(env.CANDIDATE_LIFECYCLE_SCRIPT_NAME);
+  const candidateTransactionDigest = readConfigDigest(
+    env.CANDIDATE_LIFECYCLE_TRANSACTION_DIGEST,
+  );
+  const githubAuthority = configuredRoleAuthorities?.find(
+    (authority) => authority.role === CANDIDATE_GITHUB_ROLE,
+  );
+  const githubLifecycleRequested = githubAuthority !== undefined ||
+    env.CANDIDATE_GITHUB_TRANSACTION_DIGEST !== undefined ||
+    env.CANDIDATE_GITHUB_SOURCE_DIGEST !== undefined ||
+    env.CANDIDATE_GITHUB_FIXTURE_DIGEST !== undefined ||
+    env.CANDIDATE_GITHUB_FIXTURE_COMMIT_OID !== undefined;
+  const githubTransactionDigest = readConfigDigest(env.CANDIDATE_GITHUB_TRANSACTION_DIGEST);
+  const githubSourceDigest = readConfigDigest(env.CANDIDATE_GITHUB_SOURCE_DIGEST);
+  const githubFixtureDigest = readConfigDigest(env.CANDIDATE_GITHUB_FIXTURE_DIGEST);
+  const githubFixtureCommitOid = readConfigText(env.CANDIDATE_GITHUB_FIXTURE_COMMIT_OID);
   const stateManifestPublicKey = decodeConfiguredBytes(
     env.EXECUTOR_STATE_MANIFEST_PUBLIC_KEY,
     ED25519_PUBLIC_KEY_BYTES,
@@ -211,7 +261,21 @@ export async function buildSecurityExecutorOptions(
     !imageDigest ||
     !configDigest ||
     !hasReplayNamespace(replayNamespace) ||
-    !hasOperationNamespace(operationNamespace)
+    !hasOperationNamespace(operationNamespace) ||
+    (candidateLifecycleRequested &&
+      (!candidateDeployAuthority ||
+        !candidateScheduleAuthority ||
+        candidateAccountId !== CANDIDATE_ACCOUNT_ID ||
+        candidateScriptName !== CANDIDATE_EXECUTOR_SCRIPT ||
+        !candidateTransactionDigest ||
+        candidateDeployAuthority.capabilityDigest !== candidateTransactionDigest ||
+        candidateScheduleAuthority.capabilityDigest !== candidateTransactionDigest)) ||
+    (githubLifecycleRequested &&
+      (!githubAuthority || !githubTransactionDigest || !githubSourceDigest ||
+        !githubFixtureDigest || !githubFixtureCommitOid ||
+        githubTransactionDigest === candidateTransactionDigest ||
+        !/^[a-f0-9]{40}$/u.test(githubFixtureCommitOid) ||
+        githubAuthority.capabilityDigest !== githubTransactionDigest))
   ) {
     return null;
   }
@@ -226,28 +290,83 @@ export async function buildSecurityExecutorOptions(
   }
 
   const operationStore = createOperationStoreAdapter(operationNamespace);
+  let candidateTargetDigest: string | null = null;
+  if (candidateLifecycleRequested) {
+    try {
+      candidateTargetDigest = await candidateLifecycleTargetDigest(
+        candidateAccountId as typeof CANDIDATE_ACCOUNT_ID,
+        candidateScriptName as typeof CANDIDATE_EXECUTOR_SCRIPT,
+      );
+    } catch {
+      return null;
+    }
+  }
+  const githubTargetDigest = githubLifecycleRequested
+    ? await candidateGithubTargetDigest()
+    : null;
+  const roleAuthorities = candidateLifecycleRequested
+    ? [migrationAuthority, candidateDeployAuthority!, candidateScheduleAuthority!]
+    : [migrationAuthority];
+  if (githubLifecycleRequested) roleAuthorities.push(githubAuthority!);
   return {
     expectedAudience,
-    roleAuthorities: [migrationAuthority],
+    roleAuthorities,
     replayStore: createReplayStoreAdapter(replayNamespace),
     execute: (body, envelope, authority) => {
       if (
-        envelope.role !== METADATA_MIGRATION_EXECUTOR_ROLE ||
-        authority.role !== METADATA_MIGRATION_EXECUTOR_ROLE
+        envelope.role === METADATA_MIGRATION_EXECUTOR_ROLE &&
+        authority.role === METADATA_MIGRATION_EXECUTOR_ROLE
       ) {
-        throw new Error("executor role unavailable");
+        return executeMetadataMigration(
+          body,
+          envelope,
+          authority,
+          responseKey,
+          stateManifestKey,
+          operationStore,
+          imageDigest,
+          configDigest,
+          now ?? Date.now(),
+        );
       }
-      return executeMetadataMigration(
-        body,
-        envelope,
-        authority,
-        responseKey,
-        stateManifestKey,
-        operationStore,
-        imageDigest,
-        configDigest,
-        now ?? Date.now(),
-      );
+      if (
+        candidateLifecycleRequested &&
+        candidateTargetDigest &&
+        candidateTransactionDigest &&
+        candidateAccountId === CANDIDATE_ACCOUNT_ID &&
+        candidateScriptName === CANDIDATE_EXECUTOR_SCRIPT &&
+        (authority.role === CANDIDATE_DEPLOY_ROLE ||
+          authority.role === CANDIDATE_SCHEDULE_ROLE)
+      ) {
+        return executeCandidateLifecycleAuthorization(body, envelope, authority, {
+          accountId: candidateAccountId,
+          scriptName: candidateScriptName,
+          transactionDigest: candidateTransactionDigest,
+          targetDigest: candidateTargetDigest,
+          executorImageDigest: imageDigest,
+          executorConfigDigest: configDigest,
+          operations: operationStore,
+          ...(now === undefined ? {} : { now }),
+        });
+      }
+      if (
+        githubLifecycleRequested && githubTargetDigest && githubTransactionDigest &&
+        githubSourceDigest && githubFixtureDigest && githubFixtureCommitOid &&
+        authority.role === CANDIDATE_GITHUB_ROLE
+      ) {
+        return executeCandidateGithubAuthorization(body, envelope, authority, {
+          transactionDigest: githubTransactionDigest,
+          sourceDigest: githubSourceDigest,
+          fixtureDigest: githubFixtureDigest,
+          fixtureCommitOid: githubFixtureCommitOid,
+          targetDigest: githubTargetDigest,
+          executorImageDigest: imageDigest,
+          executorConfigDigest: configDigest,
+          operations: operationStore,
+          ...(now === undefined ? {} : { now }),
+        });
+      }
+      throw new Error("executor role unavailable");
     },
     ...(now === undefined ? {} : { now }),
   };
