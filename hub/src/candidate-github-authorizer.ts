@@ -151,7 +151,7 @@ function parseDocument(body: Uint8Array): CandidateGithubDocument {
   if (!(body instanceof Uint8Array) || body.byteLength === 0 || body.byteLength > MAX_BODY_BYTES) {
     throw new Error("candidate GitHub request invalid");
   }
-  const parsed: unknown = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(body));
+  const parsed: unknown = JSON.parse(new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(body));
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new Error("candidate GitHub request invalid");
   }
