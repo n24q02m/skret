@@ -553,6 +553,16 @@ jobs:
       - name: Typecheck
         working-directory: hub
         run: pnpm typecheck
-      - name: Build check
+      - name: Build deployable Worker bundles
         working-directory: hub
-        run: pnpm dryrun
+        run: |
+          pnpm exec wrangler deploy --dry-run --outdir dist/hub
+          pnpm exec wrangler deploy --dry-run --config wrangler.executor.jsonc --outdir dist/executor
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: hub-worker-bundles-${{ github.sha }}
+          path: |
+            hub/dist/hub
+            hub/dist/executor
+          if-no-files-found: error
+          retention-days: 5
