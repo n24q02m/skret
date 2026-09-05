@@ -101,7 +101,7 @@ const STYLE = `
   form{display:flex;gap:.5rem;margin-top:1rem;align-items:center}
   input,button{padding:.5rem;font-size:1rem}
   button{cursor:pointer}
-  a:focus-visible,input:focus-visible,button:focus-visible{outline:2px solid #1a1a1a;outline-offset:2px;border-radius:2px}
+  a:focus-visible,input:focus-visible,button:focus-visible,.tablewrap:focus-visible{outline:2px solid #1a1a1a;outline-offset:2px;border-radius:2px}
   .err{color:#8a1a1a}
   .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
   footer{margin-top:2rem;font-size:.8rem;color:#5a5a5a}
@@ -155,7 +155,7 @@ function renderNamespace(m: Manifest, now: number): string {
     `<section class="ns"><h2>${esc(m.namespace)} &middot; ${esc(m.env)}` +
     ` <time class="meta" datetime="${esc(m.generated_at)}" title="${esc(m.generated_at)}">synced ${esc(relativeTime(m.generated_at, now))}</time>${staleBadge}</h2>` +
     `<div class="summary">${esc(summary(m))}</div>` +
-    `<div class="tablewrap"><table><thead><tr><th scope="col">Key</th><th scope="col">Fingerprint</th><th scope="col">Targets</th></tr></thead>` +
+    `<div class="tablewrap" tabindex="0" role="region" aria-label="Secrets for ${esc(m.namespace)}"><table><thead><tr><th scope="col">Key</th><th scope="col">Fingerprint</th><th scope="col">Targets</th></tr></thead>` +
     `<tbody>${rows}</tbody></table></div></section>`
   );
 }
