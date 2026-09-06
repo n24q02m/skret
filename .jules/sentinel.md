@@ -55,3 +55,7 @@ Added `ReadTimeout` and `WriteTimeout` to `http.Server` in `internal/auth/infisi
 **Vulnerability:** The `timingSafeEqualStr` function implemented a length check that exited early before performing a constant-time comparison on user-provided secrets. This creates a length oracle timing attack vulnerability where attackers can deduce the length of secrets.
 **Learning:** Checking string lengths and exiting early avoids throwing exceptions in `timingSafeEqual` but exposes the secret's length via timing differences.
 **Prevention:** Always hash both inputs (e.g., using SHA-256) before performing a constant-time comparison when dealing with potentially variable-length secrets. This ensures the comparison operates in constant time regardless of the original inputs' lengths.
+## 2026-09-06 - Prevent Timing Attack in OAuth State Verification
+**Vulnerability:** OAuth state was verified using simple string comparison (`gotState != state`), exposing it to timing attacks.
+**Learning:** Simple string comparison on variable-length secrets can leak information. Furthermore, when using `subtle.ConstantTimeCompare`, checking lengths first creates an oracle vulnerability; both strings must be hashed prior to comparison.
+**Prevention:** Hash user-provided secrets and expected secrets (e.g., using SHA-256) before passing them to `subtle.ConstantTimeCompare` to guarantee constant time execution without length oracles.
