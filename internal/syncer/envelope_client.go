@@ -232,7 +232,7 @@ func (c *EnvelopeClient) Submit(
 
 	httpClient := c.HTTPClient
 	if httpClient == nil {
-		httpClient = http.DefaultClient
+		httpClient = &http.Client{Timeout: 30 * time.Second}
 	}
 	// A redirect could move an otherwise fixed-path signed request to a direct
 	// executor or another origin. Preserve the injected transport/timeouts but
