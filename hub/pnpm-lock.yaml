@@ -18,7 +18,7 @@ importers:
     devDependencies:
       '@cloudflare/vitest-pool-workers':
         specifier: ^0.20.3
-        version: 0.20.3(@cloudflare/workers-types@4.20260702.1)(@vitest/runner@4.1.10)(@vitest/snapshot@4.1.10)(vitest@4.1.10(vite@6.4.3))
+        version: 0.20.3(@cloudflare/workers-types@4.20260702.1)(@vitest/runner@4.1.10)(@vitest/snapshot@4.1.10)(vitest@4.1.10(vite@6.4.3(tsx@4.23.13)))
       '@cloudflare/workers-types':
         specifier: ^4.20260702.1
         version: 4.20260702.1
@@ -27,7 +27,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: ^4.1.10
-        version: 4.1.10(vite@6.4.3)
+        version: 4.1.10(vite@6.4.3(tsx@4.23.13))
       wrangler:
         specifier: ^4.120.0
         version: 4.120.0(@cloudflare/workers-types@4.20260702.1)
@@ -931,6 +931,11 @@ packages:
   tslib@2.8.1:
     resolution: {integrity: sha512-oJFu94HQb+KVduSUQL7wnpmqnfmLsOA/nAh6b6EH0wCEoK0/mPeXU6c3wKDV83MkOuHPRHtSXKKU99IBazS/2w==}
 
+  tsx@4.23.13:
+    resolution: {integrity: sha512-BL5MGkRln6aDYhb0xbQlEAGw743BaZYWdbWtdJOBriYJboKgUUYCadFp2/FpBBZquBC/ezNBn7wMMPx7FDZUDw==}
+    engines: {node: '>=18.0.0'}
+    hasBin: true
+
   typescript@5.9.3:
     resolution: {integrity: sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw==}
     engines: {node: '>=14.17'}
@@ -1077,14 +1082,14 @@ snapshots:
     optionalDependencies:
       workerd: 1.20260801.1
 
-  '@cloudflare/vitest-pool-workers@0.20.3(@cloudflare/workers-types@4.20260702.1)(@vitest/runner@4.1.10)(@vitest/snapshot@4.1.10)(vitest@4.1.10(vite@6.4.3))':
+  '@cloudflare/vitest-pool-workers@0.20.3(@cloudflare/workers-types@4.20260702.1)(@vitest/runner@4.1.10)(@vitest/snapshot@4.1.10)(vitest@4.1.10(vite@6.4.3(tsx@4.23.13)))':
     dependencies:
       '@vitest/runner': 4.1.10
       '@vitest/snapshot': 4.1.10
       cjs-module-lexer: 1.2.3
       esbuild: 0.28.1
       miniflare: 5.20260801.1-alpha
-      vitest: 4.1.10(vite@6.4.3)
+      vitest: 4.1.10(vite@6.4.3(tsx@4.23.13))
       wrangler: 4.120.0(@cloudflare/workers-types@4.20260702.1)
       zod: 4.4.3
     transitivePeerDependencies:
@@ -1503,13 +1508,13 @@ snapshots:
       chai: 6.2.2
       tinyrainbow: 3.1.1
 
-  '@vitest/mocker@4.1.10(vite@6.4.3)':
+  '@vitest/mocker@4.1.10(vite@6.4.3(tsx@4.23.13))':
     dependencies:
       '@vitest/spy': 4.1.10
       estree-walker: 3.0.3
       magic-string: 0.30.21
     optionalDependencies:
-      vite: 6.4.3
+      vite: 6.4.3(tsx@4.23.13)
 
   '@vitest/pretty-format@4.1.10':
     dependencies:
@@ -1750,6 +1755,13 @@ snapshots:
   tslib@2.8.1:
     optional: true
 
+  tsx@4.23.13:
+    dependencies:
+      esbuild: 0.28.1
+    optionalDependencies:
+      fsevents: 2.3.3
+    optional: true
+
   typescript@5.9.3: {}
 
   undici@7.29.0: {}
@@ -1758,7 +1770,7 @@ snapshots:
     dependencies:
       pathe: 2.0.3
 
-  vite@6.4.3:
+  vite@6.4.3(tsx@4.23.13):
     dependencies:
       esbuild: 0.25.12
       fdir: 6.5.0(picomatch@4.0.5)
@@ -1768,11 +1780,12 @@ snapshots:
       tinyglobby: 0.2.17
     optionalDependencies:
       fsevents: 2.3.3
+      tsx: 4.23.13
 
-  vitest@4.1.10(vite@6.4.3):
+  vitest@4.1.10(vite@6.4.3(tsx@4.23.13)):
     dependencies:
       '@vitest/expect': 4.1.10
-      '@vitest/mocker': 4.1.10(vite@6.4.3)
+      '@vitest/mocker': 4.1.10(vite@6.4.3(tsx@4.23.13))
       '@vitest/pretty-format': 4.1.10
       '@vitest/runner': 4.1.10
       '@vitest/snapshot': 4.1.10
@@ -1789,7 +1802,7 @@ snapshots:
       tinyexec: 1.3.0
       tinyglobby: 0.2.17
       tinyrainbow: 3.1.1
-      vite: 6.4.3
+      vite: 6.4.3(tsx@4.23.13)
       why-is-node-running: 2.3.0
     transitivePeerDependencies:
       - msw
