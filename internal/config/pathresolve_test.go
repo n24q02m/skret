@@ -15,6 +15,9 @@ func TestResolvePath(t *testing.T) {
 		{"msys-mangled forward-slash form recovered", "C:/Users/n24q02m-wpc/scoop/apps/git/2.54.0/myapp/dev", "/myapp/dev", true},
 		{"msys-mangled backslash form recovered", `C:\Users\x\scoop\apps\git\2.54.0\myapp\dev`, "/myapp/dev", true},
 		{"genuine windows path with no SSM-like tail passthrough+warn", `C:\Users\bob\Documents`, `C:\Users\bob\Documents`, true},
+		{"bare root passthrough", `C:myapp`, `C:myapp`, true},
+		{"bare root two segments", `C:myapp/dev`, `C:myapp/dev`, true},
+		{"bare root missing delimiter", `C:\myapp\dev`, "/myapp/dev", true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
