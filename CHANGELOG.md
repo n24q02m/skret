@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 <!-- version list -->
 
+## v1.19.2-beta.3 (2026-09-08)
+
+### Bug Fixes
+
+- Harden auth and bounded sync with reviewed dependencies
+  ([`b520762`](https://github.com/n24q02m/skret/commit/b5207629206b5e0c757b77044d0bf4b72b172131))
+
+
 ## v1.19.2-beta.2 (2026-09-04)
 
 ### Bug Fixes
