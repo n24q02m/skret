@@ -304,10 +304,20 @@ func validStateManifestPath(value string) bool {
 	if pathpkg.Clean(value) != value {
 		return false
 	}
-	for _, part := range strings.Split(value, "/") {
+	rem := value
+	for {
+		idx := strings.IndexByte(rem, '/')
+		if idx == -1 {
+			if rem == "" || rem == "." || rem == ".." {
+				return false
+			}
+			break
+		}
+		part := rem[:idx]
 		if part == "" || part == "." || part == ".." {
 			return false
 		}
+		rem = rem[idx+1:]
 	}
 	return !filepath.IsAbs(filepath.FromSlash(value))
 }
