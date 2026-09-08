@@ -29,23 +29,36 @@ func (b *keyringBackend) read() (*storeFile, error) {
 		}
 		return nil, fmt.Errorf("auth keyring: read index: %w", err)
 	}
-	for _, name := range strings.Split(idx, ",") {
-		if name == "" {
-			continue
+	for {
+		i := strings.IndexByte(idx, ',')
+		var name string
+		if i == -1 {
+			name = idx
+			idx = ""
+		} else {
+			name = idx[:i]
+			idx = idx[i+1:]
 		}
-		raw, err := keyring.Get(b.service, "cred:"+name)
-		if err != nil {
-			if err == keyring.ErrNotFound {
-				continue
+		if name != "" {
+			raw, err := keyring.Get(b.service, "cred:"+name)
+			if err != nil {
+				if err == keyring.ErrNotFound {
+					// Need to continue to next item in loop
+				} else {
+					return nil, fmt.Errorf("auth keyring: read %q: %w", name, err)
+				}
+			} else {
+				var c Credential
+				if err := yaml.Unmarshal([]byte(raw), &c); err != nil {
+					return nil, fmt.Errorf("auth keyring: parse %q: %w", name, err)
+				}
+				c.Provider = name
+				f.Providers[name] = &c
 			}
-			return nil, fmt.Errorf("auth keyring: read %q: %w", name, err)
 		}
-		var c Credential
-		if err := yaml.Unmarshal([]byte(raw), &c); err != nil {
-			return nil, fmt.Errorf("auth keyring: parse %q: %w", name, err)
+		if len(idx) == 0 && i == -1 {
+			break
 		}
-		c.Provider = name
-		f.Providers[name] = &c
 	}
 	return f, nil
 }

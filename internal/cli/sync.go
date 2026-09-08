@@ -251,10 +251,23 @@ func (o *syncOptions) resolveTargets(sc *config.SyncConfig) ([]syncer.TargetConf
 	var wantOrder []string
 	want := map[string]bool{}
 	if o.to != "" {
-		for _, t := range strings.Split(o.to, ",") {
+		to := o.to
+		for {
+			idx := strings.IndexByte(to, ',')
+			var t string
+			if idx == -1 {
+				t = to
+				to = ""
+			} else {
+				t = to[:idx]
+				to = to[idx+1:]
+			}
 			if t = strings.TrimSpace(t); t != "" && !want[t] {
 				want[t] = true
 				wantOrder = append(wantOrder, t)
+			}
+			if len(to) == 0 && idx == -1 {
+				break
 			}
 		}
 	}
@@ -325,18 +338,36 @@ func (o *syncOptions) targetFromFlags(typ string) ([]syncer.TargetConfig, error)
 
 		var tcs []syncer.TargetConfig
 		hasRepoErr := false
-		for _, r := range strings.Split(o.githubRepo, ",") {
+
+		githubRepo := o.githubRepo
+		for {
+			idx := strings.IndexByte(githubRepo, ',')
+			var r string
+			if idx == -1 {
+				r = githubRepo
+				githubRepo = ""
+			} else {
+				r = githubRepo[:idx]
+				githubRepo = githubRepo[idx+1:]
+			}
 			r = strings.TrimSpace(r)
 			if r == "" {
+				if len(githubRepo) == 0 && idx == -1 {
+					break
+				}
 				continue
 			}
 			owner, repo, found := strings.Cut(r, "/")
 			if !found || owner == "" || repo == "" {
 				errs = append(errs, fmt.Errorf("sync: invalid repo format %q, must be owner/repo", r))
 				hasRepoErr = true
-				continue
+			} else {
+				tcs = append(tcs, syncer.TargetConfig{Type: "github", Fields: map[string]string{"repo": r}, Token: token})
 			}
-			tcs = append(tcs, syncer.TargetConfig{Type: "github", Fields: map[string]string{"repo": r}, Token: token})
+
+			if len(githubRepo) == 0 && idx == -1 {
+				break
+			}
 		}
 		if len(tcs) == 0 && !hasRepoErr {
 			errs = append(errs, errors.New("sync: --github-repo requires at least one repository"))

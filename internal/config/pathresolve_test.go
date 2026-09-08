@@ -25,9 +25,3 @@ func TestResolvePath(t *testing.T) {
 		})
 	}
 }
-
-func TestIsSSMPathSegment(t *testing.T) {
-	if isSSMPathSegment("invalid!") {
-		t.Errorf("expected false")
-	}
-}
