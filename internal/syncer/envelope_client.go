@@ -185,8 +185,8 @@ type EnvelopeClient struct {
 	Clock                 func() time.Time
 }
 
-// NewEnvelopeClient constructs a client using the default HTTP client and
-// wall-clock unless the caller replaces HTTPClient or Clock for testing.
+// NewEnvelopeClient constructs a client using a bounded default HTTP transport
+// and wall-clock unless the caller replaces HTTPClient or Clock for testing.
 func NewEnvelopeClient(baseURL string, signer ed25519.PrivateKey) *EnvelopeClient {
 	return &EnvelopeClient{BaseURL: baseURL, Signer: signer}
 }
@@ -232,7 +232,7 @@ func (c *EnvelopeClient) Submit(
 
 	httpClient := c.HTTPClient
 	if httpClient == nil {
-		httpClient = http.DefaultClient
+		httpClient = &http.Client{Timeout: 30 * time.Second}
 	}
 	// A redirect could move an otherwise fixed-path signed request to a direct
 	// executor or another origin. Preserve the injected transport/timeouts but
