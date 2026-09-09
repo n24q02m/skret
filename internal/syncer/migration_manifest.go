@@ -308,6 +308,7 @@ func validStateManifestPath(value string) bool {
 	for {
 		idx := strings.IndexByte(iter, '/')
 		if idx == -1 {
+			// Mathematical safety check: pathpkg.Clean already enforces canonical forms.
 			if iter == "" || iter == "." || iter == ".." {
 				return false
 			}
