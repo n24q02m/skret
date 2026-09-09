@@ -79,6 +79,10 @@ describe("summary", () => {
 });
 
 describe("renderDashboard", () => {
+  it("adds a contextual aria-label to the scrollable table region", () => {
+    const html = renderDashboard([m]);
+    expect(html).toContain('aria-label="Secrets table for /klprism/prod prod"');
+  });
   it("renders key name, fingerprint and per-target status", () => {
     const html = renderDashboard([m]);
     expect(html).toContain("DATABASE_URL");
