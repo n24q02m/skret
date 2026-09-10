@@ -304,20 +304,17 @@ func validStateManifestPath(value string) bool {
 	if pathpkg.Clean(value) != value {
 		return false
 	}
+	// ⚡ Bolt: Zero-allocation path segment validation using strings.Cut instead of strings.Split
 	rest := value
 	for {
-		idx := strings.IndexByte(rest, '/')
-		part := rest
-		if idx != -1 {
-			part = rest[:idx]
-			rest = rest[idx+1:]
-		}
+		part, remaining, found := strings.Cut(rest, "/")
 		if part == "" || part == "." || part == ".." {
 			return false
 		}
-		if idx == -1 {
+		if !found {
 			break
 		}
+		rest = remaining
 	}
 	return !filepath.IsAbs(filepath.FromSlash(value))
 }
