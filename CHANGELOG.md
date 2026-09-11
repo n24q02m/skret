@@ -4,6 +4,32 @@ All notable changes to this project will be documented in this file.
 
 <!-- version list -->
 
+## v1.19.3 (2026-09-11)
+
+### Bug Fixes
+
+- **deps**: Update @astrojs/starlight to ^0.42.0 ([#765](https://github.com/n24q02m/skret/pull/765),
+  [`8463e17`](https://github.com/n24q02m/skret/commit/8463e17abf99a60027e7c7aea94b511e5a22af93))
+
+- **deps**: Update @cloudflare/vitest-pool-workers to ^0.22.0
+  ([#766](https://github.com/n24q02m/skret/pull/766),
+  [`11f30de`](https://github.com/n24q02m/skret/commit/11f30de1178c11cd1f91dc09734c2c75533d8a15))
+
+- **deps**: Update aws-sdk-go-v2 monorepo ([#672](https://github.com/n24q02m/skret/pull/672),
+  [`bfd5975`](https://github.com/n24q02m/skret/commit/bfd5975ba8be3e6f070acc51076381830179364e))
+
+- **deps**: Update sharp to v0.35.4 [SECURITY] ([#763](https://github.com/n24q02m/skret/pull/763),
+  [`94b1933`](https://github.com/n24q02m/skret/commit/94b19332696add98a5b2ad79b5bc323769c6aa7b))
+
+- **deps**: Update vitest to v4.1.11 [SECURITY] ([#764](https://github.com/n24q02m/skret/pull/764),
+  [`26b9ff4`](https://github.com/n24q02m/skret/commit/26b9ff4a35ed7d5f1d8480a510eb01e9d36c0613))
+
+### Continuous Integration
+
+- Wire unified merge=release ladder (push staging=beta, main=stable)
+  ([`e5e358d`](https://github.com/n24q02m/skret/commit/e5e358ddf0079acb4a31569e20b957b9a5da33e7))
+
+
 ## v1.19.2 (2026-09-11)
 
 
