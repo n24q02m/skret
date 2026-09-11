@@ -4,6 +4,29 @@ All notable changes to this project will be documented in this file.
 
 <!-- version list -->
 
+## v1.19.2-beta.4 (2026-09-11)
+
+### Bug Fixes
+
+- **deps**: Update anchore/sbom-action action to v0.24.2
+  ([#752](https://github.com/n24q02m/skret/pull/752),
+  [`394913e`](https://github.com/n24q02m/skret/commit/394913ea8895e5fb0a7657e7fa3c410feb922d18))
+
+- **deps**: Update astro monorepo ([#753](https://github.com/n24q02m/skret/pull/753),
+  [`c157c03`](https://github.com/n24q02m/skret/commit/c157c03d3efa0d9cad417270cc2dab87633d3631))
+
+- **deps**: Update astro to v7.3.2 ([#756](https://github.com/n24q02m/skret/pull/756),
+  [`7c3d29a`](https://github.com/n24q02m/skret/commit/7c3d29a487890e0796bdc438b785d5ba7e20a5c9))
+
+- **deps**: Update github/codeql-action action to v4.38.0
+  ([#757](https://github.com/n24q02m/skret/pull/757),
+  [`9d0a16e`](https://github.com/n24q02m/skret/commit/9d0a16edcea8d5836089b41f9b03338d0ccecc18))
+
+- **deps**: Update n24q02m/better-semantic-release action to v1.6.0
+  ([#760](https://github.com/n24q02m/skret/pull/760),
+  [`045f95a`](https://github.com/n24q02m/skret/commit/045f95ab0182bfd7981e7567d6c92ff56de78809))
+
+
 ## v1.19.2-beta.3 (2026-09-08)
 
 ### Bug Fixes
