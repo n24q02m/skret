@@ -6,6 +6,10 @@ name: CD
 # publication to the signed BSR G1 publisher. No deploy job exists here.
 
 on:
+  push:
+    branches:
+      - staging
+      - main
   workflow_dispatch:
     inputs:
       release_type:
@@ -17,6 +21,11 @@ on:
           - beta
           - stable
 
+env:
+  # Unified release ladder: push to staging = beta, push to main = stable.
+  # workflow_dispatch keeps release_type as an explicit override.
+  RELEASE_TYPE: ${{ github.event_name == 'push' && (github.ref_name == 'staging' && 'beta' || 'stable') || inputs.release_type }}
+
 permissions:
   contents: read
 
@@ -25,8 +34,62 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  triage:
+    name: Resolve channel and release demand
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      channel: ${{ steps.channel.outputs.channel }}
+      proceed: ${{ steps.demand.outputs.proceed }}
+    steps:
+      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: channel
+        shell: bash
+        env:
+          CHANNEL_INPUT: ${{ env.RELEASE_TYPE }}
+        run: |
+          set -euo pipefail
+          case "$CHANNEL_INPUT" in
+            beta|stable) echo "channel=$CHANNEL_INPUT" >> "$GITHUB_OUTPUT" ;;
+            *) echo "unknown channel: $CHANNEL_INPUT" >&2; exit 1 ;;
+          esac
+      - id: probe
+        name: Probe whether a release is due (no push)
+        uses: n24q02m/better-semantic-release@69319fae1169b6ee7b89565c7b54b55d1531d42e # v1.6.0 G1 generation 4
+        with:
+          github_token: ${{ github.token }}
+          config_file: semantic-release.toml
+          commit: true
+          tag: true
+          push: false
+          vcs_release: false
+          build: false
+          prerelease: ${{ steps.channel.outputs.channel == 'beta' }}
+          prerelease_token: beta
+          git_committer_name: n24q02m-ci
+          git_committer_email: 3200052+n24q02m-ci@users.noreply.github.com
+      - id: demand
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ steps.probe.outputs.released }}" = "true" ]; then
+            echo "proceed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No release due; CD ladder no-op for this push."
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
+          fi
+
   prepare:
     name: Prepare release artifacts
+    needs: [triage]
+    if: needs.triage.outputs.proceed == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -61,7 +124,7 @@ jobs:
           push: false
           vcs_release: false
           build: false
-          prerelease: ${{ inputs.release_type == 'beta' }}
+          prerelease: ${{ needs.triage.outputs.channel == 'beta' }}
           prerelease_token: beta
           git_committer_name: n24q02m-ci
           git_committer_email: 3200052+n24q02m-ci@users.noreply.github.com
@@ -74,7 +137,7 @@ jobs:
           BSR_VERSION: ${{ steps.release.outputs.version }}
           BSR_TAG: ${{ steps.release.outputs.tag }}
           BASE_SOURCE_SHA: ${{ github.sha }}
-          CHANNEL_INPUT: ${{ inputs.release_type }}
+          CHANNEL_INPUT: ${{ needs.triage.outputs.channel }}
         run: |
           set -euo pipefail
           test "$BSR_RELEASED" = "true"
@@ -172,7 +235,7 @@ jobs:
           MANIFEST_SOURCE_SHA: ${{ github.sha }}
           MANIFEST_VERSION: ${{ steps.release.outputs.version }}
           MANIFEST_TAG: ${{ steps.release.outputs.tag }}
-          MANIFEST_CHANNEL: ${{ inputs.release_type }}
+          MANIFEST_CHANNEL: ${{ env.RELEASE_TYPE }}
         run: |
           set -euo pipefail
           python scripts/release_manifests.py source \
@@ -235,7 +298,7 @@ jobs:
           MANIFEST_SOURCE_SHA: ${{ github.sha }}
           MANIFEST_VERSION: ${{ steps.release.outputs.version }}
           MANIFEST_TAG: ${{ steps.release.outputs.tag }}
-          MANIFEST_CHANNEL: ${{ inputs.release_type }}
+          MANIFEST_CHANNEL: ${{ env.RELEASE_TYPE }}
         run: |
           set -euo pipefail
           cp install.sh docs/public/install.sh
@@ -277,7 +340,7 @@ jobs:
           MANIFEST_SOURCE_SHA: ${{ github.sha }}
           MANIFEST_VERSION: ${{ steps.release.outputs.version }}
           MANIFEST_TAG: ${{ steps.release.outputs.tag }}
-          MANIFEST_CHANNEL: ${{ inputs.release_type }}
+          MANIFEST_CHANNEL: ${{ env.RELEASE_TYPE }}
         run: |
           set -euo pipefail
           find dist -maxdepth 1 -type f \
@@ -306,7 +369,7 @@ jobs:
         name: Initialize release transaction journal
         shell: bash
         env:
-          JOURNAL_CHANNEL: ${{ inputs.release_type }}
+          JOURNAL_CHANNEL: ${{ env.RELEASE_TYPE }}
           CANDIDATE_TAG: ${{ steps.release.outputs.tag }}
           CANDIDATE_VERSION: ${{ steps.release.outputs.version }}
         run: |
@@ -474,10 +537,11 @@ jobs:
     # and binds the tag/release identity to the prepare job's outputs. Any
     # drift between the recomputed and prepared identity fails before upload.
     # Stable-channel dispatch remains an explicit user gate.
-    needs: [prepare]
+    needs: [triage, prepare]
+    if: always() && needs.prepare.result == 'success'
     runs-on: ubuntu-latest
     environment:
-      name: ${{ github.event.inputs.release_type == 'beta' && 'beta-publish' || 'stable-publish' }}
+      name: ${{ github.event_name == 'push' && (github.ref_name == 'staging' && 'beta-publish' || 'stable-publish') || (inputs.release_type == 'beta' && 'beta-publish' || 'stable-publish') }}
     permissions:
       contents: write
       id-token: write
@@ -563,7 +627,7 @@ jobs:
           cosign sign-blob --yes --bundle dist/checksums.txt.bundle dist/checksums.txt
       - name: Build exact create-once release manifest
         env:
-          CHANNEL: ${{ inputs.release_type }}
+          CHANNEL: ${{ env.RELEASE_TYPE }}
           EXPECTED_RELEASE_COMMIT: ${{ steps.cas.outputs.release_commit }}
           EXPECTED_TAG: ${{ steps.cas.outputs.tag }}
         run: |
