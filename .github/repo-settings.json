@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "tier": 1,
+  "description": "Secrets without the server.",
+  "homepage": "https://skret.n24q02m.com",
+  "topics": [
+    "aws-ssm",
+    "byoc",
+    "cli",
+    "golang",
+    "secret-manager",
+    "devops",
+    "doppler-alternative",
+    "dotenv",
+    "environment-variables",
+    "secrets-management"
+  ]
+}

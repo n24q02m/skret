@@ -9,12 +9,17 @@
       "actor_id": 5,
       "actor_type": "RepositoryRole",
       "bypass_mode": "always"
+    },
+    {
+      "actor_id": 3200052,
+      "actor_type": "Integration",
+      "bypass_mode": "always"
     }
   ],
   "conditions": {
     "ref_name": {
       "exclude": [],
-      "include": ["refs/heads/main"]
+      "include": ["~DEFAULT_BRANCH"]
     }
   },
   "rules": [
@@ -30,6 +35,7 @@
         "require_code_owner_review": true,
         "require_last_push_approval": true,
         "required_review_thread_resolution": true,
+        "require_extra_approval_for_unattributed_changes": true,
         "allowed_merge_methods": ["squash"]
       }
     },
