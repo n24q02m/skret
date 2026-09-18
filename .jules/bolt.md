@@ -87,3 +87,7 @@
 ## 2026-09-17 - Use strings.Cut instead of strings.Split for zero-allocation iteration
 **Learning:** Using `strings.Split` for simple string parsing loops allocates a slice. If the function doesn't actually need to return or keep the slice, replacing `strings.Split` with `strings.Cut` within a loop eliminates the slice allocation.
 **Action:** Always prefer `strings.Cut` in loops over `strings.Split` when validating or processing delimited strings where the resulting slice isn't needed or returned. This achieves zero-allocation performance without sacrificing maintainability.
+
+## $(date +%Y-%m-%d) - Hoist Map Initialization
+**Learning:** Initializing literal maps (e.g., `map[string]bool{...}`) inside frequently executed functions dynamically allocates memory and initializes elements on every call, creating unnecessary overhead and GC pressure.
+**Action:** Always hoist statically-defined map literals out of function bodies into package-level variables to ensure they are allocated and initialized only once during program startup.
