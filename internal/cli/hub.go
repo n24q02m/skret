@@ -433,7 +433,7 @@ func fetchHubStatus(hubURL, token string) (*hubStatus, error) {
 	if err != nil {
 		return nil, skret.NewError(skret.ExitConfigError, "parse hub url", err)
 	}
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, u.JoinPath("api/status").String(), nil)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, u.JoinPath("api/status").String(), http.NoBody)
 	if err != nil {
 		return nil, skret.NewError(skret.ExitNetworkError, "create request", err)
 	}
