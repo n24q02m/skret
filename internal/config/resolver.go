@@ -29,8 +29,11 @@ type ResolvedConfig struct {
 	// Encrypted is the local provider's write-side encryption intent
 	// (env config `encrypted: true`). See Environment.Encrypted.
 	Encrypted bool
-	Required  []string
-	Exclude   []string
+	// AuditLog is the local provider's audit trail path (env config
+	// `audit_log`). Empty means the default sibling of the secrets file.
+	AuditLog string
+	Required []string
+	Exclude  []string
 	// Notify carries the .skret.yaml notify block (nil when absent) so
 	// mutation commands can report webhook notifications without re-loading
 	// the config file.
@@ -73,6 +76,7 @@ func Resolve(cfg *Config, opts ResolveOpts) (*ResolvedConfig, error) {
 		KMSKeyID:    env.KMSKeyID,
 		File:        firstNonEmpty(opts.File, env.File),
 		Encrypted:   env.Encrypted,
+		AuditLog:    env.AuditLog,
 		Required:    cfg.Required,
 		Exclude:     cfg.Exclude,
 		Notify:      cfg.Notify,

@@ -33,6 +33,11 @@ type Environment struct {
 	// of this flag, so a plaintext file keeps working until
 	// `skret keys init --encrypt-existing` migrates it.
 	Encrypted bool `yaml:"encrypted,omitempty"`
+	// AuditLog overrides the local provider's audit trail location. The
+	// default is `.skret-audit.log` next to the secrets file. Mutations
+	// (set/rotate/delete) append one JSONL line per change recording names
+	// and metadata only -- never values.
+	AuditLog string `yaml:"audit_log,omitempty"`
 }
 
 // SyncConfig declares reusable sync routes (targets) + optional hub endpoint.

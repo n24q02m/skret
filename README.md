@@ -94,6 +94,7 @@ If you only need a single-cloud injector and you don't care about migration or C
 - **Watch mode**: `skret run --watch -- your-cmd` auto-restarts the command when secrets change. Change detection polls a no-decrypt fingerprint, so it issues zero KMS Decrypt requests.
 - **Leak guard**: `skret scan` checks tracked files for your real managed secret values — precise, no pattern-matching false positives — and exits `10` when one is found, so CI and pre-commit hooks fail on a leak. `--history` walks committed blobs across git history and reports the commit that introduced each leak.
 - **Webhook notifications**: fire a names-only, optionally HMAC-signed webhook on every successful `set`/`delete`/`rotate`/`sync` — audit trail for pipelines without a control plane.
+- **Secret access audit trail**: `skret audit` renders who changed or read what, when — from the local provider's append-only JSONL log (names only, never values, `0600`) or an AWS CloudTrail export of SSM parameter operations.
 - **Interactive browser**: `skret browse` opens a TUI of your secret keys and reveals each value on demand. The list never decrypts, so browsing is free of KMS cost; only the secret you reveal is decrypted.
 
 ## Install
@@ -292,6 +293,7 @@ Full docs at **[skret.n24q02m.com](https://skret.n24q02m.com)**:
 | `skret scan` | Scan tracked files for any managed secret value and exit 10 on a leak (`--staged` for pre-commit hooks, `--history` to scan git history) |
 | `skret browse` | Browse secret keys in an interactive TUI, revealing values on demand (no decryption to browse) |
 | `skret keys init --encrypt-existing` | Set up key material and encrypt the local secrets file at rest (`skret keys show` reports state) |
+| `skret audit` | Show the secret access audit trail — local append-only JSONL log (names only, never values) or AWS CloudTrail export of SSM parameter operations |
 | `skret doctor` | Read-only health check: config validity, provider reachability, auth state, local file permissions and at-rest encryption state; exits with the failing check's class (`--format json` for machines) |
 
 ## Contributing

@@ -355,6 +355,42 @@ Notes:
 
 - `encrypted` reflects the file on disk (envelope sniffing), `encrypted_config` the `encrypted: true` flag in `.skret.yaml` — the two can legitimately differ while a plaintext file is awaiting migration.
 - `key_available` is checked non-interactively (env vars and OS keyring only), so scripts can rely on it without triggering a prompt.
+
+## `skret audit`
+
+Shows the secret access audit trail. Read-only: never mutates state, fully non-interactive, and stdout carries data only.
+
+```bash
+skret audit
+skret audit --since 24h --key API_KEY
+skret audit --format json
+skret audit --provider aws --since 2026-09-01T00:00:00Z --limit 50
+```
+
+**Local provider** — renders the append-only JSONL audit trail written next to the secrets file (`.skret-audit.log`, or the `audit_log` path from `.skret.yaml`). Every local `set`/`rotate`/`delete` appends one line:
+
+```json
+{"timestamp":"2026-09-19T09:00:00.123Z","op":"set","key_names":["API_KEY"],"env":"prod","actor":"deploy-bot"}
+```
+
+Each line carries timestamp, operation (`set`/`rotate`/`delete`), affected key names, environment, and actor (`SKRET_ACTOR` when set — useful in CI — else the OS user). Secret values are never written to the trail. The log is created with `0600`, and when it reaches 1 MiB it rotates to `.skret-audit.log.1` (single backup) before the next append. Reading the trail never decrypts the secrets file, so `skret audit` works without key material.
+
+**AWS provider** — exports CloudTrail events for SSM Parameter Store operations (`GetParameter`, `GetParameters`, `GetParametersByPath`, `GetParameterHistory`, `PutParameter`, `DeleteParameter`, `DeleteParameters`), newest first. CloudTrail lookup retention is 90 days, so `--since` older than that yields whatever the service still returns. Credentials resolve exactly like the AWS provider itself (stored credential → profile → SDK chain); region comes from the environment config or `--region`. CloudTrail never logs parameter values, and skret renders metadata fields only.
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--since <duration\|RFC3339>` | -- | Only entries newer than this (`24h`, `30d`, or an absolute timestamp). Local filtering is exact; AWS uses it as the CloudTrail lookup window start. |
+| `--key <name>` | -- | Only entries for this exact key/parameter name |
+| `--limit <n>` | `0` (all) | Cap rendered events, keeping the most recent. The AWS sweep additionally bounds itself at 10 LookupEvents pages (500 events) per event name. |
+| `--format <table\|json>` | `table` | `table` prints a `TIME OP ENV KEYS ACTOR` grid (local) / `TIME EVENT PARAMETER USER SOURCE` grid (AWS); `json` prints the entry array on stdout |
+
+| Exit code | Meaning |
+|-----------|---------|
+| 0 | Entries rendered (an empty trail is not an error; a note goes to stderr) |
+| 2 | Config load/resolve failed |
+| 3 | Trail unreadable, or the CloudTrail lookup failed (auth/permission/network) |
+| 8 | Invalid flag value (`--format`, `--limit`, `--since`) or a provider without a skret-managed audit trail |
+
 ## `skret doctor`
 
 Read-only health check for the current skret setup. Prints one `PASS`/`WARN`/`FAIL` line per check on stderr and a summary on stdout; exits `0` when everything passes (warnings never fail), otherwise with the failing check's error class.
