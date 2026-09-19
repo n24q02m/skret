@@ -43,9 +43,37 @@ Scan only staged files instead of all tracked files. Intended for pre-commit hoo
 skret scan --staged
 ```
 
+### `--history`
+
+Scan committed blob content across git history instead of the working tree — the check for "did this value ever get committed?". Each unique blob is reported once, at the commit that introduced it, so a value carried forward unchanged is attributed to its first commit rather than re-reported.
+
+```bash
+skret scan --history
+```
+
+Output rows gain a `COMMIT` column (`commit` in JSON), and `file` is the repo-relative path as git reports it. Because values are matched against real blob content — not patches — this catches values committed and later removed, and reports the exact commit to scrub.
+
+The walk is bounded so a large repository cannot turn into an unbounded job: `--max-count` caps how many commits are visited (default `1000`) and `--since` accepts any git date expression. A repository with no commits scans empty. Binary and oversize blobs are skipped, and blob content streams one object at a time through a single `git cat-file --batch` process, so memory stays flat regardless of history size.
+
+### `--since`
+
+With `--history`, only scan commits newer than this git date expression (e.g. `"2 weeks ago"` or `2026-01-01`).
+
+```bash
+skret scan --history --since="2 weeks ago"
+```
+
+### `--max-count`
+
+With `--history`, cap the number of commits walked (default `1000`).
+
+```bash
+skret scan --history --max-count=200
+```
+
 ### `--format`
 
-Output format: `table` (default) or `json`. JSON is an array of `{key, file, line}` objects — still no values.
+Output format: `table` (default) or `json`. JSON is an array of `{key, file, line}` objects — still no values. With `--history`, each object also carries a `commit` field.
 
 ```bash
 skret scan --format json
@@ -61,4 +89,4 @@ skret scan --min-length 8
 
 ## Scope
 
-`skret scan` only inspects the current working tree (or staged content with `--staged`). It does not scan past git history — a value that was committed and later removed will not be reported.
+Without `--history`, `skret scan` inspects the current working tree (or staged content with `--staged`) — not the past. With `--history`, it walks committed blob content (bounded by `--max-count`/`--since`) and reports each managed value at the commit that introduced it, so a value that was committed and later removed is still caught.

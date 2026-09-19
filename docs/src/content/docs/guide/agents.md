@@ -23,12 +23,12 @@ skret returns a distinct exit code per failure class, defined in [`pkg/skret/err
 | 7 | `ExitNetworkError` | Network/connectivity failure |
 | 8 | `ExitValidationError` | Invalid input — bad flag combination, missing required value, experimental command not enabled |
 | 9 | `ExitDrift` | `skret diff --exit-code` found a difference between the two sides |
-| 10 | `ExitLeakFound` | `skret scan` found a managed secret value in a tracked (or `--staged`) file |
+| 10 | `ExitLeakFound` | `skret scan` found a managed secret value in a scanned file (working tree, `--staged`, or `--history`) |
 | 125 | `ExitExecError` | `skret run --` could not exec the command (not found on `$PATH`, or exec failure) |
 
 Two of these are the ones you'll branch on most in automation:
 
-- **`skret scan`** exits **10** when a managed secret value shows up in a file — wire it into a pre-commit hook or a CI leak-guard step. It exits **0** when nothing is found.
+- **`skret scan`** exits **10** when a managed secret value shows up in a file — wire it into a pre-commit hook or a CI leak-guard step. Add `--history` to walk committed blobs and catch values that were committed and later removed. It exits **0** when nothing is found.
 - **`skret diff A B --exit-code`** exits **9** when the two secret sets differ, the same non-zero-on-difference contract as `git diff --exit-code`. Without `--exit-code`, `diff` always exits 0 — it's a report, not a gate, unless you ask it to be one.
 
 See the [Error Codes reference](/reference/error-codes/) for the full table plus provider-specific error mappings and remediation per code.
