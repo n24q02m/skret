@@ -4,6 +4,78 @@ All notable changes to this project will be documented in this file.
 
 <!-- version list -->
 
+## v1.20.0 (2026-09-19)
+
+### Bug Fixes
+
+- Address gocritic findings (elseif, singleCaseSwitch)
+  ([#790](https://github.com/n24q02m/skret/pull/790),
+  [`0fdc60f`](https://github.com/n24q02m/skret/commit/0fdc60f668e3801e79d4537c4b57d16ce279961e))
+
+- Address golangci-lint findings in doctor (appendCombine, unparam)
+  ([#789](https://github.com/n24q02m/skret/pull/789),
+  [`1d92412`](https://github.com/n24q02m/skret/commit/1d9241209473084f9f781e81bdc99e34ba3ce717))
+
+- Assert scan json envelope fields the command actually emits
+  ([#788](https://github.com/n24q02m/skret/pull/788),
+  [`5b1d653`](https://github.com/n24q02m/skret/commit/5b1d6538e130b272d9a3080cc4ce804a9c00675e))
+
+- Isolate e2e fixture repo and add workdir input ([#788](https://github.com/n24q02m/skret/pull/788),
+  [`5b1d653`](https://github.com/n24q02m/skret/commit/5b1d6538e130b272d9a3080cc4ce804a9c00675e))
+
+### Chores
+
+- **release**: Fix stale two-branch comment (single-main lane)
+  ([`9107d5e`](https://github.com/n24q02m/skret/commit/9107d5ebcf0b1411f2a7d9f3a708005a28b3b5a1))
+
+- **release**: Single-main release lane (staging branch retired)
+  ([`b7f8c83`](https://github.com/n24q02m/skret/commit/b7f8c83629cf2dece7f253177641dfdd19b24c26))
+
+- **rulesets**: Align IaC with repo-bootstrap template
+  ([`0cea610`](https://github.com/n24q02m/skret/commit/0cea6106275e0f73982f9650b580c7b87b7d87c0))
+
+### Continuous Integration
+
+- Bump BSR action pins to v1.7.0 (a994102c) ([#784](https://github.com/n24q02m/skret/pull/784),
+  [`d5fea52`](https://github.com/n24q02m/skret/commit/d5fea5263f7a7fa72cec2569bcc8da5efd5ff7e2))
+
+- Consolidate workflows into ci.yml + cd.yml
+  ([`01e77ff`](https://github.com/n24q02m/skret/commit/01e77fff45ca2a66d5ed5eea075c3089069a35da))
+
+- Release ladder label alignment + BSR action v1.6.1
+  ([#767](https://github.com/n24q02m/skret/pull/767),
+  [`e7ea566`](https://github.com/n24q02m/skret/commit/e7ea56641fc262af5615bd31d3885a345fc6aa21))
+
+### Documentation
+
+- Add HANDOVER (maintenance-mode notice + successor guidance)
+  ([#770](https://github.com/n24q02m/skret/pull/770),
+  [`0dac44a`](https://github.com/n24q02m/skret/commit/0dac44a38fe4aaa857b96c7e4b0ed7b122b08916))
+
+### Features
+
+- Add official github action for run/scan/diff in ci
+  ([#788](https://github.com/n24q02m/skret/pull/788),
+  [`5b1d653`](https://github.com/n24q02m/skret/commit/5b1d6538e130b272d9a3080cc4ce804a9c00675e))
+
+- Add skret doctor health-check command ([#789](https://github.com/n24q02m/skret/pull/789),
+  [`1d92412`](https://github.com/n24q02m/skret/commit/1d9241209473084f9f781e81bdc99e34ba3ce717))
+
+- Add skret generate command (password/uuid/hex/base64)
+  ([#790](https://github.com/n24q02m/skret/pull/790),
+  [`0fdc60f`](https://github.com/n24q02m/skret/commit/0fdc60f668e3801e79d4537c4b57d16ce279961e))
+
+- Add skret generate command for random password/uuid/hex/base64 values
+  ([#790](https://github.com/n24q02m/skret/pull/790),
+  [`0fdc60f`](https://github.com/n24q02m/skret/commit/0fdc60f668e3801e79d4537c4b57d16ce279961e))
+
+### Testing
+
+- Align candidate release workflow tests with single-main cd.yml
+  ([#787](https://github.com/n24q02m/skret/pull/787),
+  [`dd7be8f`](https://github.com/n24q02m/skret/commit/dd7be8f173dff4b7b05a22e692208801a8e80e37))
+
+
 ## v1.19.3 (2026-09-11)
 
 ### Bug Fixes
