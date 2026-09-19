@@ -5,7 +5,7 @@ description: "Flags, defaults, and behavior for skret's core commands: init, set
 
 Flags, defaults, and behavior for skret's core commands. For the guided walkthrough see [Getting Started](/guide/getting-started/); for `.skret.yaml` fields see the [Config Schema Reference](/reference/config-schema/); for exit codes see [Error Codes](/reference/error-codes/).
 
-`skret bootstrap`, `skret sync`, `skret scan`, `skret diff`, and `skret template` each have their own dedicated guide page linked from those commands' `--help` output. `skret history` and `skret rollback` are gated behind `SKRET_EXPERIMENTAL` and are not covered here.
+`skret bootstrap`, `skret sync`, `skret scan`, `skret diff`, `skret template`, and `skret doctor` each have their own dedicated guide page linked from those commands' `--help` output. `skret history` and `skret rollback` are gated behind `SKRET_EXPERIMENTAL` and are not covered here.
 
 ## Global flags
 
@@ -237,3 +237,30 @@ Notes:
 - Duplicate keys within the imported source are deduplicated before writing (last value wins); keys with an empty value are skipped and reported on stderr.
 - `--on-conflict=fail` exits with `ExitConflictError` (6) on the first key that already exists at the destination; `skip` counts and continues; `overwrite` writes without checking.
 - This is a one-time migration into skret's backend. For ongoing propagation outward, use [`skret sync`](/guide/sync/) instead.
+
+## `skret doctor`
+
+Read-only health check for the current skret setup. Prints one `PASS`/`WARN`/`FAIL` line per check on stderr and a summary on stdout; exits `0` when everything passes (warnings never fail), otherwise with the failing check's error class.
+
+```bash
+skret doctor
+skret doctor --env prod
+skret doctor --format json
+```
+
+Checks: config parse/schema (`config`), per-environment provider reachability (`provider[env]` — a real `sts:GetCallerIdentity` probe for AWS, secrets-file load for `local`), stored-credential state (`auth[aws]` — missing warns, expired fails, expiry within 24h warns), local secrets-file permissions (`permissions[env]`, advisory; always pass on Windows), and local encryption intent (`encryption[env]`; missing field = plaintext default, never a failure).
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--format <table\|json>` | `table` | `json` prints `{checks: [{name, status, detail, remediation?}]}` on stdout |
+| `--timeout <duration>` | `10s` | Reachability probe timeout per provider |
+
+| Exit code | Meaning |
+|-----------|---------|
+| 0 | All checks passed (warnings allowed) |
+| 2 | Config check failed |
+| 3 | Local provider check failed (e.g. corrupt secrets file) |
+| 4 | Auth check failed (expired credential) |
+| 7 | Provider unreachable |
+
+See the [Doctor guide](/guide/doctor/) for the full walkthrough.
