@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 )
 
@@ -98,6 +99,29 @@ func Resolve(cfg *Config, opts ResolveOpts) (*ResolvedConfig, error) {
 		Exclude:       cfg.Exclude,
 		Notify:        cfg.Notify,
 	}, nil
+}
+
+// AnchorToDir rewrites every environment's relative `file` and `audit_log`
+// paths to absolute, anchored at dir -- the directory of the discovered
+// config. Absolute paths pass through untouched. Consumers that resolve a
+// config in one directory and then construct providers from another
+// working directory (the library API, the skret-mcp server's --workdir)
+// need this so `file: .secrets.dev.yaml` keeps meaning "next to the
+// config", the same place the CLI resolves it from the project root.
+func AnchorToDir(c *Config, dir string) {
+	for name := range c.Environments {
+		env := c.Environments[name]
+		env.File = anchorPath(env.File, dir)
+		env.AuditLog = anchorPath(env.AuditLog, dir)
+		c.Environments[name] = env
+	}
+}
+
+func anchorPath(p, dir string) string {
+	if p == "" || filepath.IsAbs(p) {
+		return p
+	}
+	return filepath.Join(dir, p)
 }
 
 // envNames returns the sorted environment names declared in a config, for
