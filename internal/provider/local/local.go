@@ -11,7 +11,9 @@ import (
 	"sync"
 
 	"github.com/n24q02m/skret/internal/config"
+	"github.com/n24q02m/skret/internal/keystore"
 	"github.com/n24q02m/skret/internal/provider"
+	"golang.org/x/term"
 	"gopkg.in/yaml.v3"
 )
 
@@ -21,10 +23,22 @@ type localFile struct {
 }
 
 // Provider reads/writes secrets from a local YAML file.
+//
+// Encryption: when the file on disk is a keystore envelope it is decrypted
+// on load and re-encrypted on every save (sticky encDisk), regardless of
+// config. When the environment config declares `encrypted: true` (encCfg),
+// saves produce an envelope even if the file is still plaintext — the
+// declared write-side intent. Plaintext configs with plaintext files behave
+// exactly as before (byte-for-byte), keeping the dev default zero-friction.
 type Provider struct {
 	mu       sync.RWMutex
 	filePath string
 	data     localFile
+
+	encCfg  bool   // `encrypted: true` in the active env config (write intent)
+	encDisk bool   // file on disk is a keystore envelope (sticky)
+	keyMat  string // resolved key material ("" until first needed)
+	keySrc  string // provenance of keyMat (env/keyring/passphrase)
 }
 
 // New creates a local provider from a resolved config.
@@ -34,7 +48,7 @@ func New(cfg *config.ResolvedConfig) (provider.SecretProvider, error) {
 		return nil, fmt.Errorf("local: resolve path %q: %w", cfg.File, err)
 	}
 
-	p := &Provider{filePath: absPath}
+	p := &Provider{filePath: absPath, encCfg: cfg.Encrypted}
 	if err := p.load(); err != nil {
 		return nil, fmt.Errorf("local: load %q: %w", absPath, err)
 	}
@@ -159,6 +173,19 @@ func (p *Provider) load() error {
 		}
 		return err
 	}
+	if keystore.Detect(raw) {
+		p.encDisk = true
+		if err := p.ensureKey(); err != nil {
+			return err
+		}
+		secrets, err := keystore.Open(raw, p.keyMat)
+		if err != nil {
+			return err
+		}
+		p.data = localFile{Version: "1", Secrets: secrets}
+		return nil
+	}
+	p.encDisk = false
 	if err := yaml.Unmarshal(raw, &p.data); err != nil {
 		return err
 	}
@@ -168,10 +195,39 @@ func (p *Provider) load() error {
 	return nil
 }
 
-func (p *Provider) save() error {
-	raw, err := yaml.Marshal(&p.data)
+// ensureKey resolves key material at most once per process. The passphrase
+// prompt (interactive terminals only) therefore fires once, not on every
+// reload — important for `run --watch`, which re-loads on each poll.
+func (p *Provider) ensureKey() error {
+	if p.keyMat != "" {
+		return nil
+	}
+	res, err := keystore.ResolveKeyMaterial(keystore.ResolveOpts{
+		Interactive: term.IsTerminal(int(os.Stdin.Fd())),
+	})
 	if err != nil {
-		return fmt.Errorf("local: marshal: %w", err)
+		return err
+	}
+	p.keyMat, p.keySrc = res.Material, res.Source
+	return nil
+}
+
+func (p *Provider) save() error {
+	var raw []byte
+	var err error
+	if p.encCfg || p.encDisk {
+		if err := p.ensureKey(); err != nil {
+			return err
+		}
+		raw, err = keystore.Seal(p.data.Secrets, p.keyMat, nil)
+		if err != nil {
+			return err
+		}
+	} else {
+		raw, err = yaml.Marshal(&p.data)
+		if err != nil {
+			return fmt.Errorf("local: marshal: %w", err)
+		}
 	}
 	// Atomic write: temp file + rename
 	dir := filepath.Dir(p.filePath)

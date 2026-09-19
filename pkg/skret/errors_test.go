@@ -2,6 +2,7 @@ package skret
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -117,4 +118,33 @@ func TestWithRemediation_NilOrEmptyPassthrough(t *testing.T) {
 func TestRemediationOf_NoneAttached(t *testing.T) {
 	assert.Empty(t, RemediationOf(errors.New("plain failure")))
 	assert.Empty(t, RemediationOf(NewError(ExitGenericError, "no hint here", nil)))
+}
+
+// externalCoder simulates a leaf-package error (e.g. internal/keystore)
+// that cannot import pkg/skret without an import cycle but still carries
+// spec 7.1 codes and remediation hints through the interface.
+type externalCoder struct {
+	msg  string
+	code int
+	hint string
+}
+
+func (e *externalCoder) Error() string       { return e.msg }
+func (e *externalCoder) ExitCode() int       { return e.code }
+func (e *externalCoder) Remediation() string { return e.hint }
+
+func TestExitCode_InterfaceErrors(t *testing.T) {
+	ext := &externalCoder{msg: "no key material", code: ExitAuthError, hint: "export SKRET_AGE_KEY=..."}
+
+	assert.Equal(t, ExitAuthError, ExitCode(ext))
+	assert.Equal(t, "export SKRET_AGE_KEY=...", RemediationOf(ext))
+
+	// Wrapped a level deep: the interface must still be found.
+	wrapped := fmt.Errorf("local: load %q: %w", "file.yaml", ext)
+	assert.Equal(t, ExitAuthError, ExitCode(wrapped))
+	assert.Equal(t, "export SKRET_AGE_KEY=...", RemediationOf(wrapped))
+
+	// Plain errors still fall through to generic.
+	assert.Equal(t, ExitGenericError, ExitCode(errors.New("plain")))
+	assert.Empty(t, RemediationOf(errors.New("plain")))
 }

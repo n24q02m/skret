@@ -1,6 +1,9 @@
 package skret
 
-import "errors"
+import (
+	"errors"
+	"reflect"
+)
 
 // Standard exit codes matching spec §7.1.
 const (
@@ -33,6 +36,9 @@ func (e *Error) Error() string {
 }
 
 func (e *Error) Unwrap() error {
+	if e == nil {
+		return nil
+	}
 	return e.Err
 }
 
@@ -46,6 +52,12 @@ func NewError(code int, message string, err error) *Error {
 }
 
 // ExitCode returns the appropriate exit code for an error.
+//
+// Beyond *Error itself, any error in the chain implementing
+// interface{ ExitCode() int } is honored. This lets leaf packages that
+// cannot import pkg/skret without an import cycle (e.g. internal/keystore,
+// reachable from provider/local which pkg/skret's registry imports) still
+// carry spec §7.1 exit codes through to the CLI.
 func ExitCode(err error) int {
 	if err == nil {
 		return ExitSuccess
@@ -56,7 +68,23 @@ func ExitCode(err error) int {
 			return skretErr.Code
 		}
 	}
+	var coder interface{ ExitCode() int }
+	if errors.As(err, &coder) && !isNilReceiver(coder) {
+		return coder.ExitCode()
+	}
 	return ExitGenericError
+}
+
+// isNilReceiver reports whether v, an interface value matched by errors.As,
+// holds a typed nil pointer — calling methods on it would panic.
+func isNilReceiver(v any) bool {
+	rv := reflect.ValueOf(v)
+	switch rv.Kind() {
+	case reflect.Ptr, reflect.Map, reflect.Slice, reflect.Func, reflect.Chan, reflect.Interface:
+		return rv.IsNil()
+	default:
+		return false
+	}
 }
 
 // remediated wraps an error with a one-line, copy-pasteable fix hint.
@@ -78,10 +106,16 @@ func WithRemediation(err error, hint string) error {
 }
 
 // RemediationOf returns the remediation hint attached to err, or "".
+// Mirrors ExitCode: any error implementing interface{ Remediation() string }
+// is honored, so cycle-constrained leaf packages can carry hints too.
 func RemediationOf(err error) string {
 	var r *remediated
 	if errors.As(err, &r) {
 		return r.hint
+	}
+	var rem interface{ Remediation() string }
+	if errors.As(err, &rem) && !isNilReceiver(rem) {
+		return rem.Remediation()
 	}
 	return ""
 }
