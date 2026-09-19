@@ -38,6 +38,16 @@ type Environment struct {
 	// (set/rotate/delete) append one JSONL line per change recording names
 	// and metadata only -- never values.
 	AuditLog string `yaml:"audit_log,omitempty"`
+	// CompartmentID is the OCID of the compartment holding the vault for
+	// the oci provider.
+	CompartmentID string `yaml:"compartment_id,omitempty"`
+	// VaultID is the OCID of the OCI vault where secrets live for the oci
+	// provider.
+	VaultID string `yaml:"vault_id,omitempty"`
+	// KeyID is the OCID of the software-protected master encryption key
+	// used when the oci provider creates a new secret (updates reuse the
+	// secret's existing key).
+	KeyID string `yaml:"key_id,omitempty"`
 }
 
 // SyncConfig declares reusable sync routes (targets) + optional hub endpoint.
@@ -220,6 +230,13 @@ func (e *Environment) validate(name string) error {
 	case "local":
 		if e.File == "" {
 			return fmt.Errorf("config: environment %q: file is required for local provider", name)
+		}
+	case "oci":
+		if e.CompartmentID == "" {
+			return fmt.Errorf("config: environment %q: compartment_id is required for oci provider", name)
+		}
+		if e.VaultID == "" {
+			return fmt.Errorf("config: environment %q: vault_id is required for oci provider", name)
 		}
 	default:
 		return fmt.Errorf("config: environment %q: unknown provider %q", name, e.Provider)

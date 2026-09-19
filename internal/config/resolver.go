@@ -32,8 +32,13 @@ type ResolvedConfig struct {
 	// AuditLog is the local provider's audit trail path (env config
 	// `audit_log`). Empty means the default sibling of the secrets file.
 	AuditLog string
-	Required []string
-	Exclude  []string
+	// CompartmentID, VaultID and KeyID are the oci provider's OCIDs
+	// (env config compartment_id / vault_id / key_id).
+	CompartmentID string
+	VaultID       string
+	KeyID         string
+	Required      []string
+	Exclude       []string
 	// Notify carries the .skret.yaml notify block (nil when absent) so
 	// mutation commands can report webhook notifications without re-loading
 	// the config file.
@@ -67,19 +72,22 @@ func Resolve(cfg *Config, opts ResolveOpts) (*ResolvedConfig, error) {
 	flagPath, pathMangled := ResolvePath(opts.Path)
 
 	return &ResolvedConfig{
-		EnvName:     envName,
-		Provider:    firstNonEmpty(opts.Provider, os.Getenv("SKRET_PROVIDER"), env.Provider),
-		Path:        NormalizeSSMPath(firstNonEmpty(flagPath, os.Getenv("SKRET_PATH"), env.Path)),
-		PathMangled: pathMangled,
-		Region:      firstNonEmpty(opts.Region, os.Getenv("SKRET_REGION"), os.Getenv("AWS_REGION"), env.Region),
-		Profile:     firstNonEmpty(opts.Profile, os.Getenv("SKRET_PROFILE"), os.Getenv("AWS_PROFILE"), env.Profile),
-		KMSKeyID:    env.KMSKeyID,
-		File:        firstNonEmpty(opts.File, env.File),
-		Encrypted:   env.Encrypted,
-		AuditLog:    env.AuditLog,
-		Required:    cfg.Required,
-		Exclude:     cfg.Exclude,
-		Notify:      cfg.Notify,
+		EnvName:       envName,
+		Provider:      firstNonEmpty(opts.Provider, os.Getenv("SKRET_PROVIDER"), env.Provider),
+		Path:          NormalizeSSMPath(firstNonEmpty(flagPath, os.Getenv("SKRET_PATH"), env.Path)),
+		PathMangled:   pathMangled,
+		Region:        firstNonEmpty(opts.Region, os.Getenv("SKRET_REGION"), os.Getenv("AWS_REGION"), env.Region),
+		Profile:       firstNonEmpty(opts.Profile, os.Getenv("SKRET_PROFILE"), os.Getenv("AWS_PROFILE"), env.Profile),
+		KMSKeyID:      env.KMSKeyID,
+		File:          firstNonEmpty(opts.File, env.File),
+		Encrypted:     env.Encrypted,
+		AuditLog:      env.AuditLog,
+		CompartmentID: env.CompartmentID,
+		VaultID:       env.VaultID,
+		KeyID:         env.KeyID,
+		Required:      cfg.Required,
+		Exclude:       cfg.Exclude,
+		Notify:        cfg.Notify,
 	}, nil
 }
 

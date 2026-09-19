@@ -13,7 +13,7 @@ skret uses structured exit codes to communicate failure types. Every error inclu
 | 1 | `ExitGenericError` | Unclassified error | Check the error message. File a bug if unexpected. |
 | 2 | `ExitConfigError` | Configuration problem | Verify `.skret.yaml` exists, has valid syntax, and `version: "1"`. Run `skret init` if missing. |
 | 3 | `ExitProviderError` | Backend provider failure | Check provider connectivity. For AWS: verify region, check SSM service status. |
-| 4 | `ExitAuthError` | Authentication failed | Verify credentials. For AWS: run `aws sts get-caller-identity`. Check IAM policy grants SSM access to the path. For local-file encryption: set `SKRET_AGE_KEY`/`SKRET_LOCAL_KEY` or run `skret keys init`. |
+| 4 | `ExitAuthError` | Authentication failed | Verify credentials. For AWS: run `aws sts get-caller-identity`. Check IAM policy grants SSM access to the path. For OCI: run `skret doctor`, verify `~/.oci/config` or `OCI_CLI_*`, and confirm the IAM policy grants `secret-family` and `use key-delegate`. For local-file encryption: set `SKRET_AGE_KEY`/`SKRET_LOCAL_KEY` or run `skret keys init`. |
 | 5 | `ExitNotFoundError` | Secret does not exist | Verify the key name with `skret list`. Check you are targeting the correct environment (`--env`). |
 | 6 | `ExitConflictError` | Resource conflict | Key already exists when using `--on-conflict=fail`. Use `--on-conflict=overwrite` or `--on-conflict=skip`. |
 | 7 | `ExitNetworkError` | Network/connectivity failure | Check internet connection, DNS resolution, and firewall rules. For AWS: verify VPC endpoints if in a private subnet. |

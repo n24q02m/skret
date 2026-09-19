@@ -104,6 +104,7 @@ internal/cli/           -- Command implementations
 internal/config/        -- .skret.yaml schema + loader + resolver
 internal/provider/      -- SecretProvider interface + registry
 internal/provider/aws/  -- AWS SSM Parameter Store
+internal/provider/oci/  -- OCI Vault
 internal/provider/local/-- Local YAML file (dev/test)
 internal/importer/      -- Import from Doppler/Infisical/dotenv
 internal/syncer/        -- Sync to GitHub Actions/dotenv

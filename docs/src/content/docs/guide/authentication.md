@@ -272,6 +272,30 @@ Restrict IAM users/roles to specific environments:
 }
 ```
 
+## OCI Authentication
+
+The `oci` provider resolves credentials in the OCI CLI's precedence
+(details in the [OCI Vault provider guide](/providers/oci/)):
+
+1. `OCI_CLI_AUTH=instance_principal` — compute instance identity
+2. `OCI_CLI_USER` / `OCI_CLI_TENANCY` / `OCI_CLI_FINGERPRINT` /
+   `OCI_CLI_KEY_FILE` (+ `OCI_CLI_PASS_PHRASE`) — API key from the
+   environment, composed over the config file
+3. `~/.oci/config` (or `OCI_CLI_CONFIG_FILE`) with profile
+   `OCI_CLI_PROFILE` > the environment's `profile` > `DEFAULT`
+
+A `region` set on the environment overrides the region of any auth source.
+
+```yaml
+environments:
+  prod:
+    provider: oci
+    path: /myapp/prod
+    compartment_id: ocid1.compartment.oc1..xxx
+    vault_id: ocid1.vault.oc1..yyy
+    key_id: ocid1.key.oc1..zzz
+```
+
 ## Precedence
 
 Authentication-related settings follow the same precedence as all config:

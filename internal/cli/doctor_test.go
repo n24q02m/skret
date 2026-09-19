@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/n24q02m/skret/internal/auth"
+	"github.com/n24q02m/skret/internal/config"
 	"github.com/n24q02m/skret/internal/keystore"
 	"github.com/n24q02m/skret/internal/provider"
 	"github.com/n24q02m/skret/pkg/skret"
@@ -736,4 +737,37 @@ func TestDoctorCmd_RejectsPositionalArgs(t *testing.T) {
 
 	_, _, err := runDoctorCmd(t, "bogus-arg")
 	require.Error(t, err, "doctor takes no positional args")
+}
+
+// TestDoctorOCIReachCheckAuthConfigFailure pins the auth-class classification
+// of an unusable OCI auth configuration (no config file, no OCI_CLI_* env),
+// hermetically isolated from the host's real ~/.oci.
+func TestDoctorOCIReachCheckAuthConfigFailure(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	for _, key := range []string{
+		"OCI_CLI_AUTH", "OCI_CLI_USER", "OCI_CLI_TENANCY", "OCI_CLI_FINGERPRINT",
+		"OCI_CLI_KEY_FILE", "OCI_CLI_PASS_PHRASE", "OCI_CLI_REGION",
+		"OCI_CLI_PROFILE", "OCI_CLI_CONFIG_FILE",
+	} {
+		t.Setenv(key, "")
+	}
+
+	resolved := &config.ResolvedConfig{
+		Provider: "oci", Path: "/myapp/prod",
+		CompartmentID: "ocid1.compartment.oc1..c", VaultID: "ocid1.vault.oc1..v",
+	}
+	probeCache := map[string]error{}
+	checks := doctorOCIReachCheck("prod", resolved, time.Second, probeCache)
+	require.Len(t, checks, 1)
+	assert.Equal(t, doctorFail, checks[0].Status)
+	assert.Equal(t, skret.ExitAuthError, checks[0].failClass)
+	assert.Contains(t, checks[0].Detail, "auth configuration unusable")
+	assert.Contains(t, checks[0].Remediation, "OCI_CLI_AUTH=instance_principal")
+
+	// The second call reuses the cached probe result.
+	checks = doctorOCIReachCheck("staging", resolved, time.Second, probeCache)
+	require.Len(t, checks, 1)
+	assert.Equal(t, skret.ExitAuthError, checks[0].failClass)
 }
