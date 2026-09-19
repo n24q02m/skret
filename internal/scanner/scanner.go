@@ -9,10 +9,15 @@ import (
 
 // Finding is one managed secret value located in a file. It deliberately holds
 // NO value — only the key name and location — so output can never leak a secret.
+//
+// Commit is empty for working-tree/staged scans and set by HistoryScan to the
+// sha of the commit that introduced the blob (JSON omits it when empty, so the
+// working-tree JSON shape is unchanged).
 type Finding struct {
-	Key  string `json:"key"`
-	File string `json:"file"`
-	Line int    `json:"line"`
+	Key    string `json:"key"`
+	File   string `json:"file"`
+	Line   int    `json:"line"`
+	Commit string `json:"commit,omitempty"`
 }
 
 // Target is a managed secret to look for: its display key and the value to match.

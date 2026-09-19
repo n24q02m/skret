@@ -63,6 +63,7 @@ skret run -- make deploy          # run a command with secrets injected
 skret get DATABASE_URL --plain    # print one value (exact bytes)
 skret sync --to=github,cloudflare # push secrets to CI/edge targets
 skret scan --staged               # leak-guard: exits 10 if a value leaked
+skret scan --history              # scan committed blobs across git history
 ```
 
 Using skret from a script or AI agent? See the [agent guide](https://skret.n24q02m.com/guide/agents/).
@@ -91,7 +92,7 @@ If you only need a single-cloud injector and you don't care about migration or C
 - **Cross-platform**: Linux, macOS, Windows — amd64 and arm64 binaries for each.
 - **Tab-completion of secret keys**: `skret get <TAB>` completes real key names via a names-only listing — zero decryption, zero KMS cost.
 - **Watch mode**: `skret run --watch -- your-cmd` auto-restarts the command when secrets change. Change detection polls a no-decrypt fingerprint, so it issues zero KMS Decrypt requests.
-- **Leak guard**: `skret scan` checks tracked files for your real managed secret values — precise, no pattern-matching false positives — and exits `10` when one is found, so CI and pre-commit hooks fail on a leak.
+- **Leak guard**: `skret scan` checks tracked files for your real managed secret values — precise, no pattern-matching false positives — and exits `10` when one is found, so CI and pre-commit hooks fail on a leak. `--history` walks committed blobs across git history and reports the commit that introduced each leak.
 - **Webhook notifications**: fire a names-only, optionally HMAC-signed webhook on every successful `set`/`delete`/`rotate`/`sync` — audit trail for pipelines without a control plane.
 - **Interactive browser**: `skret browse` opens a TUI of your secret keys and reveals each value on demand. The list never decrypts, so browsing is free of KMS cost; only the secret you reveal is decrypted.
 
@@ -288,7 +289,7 @@ Full docs at **[skret.n24q02m.com](https://skret.n24q02m.com)**:
 | `skret hub push` | Publish a names-only secret inventory (no values) to the vault dashboard |
 | `skret diff <A> <B>` | Compare two environments (or env vs dotenv / env vs github) and report drift without printing values |
 | `skret template <file>` | Render a template file, substituting `${KEY}` with secret values |
-| `skret scan` | Scan tracked files for any managed secret value and exit 10 on a leak (`--staged` for pre-commit hooks) |
+| `skret scan` | Scan tracked files for any managed secret value and exit 10 on a leak (`--staged` for pre-commit hooks, `--history` to scan git history) |
 | `skret browse` | Browse secret keys in an interactive TUI, revealing values on demand (no decryption to browse) |
 | `skret keys init --encrypt-existing` | Set up key material and encrypt the local secrets file at rest (`skret keys show` reports state) |
 | `skret doctor` | Read-only health check: config validity, provider reachability, auth state, local file permissions and at-rest encryption state; exits with the failing check's class (`--format json` for machines) |
