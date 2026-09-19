@@ -1,0 +1,276 @@
+name: Action e2e
+
+# Exercises the composite action in this repo (uses: ./) on the three hosted
+# OSes: install from real GitHub releases with checksum verification, then the
+# run/scan/diff wiring against a local-provider fixture repo created in
+# RUNNER_TEMP (no cloud creds, and the skret checkout itself is never the scan
+# target — the fixture value literals in this file must stay out of scan's
+# tracked-file set).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - action.yml
+      - .github/workflows/action-e2e.yml
+  pull_request:
+    branches: [main]
+    paths:
+      - action.yml
+      - .github/workflows/action-e2e.yml
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: action-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  matrix:
+    name: e2e (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - name: Install via the action (install-only mode)
+        id: install
+        uses: ./
+        with:
+          command: ''
+
+      - name: Assert install outputs and binary version
+        env:
+          RESOLVED: ${{ steps.install.outputs.version }}
+        shell: bash
+        run: |
+          case "$RESOLVED" in
+            [0-9]*.[0-9]*.[0-9]*) echo "resolved version: $RESOLVED" ;;
+            *) echo "bad version output: '$RESOLVED'" >&2; exit 1 ;;
+          esac
+          "$SKRET_BIN" --version | grep -F "$RESOLVED" || {
+            echo "binary version does not match resolved output '$RESOLVED'" >&2
+            exit 1
+          }
+
+      - name: Create isolated fixture repository
+        id: fixture
+        env:
+          SKRET_NON_INTERACTIVE: '1'
+        shell: bash
+        run: |
+          dir="${RUNNER_TEMP:-${TMPDIR:-/tmp}}/skret-e2e-fixture"
+          rm -rf "$dir"
+          mkdir -p "$dir"
+          cd "$dir"
+          git init -q .
+          cat > .skret.yaml <<'YAML'
+          version: "1"
+          default_env: dev
+          project: action-e2e
+
+          environments:
+            dev:
+              provider: local
+              file: .secrets.dev.yaml
+            stage:
+              provider: local
+              file: .secrets.stage.yaml
+          YAML
+          printf 'secrets: {}\n' > .secrets.dev.yaml
+          printf 'secrets: {}\n' > .secrets.stage.yaml
+          git add .skret.yaml
+          "$SKRET_BIN" set FIXTURE_TOKEN 'e2e-fixture-value-7f3a9c' --env dev
+          "$SKRET_BIN" set ONLY_STAGE_TOKEN 'stage-only-11' --env stage
+          if command -v cygpath >/dev/null 2>&1; then
+            dir="$(cygpath -m "$dir")"
+          fi
+          echo "dir=$dir" >> "$GITHUB_OUTPUT"
+
+      - name: 'run injects secrets into the child process'
+        uses: ./
+        with:
+          command: run
+          workdir: ${{ steps.fixture.outputs.dir }}
+          args: -- printenv FIXTURE_TOKEN
+
+      - name: 'run propagates child failure (expects failure)'
+        id: run_fail
+        continue-on-error: true
+        uses: ./
+        with:
+          command: run
+          workdir: ${{ steps.fixture.outputs.dir }}
+          args: -- false
+
+      - name: Assert child failure propagated
+        if: steps.run_fail.outcome != 'failure'
+        shell: bash
+        run: |
+          echo "skret run -- false must fail the step" >&2
+          exit 1
+
+      - name: 'scan passes on a clean fixture tree'
+        uses: ./
+        with:
+          command: scan
+          workdir: ${{ steps.fixture.outputs.dir }}
+
+      - name: Plant a leak in the fixture repo
+        env:
+          DIR: ${{ steps.fixture.outputs.dir }}
+        shell: bash
+        run: |
+          printf 'leak: e2e-fixture-value-7f3a9c\n' > "$DIR/leaked.txt"
+          git -C "$DIR" add leaked.txt
+
+      - name: 'scan fails on a leak (expects failure)'
+        id: scan_leak
+        continue-on-error: true
+        uses: ./
+        with:
+          command: scan
+          workdir: ${{ steps.fixture.outputs.dir }}
+
+      - name: Assert leak scan failed the step
+        if: steps.scan_leak.outcome != 'failure'
+        shell: bash
+        run: |
+          echo "skret scan must fail the step when a value leaked (exit 10)" >&2
+          exit 1
+
+  contract:
+    name: e2e (action contract, ubuntu)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - name: Install via the action
+        id: install
+        uses: ./
+        with:
+          command: ''
+
+      - name: Create isolated fixture repository
+        id: fixture
+        env:
+          SKRET_NON_INTERACTIVE: '1'
+        shell: bash
+        run: |
+          dir="${RUNNER_TEMP:-/tmp}/skret-e2e-fixture"
+          rm -rf "$dir"
+          mkdir -p "$dir"
+          cd "$dir"
+          git init -q .
+          cat > .skret.yaml <<'YAML'
+          version: "1"
+          default_env: dev
+          project: action-e2e
+
+          environments:
+            dev:
+              provider: local
+              file: .secrets.dev.yaml
+            stage:
+              provider: local
+              file: .secrets.stage.yaml
+          YAML
+          printf 'secrets: {}\n' > .secrets.dev.yaml
+          printf 'secrets: {}\n' > .secrets.stage.yaml
+          git add .skret.yaml
+          "$SKRET_BIN" set FIXTURE_TOKEN 'e2e-fixture-value-7f3a9c' --env dev
+          "$SKRET_BIN" set ONLY_STAGE_TOKEN 'stage-only-11' --env stage
+          echo "dir=$dir" >> "$GITHUB_OUTPUT"
+
+      - name: 'env input reaches the skret process'
+        uses: ./
+        with:
+          command: run
+          workdir: ${{ steps.fixture.outputs.dir }}
+          env: |
+            # comment lines are ignored
+            SKRET_ACTION_E2E_A=alpha-42
+          args: -- printenv SKRET_ACTION_E2E_A
+
+      - name: 'config input wires --config'
+        env:
+          DIR: ${{ steps.fixture.outputs.dir }}
+          SKRET_NON_INTERACTIVE: '1'
+        shell: bash
+        run: |
+          cd "$DIR"
+          sed 's/\.secrets\.dev\.yaml/.secrets.alt.yaml/' .skret.yaml > alt.yaml
+          printf 'secrets: {}\n' > .secrets.alt.yaml
+          "$SKRET_BIN" set ALT_TOKEN 'alt-value-99' --config alt.yaml --env dev
+
+      - name: 'run with config input finds the alt environment'
+        uses: ./
+        with:
+          command: run
+          workdir: ${{ steps.fixture.outputs.dir }}
+          config: alt.yaml
+          args: -- printenv ALT_TOKEN
+
+      - name: Assert exact exit codes and JSON envelope
+        env:
+          DIR: ${{ steps.fixture.outputs.dir }}
+        shell: bash
+        run: |
+          # GitHub injects -e into shell: bash; these assertions deliberately
+          # run commands that exit non-zero, so error handling is manual.
+          set +e
+          set -u
+          fail() { echo "contract: $*" >&2; exit 1; }
+
+          cd "$DIR" || fail "fixture dir missing: $DIR"
+
+          printf 'leak: e2e-fixture-value-7f3a9c\n' > leaked.txt
+          git add leaked.txt
+
+          "$SKRET_BIN" scan >/dev/null 2>&1
+          code=$?
+          [ "$code" -eq 10 ] || fail "scan leak exit: want 10, got $code"
+
+          "$SKRET_BIN" scan --format json >scan-stdout.txt 2>scan-stderr.txt
+          code=$?
+          [ "$code" -eq 10 ] || fail "scan leak --format json exit: want 10, got $code"
+          jq -e '.code == 10 and (.error | length > 0)' scan-stderr.txt >/dev/null \
+            || fail "scan --format json stderr is not the documented error envelope: $(cat scan-stderr.txt)"
+
+          "$SKRET_BIN" diff dev stage --exit-code >/dev/null 2>&1
+          code=$?
+          [ "$code" -eq 9 ] || fail "diff drift exit: want 9, got $code"
+
+          echo "exit-code contract verified (10, 9) + JSON envelope"
+
+      - name: 'pinned version input installs exactly that release'
+        id: pinned
+        uses: ./
+        with:
+          command: ''
+          version: v1.19.3
+
+      - name: Assert pinned version output
+        env:
+          RESOLVED: ${{ steps.pinned.outputs.version }}
+        shell: bash
+        run: |
+          [ "$RESOLVED" = "1.19.3" ] || { echo "want 1.19.3, got '$RESOLVED'" >&2; exit 1; }
+          "$SKRET_BIN" --version | grep -F "1.19.3"
+          echo "pinned install verified"
