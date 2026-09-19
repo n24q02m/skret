@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 <!-- version list -->
 
+## v1.29.0 (2026-09-19)
+
+### Bug Fixes
+
+- Bump google.golang.org/grpc to v1.83.2 (dependency review high-severity vulns)
+  ([#803](https://github.com/n24q02m/skret/pull/803),
+  [`c29ced2`](https://github.com/n24q02m/skret/commit/c29ced21edb805d8cbce0800db0fc8ad35d215a5))
+
+- Drop unused test vars flagged by golangci-lint ([#803](https://github.com/n24q02m/skret/pull/803),
+  [`c29ced2`](https://github.com/n24q02m/skret/commit/c29ced21edb805d8cbce0800db0fc8ad35d215a5))
+
+### Features
+
+- Gcp secret manager provider (SK-GCP) ([#803](https://github.com/n24q02m/skret/pull/803),
+  [`c29ced2`](https://github.com/n24q02m/skret/commit/c29ced21edb805d8cbce0800db0fc8ad35d215a5))
+
+
 ## v1.28.0 (2026-09-19)
 
 ### Features
