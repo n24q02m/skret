@@ -57,3 +57,6 @@
 ## 2026-08-08 - [Empty States for Data Tables]
 **Learning:** A table rendered with a header row and an empty `<tbody>` is indistinguishable from a table whose data failed to load. A manifest can legitimately carry zero keys -- pushed before any secret was set, or emptied after deletions -- and the dashboard should say so.
 **Action:** Render an empty-state row (`<td colspan="N" class="empty">`) whose colspan matches the column count declared in `thead`, with a heading plus the command that populates the table. Implemented for `renderNamespace` in `hub/src/render.ts`; the dashboard-level empty state (no manifests at all) already existed and is a separate case.
+## 2026-09-19 - Contextual ARIA Labels for Repeated Regions
+**Learning:** When a UI contains multiple regions or elements of the same type (e.g., multiple scrollable tables), generic labels degrade the experience for screen reader users by providing no context for navigation.
+**Action:** Always interpolate unique identifiers (e.g., namespaces, environments) into `aria-label` attributes for repeated structural containers to uniquely identify them.
