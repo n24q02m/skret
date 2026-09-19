@@ -264,6 +264,7 @@ Full docs at **[skret.n24q02m.com](https://skret.n24q02m.com)**:
 - [Configuration](https://skret.n24q02m.com/guide/configuration/) — `.skret.yaml` reference
 - [Authentication](https://skret.n24q02m.com/guide/authentication/) — AWS SSO, OIDC, IAM
 - [Provider comparison](https://skret.n24q02m.com/reference/provider-comparison/) — cost + features across AWS, OCI, Azure, GCP
+- [The skret spec](https://skret.n24q02m.com/reference/spec/) — normative, versioned contract: exit codes, JSON envelope, byte-exact guarantees
 - [Providers](https://skret.n24q02m.com/providers/) — per-backend setup guides (AWS SSM, Azure Key Vault, local)
 - [Migrate from Doppler](https://skret.n24q02m.com/migration/from-doppler/)
 - [Migrate from Infisical](https://skret.n24q02m.com/migration/from-infisical/)
