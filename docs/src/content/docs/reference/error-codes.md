@@ -5,6 +5,8 @@ description: "skret uses structured exit codes to communicate failure types. Eve
 
 skret uses structured exit codes to communicate failure types. Every error includes a machine-readable code and a human-readable message on stderr.
 
+> The normative, versioned contract — including the JSON error envelope, stream discipline, and byte-exact guarantees — is [the skret spec](/reference/spec/). This page is the human-friendly summary.
+
 ## Exit Code Table
 
 | Code | Constant | Meaning | Remediation |
