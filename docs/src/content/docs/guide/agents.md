@@ -153,3 +153,60 @@ skret import --from=dotenv --file=.env --on-conflict=skip
   SKRET_EXPERIMENTAL=1 skret history DATABASE_URL
   SKRET_EXPERIMENTAL=1 skret rollback DATABASE_URL 3 --confirm
   ```
+
+## The agent e2e guarantee
+
+Everything on this page is enforced, not just documented. The normative source
+of these promises is [the skret spec](/reference/spec/) (versioned); the
+agent-contract harness turns them into a release gate. The repo ships it at
+[`tests/agent-e2e/`](https://github.com/n24q02m/skret/tree/main/tests/agent-e2e)
+— it plays the role of an unattended agent against a freshly built `skret`
+binary: it inits a local provider in a scratch git repo, then drives a full
+session (`get`/`set`/`list`/`env`/`run`/`generate`/`rotate`/`doctor`/`scan`/`delete`)
+while asserting the contract at every step:
+
+- **Exit codes**: every failure class exits its documented code (5 not-found,
+  2 config, 8 validation, 10 leak, 125 exec, …), in both plain and `--format json` modes.
+- **JSON error envelope**: failures with `--format json` print a parseable
+  `{"error", "code"}` object on stderr whose `code` equals the process exit code —
+  so you can `json.Unmarshal` stderr instead of pattern-matching prose.
+- **Byte-exact stdout**: `get --plain` returns the stored bytes exactly
+  (trailing spaces, embedded newlines, NUL bytes, multibyte UTF-8 all survive
+  the round trip); `rotate --show` prints the value as one line whose bytes
+  match a later read.
+- **Stream discipline**: data on stdout, status on stderr — a `set` prints
+  `Set KEY` on stderr and nothing on stdout, `scan` prints findings on stdout
+  and the summary on stderr.
+- **Non-interactive**: with no TTY, nothing hangs. `delete` without
+  `--confirm` cancels promptly and mutates nothing; every invocation runs
+  under a watchdog that turns a suspected prompt into a hard failure.
+
+The harness is always green in CI (the `Agent e2e` workflow runs it on every
+pull request, keyless — local provider only, no LLM or cloud credentials), so
+a release cannot silently break a script or agent that relies on this page.
+
+Two more things you can use directly:
+
+- **Self-check.** The harness proves it can catch violations: a deliberately
+  broken stand-in binary is run through the same workload for each broken
+  promise (wrong exit code, mismatched envelope code, missing envelope,
+  value on the wrong stream, inexact bytes, a simulated TTY prompt) and must
+  be flagged. Run it locally with:
+
+  ```bash
+  go test ./tests/agent-e2e/ -run TestSelfCheck -v
+  ```
+
+- **Point it at any build.** The hook point for testing a release artifact or
+  a future LLM-driven variant — no rebuild of the harness needed:
+
+  ```bash
+  SKRET_AGENT_E2E_BINARY=./skret go test ./tests/agent-e2e/ -run TestAgentE2E_ContractSession -v
+  ```
+
+One documented platform note: on unix, `skret run -- <cmd>` replaces itself
+with the child, so the child's exit code is skret's exit code byte-for-byte
+(42 is 42). On Windows, skret runs the command as a child process; a child
+that exits non-zero surfaces as exit **125** with the original status on
+stderr. The harness asserts exactly this on each platform, so the difference
+cannot drift from what this page says.
