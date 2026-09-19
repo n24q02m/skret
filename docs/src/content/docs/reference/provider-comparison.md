@@ -11,7 +11,7 @@ Public reference for skret's supported and roadmap backends. Numbers below use a
 |------|---------|-----------|-----------|-----|
 | 1 | **AWS SSM Parameter Store (Standard)** | **$0.00** | 10k params + free Std API | Primary |
 | 2 | **OCI Vault (software-protected)** | **$0.00** | 150 secrets permanent | Supported |
-| 3 | **Azure Key Vault (Standard)** | **$0.09** | None (effectively free at scale) | Tier-1 roadmap |
+| 3 | **Azure Key Vault (Standard)** | **$0.09** | None (effectively free at scale) | Supported |
 | 4 | **GCP Secret Manager** | **$20.10** | 6 versions + 10k ops/month | Tier-2 roadmap |
 | 5 | **AWS SSM Advanced** | **$17.15** | None | Fallback for >4 KB |
 | 6 | **AWS Secrets Manager** | **$136.15** | 30-day/secret trial | Only for managed rotation |

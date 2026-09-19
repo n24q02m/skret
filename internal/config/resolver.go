@@ -40,8 +40,11 @@ type ResolvedConfig struct {
 	CompartmentID string
 	VaultID       string
 	KeyID         string
-	Required      []string
-	Exclude       []string
+	// Azure Key Vault endpoint fields (env config vault_url/vault_name).
+	VaultURL  string
+	VaultName string
+	Required  []string
+	Exclude   []string
 	// Notify carries the .skret.yaml notify block (nil when absent) so
 	// mutation commands can report webhook notifications without re-loading
 	// the config file.
@@ -89,6 +92,8 @@ func Resolve(cfg *Config, opts ResolveOpts) (*ResolvedConfig, error) {
 		CompartmentID: env.CompartmentID,
 		VaultID:       env.VaultID,
 		KeyID:         env.KeyID,
+		VaultURL:      env.VaultURL,
+		VaultName:     env.VaultName,
 		Required:      cfg.Required,
 		Exclude:       cfg.Exclude,
 		Notify:        cfg.Notify,
