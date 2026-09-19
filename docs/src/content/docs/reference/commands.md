@@ -5,7 +5,7 @@ description: "Flags, defaults, and behavior for skret's core commands: init, set
 
 Flags, defaults, and behavior for skret's core commands. For the guided walkthrough see [Getting Started](/guide/getting-started/); for `.skret.yaml` fields see the [Config Schema Reference](/reference/config-schema/); for exit codes see [Error Codes](/reference/error-codes/).
 
-`skret bootstrap`, `skret sync`, `skret scan`, `skret diff`, and `skret template` each have their own dedicated guide page linked from those commands' `--help` output. `skret history` and `skret rollback` are gated behind `SKRET_EXPERIMENTAL` and are not covered here.
+`skret bootstrap`, `skret sync`, `skret scan`, `skret diff`, `skret template`, and `skret doctor` each have their own dedicated guide page linked from those commands' `--help` output. `skret history` and `skret rollback` are gated behind `SKRET_EXPERIMENTAL` and are not covered here.
 
 ## Global flags
 
@@ -123,6 +123,35 @@ Notes:
 - A value starting with `-` (a PEM block, a flag-like token) needs `--` before the key so it isn't parsed as a flag: `skret set -- KEY "-----BEGIN..."`.
 - Each `--tag` must be `key=value`; a tag without `=` is silently dropped.
 - See [Using skret from a script or agent](/guide/agents/#json-output-on-the-write-path) for the full `--format json` payload shapes across `set`/`delete`/`sync`.
+
+## `skret generate`
+
+Generates a random value (password, UUID, hex, or base64) with crypto/rand. Works offline — no provider or `.skret.yaml` is needed unless `--set` is used.
+
+```bash
+skret generate --type password --length 32
+skret generate --type hex --length 16 --count 5
+skret generate --type password --charset alnum+symbols --format json
+skret generate --type password --set API_KEY
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--type <password\|uuid\|hex\|base64>` | `password` | Value type |
+| `--length <n>` | `32` | Output length in characters (1–1048576). Ignored for uuid (fixed 36); passing `--length` with uuid is a validation error |
+| `--charset <alnum\|alnum+symbols\|symbols>` | `alnum` | Password alphabet only: alnum is `A-Za-z0-9`; the symbol set is `!@#$%^&*()-_=+[]{};:,.` |
+| `--count <n>` | `1` | Number of values (1–10000) |
+| `--set <KEY>` | -- | Also store the value as secret `KEY` via the configured provider (requires config; count must be 1) |
+| `--plain` | `false` | Print exact value bytes with no trailing newline (count must be 1) |
+| `--format <table\|json>` | `table` | `json` prints `{"value", "type", "length"}` (an array of those objects when `--count` > 1); `key` is added when `--set` stored the value |
+
+Notes:
+
+- stdout carries only the generated value(s) — one per line by default, raw bytes with `--plain`; status (the `Set KEY` line) goes to stderr. See [Value fidelity](/guide/value-fidelity/).
+- All randomness comes from `crypto/rand`; mapping bytes onto an alphabet uses rejection sampling, so every character of the chosen charset is equally likely (no modulo bias).
+- hex uses lowercase `0-9a-f`; base64 uses the standard alphabet `A-Za-z0-9+/` without padding.
+- uuid is RFC 4122 version 4 (36 characters, fixed format); `--length` and `--charset` do not apply and are rejected if passed.
+- Invalid flags or values exit `ExitValidationError` (8) with a remediation hint; with `--format json` the error is a `{"error", "code", "remediation"}` envelope like every other command.
 
 ## `skret list`
 
@@ -280,4 +309,28 @@ Notes:
 
 - `encrypted` reflects the file on disk (envelope sniffing), `encrypted_config` the `encrypted: true` flag in `.skret.yaml` — the two can legitimately differ while a plaintext file is awaiting migration.
 - `key_available` is checked non-interactively (env vars and OS keyring only), so scripts can rely on it without triggering a prompt.
-- Warnings (table: stderr; json: the `warnings` array) include high-entropy plaintext values (key names only, never values) and an encrypted file whose key material is unavailable non-interactively.
+## `skret doctor`
+
+Read-only health check for the current skret setup. Prints one `PASS`/`WARN`/`FAIL` line per check on stderr and a summary on stdout; exits `0` when everything passes (warnings never fail), otherwise with the failing check's error class.
+
+```bash
+skret doctor
+skret doctor --env prod
+skret doctor --format json
+```
+
+Checks: config parse/schema (`config`), per-environment provider reachability (`provider[env]` — a real `sts:GetCallerIdentity` probe for AWS, secrets-file load for `local`), stored-credential state (`auth[aws]` — missing warns, expired fails, expiry within 24h warns), local secrets-file permissions (`permissions[env]`, advisory; always pass on Windows), and local encryption intent (`encryption[env]`; missing field = plaintext default, never a failure).
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--format <table\|json>` | `table` | `json` prints `{checks: [{name, status, detail, remediation?}]}` on stdout |
+| `--timeout <duration>` | `10s` | Reachability probe timeout per provider |
+
+| Exit code | Meaning |
+|-----------|---------|
+| 0 | All checks passed (warnings allowed) |
+| 2 | Config check failed |
+| 3 | Local provider check failed (e.g. corrupt secrets file) |
+| 4 | Auth check failed (expired credential) |
+| 7 | Provider unreachable |
+

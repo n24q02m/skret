@@ -81,11 +81,13 @@ func NewRootCmd() *cobra.Command {
 	cmd.AddCommand(newDiffCmd(opts))
 	cmd.AddCommand(newTemplateCmd(opts))
 	cmd.AddCommand(newScanCmd(opts))
+	cmd.AddCommand(newGenerateCmd(opts))
 	cmd.AddCommand(newBrowseCmd(opts))
 	cmd.AddCommand(newBootstrapCmd(opts))
 	cmd.AddCommand(newAuthCmd())
 	cmd.AddCommand(newHubCmd(opts))
 	cmd.AddCommand(newKeysCmd(opts))
+	cmd.AddCommand(newDoctorCmd(opts))
 
 	// Force cobra's default "completion" command to materialize now (it is
 	// normally lazily created during Execute()) so it can be given a real
