@@ -79,6 +79,20 @@ supports.
 | Parameters per account/region | 10,000 (standard) |
 | GetParametersByPath throughput | 40 TPS |
 
+### Batch reads and in-process caching
+
+Reads are batched at the API level: `run`/`env` read a whole path with
+paginated `GetParametersByPath` (10 parameters per page), and multi-key
+fetches use `GetParameters` in chunks of 10 -- 25 keys cost at most 3 API
+calls, never one request per key.
+
+Within a single skret process, values read via `get` or multi-key fetches
+are cached in memory keyed by parameter version. A repeat read of an
+unchanged version costs zero API calls, and values written or deleted by the
+same process invalidate the cache immediately. Values are never cached to
+disk, and `run --watch` re-reads the provider live on every change-detection
+tick, so external mutations are always picked up there.
+
 A value over 4 KB fails with AWS's `ValidationException`, surfaced as a
 provider error (skret exit code **3**) -- see [error
 codes](/reference/error-codes/). If you need larger values, use the

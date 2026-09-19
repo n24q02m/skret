@@ -46,6 +46,7 @@ type Provider struct {
 	client   SSMClient
 	path     string
 	kmsKeyID string
+	cache    *versionCache
 }
 
 // New creates an AWS SSM provider from resolved config.
@@ -77,7 +78,7 @@ func New(cfg *config.ResolvedConfig) (provider.SecretProvider, error) {
 			})
 		})
 	})
-	return &Provider{client: client, path: cfg.Path, kmsKeyID: cfg.KMSKeyID}, nil
+	return &Provider{client: client, path: cfg.Path, kmsKeyID: cfg.KMSKeyID, cache: newVersionCache()}, nil
 }
 
 // NewWithClient creates a provider with a custom SSM client (for testing).
@@ -86,7 +87,7 @@ func NewWithClient(client SSMClient, path string, kmsKeyID ...string) provider.S
 	if len(kmsKeyID) > 0 {
 		keyID = kmsKeyID[0]
 	}
-	return &Provider{client: client, path: path, kmsKeyID: keyID}
+	return &Provider{client: client, path: path, kmsKeyID: keyID, cache: newVersionCache()}
 }
 
 func (p *Provider) Name() string { return "aws" }
@@ -104,6 +105,9 @@ func (p *Provider) Capabilities() provider.Capabilities {
 func (p *Provider) Get(ctx context.Context, key string) (*provider.Secret, error) {
 	if p == nil || p.client == nil || key == "" {
 		return nil, provider.ErrNotFound
+	}
+	if s, ok := p.cache.getLatest(key); ok {
+		return s, nil
 	}
 	output, err := p.client.GetParameter(ctx, &ssm.GetParameterInput{
 		Name:           awslib.String(key),
@@ -124,6 +128,7 @@ func (p *Provider) Get(ctx context.Context, key string) (*provider.Secret, error
 	if param.LastModifiedDate != nil {
 		s.Meta.UpdatedAt = *param.LastModifiedDate
 	}
+	p.cache.put(s)
 	return s, nil
 }
 
@@ -134,6 +139,9 @@ func (p *Provider) GetVersion(ctx context.Context, key string, version int64) (*
 		return nil, provider.ErrNotFound
 	}
 	selector := key + ":" + strconv.FormatInt(version, 10)
+	if s, ok := p.cache.getVersion(key, version); ok {
+		return s, nil
+	}
 	output, err := p.client.GetParameter(ctx, &ssm.GetParameterInput{
 		Name:           awslib.String(selector),
 		WithDecryption: awslib.Bool(true),
@@ -153,22 +161,44 @@ func (p *Provider) GetVersion(ctx context.Context, key string, version int64) (*
 	if parameter.LastModifiedDate != nil {
 		secret.Meta.UpdatedAt = *parameter.LastModifiedDate
 	}
+	p.cache.put(secret)
 	return secret, nil
 }
+
+// maxBatchSize is the SSM GetParameters limit: at most 10 parameter names per
+// request, so N keys are fetched in ceil(N/10) round trips.
+const maxBatchSize = 10
 
 func (p *Provider) GetBatch(ctx context.Context, keys []string) ([]*provider.Secret, error) {
 	if len(keys) == 0 {
 		return nil, nil
 	}
-	// Pre-allocate to the max possible result size (one secret per key) so the
-	// append calls inside the chunking loop don't trigger slice reallocation.
-	allSecrets := make([]*provider.Secret, 0, len(keys))
-	for i := 0; i < len(keys); i += 10 {
-		end := i + 10
-		if end > len(keys) {
-			end = len(keys)
+	// Serve already-cached keys without an API call and fetch only the rest,
+	// chunked to the SSM GetParameters limit of 10 names per request. Results
+	// are emitted in input-key order; keys that do not exist are omitted,
+	// matching the long-standing probe semantics import relies on.
+	results := make([]*provider.Secret, 0, len(keys))
+	var missing []string
+	cached := make(map[string]*provider.Secret, len(keys))
+	seen := make(map[string]bool, len(keys))
+	for _, key := range keys {
+		if seen[key] {
+			continue
 		}
-		batch := keys[i:end]
+		seen[key] = true
+		if s, ok := p.cache.getLatest(key); ok {
+			cached[key] = s
+			continue
+		}
+		missing = append(missing, key)
+	}
+
+	for i := 0; i < len(missing); i += maxBatchSize {
+		end := i + maxBatchSize
+		if end > len(missing) {
+			end = len(missing)
+		}
+		batch := missing[i:end]
 
 		output, err := p.client.GetParameters(ctx, &ssm.GetParametersInput{
 			Names:          batch,
@@ -178,8 +208,8 @@ func (p *Provider) GetBatch(ctx context.Context, keys []string) ([]*provider.Sec
 			return nil, mapError("get_batch", batch[0], err)
 		}
 
-		for i := range output.Parameters {
-			param := output.Parameters[i]
+		for j := range output.Parameters {
+			param := output.Parameters[j]
 			s := &provider.Secret{
 				Key:     awslib.ToString(param.Name),
 				Value:   awslib.ToString(param.Value),
@@ -188,10 +218,21 @@ func (p *Provider) GetBatch(ctx context.Context, keys []string) ([]*provider.Sec
 			if param.LastModifiedDate != nil {
 				s.Meta.UpdatedAt = *param.LastModifiedDate
 			}
-			allSecrets = append(allSecrets, s)
+			p.cache.put(s)
+			cached[s.Key] = s
 		}
 	}
-	return allSecrets, nil
+
+	for _, key := range keys {
+		if !seen[key] {
+			continue
+		}
+		seen[key] = false // emit each distinct key once
+		if s, ok := cached[key]; ok {
+			results = append(results, s)
+		}
+	}
+	return results, nil
 }
 
 func (p *Provider) List(ctx context.Context, pathPrefix string) ([]*provider.Secret, error) {
@@ -328,6 +369,9 @@ func putErrorMayHaveCommitted(err error) bool {
 }
 
 func (p *Provider) Set(ctx context.Context, key string, value string, meta provider.SecretMeta) error {
+	// The put (or a lost-response reconciliation) may advance the parameter
+	// version on any exit path, so drop the cached entry up front.
+	defer p.cache.invalidate(key)
 	lookup, lookupErr := p.client.GetParameter(ctx, &ssm.GetParameterInput{
 		Name:           awslib.String(key),
 		WithDecryption: awslib.Bool(false),
@@ -594,6 +638,7 @@ func (p *Provider) Delete(ctx context.Context, key string) error {
 	if err != nil {
 		return mapError("delete", key, err)
 	}
+	p.cache.invalidate(key)
 	return nil
 }
 
