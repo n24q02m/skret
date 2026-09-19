@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 <!-- version list -->
 
+## v1.21.0 (2026-09-19)
+
+### Bug Fixes
+
+- Resolve golangci-lint findings on keys/keystore
+  ([#791](https://github.com/n24q02m/skret/pull/791),
+  [`4e237f4`](https://github.com/n24q02m/skret/commit/4e237f4a8963ed598ff7ef4281be78688c3a13f6))
+
+### Features
+
+- Optional at-rest encryption for local provider (SK-ENC)
+  ([#791](https://github.com/n24q02m/skret/pull/791),
+  [`4e237f4`](https://github.com/n24q02m/skret/commit/4e237f4a8963ed598ff7ef4281be78688c3a13f6))
+
+
 ## v1.20.0 (2026-09-19)
 
 ### Bug Fixes
