@@ -30,6 +30,7 @@
 skret run -- make up-prod        # Inject secrets from AWS SSM into a command
 skret import --from=doppler      # Migrate from Doppler
 skret sync --to=github           # Push secrets to GitHub Actions
+skret sync --to=k8s              # Render a Kubernetes Secret manifest
 ```
 
 <p align="center">
@@ -229,6 +230,7 @@ Audited 2026-07-13 against the latest release of each tool. The comparison cover
 | `run -- cmd` injection | yes | yes | yes | yes | yes | yes (`run` and `load`) | yes | yes (`chamber exec`) |
 | Importer for Doppler / Infisical / .env | **all three built-in** | n/a | partial (one-way) | none | dotenv only | none (Infisical on roadmap) | none | none (own export/import format only) |
 | Sync to GitHub Actions secrets | **built-in (`skret sync --to=github`; `--skip-unchanged` for hash-based drift detection)** | via paid integration | via paid integration | none | none | none | none | none |
+| Sync to GitLab CI/CD variables, Terraform tfvars, or a K8s Secret manifest | **built-in (`skret sync --to=gitlab` with masked/protected flags, `--to=terraform`, `--to=k8s`; manifest rendering only, no live cluster apply)** | not audited | not audited | not audited | not audited | not audited | not audited | not audited |
 | Release-artifact provenance | **cosign + SBOM + reproducible** | n/a (SaaS) | n/a (SaaS) | n/a (SaaS) | none | none | none | none (sha256 checksums only) |
 | Cost at our scale (17 repos × 20 secrets/repo × 1,000 reads/day, AWS SSM Standard) | **$0** | $56 / mo (10 seats: 3 free + 7 × $8, Developer plan)* | ~$30 / mo infra (self-host) | $60 / mo (10 seats, Teams) | $0 | $0 | $0 | $0 |
 | Latest release (audited 2026-07-13) | rolling, semantic-release | rolling SaaS | rolling SaaS | rolling SaaS | v2.0.7, May 2024 (26 mo gap) | v0.20.1, Jun 2025 (13 mo gap) | v0.11.0, Mar 2026 | v3.1.5, Feb 2026 (5 mo gap) |
@@ -281,7 +283,7 @@ Full docs at **[skret.n24q02m.com](https://skret.n24q02m.com)**:
 | `skret delete <KEY>` | Delete a secret |
 | `skret list` | List secret keys under the current environment path (no decryption; use --values for KEY+VERSION+VALUE) |
 | `skret import --from=<source>` | Import from Doppler, Infisical, dotenv |
-| `skret sync --to=<target>` | Sync to GitHub Actions, dotenv |
+| `skret sync --to=<target>` | Sync to GitHub Actions, GitLab CI/CD variables, Cloudflare, dotenv, Terraform tfvars, or a Kubernetes Secret manifest |
 | `skret hub push` | Publish a names-only secret inventory (no values) to the vault dashboard |
 | `skret diff <A> <B>` | Compare two environments (or env vs dotenv / env vs github) and report drift without printing values |
 | `skret template <file>` | Render a template file, substituting `${KEY}` with secret values |

@@ -76,6 +76,53 @@ func TestRegistry_Cloudflare(t *testing.T) {
 	})
 }
 
+func TestRegistry_NewTargets(t *testing.T) {
+	t.Run("gitlab needs project", func(t *testing.T) {
+		_, err := Build([]TargetConfig{{Type: "gitlab", Token: "t"}})
+		require.ErrorContains(t, err, "project is required")
+	})
+	t.Run("gitlab needs token", func(t *testing.T) {
+		_, err := Build([]TargetConfig{{Type: "gitlab", Fields: map[string]string{"project": "42"}}})
+		require.ErrorContains(t, err, "GITLAB_TOKEN")
+	})
+	t.Run("valid gitlab", func(t *testing.T) {
+		s, err := Build([]TargetConfig{{Type: "gitlab", Token: "t", Fields: map[string]string{"project": "g/p"}}})
+		require.NoError(t, err)
+		assert.Equal(t, "gitlab", s[0].Name())
+	})
+	t.Run("terraform defaults file", func(t *testing.T) {
+		s, err := Build([]TargetConfig{{Type: "terraform", Fields: map[string]string{}}})
+		require.NoError(t, err)
+		assert.Equal(t, "terraform", s[0].Name())
+		assert.Equal(t, "terraform.tfvars", s[0].(*TerraformSyncer).filePath)
+	})
+	t.Run("identity: gitlab canonicalizes project and endpoint", func(t *testing.T) {
+		a, err := CanonicalTargetIdentity(TargetConfig{Type: "gitlab", Fields: map[string]string{"project": "G/P", "base_url": "https://gitlab.example.com/"}})
+		require.NoError(t, err)
+		b, err := CanonicalTargetIdentity(TargetConfig{Type: "gitlab", Fields: map[string]string{"project": "g/p", "base_url": "HTTPS://GITLAB.EXAMPLE.COM"}})
+		require.NoError(t, err)
+		assert.Equal(t, a, b)
+	})
+	t.Run("identity: gitlab project required", func(t *testing.T) {
+		_, err := CanonicalTargetIdentity(TargetConfig{Type: "gitlab", Fields: map[string]string{}})
+		require.ErrorContains(t, err, "project is required")
+	})
+	t.Run("identity: terraform resolves absolute path", func(t *testing.T) {
+		a, err := CanonicalTargetIdentity(TargetConfig{Type: "terraform", Fields: map[string]string{"file": "envs/prod/skret.tfvars"}})
+		require.NoError(t, err)
+		b, err := CanonicalTargetIdentity(TargetConfig{Type: "terraform", Fields: map[string]string{"file": "envs/prod/./skret.tfvars"}})
+		require.NoError(t, err)
+		assert.Equal(t, a, b)
+	})
+	t.Run("identity: k8s uses the output file", func(t *testing.T) {
+		a, err := CanonicalTargetIdentity(TargetConfig{Type: "k8s", Fields: map[string]string{"file": "deploy/secret.yaml"}})
+		require.NoError(t, err)
+		b, err := CanonicalTargetIdentity(TargetConfig{Type: "k8s", Fields: map[string]string{"file": "deploy/secret.yaml"}})
+		require.NoError(t, err)
+		assert.Equal(t, a, b)
+	})
+}
+
 func TestCanonicalTargetIdentity(t *testing.T) {
 	t.Run("github canonicalizes case and owner scope", func(t *testing.T) {
 		a, err := CanonicalTargetIdentity(TargetConfig{

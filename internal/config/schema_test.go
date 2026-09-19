@@ -136,11 +136,29 @@ func TestConfig_SyncValidation(t *testing.T) {
 		err := base(&config.SyncConfig{Targets: []config.SyncTarget{{Type: "vault"}}}).Validate()
 		require.ErrorContains(t, err, "unknown sync target type")
 	})
+	t.Run("gitlab target needs project", func(t *testing.T) {
+		err := base(&config.SyncConfig{Targets: []config.SyncTarget{{Type: "gitlab"}}}).Validate()
+		require.ErrorContains(t, err, "project is required")
+	})
+	t.Run("gitlab target with project is valid", func(t *testing.T) {
+		require.NoError(t, base(&config.SyncConfig{Targets: []config.SyncTarget{{Type: "gitlab", Project: "mygroup/myapp", Masked: true, Protected: true}}}).Validate())
+	})
+	t.Run("terraform and k8s targets need no required fields", func(t *testing.T) {
+		require.NoError(t, base(&config.SyncConfig{Targets: []config.SyncTarget{
+			{Type: "terraform", File: "skret.auto.tfvars"},
+			{Type: "terraform"},
+			{Type: "k8s", Name: "app-secrets", Namespace: "prod"},
+			{Type: "k8s-manifest"},
+		}}).Validate())
+	})
 	t.Run("valid multi-target", func(t *testing.T) {
 		require.NoError(t, base(&config.SyncConfig{Targets: []config.SyncTarget{
 			{Type: "github", Repo: "o/r"},
 			{Type: "cloudflare", Worker: "api", Account: "acc"},
 			{Type: "dotenv", File: ".env"},
+			{Type: "gitlab", Project: "42"},
+			{Type: "terraform", File: "terraform.tfvars"},
+			{Type: "k8s", File: "secret.yaml"},
 		}}).Validate())
 	})
 }

@@ -36,12 +36,22 @@ exclude:                    # Optional. Keys excluded from injection by run/env.
 
 sync:                       # Optional. Declared targets for `skret sync` / `skret hub push`.
   targets:
-    - type: github          # "github" | "cloudflare" | "dotenv"
+    - type: github          # "github" | "cloudflare" | "dotenv" | "gitlab" | "terraform" | "k8s" (alias "k8s-manifest")
       repo: myorg/myapp     # Required for github. owner/repo.
       no_overwrite: true    # Optional. Only write keys absent at this target; never overwrites.
     - type: cloudflare
       worker: my-worker     # One of worker/pages required for cloudflare.
       account: ${CLOUDFLARE_ACCOUNT_ID}  # Required for cloudflare. Supports ${VAR} expansion.
+    - type: gitlab
+      project: mygroup/myapp  # Required for gitlab. Project id or group/project path.
+      masked: true            # Optional for gitlab. Marks variables masked.
+      protected: true         # Optional for gitlab. Marks variables protected.
+    - type: terraform
+      file: skret.auto.tfvars # Optional for terraform. Defaults to "terraform.tfvars".
+    - type: k8s
+      file: deploy/secret.yaml # Optional for k8s. Defaults to stdout ("-").
+      name: myapp-secrets      # Optional for k8s. metadata.name; default "skret-secrets".
+      namespace: prod          # Optional for k8s. metadata.namespace.
     - type: dotenv
       file: .env.sync       # Optional for dotenv. Defaults to ".env".
   hub:
@@ -98,16 +108,21 @@ notify:                     # Optional. Webhook notifications fired after succes
 
 | Field | Type | Required | Target | Description |
 |-------|------|----------|--------|-------------|
-| `type` | string | Yes | All | `"github"`, `"cloudflare"`, or `"dotenv"`. |
+| `type` | string | Yes | All | `"github"`, `"cloudflare"`, `"dotenv"`, `"gitlab"`, `"terraform"`, or `"k8s"` (alias `"k8s-manifest"`). |
 | `repo` | string | Yes | `github` | `owner/repo`. Pushed as a GitHub Actions repository secret (sealed-box encrypted). Auth via `GITHUB_TOKEN`. |
 | `worker` | string | One of `worker`/`pages` | `cloudflare` | Cloudflare Worker script name. Secrets pushed via the Workers secrets API. |
 | `pages` | string | One of `worker`/`pages` | `cloudflare` | Cloudflare Pages project name. Secrets pushed as production environment variables via a partial-merge PATCH — only the synced keys are sent; existing variables outside that set are untouched. |
 | `account` | string | Yes | `cloudflare` | Cloudflare account ID. Supports `${VAR}` expansion (e.g. `${CLOUDFLARE_ACCOUNT_ID}`) so the ID need not be committed literally. Auth via `CLOUDFLARE_API_TOKEN`. |
-| `file` | string | No | `dotenv` | Output file path. Defaults to `.env`. |
+| `project` | string | Yes | `gitlab` | Project ID or `group/project` path. Secrets pushed as CI/CD variables via the project variables API. Auth via `GITLAB_TOKEN`. |
+| `masked` | bool | No | `gitlab` | Marks CI/CD variables masked. The value must satisfy GitLab masking requirements or the API rejects the write. |
+| `protected` | bool | No | `gitlab` | Marks CI/CD variables protected (exposed only to protected branches/tags). |
+| `file` | string | No | `dotenv`, `terraform`, `k8s` | Output file path. `dotenv` defaults to `.env`; `terraform` defaults to `terraform.tfvars`; `k8s` defaults to stdout (`-` also means stdout). |
+| `name` | string | No | `k8s` | `metadata.name` of the generated Secret. Defaults to `skret-secrets`. |
+| `namespace` | string | No | `k8s` | `metadata.namespace` of the generated Secret. Omitted when unset. |
 | `no_overwrite` | bool | No | All | Only write keys absent at this target; existing keys are never overwritten. Rotation = delete the key at the target, the next sync repopulates it from the provider. |
-| `base_url` | string | No | `github` | Override the target API endpoint (GitHub Enterprise). Optional. |
+| `base_url` | string | No | `github`, `gitlab` | Override the target API endpoint (GitHub Enterprise, self-managed GitLab). Optional. |
 
-Exactly one of `worker`/`pages` must be set per `cloudflare` target — setting both, or neither, fails validation. `GITHUB_TOKEN` and `CLOUDFLARE_API_TOKEN` are read from the environment at sync time and are never stored in `.skret.yaml`.
+Exactly one of `worker`/`pages` must be set per `cloudflare` target — setting both, or neither, fails validation. `GITHUB_TOKEN`, `CLOUDFLARE_API_TOKEN`, and `GITLAB_TOKEN` are read from the environment at sync time and are never stored in `.skret.yaml`.
 
 ### Notify Fields
 
@@ -144,11 +159,12 @@ skret validates the config at load time and fails fast on errors:
 5. AWS environments must have a `path` field
 6. Local environments must have a `file` field
 7. Unknown provider names are rejected
-8. Each `sync.targets` entry must have a known `type` (`github`, `cloudflare`, or `dotenv`)
+8. Each `sync.targets` entry must have a known `type` (`github`, `cloudflare`, `dotenv`, `gitlab`, `terraform`, or `k8s`)
 9. `github` sync targets must have a `repo` field
 10. `cloudflare` sync targets must set exactly one of `worker`/`pages`
-11. `notify.webhook_url` must be present when the `notify` block is, and every URL must be absolute `http(s)`
-12. `notify.events` entries must be known events (`set`, `delete`, `rotate`, `sync`)
+11. `gitlab` sync targets must have a `project` field
+12. `notify.webhook_url` must be present when the `notify` block is, and every URL must be absolute `http(s)`
+13. `notify.events` entries must be known events (`set`, `delete`, `rotate`, `sync`)
 
 ## Config Discovery
 

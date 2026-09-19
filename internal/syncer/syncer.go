@@ -60,11 +60,13 @@ func FilterAbsent(ctx context.Context, s Syncer, secrets []*provider.Secret) ([]
 }
 
 // ValidateDestinationMapping rejects ambiguous many-to-one mappings before a
-// target can perform any provider I/O. GitHub Actions and Cloudflare store
-// secrets by the final source-key segment, so distinct full keys must never
-// acknowledge the same destination name.
+// target can perform any provider I/O. Every target keyed by the final
+// source-key segment (GitHub Actions, Cloudflare, GitLab variables, tfvars
+// and Secret manifest entries) must never acknowledge two distinct full keys
+// under the same destination name.
 func ValidateDestinationMapping(target string, secrets []*provider.Secret) error {
-	if target != "github" && target != "cloudflare" {
+	if target != "github" && target != "cloudflare" && target != "gitlab" &&
+		target != "terraform" && target != "k8s" && target != K8sManifestAlias {
 		return nil
 	}
 	nameToKey := make(map[string]string, len(secrets))

@@ -133,8 +133,11 @@ func targetPresence(ctx context.Context, cmd *cobra.Command, sc *config.SyncConf
 	if sc == nil {
 		return presence
 	}
-	for _, t := range sc.Targets {
-		tc := targetFromConfig(t) // Task 5 helper: resolves Fields/Token from env
+	// Index rather than range-by-value: SyncTarget is large and gocritic's
+	// rangeValCopy flags 176-byte-per-iteration copies.
+	for i := range sc.Targets {
+		t := &sc.Targets[i]
+		tc := targetFromConfig(*t) // Task 5 helper: resolves Fields/Token from env
 		key := t.Type + ":" + targetStateID(hubSyncerStub(t.Type), tc)
 
 		syncers, err := syncer.Build([]syncer.TargetConfig{tc})
@@ -174,6 +177,12 @@ func hubSyncerStub(typ string) syncer.Syncer {
 		return syncer.NewGitHub("", "", "", "")
 	case "cloudflare":
 		return syncer.NewCloudflare("", "", "", "", "")
+	case "gitlab":
+		return syncer.NewGitLab("", "", "", false, false)
+	case "terraform":
+		return syncer.NewTerraform("")
+	case "k8s", syncer.K8sManifestAlias:
+		return syncer.NewK8s("-", "", "")
 	default:
 		return syncer.NewDotenv("")
 	}
