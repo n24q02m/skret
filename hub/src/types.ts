@@ -114,3 +114,16 @@ export interface ManifestTarget {
   // statusClass() falls back to a neutral style for any value outside the
   // new set, so an old manifest never crashes rendering.
 }
+
+// NamespaceSummary is the projection behind GET /api/status and
+// GET /api/namespaces: counts and freshness only. It deliberately carries
+// neither key names nor fingerprints -- the pusher already knows the names,
+// and a stats endpoint that echoed them would widen the blast radius of a
+// leaked SKRET_HUB_TOKEN from "can overwrite the manifest" to "can enumerate
+// every secret name" for free.
+export interface NamespaceSummary {
+  namespace: string;
+  env: string;
+  generated_at: string;
+  key_count: number;
+}

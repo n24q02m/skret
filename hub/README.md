@@ -16,6 +16,8 @@ map of every namespace's keys + per-target presence status.
 | Route | Auth | Purpose |
 |---|---|---|
 | `POST /api/manifest` | `Authorization: Bearer $SKRET_HUB_TOKEN` | ingest a manifest |
+| `GET /api/status` | `Authorization: Bearer $SKRET_HUB_TOKEN` | namespace stats for `skret hub status` (counts + freshness, no names/fingerprints) |
+| `GET /api/namespaces` | `Authorization: Bearer $SKRET_HUB_TOKEN` | the same namespace list alone |
 | `POST /login` | form `password` = `$RELAY_PASSWORD` | mint a signed session cookie |
 | `GET /` | session cookie | the dashboard map |
 | `GET /healthz` | none | uptime check: probes `VAULT_KV`, `200 {ok:true,kv:"ok"}` or `503 {ok:false,kv:"error"}` |
@@ -68,7 +70,7 @@ it is not a cap across all of them. An owner who wants that, or who wants the
 guessing turned away before it reaches the Worker at all, should add a
 Cloudflare WAF rate-limiting rule on `POST /login` (by IP or by path).
 
-Point `skret hub push` at it via `.skret.yaml`:
+Point `skret hub push` at it via `.skret.yaml` (written for you by `skret hub init --url <url>`):
 
 ```yaml
 sync:

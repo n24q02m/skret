@@ -15,6 +15,47 @@ skret hub push
 
 `skret hub push` sends a **manifest**: key names, a salted fingerprint per key, and a presence status per sync target. It never sends a secret value.
 
+## One-time setup: `skret hub init`
+
+`skret hub init` writes the `sync.hub` block into `.skret.yaml` so the other `hub` subcommands work with no flags:
+
+```bash
+skret hub init --url https://vault.example.com
+# or pin the manifest namespace explicitly (default: the resolved env path):
+skret hub init --url https://vault.example.com --namespace /myapp/prod
+```
+
+which produces:
+
+```yaml
+sync:
+  hub:
+    url: https://vault.example.com
+    namespace: /myapp/prod
+```
+
+- `namespace` is optional. When set, `skret hub push` publishes under that namespace instead of the resolved environment path.
+- The write is atomic with a `.skret.yaml.bak` backup (the `skret init` convention); re-running with identical values reports `unchanged` and leaves the file untouched.
+- `hub init` requires an existing `.skret.yaml` — run `skret init` first.
+
+## Checking the hub: `skret hub status`
+
+`skret hub status` asks the hub what it currently holds — per-namespace key counts and manifest freshness — and whether it is reachable at all:
+
+```bash
+$ skret hub status
+URL         https://vault.example.com
+STATUS      ok
+KEY COUNT   12
+
+NAMESPACE      ENV   KEYS  UPDATED
+/myapp/prod    prod  12    2026-09-19T10:00:00Z
+```
+
+`--format json` emits the same data as a machine-readable object (`ok`, `url`, `namespace_count`, `key_count`, `namespaces[]`). Exit codes follow the CLI convention: `4` (auth) when the hub answers `401` — set `SKRET_HUB_TOKEN` — and `7` (network) when the hub cannot be reached.
+
+Names-only applies here too: the status response carries counts and timestamps, never key names, fingerprints, or values.
+
 ## Setting the hub URL
 
 ```bash
@@ -98,3 +139,33 @@ skret hub push --hub-url https://vault.example.com
 - Secret **values never leave your machine** — the manifest carries only names, salted fingerprints, and presence status.
 - `SKRET_HUB_TOKEN` is read from the environment and sent as `Authorization: Bearer <token>`; it is never written to `.skret.yaml` or logged.
 - The deployment salt at `~/.skret/hub-salt` is generated once per machine and stored at `0600`. Two machines pushing the same secret produce different fingerprints unless they share a salt.
+
+## Deploying the hub worker (owner action)
+
+The Worker is fully implemented and CI-verified, but a **live Cloudflare deploy is an owner-gated action** — the repository ships placeholders only and holds no Cloudflare credentials. To stand one up:
+
+```bash
+cd hub
+pnpm install && pnpm test && pnpm typecheck   # source checks
+pnpm dryrun                                   # wrangler deploy --dry-run (bundle check)
+
+wrangler login
+wrangler kv namespace create VAULT_KV         # put the returned id into hub/wrangler.jsonc
+wrangler deploy --config wrangler.jsonc
+wrangler secret put SKRET_HUB_TOKEN           # high-entropy token; `skret hub push` sends it as a bearer
+wrangler secret put RELAY_PASSWORD            # dashboard login password
+```
+
+Then point the CLI at it once:
+
+```bash
+skret hub init --url https://<your-worker>.workers.dev
+export SKRET_HUB_TOKEN=hub_xxx
+skret hub push && skret hub status
+```
+
+Notes:
+
+- `wrangler.jsonc`'s `VAULT_KV` id and the container `image` reference are placeholders you must fill; everything else (rate-limit bindings, Durable Object migrations) is pre-configured.
+- The container image (`skret-sync`) is only needed for the optional hosted sync planner; the dashboard, `api/manifest`, and `api/status` run without it.
+- Prefer a custom domain + WAF rate-limiting rule on `POST /login` for production (see `hub/README.md` for the hardening rationale).

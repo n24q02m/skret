@@ -1,5 +1,6 @@
 import type {
   Manifest,
+  NamespaceSummary,
   OperatorSyncHealth,
   SyncHealth,
   SyncHealthAlerts,
@@ -108,6 +109,26 @@ function validateSyncHealthConfig(config: SyncHealthConfig): SyncHealthConfig {
 export function manifestKey(ns: string, env: string): string {
   return `${PREFIX}${ns}:${env}`;
 }
+
+// summarizeManifests projects stored manifests down to per-namespace stats
+// for the status/namespaces API: counts and freshness, no key names and no
+// fingerprints (the exposure rationale lives on NamespaceSummary in
+// types.ts). Sorted by namespace then env so responses are deterministic --
+// KV list order is an implementation detail, not an API contract.
+export function summarizeManifests(manifests: Manifest[]): NamespaceSummary[] {
+  return manifests
+    .map((m) => ({
+      namespace: m.namespace,
+      env: m.env,
+      generated_at: m.generated_at,
+      key_count: m.keys.length,
+    }))
+    .sort(
+      (a, b) =>
+        a.namespace.localeCompare(b.namespace) || a.env.localeCompare(b.env),
+    );
+}
+
 
 export function syncRunKey(runId: string): string {
   return `${SYNC_RUN_PREFIX}${runId}`;
