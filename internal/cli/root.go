@@ -89,6 +89,7 @@ func NewRootCmd() *cobra.Command {
 	cmd.AddCommand(newHubCmd(opts))
 	cmd.AddCommand(newKeysCmd(opts))
 	cmd.AddCommand(newDoctorCmd(opts))
+	cmd.AddCommand(newAuditCmd(opts))
 
 	// Force cobra's default "completion" command to materialize now (it is
 	// normally lazily created during Execute()) so it can be given a real

@@ -25,6 +25,7 @@ environments:               # Required. At least one environment must be defined
     provider: local         # Required. "local" for YAML-file-based secrets.
     file: ./.secrets.dev.yaml  # Required for local. Path to the secrets file.
     encrypted: true         # Optional. Store the file as an encrypted envelope (see `skret keys`).
+    audit_log: ./trails/audit-dev.log  # Optional. Audit trail path (default: .skret-audit.log next to the secrets file).
 
 required:                   # Optional. List of secret keys that must exist.
   - DATABASE_URL            # skret fails fast if any required key is missing.
@@ -93,6 +94,7 @@ notify:                     # Optional. Webhook notifications fired after succes
 | `kms_key_id` | string | No | `aws` | KMS key ID or alias for SecureString encryption. Defaults to the AWS-managed SSM key (`alias/aws/ssm`). |
 | `file` | string | Yes | `local` | Path to the local secrets YAML file. Relative paths are resolved from the `.skret.yaml` location. |
 | `encrypted` | bool | No | `false` | `local` only. Write-side encryption intent: when `true`, saves store the file as a keystore envelope (`skret-encrypted-v1`, argon2id + XChaCha20-Poly1305). Reads auto-detect an encrypted file on disk regardless of this flag. Set up with `skret keys init --encrypt-existing`. |
+| `audit_log` | string | No | `local` | Where the append-only audit trail lives (default: `.skret-audit.log` next to the secrets file). `skret set`/`rotate`/`delete` append one JSONL line per mutation — timestamp, op, key names, env, actor, never values — and `skret audit` renders it. |
 
 ### Sync Fields
 

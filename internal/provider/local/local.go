@@ -58,6 +58,9 @@ type Provider struct {
 	encDisk bool   // file on disk is a keystore envelope (sticky)
 	keyMat  string // resolved key material ("" until first needed)
 	keySrc  string // provenance of keyMat (env/keyring/passphrase)
+
+	auditPath string // audit trail location ("" = default sibling of filePath)
+	envName   string // active environment, recorded in audit entries
 }
 
 // New creates a local provider from a resolved config.
@@ -67,7 +70,14 @@ func New(cfg *config.ResolvedConfig) (provider.SecretProvider, error) {
 		return nil, fmt.Errorf("local: resolve path %q: %w", cfg.File, err)
 	}
 
-	p := &Provider{filePath: absPath, encCfg: cfg.Encrypted}
+	p := &Provider{filePath: absPath, encCfg: cfg.Encrypted, envName: cfg.EnvName}
+	if cfg.AuditLog != "" {
+		auditAbs, err := filepath.Abs(cfg.AuditLog)
+		if err != nil {
+			return nil, fmt.Errorf("local: resolve audit path %q: %w", cfg.AuditLog, err)
+		}
+		p.auditPath = auditAbs
+	}
 	if err := p.load(); err != nil {
 		return nil, fmt.Errorf("local: load %q: %w", absPath, err)
 	}
@@ -170,7 +180,7 @@ func hashLines(lines []string) string {
 // untouched, so `set KEY v` and `rotate KEY` preserve a previously recorded
 // `--ttl` (rotation continues the existing cadence unless --ttl says
 // otherwise).
-func (p *Provider) Set(_ context.Context, key string, value string, meta provider.SecretMeta) error {
+func (p *Provider) Set(ctx context.Context, key string, value string, meta provider.SecretMeta) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.data.Secrets == nil {
@@ -183,7 +193,12 @@ func (p *Provider) Set(_ context.Context, key string, value string, meta provide
 		}
 		p.data.Meta[key] = meta.ExpiresAt.UTC().Format(time.RFC3339)
 	}
-	return p.save()
+	if err := p.save(); err != nil {
+		return err
+	}
+	// The mutation is durable; the trail records the name (never the value)
+	// and the op (set, or rotate when the caller stamped the context).
+	return p.appendAudit(auditOpFromCtx(ctx), key)
 }
 
 func (p *Provider) Delete(_ context.Context, key string) error {
@@ -193,7 +208,10 @@ func (p *Provider) Delete(_ context.Context, key string) error {
 		return fmt.Errorf("local: delete %q: %w", key, provider.ErrNotFound)
 	}
 	delete(p.data.Secrets, key)
-	return p.save()
+	if err := p.save(); err != nil {
+		return err
+	}
+	return p.appendAudit(AuditOpDelete, key)
 }
 
 func (p *Provider) GetHistory(_ context.Context, key string) ([]*provider.Secret, error) {

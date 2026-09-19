@@ -12,6 +12,7 @@ import (
 
 	"github.com/n24q02m/skret/internal/notify"
 	"github.com/n24q02m/skret/internal/provider"
+	"github.com/n24q02m/skret/internal/provider/local"
 	"github.com/n24q02m/skret/pkg/skret"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
@@ -133,7 +134,10 @@ func (o *rotateOptions) run(cmd *cobra.Command, args []string) error {
 	defer p.Close()
 	warnIfPathMangled(cmd, resolved)
 
-	ctx := context.Background()
+	// The audit trail records this command's Set calls as "rotate", not
+	// "set" (the provider interface has no op parameter; the context is the
+	// label channel).
+	ctx := local.WithAuditOp(context.Background(), local.AuditOpRotate)
 
 	// Preflight every key before mutating any, so a typo cannot leave a
 	// half-rotated batch behind.

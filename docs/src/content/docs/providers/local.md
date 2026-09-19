@@ -43,6 +43,18 @@ keyring (seeded by `skret keys init`) → interactive passphrase prompt
 (terminals only; non-interactive contexts fail with exit 4 and a remediation
 hint). See [`skret keys`](/reference/commands/#skret-keys-init).
 
+## Audit trail
+
+Every mutation on the local provider (`skret set`, `skret rotate`, `skret delete`, and the mutations sync/import issue) appends one JSONL line to an append-only audit log: `.skret-audit.log` next to the secrets file, or the `audit_log` path configured for the environment.
+
+```json
+{"timestamp":"2026-09-19T09:00:00.123Z","op":"set","key_names":["API_KEY"],"env":"prod","actor":"deploy-bot"}
+```
+
+- Names only: the trail records key names, operation, environment, and actor (`SKRET_ACTOR` when set, else the OS user). Values are structurally excluded.
+- Created `0600`; at 1 MiB it rotates to `.skret-audit.log.1` (single backup).
+- `skret audit` renders and filters the trail (`--since`, `--key`, `--limit`, `--format json`) without decrypting the secrets file.
+
 ## Security
 
 > **WARNING (plaintext mode):** By default local secrets files are NOT encrypted. Never use the plaintext local provider for production secrets.
