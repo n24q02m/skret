@@ -31,6 +31,10 @@ type ResolvedConfig struct {
 	Encrypted bool
 	Required  []string
 	Exclude   []string
+	// Notify carries the .skret.yaml notify block (nil when absent) so
+	// mutation commands can report webhook notifications without re-loading
+	// the config file.
+	Notify *NotifyConfig
 }
 
 // Resolve applies the precedence chain: CLI flags > env vars > config file > defaults.
@@ -71,6 +75,7 @@ func Resolve(cfg *Config, opts ResolveOpts) (*ResolvedConfig, error) {
 		Encrypted:   env.Encrypted,
 		Required:    cfg.Required,
 		Exclude:     cfg.Exclude,
+		Notify:      cfg.Notify,
 	}, nil
 }
 
