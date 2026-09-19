@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/n24q02m/skret/internal/config"
 	"github.com/n24q02m/skret/internal/keystore"
@@ -20,6 +21,24 @@ import (
 type localFile struct {
 	Version string            `yaml:"version"`
 	Secrets map[string]string `yaml:"secrets"`
+	// Meta holds non-secret per-key metadata; today only the expiry
+	// timestamp (RFC3339) written by `set --ttl` / `rotate --ttl`.
+	// Older files without this field load unchanged (nil map).
+	Meta map[string]string `yaml:"meta,omitempty"`
+}
+
+// expiryFor parses the stored expiry for key; ok is false when absent or
+// malformed (a malformed entry is ignored rather than failing reads).
+func (f *localFile) expiryFor(key string) (time.Time, bool) {
+	raw, ok := f.Meta[key]
+	if !ok {
+		return time.Time{}, false
+	}
+	ts, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return ts, true
 }
 
 // Provider reads/writes secrets from a local YAML file.
@@ -68,7 +87,11 @@ func (p *Provider) Get(_ context.Context, key string) (*provider.Secret, error) 
 	if !ok {
 		return nil, fmt.Errorf("local: get %q: %w", key, provider.ErrNotFound)
 	}
-	return &provider.Secret{Key: key, Value: val}, nil
+	s := &provider.Secret{Key: key, Value: val}
+	if ts, ok := p.data.expiryFor(key); ok {
+		s.Meta.ExpiresAt = ts
+	}
+	return s, nil
 }
 
 func (p *Provider) GetBatch(_ context.Context, keys []string) ([]*provider.Secret, error) {
@@ -80,7 +103,11 @@ func (p *Provider) GetBatch(_ context.Context, keys []string) ([]*provider.Secre
 	secrets := make([]*provider.Secret, 0, len(keys))
 	for _, key := range keys {
 		if val, ok := p.data.Secrets[key]; ok {
-			secrets = append(secrets, &provider.Secret{Key: key, Value: val})
+			s := &provider.Secret{Key: key, Value: val}
+			if ts, ok := p.data.expiryFor(key); ok {
+				s.Meta.ExpiresAt = ts
+			}
+			secrets = append(secrets, s)
 		}
 	}
 	return secrets, nil
@@ -91,7 +118,11 @@ func (p *Provider) List(_ context.Context, _ string) ([]*provider.Secret, error)
 	defer p.mu.RUnlock()
 	secrets := make([]*provider.Secret, 0, len(p.data.Secrets))
 	for k, v := range p.data.Secrets {
-		secrets = append(secrets, &provider.Secret{Key: k, Value: v})
+		s := &provider.Secret{Key: k, Value: v}
+		if ts, ok := p.data.expiryFor(k); ok {
+			s.Meta.ExpiresAt = ts
+		}
+		secrets = append(secrets, s)
 	}
 	sort.Slice(secrets, func(i, j int) bool { return secrets[i].Key < secrets[j].Key })
 	return secrets, nil
@@ -134,13 +165,24 @@ func hashLines(lines []string) string {
 	return fmt.Sprintf("%x", sha256.Sum256([]byte(joined)))
 }
 
-func (p *Provider) Set(_ context.Context, key string, value string, _ provider.SecretMeta) error {
+// Set stores the value. Metadata semantics: a non-zero meta.ExpiresAt
+// overwrites the stored expiry; a zero ExpiresAt leaves any existing entry
+// untouched, so `set KEY v` and `rotate KEY` preserve a previously recorded
+// `--ttl` (rotation continues the existing cadence unless --ttl says
+// otherwise).
+func (p *Provider) Set(_ context.Context, key string, value string, meta provider.SecretMeta) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.data.Secrets == nil {
 		p.data.Secrets = make(map[string]string)
 	}
 	p.data.Secrets[key] = value
+	if !meta.ExpiresAt.IsZero() {
+		if p.data.Meta == nil {
+			p.data.Meta = make(map[string]string)
+		}
+		p.data.Meta[key] = meta.ExpiresAt.UTC().Format(time.RFC3339)
+	}
 	return p.save()
 }
 
@@ -178,11 +220,11 @@ func (p *Provider) load() error {
 		if err := p.ensureKey(); err != nil {
 			return err
 		}
-		secrets, err := keystore.Open(raw, p.keyMat)
+		secrets, meta, err := keystore.OpenWithMeta(raw, p.keyMat)
 		if err != nil {
 			return err
 		}
-		p.data = localFile{Version: "1", Secrets: secrets}
+		p.data = localFile{Version: "1", Secrets: secrets, Meta: meta}
 		return nil
 	}
 	p.encDisk = false
@@ -219,7 +261,7 @@ func (p *Provider) save() error {
 		if err := p.ensureKey(); err != nil {
 			return err
 		}
-		raw, err = keystore.Seal(p.data.Secrets, p.keyMat, nil)
+		raw, err = keystore.SealWithMeta(p.data.Secrets, p.data.Meta, p.keyMat, nil)
 		if err != nil {
 			return err
 		}

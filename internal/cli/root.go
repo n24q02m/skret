@@ -71,6 +71,7 @@ func NewRootCmd() *cobra.Command {
 	cmd.AddCommand(newListCmd(opts))
 	cmd.AddCommand(newEnvCmd(opts))
 	cmd.AddCommand(newSetCmd(opts))
+	cmd.AddCommand(newRotateCmd(opts))
 	cmd.AddCommand(newDeleteCmd(opts))
 	cmd.AddCommand(newHistoryCmd(opts))
 	cmd.AddCommand(newRollbackCmd(opts))

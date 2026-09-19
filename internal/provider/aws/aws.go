@@ -556,9 +556,23 @@ func equalTags(first, second []ssmtypes.Tag) bool {
 	return true
 }
 
+// TagExpiresAt is the reserved resource tag mirroring SecretMeta.ExpiresAt
+// (`set --ttl` / `rotate --ttl`) into AWS-native metadata.
+const TagExpiresAt = "skret-expires-at"
+
+// tagsFromMeta renders SecretMeta as sorted SSM tags. A non-zero ExpiresAt
+// is mirrored to TagExpiresAt and wins over a user-supplied tag of the same
+// name (the timestamp is the authoritative source).
 func tagsFromMeta(meta provider.SecretMeta) []ssmtypes.Tag {
-	keys := make([]string, 0, len(meta.Tags))
-	for key := range meta.Tags {
+	merged := make(map[string]string, len(meta.Tags)+1)
+	for key, val := range meta.Tags {
+		merged[key] = val
+	}
+	if !meta.ExpiresAt.IsZero() {
+		merged[TagExpiresAt] = meta.ExpiresAt.UTC().Format(time.RFC3339)
+	}
+	keys := make([]string, 0, len(merged))
+	for key := range merged {
 		keys = append(keys, key)
 	}
 	sort.Strings(keys)
@@ -567,7 +581,7 @@ func tagsFromMeta(meta provider.SecretMeta) []ssmtypes.Tag {
 	for _, key := range keys {
 		tags = append(tags, ssmtypes.Tag{
 			Key:   awslib.String(key),
-			Value: awslib.String(meta.Tags[key]),
+			Value: awslib.String(merged[key]),
 		})
 	}
 	return tags

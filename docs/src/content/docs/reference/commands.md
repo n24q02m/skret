@@ -117,6 +117,7 @@ skret set TLS_KEY --from-file key.pem
 | `-f, --from-file <path>` | -- | Read the value from a file |
 | `-d, --description <text>` | -- | Secret description, stored as metadata |
 | `-t, --tag <key=value>` | -- | Secret tag, repeatable |
+| `--ttl <duration>` | -- | Record expiry metadata (e.g. `720h`, `12h30m`, `30d`). Stored as the `skret-expires-at` resource tag on AWS and as file metadata on the local provider; `skret list --values` surfaces it and warns when a key is expired or expires within 7 days. Omitting the flag leaves any recorded expiry untouched |
 | `--format <table\|json>` | `table` | `json` prints `{"key", "path", "version", "created"}` to stdout instead of the `Set KEY` stderr line — the secret value is never included |
 | `--strict-notify` | `false` | Fail the command (exit 7) if the [mutation webhook](/reference/config-schema/#notify-fields) fails; default is warn on stderr only |
 
@@ -158,6 +159,39 @@ Notes:
 - uuid is RFC 4122 version 4 (36 characters, fixed format); `--length` and `--charset` do not apply and are rejected if passed.
 - Invalid flags or values exit `ExitValidationError` (8) with a remediation hint; with `--format json` the error is a `{"error", "code", "remediation"}` envelope like every other command.
 
+## `skret rotate <KEY> [KEY...]`
+
+Replaces a secret's value with a fresh generated value and records the change — the write counterpart to [`skret generate`](#skret-generate) for keys that already exist.
+
+```bash
+skret rotate API_KEY
+skret rotate API_KEY --type hex --length 64
+skret rotate API_KEY --value ghp_replacedmanually --ttl 720h
+skret rotate API_KEY DB_PASS --yes --format json
+skret rotate API_KEY --show
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--generate` | `true` | Draw the new value from the generate engine (same `--type`/`--length`/`--charset` rules as `skret generate`) |
+| `--value <text>` | -- | Store this explicit value instead of generating; mutually exclusive with an explicit `--generate` |
+| `--type <password\|uuid\|hex\|base64>` | `password` | Generated value type |
+| `--length <n>` | `32` | Generated length in characters (1–1048576; uuid fixed 36) |
+| `--charset <alnum\|alnum+symbols\|symbols>` | `alnum` | Generated password alphabet |
+| `--ttl <duration>` | -- | Record expiry metadata (e.g. `720h`, `12h30m`, `30d`). Stored as the `skret-expires-at` resource tag on AWS and as file metadata on the local provider. Omitting the flag continues any existing cadence |
+| `--yes` | `false` | Skip the confirmation prompt |
+| `--show` | `false` | Print the new value on stdout (one line per key, or the `"value"` field in json) |
+| `--strict-notify` | `false` | Fail the command if the mutation webhook fails (default: warn only) |
+| `--format <table\|json>` | `table` | `json` prints `{"key", "path", "rotated", "version"}` per key (plus `"expires_at"` when recorded); one object for a single key, an array for several |
+
+Notes:
+
+- Non-interactive by design: the confirmation prompt appears only on an interactive terminal — CI and piped invocations rotate without asking; `--yes` skips it there too.
+- The new value is never printed unless `--show`: stdout carries nothing (table) or the JSON envelope (`--format json`); `Rotated KEY` status goes to stderr.
+- Every key is checked before any key rotates, so a missing key fails the whole invocation with `ExitNotFoundError` (5) and leaves every value untouched.
+- Each rotation is a new provider version, visible via `skret history KEY` where the provider tracks versions (e.g. AWS; the local provider does not keep history).
+- On AWS the expiry rides the provider-native `skret-expires-at` resource tag; on the local provider it is a `meta:` field in the secrets file (kept outside the encrypted value region — it stays readable metadata in the envelope header). `skret list --values` surfaces both and warns on stderr when a key is expired or expires within 7 days.
+
 ## `skret list`
 
 Lists secret key names under the current environment path.
@@ -176,7 +210,7 @@ skret list --values
 Notes:
 
 - Without `--values`, only key names are listed (table: a `KEY` column; json: `[{"key": ...}, ...]`) — no decryption, no KMS cost.
-- With `--values`, the table gains `VERSION` and `VALUE` columns, but the json form only adds `"value"` — it never includes `"version"`.
+- With `--values`, the table gains `VERSION`, `VALUE`, and `EXPIRES` columns (`-` when no expiry is recorded), but the json form only adds `"value"` and `"expires_at"` (when recorded) — it never includes `"version"`. Expiry metadata is written by `set --ttl` / `rotate --ttl`; keys near expiry (within 7 days) or expired produce a stderr warning.
 - `--recursive=false` filters to keys exactly one path segment below the resolved path (e.g. under `/myapp/prod`, `/myapp/prod/DB_URL` matches but `/myapp/prod/nested/KEY` does not).
 - An empty result prints `No secrets found. Use 'skret set' to add a secret.` to stderr and exits 0; with `--format=json` it still prints `[]` on stdout.
 

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"text/tabwriter"
+	"time"
 
 	"github.com/n24q02m/skret/internal/provider"
 	"github.com/n24q02m/skret/pkg/skret"
@@ -152,6 +153,9 @@ func printSecrets(cmd *cobra.Command, secrets []*provider.Secret, format string,
 			if values {
 				item["value"] = s.Value
 			}
+			if !s.Meta.ExpiresAt.IsZero() {
+				item["expires_at"] = s.Meta.ExpiresAt.UTC().Format(time.RFC3339)
+			}
 			items = append(items, item)
 		}
 		data, err := json.MarshalIndent(items, "", "  ")
@@ -162,9 +166,9 @@ func printSecrets(cmd *cobra.Command, secrets []*provider.Secret, format string,
 	default:
 		w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
 		if values {
-			fmt.Fprintln(w, "KEY\tVERSION\tVALUE")
+			fmt.Fprintln(w, "KEY\tVERSION\tVALUE\tEXPIRES")
 			for _, s := range secrets {
-				fmt.Fprintf(w, "%s\t%d\t%s\n", s.Key, s.Version, s.Value)
+				fmt.Fprintf(w, "%s\t%d\t%s\t%s\n", s.Key, s.Version, s.Value, formatExpiry(s.Meta.ExpiresAt))
 			}
 		} else {
 			fmt.Fprintln(w, "KEY\tVERSION")
@@ -176,5 +180,39 @@ func printSecrets(cmd *cobra.Command, secrets []*provider.Secret, format string,
 			return fmt.Errorf("flush failed: %w", err)
 		}
 	}
+	if values {
+		warnNearExpiry(cmd, secrets)
+	}
 	return nil
+}
+
+// nearExpiryWindow is how long before an expiry the list warning fires.
+const nearExpiryWindow = 7 * 24 * time.Hour
+
+// formatExpiry renders an expiry for the --values table ("-" when unset).
+func formatExpiry(ts time.Time) string {
+	if ts.IsZero() {
+		return "-"
+	}
+	return ts.UTC().Format(time.RFC3339)
+}
+
+// warnNearExpiry prints stderr warnings for expired secrets and secrets
+// expiring within the nearExpiryWindow. stderr keeps stdout byte-stable.
+func warnNearExpiry(cmd *cobra.Command, secrets []*provider.Secret) {
+	now := time.Now()
+	for _, s := range secrets {
+		if s.Meta.ExpiresAt.IsZero() {
+			continue
+		}
+		left := s.Meta.ExpiresAt.Sub(now)
+		switch {
+		case left <= 0:
+			cmd.PrintErrf("warning: %s expired %s ago (rotate with 'skret rotate %s --ttl <duration>')\n",
+				s.Key, now.Sub(s.Meta.ExpiresAt).Round(time.Second), s.Key)
+		case left <= nearExpiryWindow:
+			cmd.PrintErrf("warning: %s expires in %s (rotate with 'skret rotate %s --ttl <duration>')\n",
+				s.Key, left.Round(time.Second), s.Key)
+		}
+	}
 }

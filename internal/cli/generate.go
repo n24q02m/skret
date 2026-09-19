@@ -134,42 +134,79 @@ func (o *generateOptions) run(cmd *cobra.Command) error {
 	return nil
 }
 
+// validateGenValueFlags validates the --type/--length/--charset trio per
+// the generate engine's rules. cmdName prefixes every message ("generate:"
+// or "rotate:") so both commands share one source of truth.
+func validateGenValueFlags(cmd *cobra.Command, cmdName, genType, charset string, length int) error {
+	switch genType {
+	case "password", "uuid", "hex", "base64":
+	default:
+		return skret.NewError(skret.ExitValidationError,
+			fmt.Sprintf("%s: unknown --type %q (password, uuid, hex, base64)", cmdName, genType), nil)
+	}
+
+	if genType == "uuid" {
+		if cmd.Flags().Changed("length") {
+			return skret.NewError(skret.ExitValidationError,
+				cmdName+": --length does not apply to uuid (fixed 36 characters)", nil)
+		}
+		if cmd.Flags().Changed("charset") {
+			return skret.NewError(skret.ExitValidationError,
+				cmdName+": --charset does not apply to uuid", nil)
+		}
+	} else if length < 1 || length > generateMaxLen {
+		return skret.NewError(skret.ExitValidationError,
+			fmt.Sprintf("%s: --length must be between 1 and %d (got %d)", cmdName, generateMaxLen, length), nil)
+	}
+
+	if genType == "password" {
+		switch charset {
+		case "alnum", "alnum+symbols", "symbols":
+		default:
+			return skret.NewError(skret.ExitValidationError,
+				fmt.Sprintf("%s: unknown --charset %q (alnum, alnum+symbols, symbols)", cmdName, charset), nil)
+		}
+	}
+
+	if genType != "password" && cmd.Flags().Changed("charset") {
+		return skret.NewError(skret.ExitValidationError,
+			fmt.Sprintf("%s: --charset only applies to --type password (got --type %s)", cmdName, genType), nil)
+	}
+	return nil
+}
+
+// generateValue draws one value from the generate engine (crypto/rand via
+// genRandReader). Returns the value and its effective output length (uuid
+// is fixed at 36 regardless of length).
+func generateValue(genType string, length int, charset string) (string, int, error) {
+	switch genType {
+	case "uuid":
+		value, err := uuidV4(genRandReader)
+		return value, generateUUIDLength, err
+	case "hex":
+		value, err := randomFromAlphabet(length, generateHex, genRandReader)
+		return value, length, err
+	case "base64":
+		value, err := randomFromAlphabet(length, generateBase64, genRandReader)
+		return value, length, err
+	default: // password
+		alphabet := generateAlnum
+		switch charset {
+		case "alnum+symbols":
+			alphabet = generateAlnum + generateSymbols
+		case "symbols":
+			alphabet = generateSymbols
+		}
+		value, err := randomFromAlphabet(length, alphabet, genRandReader)
+		return value, length, err
+	}
+}
+
 // validateAndGenerate checks every flag before generating anything, so an
 // invalid invocation never emits partial output.
 func (o *generateOptions) validateAndGenerate(cmd *cobra.Command) ([]GenerateResult, error) {
-	switch o.genType {
-	case "password", "uuid", "hex", "base64":
-	default:
-		return nil, skret.NewError(skret.ExitValidationError,
-			fmt.Sprintf("generate: unknown --type %q (password, uuid, hex, base64)", o.genType), nil)
-	}
-
-	if o.genType == "uuid" {
-		if cmd.Flags().Changed("length") {
-			return nil, skret.NewError(skret.ExitValidationError,
-				"generate: --length does not apply to uuid (fixed 36 characters)", nil)
-		}
-		if cmd.Flags().Changed("charset") {
-			return nil, skret.NewError(skret.ExitValidationError,
-				"generate: --charset does not apply to uuid", nil)
-		}
-	} else if o.length < 1 || o.length > generateMaxLen {
-		return nil, skret.NewError(skret.ExitValidationError,
-			fmt.Sprintf("generate: --length must be between 1 and %d (got %d)", generateMaxLen, o.length), nil)
-	}
-
-	if o.genType == "password" {
-		switch o.charset {
-		case "alnum", "alnum+symbols", "symbols":
-		default:
-			return nil, skret.NewError(skret.ExitValidationError,
-				fmt.Sprintf("generate: unknown --charset %q (alnum, alnum+symbols, symbols)", o.charset), nil)
-		}
-	}
-
-	if o.genType != "password" && cmd.Flags().Changed("charset") {
-		return nil, skret.NewError(skret.ExitValidationError,
-			fmt.Sprintf("generate: --charset only applies to --type password (got --type %s)", o.genType), nil)
+	if err := validateGenValueFlags(cmd, "generate", o.genType, o.charset, o.length); err != nil {
+		return nil, err
 	}
 
 	if o.count < 1 || o.count > generateMaxCount {
@@ -203,27 +240,7 @@ func (o *generateOptions) validateAndGenerate(cmd *cobra.Command) ([]GenerateRes
 // generateOne returns the value and its effective output length (uuid is
 // fixed at 36 regardless of --length).
 func (o *generateOptions) generateOne() (string, int, error) {
-	switch o.genType {
-	case "uuid":
-		value, err := uuidV4(genRandReader)
-		return value, generateUUIDLength, err
-	case "hex":
-		value, err := randomFromAlphabet(o.length, generateHex, genRandReader)
-		return value, o.length, err
-	case "base64":
-		value, err := randomFromAlphabet(o.length, generateBase64, genRandReader)
-		return value, o.length, err
-	default: // password
-		alphabet := generateAlnum
-		switch o.charset {
-		case "alnum+symbols":
-			alphabet = generateAlnum + generateSymbols
-		case "symbols":
-			alphabet = generateSymbols
-		}
-		value, err := randomFromAlphabet(o.length, alphabet, genRandReader)
-		return value, o.length, err
-	}
+	return generateValue(o.genType, o.length, o.charset)
 }
 
 // randomFromAlphabet draws one uniformly distributed symbol per output

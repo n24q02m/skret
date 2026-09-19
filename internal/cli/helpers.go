@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/n24q02m/skret/internal/config"
 	skexec "github.com/n24q02m/skret/internal/exec"
@@ -163,4 +165,25 @@ var KeyToEnvName = skexec.KeyToEnvName
 // Returns the resolved key and whether a shell-mangled prefix was recovered.
 func resolveKeyArg(resolvedPath, raw string) (string, bool) {
 	return config.ResolveKey(resolvedPath, raw)
+}
+
+// parseTTL parses an expiry duration for --ttl: Go duration syntax (720h,
+// 12h30m) or a day-count suffix (30d, which Go's parser has no unit for).
+// Non-positive durations are rejected — an expiry in the past is a typo.
+func parseTTL(s string) (time.Duration, error) {
+	if d, err := time.ParseDuration(s); err == nil {
+		if d <= 0 {
+			return 0, fmt.Errorf("must be positive (got %s)", s)
+		}
+		return d, nil
+	}
+	if strings.HasSuffix(s, "d") {
+		if days, err := strconv.Atoi(strings.TrimSuffix(s, "d")); err == nil {
+			if days <= 0 {
+				return 0, fmt.Errorf("must be positive (got %s)", s)
+			}
+			return time.Duration(days) * 24 * time.Hour, nil
+		}
+	}
+	return 0, fmt.Errorf("invalid duration %q (examples: 720h, 12h30m, 30d)", s)
 }

@@ -49,6 +49,11 @@ type SecretMeta struct {
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 	CreatedBy   string
+	// ExpiresAt records when the value should be rotated or retired
+	// (set with `--ttl`). Providers that cannot store it natively ignore
+	// it; the local provider persists it as file metadata and the AWS
+	// provider mirrors it to the "skret-expires-at" resource tag.
+	ExpiresAt time.Time
 }
 
 // Capabilities describes what a provider supports.

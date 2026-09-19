@@ -279,6 +279,7 @@ Full docs at **[skret.n24q02m.com](https://skret.n24q02m.com)**:
 | `skret get <KEY>` | Print a single secret value |
 | `skret env` | Dump all secrets in dotenv / JSON / YAML / export format |
 | `skret set <KEY> <VALUE>` | Create or update a secret |
+| `skret rotate <KEY> [KEY...]` | Replace a secret's value with a fresh generated value (crypto/rand); `--ttl` records expiry metadata, `--show` prints the new value, CI-safe (prompt only on a TTY) |
 | `skret generate` | Generate a random password, UUID, hex, or base64 value (crypto/rand, rejection sampling); `--set KEY` stores it directly |
 | `skret delete <KEY>` | Delete a secret |
 | `skret list` | List secret keys under the current environment path (no decryption; use --values for KEY+VERSION+VALUE) |

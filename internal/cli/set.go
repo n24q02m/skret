@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/n24q02m/skret/internal/notify"
 	"github.com/n24q02m/skret/internal/provider"
@@ -21,6 +22,7 @@ type setOptions struct {
 	fromFile     string
 	description  string
 	tags         []string
+	ttl          string
 	format       string
 	strictNotify bool
 }
@@ -59,6 +61,7 @@ put '--' before the key so it is not parsed as a flag. --from-stdin and
 	cmd.Flags().StringVarP(&o.fromFile, "from-file", "f", "", "read value from file")
 	cmd.Flags().StringVarP(&o.description, "description", "d", "", "secret description")
 	cmd.Flags().StringArrayVarP(&o.tags, "tag", "t", nil, "secret tag (key=value, repeatable)")
+	cmd.Flags().StringVar(&o.ttl, "ttl", "", "record expiry metadata (e.g. 720h, 12h30m, 30d)")
 	cmd.Flags().StringVar(&o.format, "format", "table", "output format (table, json)")
 	cmd.Flags().BoolVar(&o.strictNotify, "strict-notify", false, "fail the command if the mutation webhook fails (default: warn only)")
 
@@ -83,6 +86,13 @@ func (o *setOptions) run(cmd *cobra.Command, args []string) error {
 	}
 
 	meta := o.getMeta()
+	if o.ttl != "" {
+		d, err := parseTTL(o.ttl)
+		if err != nil {
+			return skret.NewError(skret.ExitValidationError, "set: --ttl "+err.Error(), nil)
+		}
+		meta.ExpiresAt = time.Now().Add(d)
+	}
 
 	ctx := context.Background()
 
