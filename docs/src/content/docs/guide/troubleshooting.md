@@ -55,6 +55,14 @@ Logs go to **stderr**, command output goes to **stdout**. This means you can saf
 SKRET_LOG=debug skret get DATABASE_URL > secret.txt
 ```
 
+## Quick Diagnosis
+
+Run the read-only health check to see exactly which part of your setup is unhealthy — config, provider reachability, auth, or local file state — with a fix hint per failing check:
+
+```bash
+skret doctor
+```
+
 ## Common Errors
 
 ### `.skret.yaml` not found (exit 2)
