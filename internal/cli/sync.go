@@ -467,15 +467,17 @@ func (o *syncOptions) resolveTargets(sc *config.SyncConfig) ([]syncer.TargetConf
 		for _, typ := range wantOrder {
 			var declared []config.SyncTarget
 			if sc != nil {
-				for _, t := range sc.Targets {
-					if t.Type == typ {
-						declared = append(declared, t)
+				// Index rather than range-by-value: SyncTarget is large and
+				// gocritic's rangeValCopy flags 176-byte-per-iteration copies.
+				for i := range sc.Targets {
+					if sc.Targets[i].Type == typ {
+						declared = append(declared, sc.Targets[i])
 					}
 				}
 			}
 			if len(declared) > 0 {
-				for _, t := range declared {
-					out = append(out, targetFromConfig(t))
+				for i := range declared {
+					out = append(out, targetFromConfig(declared[i]))
 				}
 				continue
 			}
@@ -486,8 +488,8 @@ func (o *syncOptions) resolveTargets(sc *config.SyncConfig) ([]syncer.TargetConf
 			out = append(out, tcs...)
 		}
 	} else if sc != nil {
-		for _, t := range sc.Targets {
-			out = append(out, targetFromConfig(t))
+		for i := range sc.Targets {
+			out = append(out, targetFromConfig(sc.Targets[i]))
 		}
 	}
 
