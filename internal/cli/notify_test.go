@@ -85,7 +85,7 @@ func TestNotify_Set_FiresWebhook_NamesOnly(t *testing.T) {
 	assert.Equal(t, "set", payload.Event)
 	assert.Equal(t, []string{"BRAND_NEW_KEY"}, payload.KeyNames)
 	assert.Equal(t, "dev", payload.Env)
-	assert.NotContains(t, string(hook.bodiesSnapshot()[0]), "s3cr3t-value-42",
+	assert.NotContains(t, hook.bodiesSnapshot()[0], "s3cr3t-value-42",
 		"the webhook payload must never carry the secret value")
 	assert.NotContains(t, out, "s3cr3t-value-42")
 }

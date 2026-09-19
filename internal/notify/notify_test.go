@@ -39,7 +39,7 @@ func newCaptureServer(t *testing.T) *captureServer {
 		c.headers <- r.Header.Clone()
 		w.WriteHeader(http.StatusOK)
 	}))
-	t.Cleanup(c.Server.Close)
+	t.Cleanup(c.Close)
 	return c
 }
 
