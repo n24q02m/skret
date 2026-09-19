@@ -156,9 +156,11 @@ skret import --from=dotenv --file=.env --on-conflict=skip
 
 ## The agent e2e guarantee
 
-Everything on this page is enforced, not just documented. The repo ships an
-agent-contract harness — [`tests/agent-e2e/`](https://github.com/n24q02m/skret/tree/main/tests/agent-e2e)
-— that plays the role of an unattended agent against a freshly built `skret`
+Everything on this page is enforced, not just documented. The normative source
+of these promises is [the skret spec](/reference/spec/) (versioned); the
+agent-contract harness turns them into a release gate. The repo ships it at
+[`tests/agent-e2e/`](https://github.com/n24q02m/skret/tree/main/tests/agent-e2e)
+— it plays the role of an unattended agent against a freshly built `skret`
 binary: it inits a local provider in a scratch git repo, then drives a full
 session (`get`/`set`/`list`/`env`/`run`/`generate`/`rotate`/`doctor`/`scan`/`delete`)
 while asserting the contract at every step:
