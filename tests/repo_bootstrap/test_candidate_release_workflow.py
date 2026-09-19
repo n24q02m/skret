@@ -14,11 +14,19 @@ class CandidateReleaseWorkflowTests(unittest.TestCase):
     def workflow(self) -> str:
         return CD_WORKFLOW.read_text(encoding="utf-8")
 
-    def test_release_is_dispatch_only_and_has_prepare_publish_lanes(self) -> None:
+    def test_release_lane_runs_on_main_push_and_dispatch_and_has_lanes(self) -> None:
         workflow = self.workflow()
         trigger_block = workflow.split("permissions:", 1)[0]
         self.assertIn("workflow_dispatch:", trigger_block)
-        self.assertNotRegex(trigger_block, r"(?m)^  push:")
+        # Single-main ladder: merge to main drives the release lane. Pushes to
+        # any other branch must not trigger it.
+        self.assertRegex(trigger_block, r"(?m)^  push:\n    branches:\n      - main$")
+        # Release lane only runs on push/dispatch; schedule and
+        # branch_protection_rule events skip it (folded in from scorecard.yml).
+        self.assertIn(
+            "if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'",
+            workflow,
+        )
         self.assertIn("group: skret-release-prepare", workflow)
         self.assertIn("cancel-in-progress: false", workflow)
         self.assertIn("\n  prepare:", workflow)
@@ -51,7 +59,8 @@ class CandidateReleaseWorkflowTests(unittest.TestCase):
         workflow = self.workflow()
         version_pin = f"n24q02m/better-semantic-release@{G1_SHA}"
         publisher_pin = f"n24q02m/better-semantic-release/publish-action@{G1_SHA}"
-        self.assertEqual(workflow.count(version_pin), 1)
+        # Probe (triage) and release (prepare) both run the version action.
+        self.assertEqual(workflow.count(version_pin), 2)
         self.assertEqual(workflow.count(publisher_pin), 1)
         self.assertNotIn("python-semantic-release/publish-action", workflow)
         for reference in re.findall(r"uses:\s+([^\s#]+)", workflow):
@@ -84,7 +93,7 @@ class CandidateReleaseWorkflowTests(unittest.TestCase):
     def test_publish_atomically_pushes_and_binds_prepared_identity(self) -> None:
         publish = self.workflow().split("\n  publish:", 1)[1]
         for marker in (
-            "needs: [prepare]",
+            "needs: [triage, prepare]",
             "EXPECTED_VERSION: ${{ needs.prepare.outputs.version }}",
             "EXPECTED_TAG: ${{ needs.prepare.outputs.tag }}",
             "EXPECTED_SHA: ${{ github.sha }}",
