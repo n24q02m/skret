@@ -8,9 +8,11 @@ import (
 )
 
 // Bug F: the tagline must not advertise providers that are not registered.
+// Azure is registered (internal/provider/azure) so it dropped off the ban
+// list when its provider landed; GCP/OCI/Cloudflare remain unimplemented.
 func TestRootHelpDoesNotOverpromiseProviders(t *testing.T) {
 	long := NewRootCmd().Long
-	for _, banned := range []string{"Azure", "Cloudflare"} {
+	for _, banned := range []string{"Cloudflare"} {
 		if strings.Contains(long, banned) {
 			t.Fatalf("root Long advertises unimplemented provider %q: %q", banned, long)
 		}

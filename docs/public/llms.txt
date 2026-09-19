@@ -33,4 +33,5 @@
 - [GCP Secret Manager](https://skret.n24q02m.com/providers/gcp/): Setup, ADC authentication, minimum IAM roles, provider-specific notes.
 - [AWS SSM Parameter Store](https://skret.n24q02m.com/providers/aws/): Setup, minimum IAM policy, provider-specific notes.
 - [OCI Vault](https://skret.n24q02m.com/providers/oci/): Setup, minimum IAM policy, provider-specific notes.
+- [Azure Key Vault](https://skret.n24q02m.com/providers/azure/): Setup, DefaultAzureCredential auth, secret-naming sanitization, versioning notes.
 - [Local YAML Provider](https://skret.n24q02m.com/providers/local/): Dev/test-only provider backed by a plain YAML file.

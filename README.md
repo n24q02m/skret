@@ -82,7 +82,7 @@ If you only need a single-cloud injector and you don't care about migration or C
 ## Features
 
 - **One-command bootstrap**: `skret bootstrap` provisions a dedicated least-privilege IAM user + permanent access key scoped to your SSM path, from an admin/root identity used once and never stored.
-- **Multi-provider backend**: AWS SSM Parameter Store, GCP Secret Manager, and OCI Vault today; Azure Key Vault on the roadmap. Switch backends with one config line.
+- **Multi-provider backend**: AWS SSM Parameter Store, Azure Key Vault, GCP Secret Manager, and OCI Vault today. Switch backends with one config line.
 - **Zero-server architecture**: Direct cloud IAM. No self-hosted control plane, no license fees, no new billing surface.
 - **Doppler-grade CLI**: `skret run -- your-cmd` injects secrets as env vars. Identical UX to `doppler run --`.
 - **Migration-first**: Built-in importers for Doppler, Infisical, and `.env` files.
@@ -228,7 +228,7 @@ Audited 2026-07-13 against the latest release of each tool. The comparison cover
 | Licence | Apache-2.0 | proprietary | MIT (complex) | GPL-3.0 (CLI) | Apache-2.0 | LGPL-3.0 | MIT | MIT |
 | Server / control plane | none | none (SaaS) | container + Postgres | none (SaaS) | none | none | none | none |
 | Free tier ceiling (10 devs, 17 repos) | unlimited (cloud cost only) | 3 users, then $8/seat* | self-host or $7/seat | 3 projects, then $6/seat (Teams) | unlimited | unlimited | unlimited | unlimited (cloud cost only) |
-| Cloud secret-store backends | AWS SSM and OCI Vault today; Azure KV, GCP SM on roadmap | own store | own store | own store | AWS SM, AWS SSM, GCP SM, Vault, Consul, dotenv | AWS SM/SSM, GCP SM, Azure KV, Vault, SOPS, Bitwarden | Conjur, AWS, keyring (provider plugin) | AWS SSM, AWS Secrets Manager, S3 / S3-KMS (AWS-only) |
+| Cloud secret-store backends | AWS SSM, Azure KV, GCP SM, OCI Vault today | own store | own store | own store | AWS SM, AWS SSM, GCP SM, Vault, Consul, dotenv | AWS SM/SSM, GCP SM, Azure KV, Vault, SOPS, Bitwarden | Conjur, AWS, keyring (provider plugin) | AWS SSM, AWS Secrets Manager, S3 / S3-KMS (AWS-only) |
 | `run -- cmd` injection | yes | yes | yes | yes | yes | yes (`run` and `load`) | yes | yes (`chamber exec`) |
 | Importer for Doppler / Infisical / .env | **all three built-in** | n/a | partial (one-way) | none | dotenv only | none (Infisical on roadmap) | none | none (own export/import format only) |
 | Sync to GitHub Actions secrets | **built-in (`skret sync --to=github`; `--skip-unchanged` for hash-based drift detection)** | via paid integration | via paid integration | none | none | none | none | none |
@@ -264,6 +264,7 @@ Full docs at **[skret.n24q02m.com](https://skret.n24q02m.com)**:
 - [Configuration](https://skret.n24q02m.com/guide/configuration/) — `.skret.yaml` reference
 - [Authentication](https://skret.n24q02m.com/guide/authentication/) — AWS SSO, OIDC, IAM
 - [Provider comparison](https://skret.n24q02m.com/reference/provider-comparison/) — cost + features across AWS, OCI, Azure, GCP
+- [Providers](https://skret.n24q02m.com/providers/) — per-backend setup guides (AWS SSM, Azure Key Vault, local)
 - [Migrate from Doppler](https://skret.n24q02m.com/migration/from-doppler/)
 - [Migrate from Infisical](https://skret.n24q02m.com/migration/from-infisical/)
 - [Makefile patterns](https://skret.n24q02m.com/integrations/makefile-patterns/)

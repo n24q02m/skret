@@ -51,6 +51,11 @@ type Environment struct {
 	// used when the oci provider creates a new secret (updates reuse the
 	// secret's existing key).
 	KeyID string `yaml:"key_id,omitempty"`
+	// Azure Key Vault endpoint. One of vault_url or vault_name is required
+	// for the azure provider; vault_name derives
+	// https://<name>.vault.azure.net. Setting both requires them to agree.
+	VaultURL  string `yaml:"vault_url,omitempty"`
+	VaultName string `yaml:"vault_name,omitempty"`
 }
 
 // SyncConfig declares reusable sync routes (targets) + optional hub endpoint.
@@ -240,6 +245,10 @@ func (e *Environment) validate(name string) error {
 	case "local":
 		if e.File == "" {
 			return fmt.Errorf("config: environment %q: file is required for local provider", name)
+		}
+	case "azure":
+		if e.VaultURL == "" && e.VaultName == "" {
+			return fmt.Errorf("config: environment %q: one of vault_url or vault_name is required for azure provider", name)
 		}
 	case "oci":
 		if e.CompartmentID == "" {

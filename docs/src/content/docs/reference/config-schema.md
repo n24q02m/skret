@@ -15,14 +15,19 @@ default_env: prod           # Optional. Default environment when --env is not sp
 
 environments:               # Required. At least one environment must be defined.
   prod:
-    provider: aws           # Required. Provider type: "aws", "local", "gcp", or "oci".
-p/prod       # Required for aws. SSM parameter path prefix.
+    provider: aws           # Required. Provider type: "aws", "azure", "local", "gcp", or "oci".
+    path: /myapp/prod       # Required for aws. SSM parameter path prefix.
     region: us-east-1       # Optional for aws/oci. Provider region.
     profile: production     # Optional for aws/oci. Credential profile name.
     kms_key_id: alias/aws/ssm  # Optional for aws. KMS key for SecureString encryption.
     compartment_id: ocid1.compartment.oc1..xxx  # Required for oci. Compartment OCID.
     vault_id: ocid1.vault.oc1..yyy              # Required for oci. Vault OCID.
     key_id: ocid1.key.oc1..zzz                  # Optional for oci. Master key for new secrets.
+
+  azure-prod:
+    provider: azure         # Required. "azure" for Azure Key Vault.
+    vault_name: my-vault    # One of vault_name/vault_url required for azure.
+    vault_url: https://my-vault.vault.azure.net/  # Alternative (sovereign clouds).
 
   gcp-prod:
     provider: gcp
@@ -96,8 +101,8 @@ notify:                     # Optional. Webhook notifications fired after succes
 
 | Field | Type | Required | Provider | Description |
 |-------|------|----------|----------|-------------|
-| `provider` | string | Yes | All | Provider type. Supported: `"aws"`, `"local"`, `"gcp"`, `"oci"`. |
-| `path` | string | Yes | `aws` | SSM parameter path prefix. Must start with `/`. |
+| `provider` | string | Yes | All | Provider type. Supported: `"aws"`, `"azure"`, `"local"`, `"gcp"`, `"oci"`. |
+| `path` | string | Yes | `aws` | SSM parameter path prefix. Must start with `/`. For `azure` it is an optional literal name-prefix filter. |
 | `region` | string | No | `aws`, `gcp`, `oci` | AWS region (`aws`, falls back to `AWS_REGION`), GCP location for regional secrets (`gcp`, omit for global), or OCI region (`oci`, falls back to the auth source's region / `OCI_CLI_REGION`). |
 | `profile` | string | No | `aws`, `oci` | AWS credential profile name (`aws`, falls back to `AWS_PROFILE`) or profile in `~/.oci/config` (`oci`, falls back to `OCI_CLI_PROFILE` then `DEFAULT`). |
 | `kms_key_id` | string | No | `aws`, `gcp` | `aws`: KMS key ID or alias for SecureString encryption (defaults to the AWS-managed SSM key `alias/aws/ssm`). `gcp`: CMEK key resource name for new secrets; rides automatic replication globally and user-managed replication when `region` is set. |
@@ -105,7 +110,9 @@ notify:                     # Optional. Webhook notifications fired after succes
 | `compartment_id` | string | Yes | `oci` | OCID of the compartment holding the vault. |
 | `vault_id` | string | Yes | `oci` | OCID of the OCI vault where secrets live. |
 | `key_id` | string | No | `oci` | OCID of the software-protected master encryption key used when creating new secrets (updates keep the secret's existing key). |
-ng | Yes | `local` | Path to the local secrets YAML file. Relative paths are resolved from the `.skret.yaml` location. |
+| `vault_url` | string | One of `vault_url`/`vault_name` | `azure` | Absolute `https://` Key Vault endpoint (use for sovereign clouds). Setting both this and `vault_name` requires them to agree. |
+| `vault_name` | string | One of `vault_url`/`vault_name` | `azure` | Vault name (3–24 alphanumeric/dash chars); derives `https://<name>.vault.azure.net`. |
+| `file` | string | Yes | `local` | Path to the local secrets YAML file. Relative paths are resolved from the `.skret.yaml` location. |
 | `encrypted` | bool | No | `false` | `local` only. Write-side encryption intent: when `true`, saves store the file as a keystore envelope (`skret-encrypted-v1`, argon2id + XChaCha20-Poly1305). Reads auto-detect an encrypted file on disk regardless of this flag. Set up with `skret keys init --encrypt-existing`. |
 | `audit_log` | string | No | `local` | Where the append-only audit trail lives (default: `.skret-audit.log` next to the secrets file). `skret set`/`rotate`/`delete` append one JSONL line per mutation — timestamp, op, key names, env, actor, never values — and `skret audit` renders it. |
 
@@ -173,22 +180,16 @@ skret validates the config at load time and fails fast on errors:
 4. Each environment must have a `provider` field
 5. AWS environments must have a `path` field
 6. GCP environments must have a `project` field, and `path` must be empty (GCP secret ids are flat; isolate environments by project)
-7. OCI environments must have `compartment_id` and `vault_id` fields
-8. Local environments must have a `file` field
-9. Unknown provider names are rejected
-10. Each `sync.targets` entry must have a known `type` (`github`, `cloudflare`, `dotenv`, `gitlab`, `terraform`, or `k8s`)
-11. `github` sync targets must have a `repo` field
-12. `cloudflare` sync targets must set exactly one of `worker`/`pages`
-13. `gitlab` sync targets must have a `project` field
-14. `notify.webhook_url` must be present when the `notify` block is, and every URL must be absolute `http(s)`
-15. `notify.events` entries must be known events (`set`, `delete`, `rotate`, `sync`)
-ider names are rejected
-9. Each `sync.targets` entry must have a known `type` (`github`, `cloudflare`, `dotenv`, `gitlab`, `terraform`, or `k8s`)
-10. `github` sync targets must have a `repo` field
-11. `cloudflare` sync targets must set exactly one of `worker`/`pages`
-12. `gitlab` sync targets must have a `project` field
-13. `notify.webhook_url` must be present when the `notify` block is, and every URL must be absolute `http(s)`
-14. `notify.events` entries must be known events (`set`, `delete`, `rotate`, `sync`)
+7. Azure environments must have one of `vault_url` or `vault_name` (setting both requires them to agree)
+8. OCI environments must have `compartment_id` and `vault_id` fields
+9. Local environments must have a `file` field
+10. Unknown provider names are rejected
+11. Each `sync.targets` entry must have a known `type` (`github`, `cloudflare`, `dotenv`, `gitlab`, `terraform`, or `k8s`)
+12. `github` sync targets must have a `repo` field
+13. `cloudflare` sync targets must set exactly one of `worker`/`pages`
+14. `gitlab` sync targets must have a `project` field
+15. `notify.webhook_url` must be present when the `notify` block is, and every URL must be absolute `http(s)`
+16. `notify.events` entries must be known events (`set`, `delete`, `rotate`, `sync`)
 
 ## Config Discovery
 

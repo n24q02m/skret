@@ -42,7 +42,7 @@ func newInitCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&opts.provider, "provider", "", "secret provider (aws, local); prod env keeps its /myapp/prod, us-east-1 defaults when unset")
+	cmd.Flags().StringVar(&opts.provider, "provider", "", "secret provider (aws, azure, local); prod env keeps its /myapp/prod, us-east-1 defaults when unset")
 	cmd.Flags().StringVar(&opts.path, "path", "", "secret path prefix (aws provider)")
 	cmd.Flags().StringVar(&opts.region, "region", "", "cloud region (aws provider)")
 	cmd.Flags().StringVar(&opts.file, "file", "", "local file path (local provider)")

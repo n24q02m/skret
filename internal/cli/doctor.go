@@ -13,11 +13,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
+	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	"github.com/n24q02m/skret/internal/auth"
 	"github.com/n24q02m/skret/internal/config"
 	"github.com/n24q02m/skret/internal/keystore"
 	"github.com/n24q02m/skret/internal/provider"
 	skaws "github.com/n24q02m/skret/internal/provider/aws"
+	"github.com/n24q02m/skret/internal/provider/azure"
 	skgcp "github.com/n24q02m/skret/internal/provider/gcp"
 	"github.com/n24q02m/skret/internal/provider/local"
 	skoci "github.com/n24q02m/skret/internal/provider/oci"
@@ -239,6 +242,8 @@ func runDoctorChecks(deps doctorDeps, opts *GlobalOpts, timeout time.Duration) [
 				checks = append(checks, doctorAuthCheck(deps))
 				authChecked = true
 			}
+		case "azure":
+			checks = append(checks, doctorAzureReachCheck(envName, timeout, probeCache, resolved)...)
 		case "oci":
 			checks = append(checks, doctorOCIReachCheck(envName, resolved, timeout, probeCache)...)
 		case "gcp":
@@ -248,7 +253,7 @@ func runDoctorChecks(deps doctorDeps, opts *GlobalOpts, timeout time.Duration) [
 				Name:        "provider[" + envName + "]",
 				Status:      doctorFail,
 				Detail:      fmt.Sprintf("unknown provider %q", resolved.Provider),
-				Remediation: "supported providers: local, aws, oci, gcp",
+				Remediation: "supported providers: local, aws, azure, oci, gcp",
 				failClass:   skret.ExitConfigError,
 			})
 		}
@@ -298,7 +303,8 @@ func doctorLocalChecks(deps doctorDeps, rawEnv map[string]any, envName string, r
 			Remediation: "run 'skret set <KEY>' to create it",
 		})
 	} else {
-		checks = append(checks,
+		checks = append(
+			checks,
 			DoctorCheck{
 				Name: "provider[" + envName + "]", Status: doctorPass,
 				Detail: fmt.Sprintf("file loads (%d secret(s))", len(secrets)),
@@ -574,6 +580,54 @@ func doctorOCIReachCheck(envName string, resolved *config.ResolvedConfig, timeou
 	}
 }
 
+// doctorAzureReachCheck probes Azure Key Vault reachability once per vault
+// URL and reuses the result for every azure environment on that vault. The
+// probe is a contract-only metadata read: Fingerprint over a prefix no
+// real secret uses, which costs one list page and never fetches values.
+func doctorAzureReachCheck(
+	envName string,
+	timeout time.Duration,
+	probeCache map[string]error,
+	resolved *config.ResolvedConfig,
+) []DoctorCheck {
+	name := "provider[" + envName + "]"
+	probe, err := azure.New(resolved)
+	if err != nil {
+		return []DoctorCheck{{
+			Name: name, Status: doctorFail,
+			Detail:      err.Error(),
+			Remediation: "set vault_url (or vault_name) in this environment's .skret.yaml entry",
+			failClass:   skret.ExitConfigError,
+		}}
+	}
+	cacheKey := "azure:" + resolved.VaultURL + "|" + resolved.VaultName
+	probeRes, cached := probeCache[cacheKey]
+	if !cached {
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		_, probeRes = probe.Fingerprint(ctx, "skret-doctor-probe-")
+		cancel()
+		probeCache[cacheKey] = probeRes
+	}
+	switch {
+	case probeRes == nil:
+		return []DoctorCheck{{Name: name, Status: doctorPass, Detail: "reachable (Key Vault list)"}}
+	case isAzureAuthError(probeRes):
+		return []DoctorCheck{{
+			Name: name, Status: doctorFail,
+			Detail:      fmt.Sprintf("credentials rejected: %v", probeRes),
+			Remediation: "fix the DefaultAzureCredential chain (AZURE_TENANT_ID/AZURE_CLIENT_ID/AZURE_CLIENT_SECRET, managed identity, or 'az login')",
+			failClass:   skret.ExitAuthError,
+		}}
+	default:
+		return []DoctorCheck{{
+			Name: name, Status: doctorFail,
+			Detail:      fmt.Sprintf("unreachable: %v", probeRes),
+			Remediation: "check network access and the vault_url / vault_name in .skret.yaml",
+			failClass:   skret.ExitNetworkError,
+		}}
+	}
+}
+
 // doctorOCIProbe constructs the provider (auth validation) and issues a
 // names-only listing (network probe).
 func doctorOCIProbe(ctx context.Context, resolved *config.ResolvedConfig) error {
@@ -584,6 +638,21 @@ func doctorOCIProbe(ctx context.Context, resolved *config.ResolvedConfig) error 
 	defer p.Close()
 	_, err = p.ListNames(ctx, resolved.Path)
 	return err
+}
+
+// isAzureAuthError reports whether err is an Azure authentication failure
+// (credential construction or a 401/403 from the vault), as opposed to a
+// network- or config-shaped failure.
+func isAzureAuthError(err error) bool {
+	var respErr *azcore.ResponseError
+	if errors.As(err, &respErr) {
+		return respErr.StatusCode == 401 || respErr.StatusCode == 403
+	}
+	// DefaultAzureCredential folds every unavailable-credential outcome
+	// (missing env vars, no managed identity, no az login) into an
+	// AuthenticationFailedError, so that single type covers the chain.
+	var authFailed *azidentity.AuthenticationFailedError
+	return errors.As(err, &authFailed)
 }
 
 // doctorAuthCheck reports stored-credential state for aws, the only
