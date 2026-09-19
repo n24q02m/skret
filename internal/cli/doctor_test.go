@@ -309,7 +309,7 @@ func TestDoctorAuthCheck_States(t *testing.T) {
 	}
 
 	t.Run("missing-credential-is-warning", func(t *testing.T) {
-		check := doctorAuthCheck(deps, "aws")
+		check := doctorAuthCheck(deps)
 		assert.Equal(t, doctorWarn, check.Status)
 		assert.Contains(t, check.Detail, "no stored credential")
 		assert.Contains(t, check.Remediation, "skret auth login aws")
@@ -320,7 +320,7 @@ func TestDoctorAuthCheck_States(t *testing.T) {
 			Provider: "aws", Method: "sso",
 			ExpiresAt: now.Add(-time.Hour),
 		}))
-		check := doctorAuthCheck(deps, "aws")
+		check := doctorAuthCheck(deps)
 		assert.Equal(t, doctorFail, check.Status)
 		assert.Equal(t, skret.ExitAuthError, check.failClass)
 		assert.Contains(t, check.Detail, "credential expired at")
@@ -331,7 +331,7 @@ func TestDoctorAuthCheck_States(t *testing.T) {
 			Provider: "aws", Method: "sso",
 			ExpiresAt: now.Add(2 * time.Hour),
 		}))
-		check := doctorAuthCheck(deps, "aws")
+		check := doctorAuthCheck(deps)
 		assert.Equal(t, doctorWarn, check.Status)
 		assert.Empty(t, check.failClass)
 		assert.Contains(t, check.Detail, "credential expires in")
@@ -342,7 +342,7 @@ func TestDoctorAuthCheck_States(t *testing.T) {
 			Provider: "aws", Method: "sso",
 			ExpiresAt: now.Add(48 * time.Hour),
 		}))
-		check := doctorAuthCheck(deps, "aws")
+		check := doctorAuthCheck(deps)
 		assert.Equal(t, doctorPass, check.Status)
 		assert.Contains(t, check.Detail, "valid (method: sso")
 	})

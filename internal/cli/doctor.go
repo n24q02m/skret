@@ -193,7 +193,7 @@ func runDoctorChecks(deps doctorDeps, opts *GlobalOpts, timeout time.Duration) [
 
 	var checks []DoctorCheck
 	probeCache := map[string]error{} // provider -> liveness result
-	authDone := map[string]bool{}    // provider -> auth check already emitted
+	authChecked := false             // aws credential check runs once per report
 	for _, envName := range envNames {
 		resolveOpts := config.ResolveOpts{
 			Env:      envName,
@@ -220,9 +220,9 @@ func runDoctorChecks(deps doctorDeps, opts *GlobalOpts, timeout time.Duration) [
 			checks = append(checks, doctorLocalChecks(deps, rawEnvs[envName], envName, resolved)...)
 		case "aws":
 			checks = append(checks, doctorAWSReachCheck(deps, envName, timeout, probeCache)...)
-			if !authDone["aws"] {
-				checks = append(checks, doctorAuthCheck(deps, "aws"))
-				authDone["aws"] = true
+			if !authChecked {
+				checks = append(checks, doctorAuthCheck(deps))
+				authChecked = true
 			}
 		default:
 			checks = append(checks, DoctorCheck{
@@ -276,12 +276,14 @@ func doctorLocalChecks(deps doctorDeps, rawEnv map[string]any, envName string, r
 			Remediation: "run 'skret set <KEY>' to create it",
 		})
 	} else {
-		checks = append(checks, DoctorCheck{
-			Name: "provider[" + envName + "]", Status: doctorPass,
-			Detail: fmt.Sprintf("file loads (%d secret(s))", len(secrets)),
-		})
-		checks = append(checks, doctorPermCheck(deps.goos, envName, absFile))
-		checks = append(checks, doctorEncryptionCheck(envName, rawEnv))
+		checks = append(checks,
+			DoctorCheck{
+				Name: "provider[" + envName + "]", Status: doctorPass,
+				Detail: fmt.Sprintf("file loads (%d secret(s))", len(secrets)),
+			},
+			doctorPermCheck(deps.goos, envName, absFile),
+			doctorEncryptionCheck(envName, rawEnv),
+		)
 	}
 	return checks
 }
@@ -377,11 +379,13 @@ func doctorAWSReachCheck(deps doctorDeps, envName string, timeout time.Duration,
 	}
 }
 
-// doctorAuthCheck reports stored-credential state for one provider.
-// A missing credential is a warning (the SDK default chain may still work —
-// the reachability check above is the authoritative signal), an expired
-// credential a failure.
-func doctorAuthCheck(deps doctorDeps, providerName string) DoctorCheck {
+// doctorAuthCheck reports stored-credential state for aws, the only
+// cred-bearing provider today. A missing credential is a warning (the SDK
+// default chain may still work — the reachability check above is the
+// authoritative signal), an expired credential a failure. Reintroduce a
+// providerName parameter when a second cred-bearing provider lands.
+func doctorAuthCheck(deps doctorDeps) DoctorCheck {
+	const providerName = "aws"
 	name := "auth[" + providerName + "]"
 	cred, err := deps.store.Load(providerName)
 	switch {
