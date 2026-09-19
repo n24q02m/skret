@@ -4,6 +4,25 @@ All notable changes to this project will be documented in this file.
 
 <!-- version list -->
 
+## v1.23.0 (2026-09-19)
+
+### Bug Fixes
+
+- Lint — drop embedded selector and needless conversion in notify tests
+  ([#794](https://github.com/n24q02m/skret/pull/794),
+  [`497c79d`](https://github.com/n24q02m/skret/commit/497c79dbcbde5bff85bdc4cb6c23f84e7cde665e))
+
+### Features
+
+- ${KEY} reference resolution on get/env/run (SK-REF)
+  ([#795](https://github.com/n24q02m/skret/pull/795),
+  [`9705ea8`](https://github.com/n24q02m/skret/commit/9705ea85e572d0d6b8f4112039f86aa4eb459066))
+
+- Webhook notifications on secret mutation (SK-NOTIFY)
+  ([#794](https://github.com/n24q02m/skret/pull/794),
+  [`497c79d`](https://github.com/n24q02m/skret/commit/497c79dbcbde5bff85bdc4cb6c23f84e7cde665e))
+
+
 ## v1.22.0 (2026-09-19)
 
 ### Features
