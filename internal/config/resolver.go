@@ -26,6 +26,9 @@ type ResolvedConfig struct {
 	Profile     string
 	KMSKeyID    string
 	File        string
+	// Project is the GCP project id resolved for gcp environments:
+	// GOOGLE_CLOUD_PROJECT env var wins over the environment's `project`.
+	Project string
 	// Encrypted is the local provider's write-side encryption intent
 	// (env config `encrypted: true`). See Environment.Encrypted.
 	Encrypted bool
@@ -80,6 +83,7 @@ func Resolve(cfg *Config, opts ResolveOpts) (*ResolvedConfig, error) {
 		Profile:       firstNonEmpty(opts.Profile, os.Getenv("SKRET_PROFILE"), os.Getenv("AWS_PROFILE"), env.Profile),
 		KMSKeyID:      env.KMSKeyID,
 		File:          firstNonEmpty(opts.File, env.File),
+		Project:       firstNonEmpty(os.Getenv("GOOGLE_CLOUD_PROJECT"), env.Project),
 		Encrypted:     env.Encrypted,
 		AuditLog:      env.AuditLog,
 		CompartmentID: env.CompartmentID,

@@ -27,6 +27,9 @@ type Environment struct {
 	Profile  string `yaml:"profile,omitempty"`
 	KMSKeyID string `yaml:"kms_key_id,omitempty"`
 	File     string `yaml:"file,omitempty"`
+	// Project is the GCP project id for gcp environments. GOOGLE_CLOUD_PROJECT
+	// (the standard ADC ambient) takes precedence when set.
+	Project string `yaml:"project,omitempty"`
 	// Encrypted declares write-side intent for the local provider: when
 	// true, the provider stores the file as a keystore envelope (see
 	// internal/keystore). Reads auto-detect an envelope on disk regardless
@@ -226,6 +229,13 @@ func (e *Environment) validate(name string) error {
 	case "aws":
 		if e.Path == "" {
 			return fmt.Errorf("config: environment %q: path is required for aws provider", name)
+		}
+	case "gcp":
+		if e.Project == "" {
+			return fmt.Errorf("config: environment %q: project is required for gcp provider", name)
+		}
+		if e.Path != "" {
+			return fmt.Errorf("config: environment %q: path must be empty for gcp provider (GCP secret ids are flat; use one GCP project per environment)", name)
 		}
 	case "local":
 		if e.File == "" {

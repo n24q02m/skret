@@ -771,3 +771,52 @@ func TestDoctorOCIReachCheckAuthConfigFailure(t *testing.T) {
 	require.Len(t, checks, 1)
 	assert.Equal(t, skret.ExitAuthError, checks[0].failClass)
 }
+
+// --- SK-GCP: gcp environments get an ADC/API reach check ---
+
+func TestDoctorGCPReachCheck(t *testing.T) {
+	resolved := &config.ResolvedConfig{Provider: "gcp", Project: "proj", Region: ""}
+	orig := doctorGCPProbe
+	t.Cleanup(func() { doctorGCPProbe = orig })
+
+	t.Run("pass", func(t *testing.T) {
+		doctorGCPProbe = func(context.Context, *config.ResolvedConfig) error { return nil }
+		checks := doctorGCPReachCheck(resolved, "prod", time.Second, map[string]error{})
+		require.Len(t, checks, 1)
+		assert.Equal(t, doctorPass, checks[0].Status)
+	})
+
+	t.Run("credentials failure is auth class", func(t *testing.T) {
+		doctorGCPProbe = func(context.Context, *config.ResolvedConfig) error {
+			return errors.New("gcp: no Google Cloud credentials found")
+		}
+		checks := doctorGCPReachCheck(resolved, "prod", time.Second, map[string]error{})
+		require.Len(t, checks, 1)
+		assert.Equal(t, doctorFail, checks[0].Status)
+		assert.Equal(t, skret.ExitAuthError, checks[0].failClass)
+	})
+
+	t.Run("network failure is network class", func(t *testing.T) {
+		doctorGCPProbe = func(context.Context, *config.ResolvedConfig) error {
+			return errors.New("dial tcp: timeout")
+		}
+		checks := doctorGCPReachCheck(resolved, "prod", time.Second, map[string]error{})
+		require.Len(t, checks, 1)
+		assert.Equal(t, doctorFail, checks[0].Status)
+		assert.Equal(t, skret.ExitNetworkError, checks[0].failClass)
+	})
+
+	t.Run("results cached per project and location", func(t *testing.T) {
+		calls := 0
+		doctorGCPProbe = func(context.Context, *config.ResolvedConfig) error {
+			calls++
+			return errors.New("dial tcp: timeout")
+		}
+		cache := map[string]error{}
+		doctorGCPReachCheck(resolved, "prod", time.Second, cache)
+		doctorGCPReachCheck(resolved, "prod", time.Second, cache)
+		assert.Equal(t, 1, calls, "same project+location must reuse the cached probe")
+		doctorGCPReachCheck(&config.ResolvedConfig{Provider: "gcp", Project: "other"}, "prod", time.Second, cache)
+		assert.Equal(t, 2, calls, "a different project must probe again")
+	})
+}
