@@ -224,6 +224,8 @@ func llmsEnvVarRows() []llmsNamed {
 // missing here.
 var llmsConfigKeyTable = []llmsNamed{
 	{"account", "sync target: cloudflare account id (sync.targets[].account)"},
+	{"allow_write", "mcp: enable the skret-mcp write tools (skret_set/delete/rotate); default false (mcp.allow_write)"},
+	{"allowed_envs", "mcp: restrict which environments the skret-mcp server may access (mcp.allowed_envs)"},
 	{"audit_log", "environment: path of the local audit JSONL trail (environments.<env>.audit_log)"},
 	{"base_url", "sync target: API endpoint override, e.g. GitHub Enterprise (sync.targets[].base_url)"},
 	{"compartment_id", "environment: OCI compartment OCID (environments.<env>.compartment_id)"},
@@ -237,6 +239,7 @@ var llmsConfigKeyTable = []llmsNamed{
 	{"key_id", "environment: OCI key OCID for vault encryption (environments.<env>.key_id)"},
 	{"kms_key_id", "environment: AWS KMS customer-managed key (environments.<env>.kms_key_id)"},
 	{"masked", "sync target: mark GitLab CI/CD variables masked (sync.targets[].masked)"},
+	{"mcp", "policy for the skret-mcp MCP server: write gating and environment access (mcp)"},
 	{"name", "sync target: metadata.name of the generated k8s Secret (sync.targets[].name)"},
 	{"namespace", "sync target: metadata.namespace of the generated k8s Secret (sync.targets[].namespace)"},
 	{"no_overwrite", "sync target: only write keys absent at the target (sync.targets[].no_overwrite)"},

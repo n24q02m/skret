@@ -20,6 +20,12 @@ const (
 	AuditOpSet    = "set"
 	AuditOpRotate = "rotate"
 	AuditOpDelete = "delete"
+	// AuditOpMCPRead records a read made through the skret-mcp server
+	// (cmd/skret-mcp). Reads by the CLI and the library are not audited --
+	// only the agent-facing MCP surface logs reads, and only into the local
+	// provider's trail, so an agent harness gets the same who-accessed-what
+	// record mutations already produce.
+	AuditOpMCPRead = "mcp_read"
 )
 
 // AuditFileName is the default audit trail location: a sibling of the
@@ -112,9 +118,9 @@ func trimCR(s string) string {
 	return s
 }
 
-// auditActor resolves who performed a mutation: SKRET_ACTOR when the caller
-// (CI, an agent harness) declares it, otherwise the OS user.
-func auditActor() string {
+// AuditActor resolves who performed an operation: SKRET_ACTOR when the
+// caller (CI, an agent harness) declares it, otherwise the OS user.
+func AuditActor() string {
 	if a := os.Getenv("SKRET_ACTOR"); a != "" {
 		return sanitizeActor(a)
 	}
@@ -173,7 +179,22 @@ func (p *Provider) auditLogPath() string {
 // failure, and the remediation ("check audit log path permissions") is
 // actionable without re-running the mutation.
 func (p *Provider) appendAudit(op string, keyNames ...string) error {
-	path := p.auditLogPath()
+	return AppendAuditEntry(p.auditLogPath(), AuditEntry{
+		Timestamp: time.Now().UTC().Format(time.RFC3339Nano),
+		Op:        op,
+		KeyNames:  keyNames,
+		Env:       p.envName,
+		Actor:     AuditActor(),
+	})
+}
+
+// AppendAuditEntry appends one pre-built entry to the trail at path using
+// the exact rotation and serialization contract provider mutations follow
+// (single O_APPEND write, at-threshold rename to <path>.1, dir creation on
+// first append). It exists so adjacent surfaces that must record accesses
+// into the same trail the CLI reads -- the skret-mcp server logging its
+// read operations -- cannot drift from the format skret audit renders.
+func AppendAuditEntry(path string, entry AuditEntry) error {
 	if err := rotateAuditLog(path); err != nil {
 		return fmt.Errorf("audit: rotate %q: %w", path, err)
 	}
@@ -183,13 +204,6 @@ func (p *Provider) appendAudit(op string, keyNames ...string) error {
 		if err := os.MkdirAll(dir, 0o700); err != nil {
 			return fmt.Errorf("audit: create dir %q: %w", dir, err)
 		}
-	}
-	entry := AuditEntry{
-		Timestamp: time.Now().UTC().Format(time.RFC3339Nano),
-		Op:        op,
-		KeyNames:  keyNames,
-		Env:       p.envName,
-		Actor:     auditActor(),
 	}
 	line, err := json.Marshal(entry)
 	if err != nil {

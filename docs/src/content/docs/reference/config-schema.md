@@ -80,6 +80,11 @@ notify:                     # Optional. Webhook notifications fired after succes
     - rotate
     - sync
   secret: ${NOTIFY_SECRET}  # Optional. HMAC-SHA256 signing key; receivers verify the X-Skret-Signature header.
+
+mcp:                        # Optional. Policy for the skret-mcp server (see guide/mcp).
+  allow_write: false        # Optional. Enable the write tools (skret_set/delete/rotate). Default false.
+  allowed_envs:             # Optional. Restrict which environments MCP may access; omit for all.
+    - dev
 ```
 
 ## Field Reference
@@ -96,6 +101,7 @@ notify:                     # Optional. Webhook notifications fired after succes
 | `exclude` | list | No | `[]` | Secret keys excluded from `run` and `env` output. |
 | `sync` | map | No | -- | Declared sync targets and hub endpoint for `skret sync` / `skret hub push`. See [Sync Fields](#sync-fields). |
 | `notify` | map | No | -- | Webhook notifications fired after successful secret mutations (`set`/`delete`/`rotate`/`sync`). See [Notify Fields](#notify-fields). |
+| `mcp` | map | No | -- | Policy for the `skret-mcp` MCP server: write gating and environment access. See [MCP Fields](#mcp-fields). |
 
 ### Environment Fields
 
@@ -170,6 +176,15 @@ Payload shape (one POST per event; `sync`/`rotate` fire once per completed targe
 
 `timestamp` is RFC3339 UTC; `actor` is only present when `SKRET_ACTOR` is set (e.g. `SKRET_ACTOR=ci` in a pipeline). Delivery is timeout-bounded (5s per attempt) and retries once on a 5xx response. A delivery failure never fails the mutation: it warns on stderr, or fails the command after the fact when `--strict-notify` is passed.
 
+### MCP Fields
+
+`mcp` configures the `skret-mcp` server (see the [MCP guide](/guide/mcp/)). The block is optional; the server runs with defaults when absent.
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `mcp.allow_write` | bool | No | `false` | Enable the write tools (`skret_set`/`skret_delete`/`skret_rotate`). While `false`, a write tool call returns an error result naming this field. |
+| `mcp.allowed_envs` | list | No | all environments | Restrict which environments the server may access. Every entry must match a declared environment (validated at config load). A request — or a startup `--env` — naming any other environment fails with a remediation. |
+
 ## Validation Rules
 
 skret validates the config at load time and fails fast on errors:
@@ -190,6 +205,7 @@ skret validates the config at load time and fails fast on errors:
 14. `gitlab` sync targets must have a `project` field
 15. `notify.webhook_url` must be present when the `notify` block is, and every URL must be absolute `http(s)`
 16. `notify.events` entries must be known events (`set`, `delete`, `rotate`, `sync`)
+17. `mcp.allowed_envs` entries must match declared environment names
 
 ## Config Discovery
 

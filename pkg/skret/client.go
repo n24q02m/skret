@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 
 	"github.com/n24q02m/skret/internal/config"
 	"github.com/n24q02m/skret/internal/provider"
@@ -54,6 +55,12 @@ func New(opts ...Options) (*Client, error) {
 	if err != nil {
 		return nil, NewError(ExitConfigError, "failed to load configuration", err)
 	}
+
+	// Relative `file`/`audit_log` paths must mean "next to the config",
+	// not "next to wherever this process happens to run" -- a library
+	// consumer or the skret-mcp server (--workdir) constructs providers
+	// from a different working directory than the CLI's project root.
+	config.AnchorToDir(cfg, filepath.Dir(cfgPath))
 
 	resolved, err := config.Resolve(cfg, config.ResolveOpts{
 		Env:      opt.Env,

@@ -1,6 +1,7 @@
 package config_test
 
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/n24q02m/skret/internal/config"
@@ -376,4 +377,43 @@ func TestResolve_GCPPathRejected(t *testing.T) {
 	_, err := config.Resolve(cfg, config.ResolveOpts{})
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "path must be empty for gcp provider")
+}
+
+func TestAnchorToDir(t *testing.T) {
+	dir := t.TempDir()
+	other := t.TempDir()
+	cfg := &config.Config{
+		Version: "1",
+		Environments: map[string]config.Environment{
+			// relative paths anchor to dir; absolute pass through; empty
+			// stays empty (cloud envs carry no file paths at all).
+			"dev":  {Provider: "local", File: ".secrets.dev.yaml", AuditLog: "trails/dev.log"},
+			"prod": {Provider: "local", File: filepath.Join(other, "prod.yaml")},
+			"aws":  {Provider: "aws", Path: "/app/prod"},
+		},
+	}
+	config.AnchorToDir(cfg, dir)
+
+	dev := cfg.Environments["dev"]
+	assert.Equal(t, filepath.Join(dir, ".secrets.dev.yaml"), dev.File)
+	assert.Equal(t, filepath.Join(dir, "trails", "dev.log"), dev.AuditLog)
+	assert.Equal(t, filepath.Join(other, "prod.yaml"), cfg.Environments["prod"].File,
+		"absolute paths must not be rewritten")
+	assert.Empty(t, cfg.Environments["aws"].File)
+}
+
+func TestAnchorToDirMakesProviderResolveConfigRelative(t *testing.T) {
+	dir := t.TempDir()
+	cfg := &config.Config{
+		Version:    "1",
+		DefaultEnv: "dev",
+		Environments: map[string]config.Environment{
+			"dev": {Provider: "local", File: ".secrets.dev.yaml"},
+		},
+	}
+	config.AnchorToDir(cfg, dir)
+	resolved, err := config.Resolve(cfg, config.ResolveOpts{})
+	require.NoError(t, err)
+	assert.True(t, filepath.IsAbs(resolved.File))
+	assert.Equal(t, filepath.Join(dir, ".secrets.dev.yaml"), resolved.File)
 }

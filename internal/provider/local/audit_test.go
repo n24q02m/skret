@@ -160,7 +160,7 @@ func TestReadAuditLog_MissingFile(t *testing.T) {
 
 func TestAuditActor_EnvOverrideWins(t *testing.T) {
 	t.Setenv("SKRET_ACTOR", "deploy-bot")
-	assert.Equal(t, "deploy-bot", auditActor())
+	assert.Equal(t, "deploy-bot", AuditActor())
 }
 
 func TestSanitizeActor(t *testing.T) {

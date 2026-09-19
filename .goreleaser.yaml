@@ -47,6 +47,26 @@ builds:
       - arm64
     ldflags:
       - -s -w
+  # skret-mcp ships on every desktop OS: agent harnesses (Claude Code, OMP,
+  # ...) launch it as a local stdio MCP server on dev machines, not just in
+  # Linux containers.
+  - id: skret-mcp
+    main: ./cmd/skret-mcp
+    binary: skret-mcp
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X github.com/n24q02m/skret/internal/version.Version={{.Version}}
+      - -X github.com/n24q02m/skret/internal/version.Commit={{.Commit}}
+      - -X github.com/n24q02m/skret/internal/version.Date={{.CommitTimestamp}}
 
 archives:
   - id: cli
@@ -70,6 +90,13 @@ archives:
       - goos: windows
         formats: [zip]
     name_template: "skret-compose-supervisor_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+  - id: mcp
+    ids:
+      - skret-mcp
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: "skret-mcp_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 
 checksum:
   name_template: "checksums.txt"
