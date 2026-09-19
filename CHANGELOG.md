@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 <!-- version list -->
 
+## v1.22.0 (2026-09-19)
+
+### Features
+
+- Surface keystore encryption state in skret doctor
+  ([#792](https://github.com/n24q02m/skret/pull/792),
+  [`acd3e44`](https://github.com/n24q02m/skret/commit/acd3e4459a211ccfb6b423c03927ac29221fae5d))
+
+
 ## v1.21.0 (2026-09-19)
 
 ### Bug Fixes
