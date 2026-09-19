@@ -10,6 +10,7 @@ import (
 	"github.com/n24q02m/skret/internal/provider"
 	"github.com/n24q02m/skret/internal/provider/aws"
 	"github.com/n24q02m/skret/internal/provider/local"
+	"github.com/n24q02m/skret/internal/provider/oci"
 )
 
 // Client is the main entry point for the skret programmatic API.
@@ -64,6 +65,7 @@ func New(opts ...Options) (*Client, error) {
 	reg := provider.NewRegistry()
 	reg.Register("local", local.New)
 	reg.Register("aws", aws.New)
+	reg.Register("oci", oci.New)
 
 	p, err := reg.New(resolved.Provider, resolved)
 	if err != nil {

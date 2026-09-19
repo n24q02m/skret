@@ -19,6 +19,7 @@ import (
 	"github.com/n24q02m/skret/internal/provider"
 	skaws "github.com/n24q02m/skret/internal/provider/aws"
 	"github.com/n24q02m/skret/internal/provider/local"
+	skoci "github.com/n24q02m/skret/internal/provider/oci"
 	"github.com/n24q02m/skret/pkg/skret"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
@@ -233,12 +234,14 @@ func runDoctorChecks(deps doctorDeps, opts *GlobalOpts, timeout time.Duration) [
 				checks = append(checks, doctorAuthCheck(deps))
 				authChecked = true
 			}
+		case "oci":
+			checks = append(checks, doctorOCIReachCheck(envName, resolved, timeout, probeCache)...)
 		default:
 			checks = append(checks, DoctorCheck{
 				Name:        "provider[" + envName + "]",
 				Status:      doctorFail,
 				Detail:      fmt.Sprintf("unknown provider %q", resolved.Provider),
-				Remediation: "supported providers: local, aws",
+				Remediation: "supported providers: local, aws, oci",
 				failClass:   skret.ExitConfigError,
 			})
 		}
@@ -487,6 +490,59 @@ func doctorAWSReachCheck(deps doctorDeps, envName string, timeout time.Duration,
 			failClass:   skret.ExitNetworkError,
 		}}
 	}
+}
+
+// ociAuthConfigError marks a probe failure caused by the local OCI auth
+// configuration (no config file, bad key material), not by the network.
+type ociAuthConfigError struct{ err error }
+
+func (e *ociAuthConfigError) Error() string { return e.err.Error() }
+func (e *ociAuthConfigError) Unwrap() error { return e.err }
+
+// doctorOCIReachCheck probes OCI Vault reachability once per run and reuses
+// the result for every oci environment. Provider construction validates the
+// auth configuration; a names-only listing (no decryption) validates the
+// network path under the probe timeout.
+func doctorOCIReachCheck(envName string, resolved *config.ResolvedConfig, timeout time.Duration, probeCache map[string]error) []DoctorCheck {
+	name := "provider[" + envName + "]"
+	probeRes, cached := probeCache["oci"]
+	if !cached {
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		probeRes = doctorOCIProbe(ctx, resolved)
+		cancel()
+		probeCache["oci"] = probeRes
+	}
+	var authCfgErr *ociAuthConfigError
+	switch {
+	case probeRes == nil:
+		return []DoctorCheck{{Name: name, Status: doctorPass, Detail: "reachable (names-only listing)"}}
+	case errors.As(probeRes, &authCfgErr):
+		return []DoctorCheck{{
+			Name: name, Status: doctorFail,
+			Detail:      fmt.Sprintf("auth configuration unusable: %v", authCfgErr.err),
+			Remediation: "create ~/.oci/config ('oci setup config'), set the OCI_CLI_* variables, or set OCI_CLI_AUTH=instance_principal",
+			failClass:   skret.ExitAuthError,
+		}}
+	default:
+		return []DoctorCheck{{
+			Name: name, Status: doctorFail,
+			Detail:      fmt.Sprintf("unreachable: %v", probeRes),
+			Remediation: "check network and region (`region` in .skret.yaml or OCI_CLI_REGION)",
+			failClass:   skret.ExitNetworkError,
+		}}
+	}
+}
+
+// doctorOCIProbe constructs the provider (auth validation) and issues a
+// names-only listing (network probe).
+func doctorOCIProbe(ctx context.Context, resolved *config.ResolvedConfig) error {
+	p, err := skoci.New(resolved)
+	if err != nil {
+		return &ociAuthConfigError{err: err}
+	}
+	defer p.Close()
+	_, err = p.ListNames(ctx, resolved.Path)
+	return err
 }
 
 // doctorAuthCheck reports stored-credential state for aws, the only

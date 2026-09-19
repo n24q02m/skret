@@ -1,6 +1,6 @@
 # skret
 
-> Cloud-provider secret manager CLI wrapper with Doppler/Infisical-grade developer experience. Secrets live in your own cloud account (AWS SSM Parameter Store today, local YAML for dev/test) under IAM policies you already manage — no SaaS control plane, no new billing line.
+> Cloud-provider secret manager CLI wrapper with Doppler/Infisical-grade developer experience. Secrets live in your own cloud account (AWS SSM Parameter Store and OCI Vault today, local YAML for dev/test) under IAM policies you already manage — no SaaS control plane, no new billing line.
 
 ## Getting started
 
@@ -31,4 +31,5 @@
 
 - [Provider Comparison](https://skret.n24q02m.com/providers/comparison/): Cost and feature ranking across AWS SSM, OCI Vault, Azure Key Vault, GCP Secret Manager, AWS Secrets Manager.
 - [AWS SSM Parameter Store](https://skret.n24q02m.com/providers/aws/): Setup, minimum IAM policy, provider-specific notes.
+- [OCI Vault](https://skret.n24q02m.com/providers/oci/): Setup, minimum IAM policy, provider-specific notes.
 - [Local YAML Provider](https://skret.n24q02m.com/providers/local/): Dev/test-only provider backed by a plain YAML file.

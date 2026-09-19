@@ -16,11 +16,14 @@ default_env: prod          # Optional. Default environment.
 
 environments:              # Required. At least one environment.
   prod:
-    provider: aws          # Required. "aws" or "local".
+    provider: aws          # Required. "aws", "local" or "oci".
     path: /myapp/prod      # Required for aws. SSM path prefix.
-    region: us-east-1      # Optional for aws. AWS region.
-    profile: production    # Optional for aws. AWS profile name.
+    region: us-east-1      # Optional for aws/oci. Provider region.
+    profile: production    # Optional for aws/oci. Credential profile name.
     kms_key_id: arn:...    # Optional for aws. Custom KMS key.
+    compartment_id: ocid1.compartment.oc1..xxx  # Required for oci. Compartment OCID.
+    vault_id: ocid1.vault.oc1..yyy              # Required for oci. Vault OCID.
+    key_id: ocid1.key.oc1..zzz                  # Optional for oci. Master key for new secrets.
 
   dev:
     provider: local        # Required."local" for YAML file.

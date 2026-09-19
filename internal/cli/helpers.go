@@ -13,6 +13,7 @@ import (
 	"github.com/n24q02m/skret/internal/provider"
 	skaws "github.com/n24q02m/skret/internal/provider/aws"
 	"github.com/n24q02m/skret/internal/provider/local"
+	skoci "github.com/n24q02m/skret/internal/provider/oci"
 	"github.com/n24q02m/skret/pkg/skret"
 	"github.com/spf13/cobra"
 )
@@ -24,6 +25,7 @@ const configNotFoundMsg = "no .skret.yaml found here or in any parent up to the 
 var providerDisplayNames = map[string]string{
 	"aws":   "AWS SSM Parameter Store",
 	"local": "a local file provider",
+	"oci":   "OCI Vault",
 }
 
 // formattedProviderList returns a human-readable list of registered providers
@@ -62,6 +64,7 @@ func defaultRegistry() *provider.Registry {
 	reg := provider.NewRegistry()
 	reg.Register("local", local.New)
 	reg.Register("aws", skaws.New)
+	reg.Register("oci", skoci.New)
 	return reg
 }
 

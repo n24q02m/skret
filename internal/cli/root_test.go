@@ -10,7 +10,7 @@ import (
 // Bug F: the tagline must not advertise providers that are not registered.
 func TestRootHelpDoesNotOverpromiseProviders(t *testing.T) {
 	long := NewRootCmd().Long
-	for _, banned := range []string{"GCP", "Azure", "OCI", "Cloudflare"} {
+	for _, banned := range []string{"GCP", "Azure", "Cloudflare"} {
 		if strings.Contains(long, banned) {
 			t.Fatalf("root Long advertises unimplemented provider %q: %q", banned, long)
 		}
