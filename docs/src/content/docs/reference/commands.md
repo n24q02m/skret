@@ -115,6 +115,7 @@ skret set TLS_KEY --from-file key.pem
 | `-d, --description <text>` | -- | Secret description, stored as metadata |
 | `-t, --tag <key=value>` | -- | Secret tag, repeatable |
 | `--format <table\|json>` | `table` | `json` prints `{"key", "path", "version", "created"}` to stdout instead of the `Set KEY` stderr line — the secret value is never included |
+| `--strict-notify` | `false` | Fail the command (exit 7) if the [mutation webhook](/reference/config-schema/#notify-fields) fails; default is warn on stderr only |
 
 Notes:
 
@@ -123,6 +124,7 @@ Notes:
 - A value starting with `-` (a PEM block, a flag-like token) needs `--` before the key so it isn't parsed as a flag: `skret set -- KEY "-----BEGIN..."`.
 - Each `--tag` must be `key=value`; a tag without `=` is silently dropped.
 - See [Using skret from a script or agent](/guide/agents/#json-output-on-the-write-path) for the full `--format json` payload shapes across `set`/`delete`/`sync`.
+- When a [`notify`](/reference/config-schema/#notify-fields) block is configured, a successful set POSTs a names-only `set` event to the webhook.
 
 ## `skret generate`
 
@@ -188,11 +190,13 @@ skret delete OLD_TOKEN
 | `--confirm` | `false` | Skip the confirmation prompt |
 | `-f, --force` | `false` | Alias for `--confirm` |
 | `--format <table\|json>` | `table` | `json` prints `{"key", "path", "deleted"}` to stdout instead of the `Deleted KEY` stderr line |
+| `--strict-notify` | `false` | Fail the command (exit 7) if the [mutation webhook](/reference/config-schema/#notify-fields) fails; default is warn on stderr only |
 
 Notes:
 
 - Without `--confirm`/`--force`, `delete` prompts `Delete secret "KEY"? [y/N]` on stderr and reads the answer from stdin; anything other than a leading `y`/`Y` cancels with exit 0.
 - Deletion is permanent. A missing key exits with `ExitNotFoundError` (5) and a hint to check `skret history <KEY>` (an `SKRET_EXPERIMENTAL`-gated command) for whether it existed before — with `--format json`, the error is the JSON envelope described in [Using skret from a script or agent](/guide/agents/#json-error-envelope), still carrying `"code": 5`.
+- When a [`notify`](/reference/config-schema/#notify-fields) block is configured, a successful delete POSTs a names-only `delete` event to the webhook.
 
 ## `skret env`
 

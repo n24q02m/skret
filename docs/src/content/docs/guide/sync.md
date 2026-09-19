@@ -185,6 +185,16 @@ stderr, since nothing is written for `--format json` to report. See [Using
 skret from a script or agent](/guide/agents/#json-output-on-the-write-path)
 for the equivalent shapes on `set`/`delete`.
 
+## Webhook notifications
+
+A [`notify`](/reference/config-schema/#notify-fields) block in `.skret.yaml`
+turns every successful target sync into a webhook POST: event `sync`, or
+`rotate` under `--rotate`. One POST fires per completed target, carrying the
+synced source key names and the environment — never a value. Delivery
+failure warns on stderr and does not fail the sync unless `--strict-notify`
+is passed, which exits with code 7 after the fact (the writes themselves are
+already durable).
+
 ## Security
 
 - Secret **values** are sent only to the target's own API — never printed to stdout/stderr.

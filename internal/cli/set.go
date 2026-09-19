@@ -9,18 +9,20 @@ import (
 	"os"
 	"strings"
 
+	"github.com/n24q02m/skret/internal/notify"
 	"github.com/n24q02m/skret/internal/provider"
 	"github.com/n24q02m/skret/pkg/skret"
 	"github.com/spf13/cobra"
 )
 
 type setOptions struct {
-	globals     *GlobalOpts
-	fromStdin   bool
-	fromFile    string
-	description string
-	tags        []string
-	format      string
+	globals      *GlobalOpts
+	fromStdin    bool
+	fromFile     string
+	description  string
+	tags         []string
+	format       string
+	strictNotify bool
 }
 
 // SetResult is the --format json payload for a successful `set`.
@@ -58,6 +60,7 @@ put '--' before the key so it is not parsed as a flag. --from-stdin and
 	cmd.Flags().StringVarP(&o.description, "description", "d", "", "secret description")
 	cmd.Flags().StringArrayVarP(&o.tags, "tag", "t", nil, "secret tag (key=value, repeatable)")
 	cmd.Flags().StringVar(&o.format, "format", "table", "output format (table, json)")
+	cmd.Flags().BoolVar(&o.strictNotify, "strict-notify", false, "fail the command if the mutation webhook fails (default: warn only)")
 
 	return cmd
 }
@@ -95,6 +98,13 @@ func (o *setOptions) run(cmd *cobra.Command, args []string) error {
 
 	if err := p.Set(ctx, key, value, meta); err != nil {
 		return wrapProviderMutationError("set", key, err)
+	}
+
+	// The mutation is durable; the webhook reports it (names only). A notify
+	// failure never rolls the write back -- warn, or fail post-hoc under
+	// --strict-notify.
+	if err := reportMutation(cmd, resolved, o.strictNotify, notify.EventSet, key); err != nil {
+		return err
 	}
 
 	if o.format == "json" {

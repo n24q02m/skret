@@ -1,6 +1,11 @@
 package config
 
-import "fmt"
+import (
+	"fmt"
+	"net/url"
+
+	"gopkg.in/yaml.v3"
+)
 
 // Config is the root schema for .skret.yaml.
 type Config struct {
@@ -11,6 +16,7 @@ type Config struct {
 	Required     []string               `yaml:"required"`
 	Exclude      []string               `yaml:"exclude"`
 	Sync         *SyncConfig            `yaml:"sync,omitempty"`
+	Notify       *NotifyConfig          `yaml:"notify,omitempty"`
 }
 
 // Environment defines provider configuration for one environment.
@@ -54,6 +60,89 @@ type SyncTarget struct {
 	BaseURL string `yaml:"base_url,omitempty"`
 }
 
+// NotifyEvent* name the mutation events skret can report to webhooks. They
+// live in config (not internal/notify) so .skret.yaml validation and the
+// webhook payload vocabulary share one source of truth.
+const (
+	NotifyEventSet    = "set"
+	NotifyEventDelete = "delete"
+	NotifyEventRotate = "rotate"
+	NotifyEventSync   = "sync"
+)
+
+// notifyEventValid is the closed set of names accepted by notify.events.
+var notifyEventValid = map[string]bool{
+	NotifyEventSet:    true,
+	NotifyEventDelete: true,
+	NotifyEventRotate: true,
+	NotifyEventSync:   true,
+}
+
+// ValidNotifyEvent reports whether name is a known mutation event.
+func ValidNotifyEvent(name string) bool { return notifyEventValid[name] }
+
+// NotifyConfig configures webhook notifications fired after successful
+// secret mutations (set/delete/rotate/sync). The feature is off unless the
+// notify block declares webhook_url. Payloads carry key names and event
+// metadata only -- secret values are never included.
+type NotifyConfig struct {
+	// WebhookURLs accepts one URL or a YAML list of URLs (see WebhookURLs).
+	WebhookURLs WebhookURLs `yaml:"webhook_url"`
+	// Events optionally filters which mutation events fire; empty means all.
+	Events []string `yaml:"events,omitempty"`
+	// Secret, when set, signs each request body with HMAC-SHA256 in the
+	// X-Skret-Signature header ("sha256=<hex>"). Receivers verify the raw
+	// request body against this key.
+	Secret string `yaml:"secret,omitempty"`
+}
+
+// WebhookURLs decodes `webhook_url` as either a scalar URL or a YAML
+// sequence of URLs, so a single receiver stays the one-line config and a
+// fan-out to several receivers needs no second key.
+type WebhookURLs []string
+
+func (w *WebhookURLs) UnmarshalYAML(node *yaml.Node) error {
+	switch node.Kind {
+	case yaml.SequenceNode:
+		var urls []string
+		if err := node.Decode(&urls); err != nil {
+			return fmt.Errorf("config: notify.webhook_url list: %w", err)
+		}
+		*w = urls
+	case yaml.ScalarNode:
+		var single string
+		if err := node.Decode(&single); err != nil {
+			return fmt.Errorf("config: notify.webhook_url: %w", err)
+		}
+		if single == "" {
+			*w = nil
+		} else {
+			*w = []string{single}
+		}
+	default:
+		return fmt.Errorf("config: notify.webhook_url must be a URL or a list of URLs")
+	}
+	return nil
+}
+
+func (n *NotifyConfig) validate() error {
+	if len(n.WebhookURLs) == 0 {
+		return fmt.Errorf("config: notify.webhook_url is required when the notify block is present")
+	}
+	for _, raw := range n.WebhookURLs {
+		u, err := url.Parse(raw)
+		if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
+			return fmt.Errorf("config: notify.webhook_url %q must be an absolute http(s) URL", raw)
+		}
+	}
+	for _, e := range n.Events {
+		if !ValidNotifyEvent(e) {
+			return fmt.Errorf("config: notify.events %q is not a known event (known: set, delete, rotate, sync)", e)
+		}
+	}
+	return nil
+}
+
 // HubConfig points at the vault dashboard manifest endpoint.
 type HubConfig struct {
 	URL string `yaml:"url"`
@@ -89,6 +178,11 @@ func (c *Config) Validate() error {
 			if err := c.Sync.Targets[i].validate(); err != nil {
 				return err
 			}
+		}
+	}
+	if c.Notify != nil {
+		if err := c.Notify.validate(); err != nil {
+			return err
 		}
 	}
 	return nil
