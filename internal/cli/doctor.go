@@ -15,6 +15,7 @@ import (
 
 	"github.com/n24q02m/skret/internal/auth"
 	"github.com/n24q02m/skret/internal/config"
+	"github.com/n24q02m/skret/internal/keystore"
 	skaws "github.com/n24q02m/skret/internal/provider/aws"
 	"github.com/n24q02m/skret/internal/provider/local"
 	"github.com/n24q02m/skret/pkg/skret"
@@ -62,10 +63,16 @@ var doctorLivenessProbe = skaws.Probe
 // tests point doctor at a scratch store instead of the operator's real one.
 var doctorStoreFactory = auth.NewStore
 
+// doctorStatusOf reports local encryption state (keystore.StatusOf). A
+// variable so tests can inject deterministic statuses instead of depending
+// on machine keyrings.
+var doctorStatusOf = keystore.StatusOf
+
 // doctorDeps holds the externals doctor talks to, injectable for tests.
 type doctorDeps struct {
 	liveness func(ctx context.Context) error
 	store    *auth.Store
+	statusOf func(filePath string, cfgEncrypted bool) (*keystore.Status, error)
 	now      func() time.Time
 	goos     string
 }
@@ -108,6 +115,7 @@ func runDoctor(cmd *cobra.Command, opts *GlobalOpts, format string, timeout time
 	deps := doctorDeps{
 		liveness: doctorLivenessProbe,
 		store:    doctorStoreFactory(),
+		statusOf: doctorStatusOf,
 		now:      time.Now,
 		goos:     runtime.GOOS,
 	}
@@ -252,11 +260,14 @@ func doctorLocalChecks(deps doctorDeps, rawEnv map[string]any, envName string, r
 
 	p, perr := local.New(resolved)
 	if perr != nil {
+		// Preserve the failure's spec class and remediation (e.g. an
+		// encrypted file with no key material is an auth-class failure with
+		// a SKRET_AGE_KEY hint, not a generic "corrupt file").
 		return []DoctorCheck{{
 			Name: "provider[" + envName + "]", Status: doctorFail,
 			Detail:      fmt.Sprintf("file %q unreadable: %v", absFile, perr),
-			Remediation: "fix or remove the secrets file (corrupt YAML is the usual cause)",
-			failClass:   skret.ExitProviderError,
+			Remediation: doctorLocalFailureRemediation(perr),
+			failClass:   doctorLocalFailureClass(perr),
 		}}
 	}
 	secrets, lerr := p.List(context.Background(), resolved.Path)
@@ -282,10 +293,29 @@ func doctorLocalChecks(deps doctorDeps, rawEnv map[string]any, envName string, r
 				Detail: fmt.Sprintf("file loads (%d secret(s))", len(secrets)),
 			},
 			doctorPermCheck(deps.goos, envName, absFile),
-			doctorEncryptionCheck(envName, rawEnv),
+			doctorEncryptionCheck(deps, envName, absFile, rawEnv),
 		)
 	}
 	return checks
+}
+
+// doctorLocalFailureClass maps a local-provider load failure to its spec
+// exit class: errors that already carry a class (keystore auth/validation
+// errors) keep it; anything else is a provider failure.
+func doctorLocalFailureClass(err error) int {
+	if code := skret.ExitCode(err); code != skret.ExitGenericError {
+		return code
+	}
+	return skret.ExitProviderError
+}
+
+// doctorLocalFailureRemediation returns the remediation attached to the
+// load failure, falling back to the generic corrupt-file hint.
+func doctorLocalFailureRemediation(err error) string {
+	if hint := skret.RemediationOf(err); hint != "" {
+		return hint
+	}
+	return "fix or remove the secrets file (corrupt YAML is the usual cause)"
 }
 
 // doctorPermCheck reports local secrets-file mode tightness. Warnings never:
@@ -317,34 +347,69 @@ func doctorPermStatus(goos string, perm fs.FileMode) (status, detail, remediatio
 	return doctorPass, fmt.Sprintf("mode %04o", perm), ""
 }
 
-// doctorEncryptionCheck reports the local encryption intent flag defensively:
-// the field is owned by the local-encryption lane, so any shape (missing,
-// bool, non-bool) must yield a check result, never a crash. A missing field
-// means plaintext, which is the supported default for development.
-func doctorEncryptionCheck(envName string, rawEnv map[string]any) DoctorCheck {
+// doctorEncryptionCheck reports local at-rest encryption state via
+// keystore.StatusOf: on-disk envelope reality plus key availability, keyed
+// off the environment's `encrypted` intent flag. Any shape the raw config
+// may hold (missing, non-bool) is tolerated — missing means plaintext
+// intent, the supported default for development, and never crashes.
+func doctorEncryptionCheck(deps doctorDeps, envName, filePath string, rawEnv map[string]any) DoctorCheck {
 	name := "encryption[" + envName + "]"
-	v, ok := rawEnv["encrypted"]
-	if !ok {
-		return DoctorCheck{
-			Name: name, Status: doctorWarn,
-			Detail: "plaintext (default for dev; set 'encrypted: true' in .skret.yaml to enable)",
+	cfgEncrypted := false
+	if v, ok := rawEnv["encrypted"]; ok {
+		if b, isBool := v.(bool); isBool {
+			cfgEncrypted = b
 		}
 	}
-	enabled, isBool := v.(bool)
-	if !isBool {
+
+	st, err := deps.statusOf(filePath, cfgEncrypted)
+	if err != nil {
 		return DoctorCheck{
 			Name: name, Status: doctorWarn,
-			Detail:      fmt.Sprintf("'encrypted' has unsupported type %T", v),
-			Remediation: "set 'encrypted: true' or remove the field",
+			Detail: fmt.Sprintf("encryption state unknown: %v", err),
 		}
 	}
-	if !enabled {
+
+	switch {
+	case st.Encrypted && st.KeyAvailable:
+		detail := "encrypted"
+		extras := make([]string, 0, 3)
+		if st.Format != "" {
+			extras = append(extras, "format "+st.Format)
+		}
+		if st.KDF != "" {
+			extras = append(extras, "kdf "+st.KDF)
+		}
+		if st.KeySource != "" {
+			extras = append(extras, "key from "+st.KeySource)
+		}
+		if len(extras) > 0 {
+			detail += " (" + strings.Join(extras, ", ") + ")"
+		}
+		return DoctorCheck{Name: name, Status: doctorPass, Detail: detail}
+	case st.Encrypted:
+		return DoctorCheck{
+			Name: name, Status: doctorFail,
+			Detail:      "secrets file is encrypted but no key material is available non-interactively",
+			Remediation: "export SKRET_AGE_KEY=<key material> (or run 'skret keys init' to store it in the OS keyring)",
+			failClass:   skret.ExitAuthError,
+		}
+	case cfgEncrypted:
 		return DoctorCheck{
 			Name: name, Status: doctorWarn,
-			Detail: "'encrypted: false' (plaintext)",
+			Detail:      "'encrypted: true' is set but the secrets file is still plaintext (pre-migration state)",
+			Remediation: "run 'skret keys init --encrypt-existing' to migrate the file to the encrypted envelope",
 		}
+	default:
+		detail := "plaintext (default for dev; set 'encrypted: true' in .skret.yaml to enable)"
+		if n := len(st.Warnings); n > 0 {
+			shown := st.Warnings
+			if len(shown) > 3 {
+				shown = append(append([]string{}, shown[:3]...), fmt.Sprintf("+%d more", n-3))
+			}
+			detail += "; " + strings.Join(shown, "; ")
+		}
+		return DoctorCheck{Name: name, Status: doctorWarn, Detail: detail}
 	}
-	return DoctorCheck{Name: name, Status: doctorPass, Detail: "encrypted: true"}
 }
 
 // doctorAWSReachCheck probes AWS reachability once per run and reuses the

@@ -319,7 +319,7 @@ skret doctor --env prod
 skret doctor --format json
 ```
 
-Checks: config parse/schema (`config`), per-environment provider reachability (`provider[env]` — a real `sts:GetCallerIdentity` probe for AWS, secrets-file load for `local`), stored-credential state (`auth[aws]` — missing warns, expired fails, expiry within 24h warns), local secrets-file permissions (`permissions[env]`, advisory; always pass on Windows), and local encryption intent (`encryption[env]`; missing field = plaintext default, never a failure).
+Checks: config parse/schema (`config`), per-environment provider reachability (`provider[env]` — a real `sts:GetCallerIdentity` probe for AWS, secrets-file load for `local`), stored-credential state (`auth[aws]` — missing warns, expired fails, expiry within 24h warns), local secrets-file permissions (`permissions[env]`, advisory; always pass on Windows), and local at-rest encryption state (`encryption[env]` — encrypted file with key available passes, encrypted without key fails with an auth-class error and a `SKRET_AGE_KEY` remediation, plaintext warns with high-entropy key names).
 
 | Flag | Default | Description |
 |------|---------|-------------|
