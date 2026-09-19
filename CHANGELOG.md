@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 <!-- version list -->
 
+## v1.28.0 (2026-09-19)
+
+### Features
+
+- Add OCI Vault provider (SK-OCI) ([#802](https://github.com/n24q02m/skret/pull/802),
+  [`58c619a`](https://github.com/n24q02m/skret/commit/58c619a56aa4536b0a99692eaa3e89e00f47b7c7))
+
+
 ## v1.27.0 (2026-09-19)
 
 ### Bug Fixes
