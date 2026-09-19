@@ -33,6 +33,15 @@ Two of these are the ones you'll branch on most in automation:
 
 See the [Error Codes reference](/reference/error-codes/) for the full table plus provider-specific error mappings and remediation per code.
 
+## The `skret llms` manifest
+
+Instead of hand-writing a cheat sheet for your agent, paste the output of `skret llms` — a names-only capability manifest listing every command with its flags, the supported providers, the exit-code table, the `SKRET_*` environment variables, and the `.skret.yaml` config keys. It is generated from the live command tree and provider registry, so it cannot drift from the binary you are running, and it never contains secret names or values (it reads nothing from config or key material). `--format json` emits the same manifest as a `{version, commands, providers, exit_codes, env_vars, config_keys}` object for programmatic consumption.
+
+```bash
+skret llms            # llms.txt-style text; deterministic, so it can be diffed or snapshotted
+skret llms --format json
+```
+
 ## JSON error envelope
 
 Every command inherits a `--format` flag (`table` by default). When a command fails with `--format json`, stderr carries a parseable object instead of the plain-text message — the exit code and the JSON body's `code` field always agree, so a caller can `json.Unmarshal` stderr instead of pattern-matching prose:

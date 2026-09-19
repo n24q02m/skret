@@ -416,3 +416,23 @@ Checks: config parse/schema (`config`), per-environment provider reachability (`
 | 4 | Auth check failed (expired credential) |
 | 7 | Provider unreachable |
 
+
+## `skret llms`
+
+Prints a names-only capability manifest for LLM agents: every command with its flags, the supported providers, the exit-code table, the `SKRET_*` environment variables, and the `.skret.yaml` config keys. Paste it into an agent session as in-context documentation, or point the agent at `skret llms --format json`.
+
+The manifest is generated from the live command tree and provider registry, so it always matches the binary you are running. Names only: secret names and values are never included, and nothing is read from config or key material, so the command works anywhere skret runs. Output is deterministic — identical invocations are byte-identical, so it can be diffed or snapshotted. Read-only, non-interactive, exits 0.
+
+```bash
+skret llms
+skret llms --format json
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--format <table\|json>` | `table` | `json` prints a `{version, commands[], providers[], exit_codes{}, env_vars[], config_keys[]}` object |
+
+| Exit code | Meaning |
+|-----------|---------|
+| 0 | Manifest printed |
+| 8 | Invalid flag value (`--format`) or an unexpected positional argument |
