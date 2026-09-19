@@ -17,6 +17,7 @@ type Config struct {
 	Exclude      []string               `yaml:"exclude"`
 	Sync         *SyncConfig            `yaml:"sync,omitempty"`
 	Notify       *NotifyConfig          `yaml:"notify,omitempty"`
+	MCP          *MCPConfig             `yaml:"mcp,omitempty"`
 }
 
 // Environment defines provider configuration for one environment.
@@ -181,6 +182,31 @@ func (n *NotifyConfig) validate() error {
 	return nil
 }
 
+// MCPConfig configures the skret-mcp server surface (cmd/skret-mcp). The
+// block is optional; when absent the server runs with the defaults below.
+type MCPConfig struct {
+	// AllowWrite enables the mutating MCP tools (skret_set/skret_delete/
+	// skret_rotate). Default false: the server exposes only read tools and
+	// a write tool call returns an error naming this field.
+	AllowWrite bool `yaml:"allow_write,omitempty"`
+	// AllowedEnvs restricts which .skret.yaml environments the server may
+	// access. Empty means every declared environment. Names must reference
+	// declared environments (validated in Config.Validate).
+	AllowedEnvs []string `yaml:"allowed_envs,omitempty"`
+}
+
+// validate checks the mcp block against the rest of the config:
+// allowed_envs names must reference declared environments (a typo would
+// otherwise silently lock the MCP server out of every environment).
+func (m *MCPConfig) validate(envs map[string]Environment) error {
+	for _, name := range m.AllowedEnvs {
+		if _, ok := envs[name]; !ok {
+			return fmt.Errorf("config: mcp.allowed_envs entry %q not found in environments", name)
+		}
+	}
+	return nil
+}
+
 // HubConfig points at the vault dashboard manifest endpoint.
 type HubConfig struct {
 	URL string `yaml:"url"`
@@ -220,6 +246,11 @@ func (c *Config) Validate() error {
 	}
 	if c.Notify != nil {
 		if err := c.Notify.validate(); err != nil {
+			return err
+		}
+	}
+	if c.MCP != nil {
+		if err := c.MCP.validate(c.Environments); err != nil {
 			return err
 		}
 	}
