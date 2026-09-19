@@ -10,8 +10,10 @@ import (
 )
 
 // TestBuildEnv_NoExpansion asserts that '${REF}' tokens in secret values are
-// NOT expanded — they are injected literally. Cross-secret reference is served
-// by the explicit `skret template` command, not by silent expansion in run.
+// NOT expanded by BuildEnv itself — it injects what it is handed. ${KEY}
+// reference resolution between secrets happens in the get/env/run command
+// layer (internal/ref) before values reach BuildEnv; `skret template` renders
+// template files with the same ${KEY} grammar.
 func TestBuildEnv_NoExpansion(t *testing.T) {
 	secrets := []*provider.Secret{
 		{Key: "DB_USER", Value: "admin"},

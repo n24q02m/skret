@@ -436,7 +436,7 @@ func TestGetEnvPairs_ProviderListError(t *testing.T) {
 	// Use an explicit missing config so the assertion stays deterministic
 	// regardless of whether the repo root contains a discoverable .skret.yaml.
 	opts := &GlobalOpts{Config: filepath.Join(t.TempDir(), "missing.skret.yaml")}
-	_, err := getEnvPairs(&cobra.Command{}, opts)
+	_, err := getEnvPairs(&cobra.Command{}, opts, false)
 	assert.Error(t, err)
 }
 

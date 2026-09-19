@@ -16,6 +16,7 @@ import (
 func newRunCmd(opts *GlobalOpts) *cobra.Command {
 	var watch bool
 	var watchInterval time.Duration
+	var noResolve bool
 	cmd := &cobra.Command{
 		Use:   "run -- <command> [args...]",
 		Short: "Run a command with secrets injected as environment variables",
@@ -23,8 +24,9 @@ func newRunCmd(opts *GlobalOpts) *cobra.Command {
 
 Values are injected verbatim, except three bytes that an OS environment cannot
 carry: NUL and CR are dropped and LF is replaced with a space (see the
-value-fidelity guide). Use --watch to auto-restart the command when a secret
-changes.`,
+value-fidelity guide). ${KEY} references between secrets are resolved before
+injection; use --no-resolve to inject raw stored values. Use --watch to
+auto-restart the command when a secret changes.`,
 		Example: `  skret run -- make deploy
   skret run -- ./server
   skret run --watch -- make up-prod`,
@@ -58,10 +60,16 @@ changes.`,
 				return skret.NewError(skret.ExitConfigError, "run: "+err.Error(), nil)
 			}
 
+			if !noResolve {
+				if err := resolveInPlace(secrets, resolved.Path); err != nil {
+					return err
+				}
+			}
+
 			env := skexec.BuildEnv(secrets, os.Environ(), resolved.Path, resolved.Exclude)
 
 			if watch {
-				return runWatch(cmd, p, resolved, args, secrets, env, watchInterval)
+				return runWatch(cmd, p, resolved, args, secrets, env, watchInterval, noResolve)
 			}
 			return execCommand(args, env)
 		},
@@ -69,6 +77,7 @@ changes.`,
 
 	cmd.Flags().BoolVar(&watch, "watch", false, "restart the command when secrets change")
 	cmd.Flags().DurationVar(&watchInterval, "watch-interval", 15*time.Second, "how often to check for secret changes")
+	cmd.Flags().BoolVar(&noResolve, "no-resolve", false, "inject raw stored values without resolving ${KEY} references")
 	cmd.Flags().SetInterspersed(false)
 	return cmd
 }

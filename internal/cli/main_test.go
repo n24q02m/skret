@@ -23,6 +23,15 @@ func TestMain(m *testing.M) {
 		os.Exit(n)
 	}
 
+	// Reference-resolution run tests spawn this binary as the child command;
+	// this branch dumps one inherited env var to a file so the parent can
+	// assert on the injected value portably (no shell assumptions).
+	if out := os.Getenv("SKRET_RUN_ENV_DUMP"); out != "" {
+		name := os.Getenv("SKRET_RUN_ENV_NAME")
+		_ = os.WriteFile(out, []byte(os.Getenv(name)), 0o600)
+		os.Exit(0)
+	}
+
 	keyring.MockInit()
 
 	// Stub AWS probe for all CLI tests to avoid network calls and credential dependencies.
