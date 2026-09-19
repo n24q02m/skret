@@ -18,6 +18,7 @@ Each check reports one `PASS`, `WARN`, or `FAIL` line on stderr, and a summary g
 - **auth[aws]** — stored credential state: missing (warn — the SDK default chain may still work), expired (fail), expiring within 24 hours (warn), or valid.
 - **permissions[env]** — local secrets-file mode is owner-only (`0600`); advisory only, and always a pass on Windows, which does not enforce unix modes.
 - **encryption[env]** — local at-rest encryption state via the keystore: an encrypted file with the key available passes; an encrypted file with no key material available (set `SKRET_AGE_KEY`/`SKRET_LOCAL_KEY` or run `skret keys init`) is an auth-class failure; plaintext warns (the supported default for development) and surfaces key names holding high-entropy values; `encrypted: true` with a still-plaintext file warns as pre-migration.
+- **expiry[env]** — TTL hygiene for secrets carrying expiry metadata (`set --ttl` / `rotate --ttl`): reports how many are past expiry and how many fall due within the same 7-day window `skret list` warns at; advisory only, and emitted only when at least one secret carries expiry metadata.
 
 ## Options
 
