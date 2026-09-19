@@ -124,6 +124,35 @@ Notes:
 - Each `--tag` must be `key=value`; a tag without `=` is silently dropped.
 - See [Using skret from a script or agent](/guide/agents/#json-output-on-the-write-path) for the full `--format json` payload shapes across `set`/`delete`/`sync`.
 
+## `skret generate`
+
+Generates a random value (password, UUID, hex, or base64) with crypto/rand. Works offline — no provider or `.skret.yaml` is needed unless `--set` is used.
+
+```bash
+skret generate --type password --length 32
+skret generate --type hex --length 16 --count 5
+skret generate --type password --charset alnum+symbols --format json
+skret generate --type password --set API_KEY
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--type <password\|uuid\|hex\|base64>` | `password` | Value type |
+| `--length <n>` | `32` | Output length in characters (1–1048576). Ignored for uuid (fixed 36); passing `--length` with uuid is a validation error |
+| `--charset <alnum\|alnum+symbols\|symbols>` | `alnum` | Password alphabet only: alnum is `A-Za-z0-9`; the symbol set is `!@#$%^&*()-_=+[]{};:,.` |
+| `--count <n>` | `1` | Number of values (1–10000) |
+| `--set <KEY>` | -- | Also store the value as secret `KEY` via the configured provider (requires config; count must be 1) |
+| `--plain` | `false` | Print exact value bytes with no trailing newline (count must be 1) |
+| `--format <table\|json>` | `table` | `json` prints `{"value", "type", "length"}` (an array of those objects when `--count` > 1); `key` is added when `--set` stored the value |
+
+Notes:
+
+- stdout carries only the generated value(s) — one per line by default, raw bytes with `--plain`; status (the `Set KEY` line) goes to stderr. See [Value fidelity](/guide/value-fidelity/).
+- All randomness comes from `crypto/rand`; mapping bytes onto an alphabet uses rejection sampling, so every character of the chosen charset is equally likely (no modulo bias).
+- hex uses lowercase `0-9a-f`; base64 uses the standard alphabet `A-Za-z0-9+/` without padding.
+- uuid is RFC 4122 version 4 (36 characters, fixed format); `--length` and `--charset` do not apply and are rejected if passed.
+- Invalid flags or values exit `ExitValidationError` (8) with a remediation hint; with `--format json` the error is a `{"error", "code", "remediation"}` envelope like every other command.
+
 ## `skret list`
 
 Lists secret key names under the current environment path.

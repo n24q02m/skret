@@ -249,6 +249,7 @@ Full docs at **[skret.n24q02m.com](https://skret.n24q02m.com)**:
 | `skret get <KEY>` | Print a single secret value |
 | `skret env` | Dump all secrets in dotenv / JSON / YAML / export format |
 | `skret set <KEY> <VALUE>` | Create or update a secret |
+| `skret generate` | Generate a random password, UUID, hex, or base64 value (crypto/rand, rejection sampling); `--set KEY` stores it directly |
 | `skret delete <KEY>` | Delete a secret |
 | `skret list` | List secret keys under the current environment path (no decryption; use --values for KEY+VERSION+VALUE) |
 | `skret import --from=<source>` | Import from Doppler, Infisical, dotenv |
