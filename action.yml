@@ -1,0 +1,269 @@
+name: 'skret action'
+description: >-
+  Install skret (checksum-verified release binary) and run `run`, `scan`, or
+  `diff` with secrets injected. Composite action — no container, no control plane.
+
+branding:
+  icon: 'lock'
+  color: 'blue'
+
+inputs:
+  version:
+    description: >-
+      skret version to install: a release tag (v1.19.3), a bare version
+      (1.19.3), or `latest` (most recent stable GitHub release).
+    required: false
+    default: 'latest'
+  command:
+    description: >-
+      skret command to run: `run` (inject secrets into a child command),
+      `scan` (leak guard — exits 10 on a leak), or `diff` (drift check).
+      Leave empty to install only; later steps can call the binary via the
+      SKRET_BIN environment variable or PATH.
+    required: false
+    default: 'run'
+  args:
+    description: >-
+      Arguments passed to skret, split on whitespace. No shell quoting or
+      evaluation is applied. For `run`, start with `--` followed by the child
+      command, e.g. `-- npm test`.
+    required: false
+    default: ''
+  config:
+    description: >-
+      Path to a .skret.yaml config file, passed to skret as `--config`
+      (bypasses directory discovery).
+    required: false
+    default: ''
+  env:
+    description: >-
+      Newline-separated KEY=VALUE pairs exported into the environment of the
+      skret process (e.g. AWS_REGION, AWS_PROFILE, SKRET_*). Blank lines and
+      lines starting with `#` are ignored.
+    required: false
+    default: ''
+
+outputs:
+  version:
+    description: 'Resolved skret version that was installed (e.g. 1.19.3).'
+    value: ${{ steps.install.outputs.version }}
+
+runs:
+  using: 'composite'
+  steps:
+    - id: install
+      name: Install skret (checksum-verified)
+      shell: bash
+      env:
+        SKRET_ACTION_VERSION: ${{ inputs.version }}
+        SKRET_ACTION_TOKEN: ${{ github.token }}
+      run: |
+        set -euo pipefail
+
+        fail() { echo "skret-action: $*" >&2; exit 1; }
+        info() { echo "skret-action: $*" >&2; }
+
+        repo="n24q02m/skret"
+
+        # ---- resolve the version tag -------------------------------------
+        want="${SKRET_ACTION_VERSION:-latest}"
+        if [ "$want" = "latest" ] || [ -z "$want" ]; then
+          # Preferred: the GitHub API (the job's token avoids anonymous rate
+          # limits on shared runner IPs). Fallback: scrape the releases/latest
+          # redirect target, which is not API rate limited.
+          tag=""
+          curl_auth=()
+          if [ -n "${SKRET_ACTION_TOKEN:-}" ]; then
+            curl_auth=(-H "Authorization: Bearer $SKRET_ACTION_TOKEN")
+          fi
+          tag="$(curl -fsSL --retry 3 ${curl_auth[@]+"${curl_auth[@]}"} \
+            "https://api.github.com/repos/$repo/releases/latest" \
+            | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
+            | head -n 1)" || tag=""
+          if [ -z "$tag" ]; then
+            last_url="$(curl -fsSLI -o /dev/null -w '%{url_effective}' --retry 3 \
+              "https://github.com/$repo/releases/latest")" || \
+              fail "could not resolve the latest skret release (GitHub API and redirect probe both failed)"
+            tag="$(printf '%s' "$last_url" | sed -n 's#.*/releases/tag/\([^/?#]*\).*#\1#p' | head -n 1)"
+          fi
+          [ -n "$tag" ] || fail "could not resolve the latest release tag from the GitHub API response"
+          want="$tag"
+        fi
+        ver="${want#v}"
+        case "$ver" in
+          ''|*[!0-9.]*) fail "invalid version '$want' (expected e.g. v1.19.3 or latest)" ;;
+        esac
+
+        # ---- map the runner to a release asset ---------------------------
+        case "${RUNNER_OS:-}" in
+          Linux)   os=linux ;;
+          macOS)   os=darwin ;;
+          Windows) os=windows ;;
+          *) fail "unsupported runner OS '${RUNNER_OS:-}'" ;;
+        esac
+        case "${RUNNER_ARCH:-}" in
+          X64)        arch=amd64 ;;
+          ARM64|ARM)  arch=arm64 ;;
+          *) fail "unsupported runner arch '${RUNNER_ARCH:-}'" ;;
+        esac
+        case "$os" in
+          windows) ext=zip ;;
+          *)       ext=tar.gz ;;
+        esac
+        asset="skret_${ver}_${os}_${arch}.${ext}"
+        base_url="https://github.com/$repo/releases/download/v$ver"
+
+        # ---- download + checksum-verify ----------------------------------
+        tmp_root="${RUNNER_TEMP:-${TMPDIR:-/tmp}}"
+        if command -v cygpath >/dev/null 2>&1 && printf '%s' "$tmp_root" | grep -q '\\'; then
+          tmp_root="$(cygpath -u "$tmp_root")"
+        fi
+        work="$(mktemp -d "$tmp_root/skret-action.XXXXXX")"
+        trap 'rm -rf "$work"' EXIT
+        install_dir="$tmp_root/skret-bin"
+        mkdir -p "$install_dir"
+
+        info "downloading $asset"
+        curl -fsSL --retry 3 -o "$work/$asset" "$base_url/$asset" \
+          || fail "download failed for $asset from $base_url (does release v$ver exist? see curl error above)"
+        curl -fsSL --retry 3 -o "$work/checksums.txt" "$base_url/checksums.txt" \
+          || fail "download failed for checksums.txt from $base_url"
+
+        expected="$(awk -v a="$asset" '$2 == a { print $1; exit }' "$work/checksums.txt")"
+        case "$expected" in
+          [0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]*) ;; # 64-hex shape checked below
+          '') fail "$asset is not listed in checksums.txt for v$ver" ;;
+        esac
+        if [ "${#expected}" -ne 64 ]; then
+          fail "malformed checksum entry for $asset in checksums.txt"
+        fi
+
+        sha256_of() {
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum "$1" | awk '{ print $1 }'
+          elif command -v shasum >/dev/null 2>&1; then
+            shasum -a 256 "$1" | awk '{ print $1 }'
+          elif command -v openssl >/dev/null 2>&1; then
+            openssl dgst -sha256 -r "$1" | awk '{ print $1 }'
+          else
+            certutil -hashfile "$(cygpath -w "$1")" SHA256 | sed -n '2p' | tr -d '[:space:]'
+          fi
+        }
+        actual="$(sha256_of "$work/$asset")"
+        [ "$actual" = "$expected" ] || fail "checksum mismatch for $asset (expected $expected, got $actual)"
+        info "checksum ok: $actual"
+
+        # ---- extract ------------------------------------------------------
+        mkdir -p "$work/out"
+        case "$ext" in
+          tar.gz)
+            tar -xzf "$work/$asset" -C "$work/out"
+            ;;
+          zip)
+            if command -v unzip >/dev/null 2>&1; then
+              unzip -q "$work/$asset" -d "$work/out"
+            elif command -v 7z >/dev/null 2>&1; then
+              7z x -y -o"$work/out" "$work/$asset" >/dev/null
+            else
+              # Windows runners: git-bash without unzip/7z — fall back to PowerShell.
+              powershell.exe -NoProfile -NonInteractive -Command \
+                "Expand-Archive -LiteralPath '$(cygpath -w "$work/$asset")' -DestinationPath '$(cygpath -w "$work/out")' -Force"
+            fi
+            ;;
+        esac
+
+        bin_name=skret
+        [ "$os" = "windows" ] && bin_name=skret.exe
+        if [ -f "$work/out/$bin_name" ]; then
+          src="$work/out/$bin_name"
+        else
+          src="$(find "$work/out" -type f -name "$bin_name" | head -n 1)"
+        fi
+        if [ -z "${src:-}" ] || [ ! -f "$src" ]; then
+          fail "binary $bin_name not found inside $asset"
+        fi
+        mv -f "$src" "$install_dir/$bin_name"
+        chmod +x "$install_dir/$bin_name"
+
+        # ---- publish to the job ------------------------------------------
+        if command -v cygpath >/dev/null 2>&1; then
+          install_dir_env="$(cygpath -m "$install_dir")"
+        else
+          install_dir_env="$install_dir"
+        fi
+        {
+          echo "$install_dir_env"
+        } >> "$GITHUB_PATH"
+        {
+          echo "SKRET_BIN=$install_dir_env/$bin_name"
+        } >> "$GITHUB_ENV"
+        {
+          echo "version=$ver"
+        } >> "$GITHUB_OUTPUT"
+
+        "$install_dir/$bin_name" --version >&2
+        info "installed skret v$ver -> $install_dir_env/$bin_name"
+
+    - id: run
+      name: Run skret
+      if: inputs.command != ''
+      shell: bash
+      env:
+        SKRET_ACTION_COMMAND: ${{ inputs.command }}
+        SKRET_ACTION_ARGS: ${{ inputs.args }}
+        SKRET_ACTION_CONFIG: ${{ inputs.config }}
+        SKRET_ACTION_ENV: ${{ inputs.env }}
+      run: |
+        set -euo pipefail
+
+        fail() { echo "skret-action: $*" >&2; exit 1; }
+
+        bin="${SKRET_BIN:-}"
+        [ -n "$bin" ] || fail "SKRET_BIN is not set — the install step did not run"
+        [ -f "$bin" ] || fail "skret binary not found at $bin"
+
+        # CI-safe defaults; the env input can override either.
+        export SKRET_NON_INTERACTIVE="${SKRET_NON_INTERACTIVE:-1}"
+        export SKRET_NO_BROWSER="${SKRET_NO_BROWSER:-1}"
+
+        # ---- env mapping (newline-separated KEY=VALUE) --------------------
+        # The here-string expands $SKRET_ACTION_ENV exactly once (single pass,
+        # no re-expansion), so '$' or backticks inside values stay literal.
+        env_pairs="$SKRET_ACTION_ENV"
+        while IFS= read -r pair || [ -n "$pair" ]; do
+          pair="${pair%$'\r'}"
+          pair="$(printf '%s' "$pair" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+          if [ -z "$pair" ]; then continue; fi
+          case "$pair" in '#'*) continue ;; esac
+          name="${pair%%=*}"
+          if [ "$name" = "$pair" ]; then
+            fail "invalid env mapping line (missing '='): $pair"
+          fi
+          if ! printf '%s' "$name" | grep -Eq '^[A-Za-z_][A-Za-z0-9_]*$'; then
+            fail "invalid variable name in env mapping: $name"
+          fi
+          export "$pair"
+        done <<< "$env_pairs"
+
+        # ---- command + argv ------------------------------------------------
+        cmd="$(printf '%s' "$SKRET_ACTION_COMMAND" | awk '{ $1 = $1; print }')"
+        case "$cmd" in
+          run|scan|diff) argv=("$cmd") ;;
+          '') echo "skret-action: command is empty; install-only, nothing to run" >&2; exit 0 ;;
+          *) fail "unsupported command '$cmd' (supported: run, scan, diff; leave empty for install-only)" ;;
+        esac
+
+        if [ -n "$(printf '%s' "$SKRET_ACTION_CONFIG" | tr -d '[:space:]')" ]; then
+          argv+=(--config "$SKRET_ACTION_CONFIG")
+        fi
+
+        # Split args on whitespace, no globbing, no shell evaluation.
+        if [ -n "$(printf '%s' "$SKRET_ACTION_ARGS" | tr -d '[:space:]')" ]; then
+          set -f
+          # shellcheck disable=SC2086
+          argv+=($SKRET_ACTION_ARGS)
+          set +f
+        fi
+
+        echo "skret-action: running skret ${argv[*]}" >&2
+        exec "$bin" "${argv[@]}"

@@ -42,6 +42,7 @@ skret sync --to=github           # Push secrets to GitHub Actions
 - [Why skret?](#why-skret)
 - [Features](#features)
 - [Install](#install)
+- [GitHub Action](#github-action)
 - [Quick start](#quick-start)
 - [Provider ranking](#provider-ranking)
 - [Comparison vs alternatives](#comparison-vs-alternatives)
@@ -110,6 +111,31 @@ skret --version
 ```
 
 The one-shot installers require SHA256 verification and a non-empty Sigstore bundle verified by `cosign` before extraction. They then enforce the `SAFE-ARCHIVE-V1` allowlist and resource bounds, extract into an owner-only staging directory, atomically replace the target, and roll back to the byte-identical prior binary if activation or `skret --version` fails. Set `SKRET_INSECURE_SKIP_VERIFY=1` only for an explicit signature-verification bypass; checksum, archive, path, and rollback checks remain enforced. Source both scripts at [skret.n24q02m.com/install.sh](https://skret.n24q02m.com/install.sh) and [skret.n24q02m.com/install.ps1](https://skret.n24q02m.com/install.ps1) before piping to a shell if you prefer.
+
+## GitHub Action
+
+The official composite action installs skret from checksum-verified release assets and runs `run`, `scan`, or `diff` directly in your workflow — no container, no control plane. Works on `ubuntu`, `macos`, and `windows` runners.
+
+```yaml
+- uses: n24q02m/skret@v1
+  with:
+    command: scan        # leak gate: fails the job with exit 10 when a value leaked
+
+- uses: n24q02m/skret@v1
+  with:
+    command: run         # inject secrets, then run your command
+    args: -- npm test
+```
+
+| Input | Default | Description |
+|-------|---------|-------------|
+| `version` | `latest` | Release tag to install: `v1.19.3`, `1.19.3`, or `latest` |
+| `command` | `run` | `run`, `scan`, or `diff` — leave empty for install-only, then call the binary via `SKRET_BIN` or `PATH` in later steps |
+| `args` | — | Arguments passed to skret, split on whitespace (no shell quoting or evaluation). For `run`, start with `--` followed by the child command |
+| `config` | — | Path to a `.skret.yaml` config file, passed to skret as `--config` |
+| `env` | — | Newline-separated `KEY=VALUE` pairs exported into the skret process (e.g. `AWS_REGION`); blank lines and `#` comments ignored |
+
+The action exports the installed binary as `SKRET_BIN` and adds it to `PATH` for subsequent steps, and exposes a `version` output with the resolved version. Assets are downloaded from GitHub releases and verified against the release's `checksums.txt` (SHA-256) before extraction. skret's exit codes pass through untouched, so `command: scan` fails the job with `10` on a leak and `diff --exit-code` with `9` on drift — see the [agent guide](https://skret.n24q02m.com/guide/agents/) for the full exit-code contract. The action itself is exercised on every change by this repo's own CI in [`.github/workflows/action-e2e.yml`](.github/workflows/action-e2e.yml).
 
 ## Quick start
 
