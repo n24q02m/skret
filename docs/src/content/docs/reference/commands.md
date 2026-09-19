@@ -83,6 +83,7 @@ Prints a single secret value to stdout.
 skret get DATABASE_URL
 skret get DATABASE_URL --plain
 skret get DATABASE_URL --json
+skret get DATABASE_URL --no-resolve
 ```
 
 | Flag | Default | Description |
@@ -90,11 +91,13 @@ skret get DATABASE_URL --json
 | `--json` | `false` | Output as a JSON object (`{"key": ..., "value": ...}`, plus `version`/`meta` with `--with-metadata`) |
 | `--with-metadata` | `false` | Include version and metadata in the output |
 | `--plain` | `false` | Print the exact value bytes with no trailing newline |
+| `--no-resolve` | `false` | Print the raw stored value without resolving `${KEY}` references |
 
 Notes:
 
 - Without `--plain`, a trailing newline is appended for terminal readability; use `--plain` when the exact byte count matters (`skret get TOKEN --plain > token.bin`) — see [Value fidelity](/guide/value-fidelity/).
 - A missing key exits with `ExitNotFoundError` (5) and a hint to create it with `skret set`; see [Error Codes](/reference/error-codes/).
+- `${KEY}` references to sibling secrets are resolved before printing (same environment scope, up to 10 references deep) — a value `postgres://${DB_USER}:${DB_PASS}@host` prints fully composed. `\${KEY}` and `$${KEY}` stay literal byte-exact; an undefined reference fails with `ExitValidationError` (8). Use `--no-resolve` for the raw stored bytes.
 - To read every secret at once, use `skret env`; to inject secrets into a command, use `skret run`.
 
 ## `skret set <KEY> [VALUE]`
@@ -202,17 +205,20 @@ Dumps every secret under the current environment in one of four formats.
 skret env --format=dotenv > .env
 skret env --format=json | jq .
 eval "$(skret env --format=export)"
+skret env --no-resolve
 ```
 
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--format <dotenv\|json\|yaml\|export>` | `dotenv` | Output format |
+| `--no-resolve` | `false` | Dump raw stored values without resolving `${KEY}` references |
 
 Notes:
 
 - All four formats round-trip byte-exact — see [Value fidelity](/guide/value-fidelity/). `export` wraps each value in POSIX single quotes for `eval "$(skret env --format=export)"`.
 - Keys are converted to environment-variable names and sorted; entries listed under `exclude` in `.skret.yaml` are dropped — see the [Config Schema Reference](/reference/config-schema/#top-level-fields).
 - If two secret keys would collide on the same environment-variable name, `env` fails with `ExitConfigError` (2) instead of silently picking one.
+- `${KEY}` references are resolved per value against the full environment scope before dumping (excluded keys remain resolvable as targets); an undefined reference or cycle fails with `ExitValidationError` (8). `--no-resolve` dumps the raw stored values.
 - To read a single value use `skret get`; to inject secrets into a running command use `skret run`.
 
 ## `skret run -- <command> [args...]`
@@ -229,11 +235,13 @@ skret run --watch -- make up-prod
 |------|---------|-------------|
 | `--watch` | `false` | Restart the command whenever a secret changes |
 | `--watch-interval <duration>` | `15s` | How often `--watch` checks for changes |
+| `--no-resolve` | `false` | Inject raw stored values without resolving `${KEY}` references |
 
 Notes:
 
 - Everything after `--` is passed through to the child command untouched (flag parsing is not interspersed) — a command is required, or `run` fails with `ExitValidationError` (8).
 - Values are injected verbatim except for three OS-level constraints: NUL and CR bytes are dropped and LF is replaced with a space — see [Value fidelity](/guide/value-fidelity/#exception-skret-run-sanitizes-control-bytes).
+- `${KEY}` references are resolved before injection (same scope as `env`), and re-resolved on every `--watch` restart; `--no-resolve` injects the raw stored values.
 - If `.skret.yaml` declares `required` keys and any are missing from both the resolved secrets and the process environment, `run` fails with `ExitValidationError` (8) before launching the command.
 - `--watch` is covered in depth in the [Watch mode guide](/guide/watch/), including the zero-decrypt fingerprint check and restart signal handling.
 

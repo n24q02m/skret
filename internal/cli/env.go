@@ -21,6 +21,7 @@ type envPair struct {
 
 func newEnvCmd(opts *GlobalOpts) *cobra.Command {
 	var format string
+	var noResolve bool
 
 	cmd := &cobra.Command{
 		Use:   "env",
@@ -28,14 +29,17 @@ func newEnvCmd(opts *GlobalOpts) *cobra.Command {
 		Long: `Dump ALL secrets under the current environment in one of four formats.
 
 Formats: dotenv (default), json, yaml, export. All four round-trip byte-exact.
-Use 'export' with a shell (eval "$(skret env --format=export)"); use 'json' to
-parse programmatically. For a single value use 'skret get'; to run a command
-with secrets injected use 'skret run'.`,
+${KEY} references between secrets are resolved before dumping; use
+--no-resolve for the raw stored values. Use 'export' with a shell
+(eval "$(skret env --format=export)"); use 'json' to parse programmatically.
+For a single value use 'skret get'; to run a command with secrets injected
+use 'skret run'.`,
 		Example: `  skret env --format=dotenv > .env
   skret env --format=json | jq .
-  eval "$(skret env --format=export)"`,
+  eval "$(skret env --format=export)"
+  skret env --no-resolve`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			pairs, err := getEnvPairs(cmd, opts)
+			pairs, err := getEnvPairs(cmd, opts, noResolve)
 			if err != nil {
 				return err
 			}
@@ -44,11 +48,12 @@ with secrets injected use 'skret run'.`,
 	}
 
 	cmd.Flags().StringVar(&format, "format", "dotenv", "output format (dotenv, json, yaml, export)")
+	cmd.Flags().BoolVar(&noResolve, "no-resolve", false, "dump raw stored values without resolving ${KEY} references")
 
 	return cmd
 }
 
-func getEnvPairs(cmd *cobra.Command, opts *GlobalOpts) ([]envPair, error) {
+func getEnvPairs(cmd *cobra.Command, opts *GlobalOpts, noResolve bool) ([]envPair, error) {
 	resolved, p, err := loadProvider(opts)
 	if err != nil {
 		return nil, err
@@ -78,6 +83,23 @@ func getEnvPairs(cmd *cobra.Command, opts *GlobalOpts) ([]envPair, error) {
 		}
 		pairs = append(pairs, envPair{Name: name, Value: s.Value})
 	}
+
+	if !noResolve {
+		// Resolution runs over ALL secrets in scope (excluded keys stay
+		// resolvable as reference targets), then pairs keep the resolved value.
+		lookup := scopeLookup(secrets, resolved.Path)
+		for i := range pairs {
+			if !hasReferenceToken(pairs[i].Value) {
+				continue
+			}
+			v, rerr := resolveValue(pairs[i].Value, pairs[i].Name, lookup)
+			if rerr != nil {
+				return nil, rerr
+			}
+			pairs[i].Value = v
+		}
+	}
+
 	sort.Slice(pairs, func(i, j int) bool { return pairs[i].Name < pairs[j].Name })
 
 	return pairs, nil

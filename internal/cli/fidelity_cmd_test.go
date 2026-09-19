@@ -16,26 +16,35 @@ import (
 )
 
 // fidelityCorpus is an 18-value subset of the adversarial classes (see internal/dotenv/fidelity_test.go for the fuller codec corpus).
-func fidelityCorpus() []struct{ Name, Value string } {
-	c := []struct{ Name, Value string }{
-		{"bcrypt", `$2a$14$abcdefghijklmnopqrstuv`},
-		{"shell_var", `$HOME`},
-		{"brace_ref", `${REF}`},
-		{"double_dollar", `$$literal`},
-		{"assignment", `key=value`},
-		{"newline", "line1\nline2"},
-		{"crlf", "crlf\r\nend"},
-		{"double_quote", `he said "hi"`},
-		{"single_quote", `it's`},
-		{"backtick", "`bt`"},
-		{"backslash", `a\b\c`},
-		{"leading_ws", `  leading`},
-		{"trailing_ws", `trailing  `},
-		{"tab", "a\tb"},
-		{"unicode", `café 日本語 🔐`},
-		{"pem", "-----BEGIN-----\nabc\n-----END-----"},
-		{"pg_url", `postgres://u:p$w@h:5432/db`},
-		{"regex_special", `a.*b[c]$d`},
+// Raw marks values that carry ${...} reference syntax: since SK-REF those are
+// resolved by default on read paths, so their byte-exact storage round-trip is
+// asserted through `--no-resolve` (the raw-value contract).
+func fidelityCorpus() []struct {
+	Name, Value string
+	Raw         bool
+} {
+	c := []struct {
+		Name, Value string
+		Raw         bool
+	}{
+		{"bcrypt", `$2a$14$abcdefghijklmnopqrstuv`, false},
+		{"shell_var", `$HOME`, false},
+		{"brace_ref", `${REF}`, true},
+		{"double_dollar", `$$literal`, false},
+		{"assignment", `key=value`, false},
+		{"newline", "line1\nline2", false},
+		{"crlf", "crlf\r\nend", false},
+		{"double_quote", `he said "hi"`, false},
+		{"single_quote", `it's`, false},
+		{"backtick", "`bt`", false},
+		{"backslash", `a\b\c`, false},
+		{"leading_ws", `  leading`, false},
+		{"trailing_ws", `trailing  `, false},
+		{"tab", "a\tb", false},
+		{"unicode", `café 日本語 🔐`, false},
+		{"pem", "-----BEGIN-----\nabc\n-----END-----", false},
+		{"pg_url", `postgres://u:p$w@h:5432/db`, false},
+		{"regex_special", `a.*b[c]$d`, false},
 	}
 	return c
 }
@@ -94,7 +103,11 @@ func TestFidelity_SetGet_ByteExact(t *testing.T) {
 	for _, tc := range fidelityCorpus() {
 		t.Run(tc.Name, func(t *testing.T) {
 			seedLocal(t, tc.Value)
-			out, err := runCLI(t, "get", "K", "--plain")
+			args := []string{"get", "K", "--plain"}
+			if tc.Raw {
+				args = append(args, "--no-resolve")
+			}
+			out, err := runCLI(t, args...)
 			require.NoError(t, err)
 			assert.Equal(t, tc.Value, out, "get --plain must return the exact stored value")
 		})
@@ -118,29 +131,36 @@ func TestFidelity_Env_AllFormats_RoundTrip(t *testing.T) {
 	for _, tc := range fidelityCorpus() {
 		t.Run(tc.Name, func(t *testing.T) {
 			seedLocal(t, tc.Value)
+			format := func(f string) []string {
+				args := []string{"env", "--format=" + f}
+				if tc.Raw {
+					args = append(args, "--no-resolve")
+				}
+				return args
+			}
 
 			// dotenv: parse each line back through the codec.
-			out, err := runCLI(t, "env", "--format=dotenv")
+			out, err := runCLI(t, format("dotenv")...)
 			require.NoError(t, err)
 			gotDot := parseDotenvValue(t, out, "K")
 			assert.Equal(t, tc.Value, gotDot, "dotenv format must round-trip")
 
 			// json: whole-document unmarshal.
-			out, err = runCLI(t, "env", "--format=json")
+			out, err = runCLI(t, format("json")...)
 			require.NoError(t, err)
 			var m map[string]string
 			require.NoError(t, json.Unmarshal([]byte(out), &m))
 			assert.Equal(t, tc.Value, m["K"], "json format must round-trip")
 
 			// yaml: whole-document unmarshal.
-			out, err = runCLI(t, "env", "--format=yaml")
+			out, err = runCLI(t, format("yaml")...)
 			require.NoError(t, err)
 			var my map[string]string
 			require.NoError(t, yaml.Unmarshal([]byte(out), &my))
 			assert.Equal(t, tc.Value, my["K"], "yaml format must round-trip")
 
 			// export: locate `export K=` then POSIX-single-quote-decode the remainder.
-			out, err = runCLI(t, "env", "--format=export")
+			out, err = runCLI(t, format("export")...)
 			require.NoError(t, err)
 			assert.Equal(t, tc.Value, parseExportValue(t, out, "K"), "export format must round-trip")
 		})
