@@ -310,6 +310,11 @@ pre-commit install
 go test -race ./...
 ```
 
+The agent-contract harness (`tests/agent-e2e/`) runs in CI on every PR and
+enforces the documented [agent contract](https://skret.n24q02m.com/guide/agents/#the-agent-e2e-guarantee)
+— exit codes, the JSON error envelope, byte-exact reads, stream discipline,
+and non-interactive behavior — against a freshly built binary.
+
 ## Sponsors
 
 <p>
