@@ -35,6 +35,12 @@ inputs:
       (bypasses directory discovery).
     required: false
     default: ''
+  workdir:
+    description: >-
+      Working directory where skret is invoked and where relative config and
+      secret paths are resolved. Defaults to the workspace root.
+    required: false
+    default: ''
   env:
     description: >-
       Newline-separated KEY=VALUE pairs exported into the environment of the
@@ -213,10 +219,15 @@ runs:
         SKRET_ACTION_ARGS: ${{ inputs.args }}
         SKRET_ACTION_CONFIG: ${{ inputs.config }}
         SKRET_ACTION_ENV: ${{ inputs.env }}
+        SKRET_ACTION_WORKDIR: ${{ inputs.workdir }}
       run: |
         set -euo pipefail
 
         fail() { echo "skret-action: $*" >&2; exit 1; }
+
+        if [ -n "$SKRET_ACTION_WORKDIR" ]; then
+          cd "$SKRET_ACTION_WORKDIR" || fail "workdir not found: $SKRET_ACTION_WORKDIR"
+        fi
 
         bin="${SKRET_BIN:-}"
         [ -n "$bin" ] || fail "SKRET_BIN is not set — the install step did not run"

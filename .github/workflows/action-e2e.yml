@@ -2,7 +2,10 @@ name: Action e2e
 
 # Exercises the composite action in this repo (uses: ./) on the three hosted
 # OSes: install from real GitHub releases with checksum verification, then the
-# run/scan/diff wiring against a local-provider fixture (no cloud creds).
+# run/scan/diff wiring against a local-provider fixture repo created in
+# RUNNER_TEMP (no cloud creds, and the skret checkout itself is never the scan
+# target — the fixture value literals in this file must stay out of scan's
+# tracked-file set).
 
 on:
   push:
@@ -62,11 +65,17 @@ jobs:
             exit 1
           }
 
-      - name: Set up local-provider fixture
+      - name: Create isolated fixture repository
+        id: fixture
         env:
           SKRET_NON_INTERACTIVE: '1'
         shell: bash
         run: |
+          dir="${RUNNER_TEMP:-${TMPDIR:-/tmp}}/skret-e2e-fixture"
+          rm -rf "$dir"
+          mkdir -p "$dir"
+          cd "$dir"
+          git init -q .
           cat > .skret.yaml <<'YAML'
           version: "1"
           default_env: dev
@@ -82,13 +91,19 @@ jobs:
           YAML
           printf 'secrets: {}\n' > .secrets.dev.yaml
           printf 'secrets: {}\n' > .secrets.stage.yaml
+          git add .skret.yaml
           "$SKRET_BIN" set FIXTURE_TOKEN 'e2e-fixture-value-7f3a9c' --env dev
           "$SKRET_BIN" set ONLY_STAGE_TOKEN 'stage-only-11' --env stage
+          if command -v cygpath >/dev/null 2>&1; then
+            dir="$(cygpath -m "$dir")"
+          fi
+          echo "dir=$dir" >> "$GITHUB_OUTPUT"
 
       - name: 'run injects secrets into the child process'
         uses: ./
         with:
           command: run
+          workdir: ${{ steps.fixture.outputs.dir }}
           args: -- printenv FIXTURE_TOKEN
 
       - name: 'run propagates child failure (expects failure)'
@@ -97,6 +112,7 @@ jobs:
         uses: ./
         with:
           command: run
+          workdir: ${{ steps.fixture.outputs.dir }}
           args: -- false
 
       - name: Assert child failure propagated
@@ -106,16 +122,19 @@ jobs:
           echo "skret run -- false must fail the step" >&2
           exit 1
 
-      - name: 'scan passes on a clean tree'
+      - name: 'scan passes on a clean fixture tree'
         uses: ./
         with:
           command: scan
+          workdir: ${{ steps.fixture.outputs.dir }}
 
-      - name: Plant a leak
+      - name: Plant a leak in the fixture repo
+        env:
+          DIR: ${{ steps.fixture.outputs.dir }}
         shell: bash
         run: |
-          printf 'leak: e2e-fixture-value-7f3a9c\n' > leaked.txt
-          git add leaked.txt
+          printf 'leak: e2e-fixture-value-7f3a9c\n' > "$DIR/leaked.txt"
+          git -C "$DIR" add leaked.txt
 
       - name: 'scan fails on a leak (expects failure)'
         id: scan_leak
@@ -123,6 +142,7 @@ jobs:
         uses: ./
         with:
           command: scan
+          workdir: ${{ steps.fixture.outputs.dir }}
 
       - name: Assert leak scan failed the step
         if: steps.scan_leak.outcome != 'failure'
@@ -147,11 +167,17 @@ jobs:
         with:
           command: ''
 
-      - name: Set up local-provider fixture
+      - name: Create isolated fixture repository
+        id: fixture
         env:
           SKRET_NON_INTERACTIVE: '1'
         shell: bash
         run: |
+          dir="${RUNNER_TEMP:-/tmp}/skret-e2e-fixture"
+          rm -rf "$dir"
+          mkdir -p "$dir"
+          cd "$dir"
+          git init -q .
           cat > .skret.yaml <<'YAML'
           version: "1"
           default_env: dev
@@ -167,21 +193,28 @@ jobs:
           YAML
           printf 'secrets: {}\n' > .secrets.dev.yaml
           printf 'secrets: {}\n' > .secrets.stage.yaml
+          git add .skret.yaml
           "$SKRET_BIN" set FIXTURE_TOKEN 'e2e-fixture-value-7f3a9c' --env dev
           "$SKRET_BIN" set ONLY_STAGE_TOKEN 'stage-only-11' --env stage
+          echo "dir=$dir" >> "$GITHUB_OUTPUT"
 
       - name: 'env input reaches the skret process'
         uses: ./
         with:
           command: run
+          workdir: ${{ steps.fixture.outputs.dir }}
           env: |
             # comment lines are ignored
             SKRET_ACTION_E2E_A=alpha-42
           args: -- printenv SKRET_ACTION_E2E_A
 
       - name: 'config input wires --config'
+        env:
+          DIR: ${{ steps.fixture.outputs.dir }}
+          SKRET_NON_INTERACTIVE: '1'
         shell: bash
         run: |
+          cd "$DIR"
           sed 's/\.secrets\.dev\.yaml/.secrets.alt.yaml/' .skret.yaml > alt.yaml
           printf 'secrets: {}\n' > .secrets.alt.yaml
           "$SKRET_BIN" set ALT_TOKEN 'alt-value-99' --config alt.yaml --env dev
@@ -190,14 +223,22 @@ jobs:
         uses: ./
         with:
           command: run
+          workdir: ${{ steps.fixture.outputs.dir }}
           config: alt.yaml
           args: -- printenv ALT_TOKEN
 
       - name: Assert exact exit codes and JSON envelope
+        env:
+          DIR: ${{ steps.fixture.outputs.dir }}
         shell: bash
         run: |
+          # GitHub injects -e into shell: bash; these assertions deliberately
+          # run commands that exit non-zero, so error handling is manual.
+          set +e
           set -u
           fail() { echo "contract: $*" >&2; exit 1; }
+
+          cd "$DIR" || fail "fixture dir missing: $DIR"
 
           printf 'leak: e2e-fixture-value-7f3a9c\n' > leaked.txt
           git add leaked.txt

@@ -133,6 +133,7 @@ The official composite action installs skret from checksum-verified release asse
 | `command` | `run` | `run`, `scan`, or `diff` — leave empty for install-only, then call the binary via `SKRET_BIN` or `PATH` in later steps |
 | `args` | — | Arguments passed to skret, split on whitespace (no shell quoting or evaluation). For `run`, start with `--` followed by the child command |
 | `config` | — | Path to a `.skret.yaml` config file, passed to skret as `--config` |
+| `workdir` | `.` | Working directory where skret is invoked; relative config and secret paths resolve from here |
 | `env` | — | Newline-separated `KEY=VALUE` pairs exported into the skret process (e.g. `AWS_REGION`); blank lines and `#` comments ignored |
 
 The action exports the installed binary as `SKRET_BIN` and adds it to `PATH` for subsequent steps, and exposes a `version` output with the resolved version. Assets are downloaded from GitHub releases and verified against the release's `checksums.txt` (SHA-256) before extraction. skret's exit codes pass through untouched, so `command: scan` fails the job with `10` on a leak and `diff --exit-code` with `9` on drift — see the [agent guide](https://skret.n24q02m.com/guide/agents/) for the full exit-code contract. The action itself is exercised on every change by this repo's own CI in [`.github/workflows/action-e2e.yml`](.github/workflows/action-e2e.yml).
