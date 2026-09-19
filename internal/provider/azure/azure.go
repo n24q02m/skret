@@ -120,7 +120,9 @@ func (p *Provider) Get(ctx context.Context, key string) (*provider.Secret, error
 	if err != nil {
 		return nil, mapError("get", key, err)
 	}
-	return secretFromResponse(name, resp.Secret), nil
+	// Reads echo the caller's key form; Secret.Key carries the request, not
+	// the sanitized vault name (secretlaunch pins launches on key equality).
+	return secretFromResponse(key, resp.Secret), nil
 }
 
 // GetVersion reads one immutable Key Vault version. It implements
@@ -139,7 +141,7 @@ func (p *Provider) GetVersion(ctx context.Context, key string, version int64) (*
 	if err != nil {
 		return nil, mapError("get_version", key, err)
 	}
-	secret := secretFromResponse(name, resp.Secret)
+	secret := secretFromResponse(key, resp.Secret)
 	secret.Version = version
 	return secret, nil
 }
@@ -402,7 +404,7 @@ func (p *Provider) GetHistory(ctx context.Context, key string) ([]*provider.Secr
 			if err != nil {
 				return nil, mapError("history", key, err)
 			}
-			secrets = append(secrets, secretFromResponse(name, resp.Secret))
+			secrets = append(secrets, secretFromResponse(key, resp.Secret))
 		}
 	}
 	for i, j := 0, len(secrets)-1; i < j; i, j = i+1, j-1 {

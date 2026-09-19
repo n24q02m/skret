@@ -281,7 +281,7 @@ func TestGet(t *testing.T) {
 
 	s, err := newProvider(v).Get(context.Background(), "DB_URL")
 	require.NoError(t, err)
-	assert.Equal(t, "DB-URL", s.Key, "sanitized Key Vault name")
+	assert.Equal(t, "DB_URL", s.Key, "reads echo the caller's key form")
 	assert.Equal(t, "postgres://prod/db", s.Value)
 	assert.Equal(t, int64(1), s.Version, "single seeded version folds to its number")
 	assert.Equal(t, created, s.Meta.CreatedAt)
@@ -309,7 +309,7 @@ func TestGet_UnderscoreKeyReadsSanitizedName(t *testing.T) {
 	v := newFakeVault(map[string][]string{"DB-URL": {"x"}})
 	s, err := newProvider(v).Get(context.Background(), "DB_URL")
 	require.NoError(t, err)
-	assert.Equal(t, "DB-URL", s.Key)
+	assert.Equal(t, "DB_URL", s.Key, "echoes the caller's form, reads the sanitized name")
 }
 
 func TestGet_ImpossibleKeyIsNotFound(t *testing.T) {
