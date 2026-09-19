@@ -12,6 +12,7 @@ import (
 	skexec "github.com/n24q02m/skret/internal/exec"
 	"github.com/n24q02m/skret/internal/provider"
 	skaws "github.com/n24q02m/skret/internal/provider/aws"
+	"github.com/n24q02m/skret/internal/provider/gcp"
 	"github.com/n24q02m/skret/internal/provider/local"
 	skoci "github.com/n24q02m/skret/internal/provider/oci"
 	"github.com/n24q02m/skret/pkg/skret"
@@ -24,6 +25,7 @@ const configNotFoundMsg = "no .skret.yaml found here or in any parent up to the 
 
 var providerDisplayNames = map[string]string{
 	"aws":   "AWS SSM Parameter Store",
+	"gcp":   "GCP Secret Manager",
 	"local": "a local file provider",
 	"oci":   "OCI Vault",
 }
@@ -65,6 +67,7 @@ func defaultRegistry() *provider.Registry {
 	reg.Register("local", local.New)
 	reg.Register("aws", skaws.New)
 	reg.Register("oci", skoci.New)
+	reg.Register("gcp", gcp.New)
 	return reg
 }
 

@@ -242,7 +242,7 @@ func TestResolve_UnknownProvider(t *testing.T) {
 		Version:    "1",
 		DefaultEnv: "prod",
 		Environments: map[string]config.Environment{
-			"prod": {Provider: "gcp", Path: "/p/prod"},
+			"prod": {Provider: "hashicorp_vault", Path: "/p/prod"},
 		},
 	}
 	_, err := config.Resolve(cfg, config.ResolveOpts{})
@@ -320,4 +320,60 @@ func TestResolve_PathNotMangled_FlagFalse(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "/fallback/prod", resolved.Path)
 	assert.False(t, resolved.PathMangled)
+}
+
+// --- SK-GCP: gcp environments carry a project id; path must stay empty ---
+
+func TestResolve_GCPProjectPassthrough(t *testing.T) {
+	cfg := &config.Config{
+		Version:    "1",
+		DefaultEnv: "prod",
+		Environments: map[string]config.Environment{
+			"prod": {Provider: "gcp", Project: "my-gcp-project"},
+		},
+	}
+	resolved, err := config.Resolve(cfg, config.ResolveOpts{})
+	require.NoError(t, err)
+	assert.Equal(t, "my-gcp-project", resolved.Project)
+	assert.Empty(t, resolved.Path)
+}
+
+func TestResolve_GCPProjectEnvVarWins(t *testing.T) {
+	cfg := &config.Config{
+		Version:    "1",
+		DefaultEnv: "prod",
+		Environments: map[string]config.Environment{
+			"prod": {Provider: "gcp", Project: "from-config"},
+		},
+	}
+	t.Setenv("GOOGLE_CLOUD_PROJECT", "from-env")
+	resolved, err := config.Resolve(cfg, config.ResolveOpts{})
+	require.NoError(t, err)
+	assert.Equal(t, "from-env", resolved.Project)
+}
+
+func TestResolve_GCPMissingProject(t *testing.T) {
+	cfg := &config.Config{
+		Version:    "1",
+		DefaultEnv: "prod",
+		Environments: map[string]config.Environment{
+			"prod": {Provider: "gcp"},
+		},
+	}
+	_, err := config.Resolve(cfg, config.ResolveOpts{})
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "project is required for gcp provider")
+}
+
+func TestResolve_GCPPathRejected(t *testing.T) {
+	cfg := &config.Config{
+		Version:    "1",
+		DefaultEnv: "prod",
+		Environments: map[string]config.Environment{
+			"prod": {Provider: "gcp", Project: "p", Path: "/app/prod"},
+		},
+	}
+	_, err := config.Resolve(cfg, config.ResolveOpts{})
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "path must be empty for gcp provider")
 }

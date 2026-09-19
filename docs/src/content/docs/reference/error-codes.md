@@ -81,6 +81,19 @@ skret configures the AWS SDK's adaptive-mode retryer with up to 10 attempts and 
 
 These mappings apply uniformly across commands, including `get`: a missing key surfaces as exit 5 (not found), and any other provider failure surfaces as exit 3 -- the same as `set`, `env`, `run`, `sync`, and the rest.
 
+### GCP Secret Manager
+
+| GCP Status | skret Code | Description |
+|------------|-----------|-------------|
+| `NOT_FOUND` | 5 | Secret (or version) does not exist |
+| `PERMISSION_DENIED` | 3 | IAM denies the operation, surfaced as a generic provider error |
+| `INVALID_ARGUMENT` | 3 | Invalid secret id or value too large (> 64 KiB); oversized values are rejected locally before any API call |
+| `ALREADY_EXISTS` | 3 | Create raced with another writer; retry the command (the second pass takes the update path) |
+| `RESOURCE_EXHAUSTED` | 3 | API quota exceeded, surfaced as a generic provider error |
+| `UNAVAILABLE` / `DEADLINE_EXCEEDED` / `INTERNAL` | 3 | Transport/service failures; after a write skret reads the latest version back once and reports a partial commit (`provider mutation partially committed`) instead of guessing |
+
+No Application Default Credentials surfaces as exit **4** (auth) with the three ADC remedies inline (`GOOGLE_APPLICATION_CREDENTIALS`, `gcloud auth application-default login`, workload identity).
+
 ## Debug Output
 
 For any error, enable debug logging to see the full context:

@@ -9,6 +9,7 @@ import (
 	"github.com/n24q02m/skret/internal/config"
 	"github.com/n24q02m/skret/internal/provider"
 	"github.com/n24q02m/skret/internal/provider/aws"
+	"github.com/n24q02m/skret/internal/provider/gcp"
 	"github.com/n24q02m/skret/internal/provider/local"
 	"github.com/n24q02m/skret/internal/provider/oci"
 )
@@ -66,6 +67,7 @@ func New(opts ...Options) (*Client, error) {
 	reg.Register("local", local.New)
 	reg.Register("aws", aws.New)
 	reg.Register("oci", oci.New)
+	reg.Register("gcp", gcp.New)
 
 	p, err := reg.New(resolved.Provider, resolved)
 	if err != nil {

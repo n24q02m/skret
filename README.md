@@ -82,7 +82,7 @@ If you only need a single-cloud injector and you don't care about migration or C
 ## Features
 
 - **One-command bootstrap**: `skret bootstrap` provisions a dedicated least-privilege IAM user + permanent access key scoped to your SSM path, from an admin/root identity used once and never stored.
-- **Multi-provider backend**: AWS SSM Parameter Store and OCI Vault today; Azure Key Vault, GCP Secret Manager on the roadmap. Switch backends with one config line.
+- **Multi-provider backend**: AWS SSM Parameter Store, GCP Secret Manager, and OCI Vault today; Azure Key Vault on the roadmap. Switch backends with one config line.
 - **Zero-server architecture**: Direct cloud IAM. No self-hosted control plane, no license fees, no new billing surface.
 - **Doppler-grade CLI**: `skret run -- your-cmd` injects secrets as env vars. Identical UX to `doppler run --`.
 - **Migration-first**: Built-in importers for Doppler, Infisical, and `.env` files.
@@ -212,7 +212,7 @@ Cost figures below use a representative scale: 17 repos × 20 secrets/repo × 1,
 | 1 | **AWS SSM Parameter Store (Standard)** | **$0** | Default — AWS-native or mixed-cloud |
 | 2 | **OCI Vault (software-protected)** | **$0** | Users with OCI tenancy; best rotation lifecycle |
 | 3 | **Azure Key Vault (Standard)** | **~$0.09** | Azure-native or multi-cloud DR |
-| 4 | **GCP Secret Manager** | **~$20** | GCP-native workloads |
+| 4 | **GCP Secret Manager** | **~$20** | GCP-native workloads (**supported today**) |
 | 5 | **AWS Secrets Manager** | **~$136** | Only when managed rotation (RDS/Redshift) is required |
 
 See [provider comparison](https://skret.n24q02m.com/reference/provider-comparison/) for the full feature matrix.

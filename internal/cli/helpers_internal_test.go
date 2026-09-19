@@ -33,8 +33,8 @@ func TestFormatProviderList(t *testing.T) {
 		},
 		{
 			name:  "one-unknown",
-			input: []string{"gcp"},
-			want:  "gcp",
+			input: []string{"vault"},
+			want:  "vault",
 		},
 		{
 			name:  "one-oci",
@@ -49,7 +49,7 @@ func TestFormatProviderList(t *testing.T) {
 		{
 			name:  "three",
 			input: []string{"aws", "local", "gcp"},
-			want:  "AWS SSM Parameter Store, a local file provider and gcp",
+			want:  "AWS SSM Parameter Store, a local file provider and GCP Secret Manager",
 		},
 		{
 			name:  "three-with-oci",

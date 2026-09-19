@@ -15,14 +15,20 @@ default_env: prod           # Optional. Default environment when --env is not sp
 
 environments:               # Required. At least one environment must be defined.
   prod:
-    provider: aws           # Required. Provider type: "aws", "local" or "oci".
-    path: /myapp/prod       # Required for aws. SSM parameter path prefix.
+    provider: aws           # Required. Provider type: "aws", "local", "gcp", or "oci".
+p/prod       # Required for aws. SSM parameter path prefix.
     region: us-east-1       # Optional for aws/oci. Provider region.
     profile: production     # Optional for aws/oci. Credential profile name.
     kms_key_id: alias/aws/ssm  # Optional for aws. KMS key for SecureString encryption.
     compartment_id: ocid1.compartment.oc1..xxx  # Required for oci. Compartment OCID.
     vault_id: ocid1.vault.oc1..yyy              # Required for oci. Vault OCID.
     key_id: ocid1.key.oc1..zzz                  # Optional for oci. Master key for new secrets.
+
+  gcp-prod:
+    provider: gcp
+    project: my-gcp-project  # Required for gcp. Project id (GOOGLE_CLOUD_PROJECT overrides).
+    region: us-east1         # Optional for gcp. GCP location for regional secrets; omit for global.
+    kms_key_id: projects/my-gcp-project/locations/global/keyRings/skret/cryptoKeys/main  # Optional CMEK for gcp.
 
   dev:
     provider: local         # Required. "local" for YAML-file-based secrets.
@@ -90,15 +96,16 @@ notify:                     # Optional. Webhook notifications fired after succes
 
 | Field | Type | Required | Provider | Description |
 |-------|------|----------|----------|-------------|
-| `provider` | string | Yes | All | Provider type. Supported: `"aws"`, `"local"`, `"oci"`. |
+| `provider` | string | Yes | All | Provider type. Supported: `"aws"`, `"local"`, `"gcp"`, `"oci"`. |
 | `path` | string | Yes | `aws` | SSM parameter path prefix. Must start with `/`. |
-| `region` | string | No | `aws`, `oci` | AWS region (`aws`, falls back to `AWS_REGION`) or OCI region (`oci`, falls back to the auth source's region / `OCI_CLI_REGION`). |
+| `region` | string | No | `aws`, `gcp`, `oci` | AWS region (`aws`, falls back to `AWS_REGION`), GCP location for regional secrets (`gcp`, omit for global), or OCI region (`oci`, falls back to the auth source's region / `OCI_CLI_REGION`). |
 | `profile` | string | No | `aws`, `oci` | AWS credential profile name (`aws`, falls back to `AWS_PROFILE`) or profile in `~/.oci/config` (`oci`, falls back to `OCI_CLI_PROFILE` then `DEFAULT`). |
-| `kms_key_id` | string | No | `aws` | KMS key ID or alias for SecureString encryption. Defaults to the AWS-managed SSM key (`alias/aws/ssm`). |
+| `kms_key_id` | string | No | `aws`, `gcp` | `aws`: KMS key ID or alias for SecureString encryption (defaults to the AWS-managed SSM key `alias/aws/ssm`). `gcp`: CMEK key resource name for new secrets; rides automatic replication globally and user-managed replication when `region` is set. |
+| `project` | string | Yes | `gcp` | GCP project id. `GOOGLE_CLOUD_PROJECT` overrides the config value. |
 | `compartment_id` | string | Yes | `oci` | OCID of the compartment holding the vault. |
 | `vault_id` | string | Yes | `oci` | OCID of the OCI vault where secrets live. |
 | `key_id` | string | No | `oci` | OCID of the software-protected master encryption key used when creating new secrets (updates keep the secret's existing key). |
-| `file` | string | Yes | `local` | Path to the local secrets YAML file. Relative paths are resolved from the `.skret.yaml` location. |
+ng | Yes | `local` | Path to the local secrets YAML file. Relative paths are resolved from the `.skret.yaml` location. |
 | `encrypted` | bool | No | `false` | `local` only. Write-side encryption intent: when `true`, saves store the file as a keystore envelope (`skret-encrypted-v1`, argon2id + XChaCha20-Poly1305). Reads auto-detect an encrypted file on disk regardless of this flag. Set up with `skret keys init --encrypt-existing`. |
 | `audit_log` | string | No | `local` | Where the append-only audit trail lives (default: `.skret-audit.log` next to the secrets file). `skret set`/`rotate`/`delete` append one JSONL line per mutation — timestamp, op, key names, env, actor, never values — and `skret audit` renders it. |
 
@@ -165,9 +172,17 @@ skret validates the config at load time and fails fast on errors:
 3. `default_env`, if set, must reference an existing environment name
 4. Each environment must have a `provider` field
 5. AWS environments must have a `path` field
-6. Local environments must have a `file` field
+6. GCP environments must have a `project` field, and `path` must be empty (GCP secret ids are flat; isolate environments by project)
 7. OCI environments must have `compartment_id` and `vault_id` fields
-8. Unknown provider names are rejected
+8. Local environments must have a `file` field
+9. Unknown provider names are rejected
+10. Each `sync.targets` entry must have a known `type` (`github`, `cloudflare`, `dotenv`, `gitlab`, `terraform`, or `k8s`)
+11. `github` sync targets must have a `repo` field
+12. `cloudflare` sync targets must set exactly one of `worker`/`pages`
+13. `gitlab` sync targets must have a `project` field
+14. `notify.webhook_url` must be present when the `notify` block is, and every URL must be absolute `http(s)`
+15. `notify.events` entries must be known events (`set`, `delete`, `rotate`, `sync`)
+ider names are rejected
 9. Each `sync.targets` entry must have a known `type` (`github`, `cloudflare`, `dotenv`, `gitlab`, `terraform`, or `k8s`)
 10. `github` sync targets must have a `repo` field
 11. `cloudflare` sync targets must set exactly one of `worker`/`pages`
@@ -209,6 +224,7 @@ Every config field can be overridden via environment variables or CLI flags:
 | `path` | `--path` | `SKRET_PATH` | Flag > Env > Config |
 | `region` | `--region` | `SKRET_REGION`, `AWS_REGION` | Flag > Env > Config |
 | `profile` | `--profile` | `SKRET_PROFILE`, `AWS_PROFILE` | Flag > Env > Config |
+| `project` (gcp) | -- | `GOOGLE_CLOUD_PROJECT` | Env > Config |
 | `file` | `--file` | -- | Flag > Config |
 
 ## Examples

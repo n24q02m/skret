@@ -16,7 +16,7 @@ default_env: prod          # Optional. Default environment.
 
 environments:              # Required. At least one environment.
   prod:
-    provider: aws          # Required. "aws", "local" or "oci".
+    provider: aws          # Required. "aws", "local", "gcp", or "oci".
     path: /myapp/prod      # Required for aws. SSM path prefix.
     region: us-east-1      # Optional for aws/oci. Provider region.
     profile: production    # Optional for aws/oci. Credential profile name.
@@ -24,6 +24,11 @@ environments:              # Required. At least one environment.
     compartment_id: ocid1.compartment.oc1..xxx  # Required for oci. Compartment OCID.
     vault_id: ocid1.vault.oc1..yyy              # Required for oci. Vault OCID.
     key_id: ocid1.key.oc1..zzz                  # Optional for oci. Master key for new secrets.
+
+  gcp:
+    provider: gcp
+    project: my-gcp-project  # Required for gcp. GCP project id.
+    region: us-east1         # Optional for gcp. GCP location (omit for global).
 
   dev:
     provider: local        # Required."local" for YAML file.

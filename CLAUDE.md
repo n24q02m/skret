@@ -17,6 +17,7 @@ Cloud-provider secret manager CLI wrapper. Go 1.26.
 - `internal/provider/` — `SecretProvider` interface + registry
 - `internal/provider/aws/` — AWS SSM Parameter Store
 - `internal/provider/oci/` — OCI Vault
+- `internal/provider/gcp/` — GCP Secret Manager
 - `internal/provider/local/` — local YAML file (dev/test)
 - `internal/importer/` — import from Doppler/Infisical/dotenv
 - `internal/syncer/` — sync to GitHub Actions/dotenv

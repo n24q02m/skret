@@ -18,6 +18,7 @@ import (
 	"github.com/n24q02m/skret/internal/keystore"
 	"github.com/n24q02m/skret/internal/provider"
 	skaws "github.com/n24q02m/skret/internal/provider/aws"
+	skgcp "github.com/n24q02m/skret/internal/provider/gcp"
 	"github.com/n24q02m/skret/internal/provider/local"
 	skoci "github.com/n24q02m/skret/internal/provider/oci"
 	"github.com/n24q02m/skret/pkg/skret"
@@ -60,6 +61,10 @@ type doctorReport struct {
 // awsLivenessProbe so auth-status tests and doctor tests never fight over
 // one package-level override variable.
 var doctorLivenessProbe = skaws.Probe
+
+// doctorGCPProbe verifies GCP ADC + API reachability (skgcp.Probe). A
+// variable so tests stub it instead of touching real Google endpoints.
+var doctorGCPProbe = skgcp.Probe
 
 // doctorStoreFactory builds the credential store doctor reads. A variable so
 // tests point doctor at a scratch store instead of the operator's real one.
@@ -236,12 +241,14 @@ func runDoctorChecks(deps doctorDeps, opts *GlobalOpts, timeout time.Duration) [
 			}
 		case "oci":
 			checks = append(checks, doctorOCIReachCheck(envName, resolved, timeout, probeCache)...)
+		case "gcp":
+			checks = append(checks, doctorGCPReachCheck(resolved, envName, timeout, probeCache)...)
 		default:
 			checks = append(checks, DoctorCheck{
 				Name:        "provider[" + envName + "]",
 				Status:      doctorFail,
 				Detail:      fmt.Sprintf("unknown provider %q", resolved.Provider),
-				Remediation: "supported providers: local, aws, oci",
+				Remediation: "supported providers: local, aws, oci, gcp",
 				failClass:   skret.ExitConfigError,
 			})
 		}
@@ -457,6 +464,40 @@ func doctorEncryptionCheck(deps doctorDeps, envName, filePath string, rawEnv map
 			detail += "; " + strings.Join(shown, "; ")
 		}
 		return DoctorCheck{Name: name, Status: doctorWarn, Detail: detail}
+	}
+}
+
+// doctorGCPReachCheck probes GCP Secret Manager reachability (ADC + API)
+// once per run per project/location and reuses the result across gcp
+// environments with the same shape. Credential-flavored failures are the
+// overwhelmingly likely case (no Application Default Credentials).
+func doctorGCPReachCheck(resolved *config.ResolvedConfig, envName string, timeout time.Duration, probeCache map[string]error) []DoctorCheck {
+	name := "provider[" + envName + "]"
+	cacheKey := "gcp:" + resolved.Project + ":" + resolved.Region
+	probeRes, cached := probeCache[cacheKey]
+	if !cached {
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		probeRes = doctorGCPProbe(ctx, resolved)
+		cancel()
+		probeCache[cacheKey] = probeRes
+	}
+	switch {
+	case probeRes == nil:
+		return []DoctorCheck{{Name: name, Status: doctorPass, Detail: "reachable (ADC + Secret Manager API)"}}
+	case strings.Contains(strings.ToLower(probeRes.Error()), "credential"):
+		return []DoctorCheck{{
+			Name: name, Status: doctorFail,
+			Detail:      fmt.Sprintf("credentials rejected: %v", probeRes),
+			Remediation: "set GOOGLE_APPLICATION_CREDENTIALS, run 'gcloud auth application-default login', or use workload identity on GCP infrastructure",
+			failClass:   skret.ExitAuthError,
+		}}
+	default:
+		return []DoctorCheck{{
+			Name: name, Status: doctorFail,
+			Detail:      fmt.Sprintf("unreachable: %v", probeRes),
+			Remediation: "check network, project id, and region (region maps to the GCP location; omit for the global endpoint)",
+			failClass:   skret.ExitNetworkError,
+		}}
 	}
 }
 
