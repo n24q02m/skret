@@ -210,6 +210,11 @@ func (m *MCPConfig) validate(envs map[string]Environment) error {
 // HubConfig points at the vault dashboard manifest endpoint.
 type HubConfig struct {
 	URL string `yaml:"url"`
+	// Namespace pins the manifest namespace `hub push` publishes under,
+	// overriding the default (the resolved environment path). Written by
+	// `skret hub init`; optional -- when empty, hub push falls back to the
+	// environment path so existing configs keep their current namespace.
+	Namespace string `yaml:"namespace,omitempty"`
 }
 
 // Validate checks structural requirements: version, that at least one

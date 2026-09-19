@@ -16,8 +16,10 @@ import (
 
 	"github.com/n24q02m/skret/internal/config"
 	"github.com/n24q02m/skret/internal/syncer"
+	"github.com/n24q02m/skret/pkg/skret"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v3"
 )
 
 func TestHubPush_PostsManifestNoValues(t *testing.T) {
@@ -623,4 +625,360 @@ sync:
 	assert.False(t, byName["MISSING_KEY"].Present)
 	assert.NotContains(t, string(gotBody), "v1")
 	assert.NotContains(t, string(gotBody), "v2")
+}
+
+// --- hub init ---
+
+func TestHubInit_WritesHubBlock(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(dir+"/.git", 0o755))
+	require.NoError(t, os.WriteFile(dir+"/.skret.yaml", []byte(`
+version: "1"
+default_env: dev
+environments:
+  dev:
+    provider: local
+    file: secrets.yaml
+`), 0o644))
+	require.NoError(t, os.WriteFile(dir+"/secrets.yaml", []byte("version: \"1\"\nsecrets:\n  K: V"), 0o600))
+
+	origDir, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	defer os.Chdir(origDir)
+
+	cmd := NewRootCmd()
+	cmd.SetArgs([]string{"hub", "init", "--url", "https://vault.example.com", "--namespace", "/myapp/dev"})
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
+	require.NoError(t, cmd.Execute())
+
+	assert.Contains(t, buf.String(), "Wrote hub config")
+	data, err := os.ReadFile(dir + "/.skret.yaml")
+	require.NoError(t, err)
+	var cfg config.Config
+	require.NoError(t, yaml.Unmarshal(data, &cfg))
+	require.NotNil(t, cfg.Sync)
+	require.NotNil(t, cfg.Sync.Hub)
+	assert.Equal(t, "https://vault.example.com", cfg.Sync.Hub.URL)
+	assert.Equal(t, "/myapp/dev", cfg.Sync.Hub.Namespace)
+	// init convention: atomic write leaves a .bak of the previous file.
+	_, err = os.Stat(dir + "/.skret.yaml.bak")
+	require.NoError(t, err)
+}
+
+func TestHubInit_NamespaceDefaultsFromEnvPath(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(dir+"/.git", 0o755))
+	require.NoError(t, os.WriteFile(dir+"/.skret.yaml", []byte(`
+version: "1"
+default_env: dev
+environments:
+  dev:
+    provider: local
+    file: secrets.yaml
+    path: /myapp/dev
+`), 0o644))
+	require.NoError(t, os.WriteFile(dir+"/secrets.yaml", []byte("version: \"1\"\nsecrets:\n  K: V"), 0o600))
+
+	origDir, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	defer os.Chdir(origDir)
+
+	cmd := NewRootCmd()
+	cmd.SetArgs([]string{"hub", "init", "--url", "https://vault.example.com"})
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
+	require.NoError(t, cmd.Execute())
+
+	data, err := os.ReadFile(dir + "/.skret.yaml")
+	require.NoError(t, err)
+	var cfg config.Config
+	require.NoError(t, yaml.Unmarshal(data, &cfg))
+	require.NotNil(t, cfg.Sync)
+	require.NotNil(t, cfg.Sync.Hub)
+	assert.Equal(t, "/myapp/dev", cfg.Sync.Hub.Namespace)
+}
+
+func TestHubInit_UnchangedSecondRun(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(dir+"/.git", 0o755))
+	require.NoError(t, os.WriteFile(dir+"/.skret.yaml", []byte(`
+version: "1"
+default_env: dev
+environments:
+  dev:
+    provider: local
+    file: secrets.yaml
+`), 0o644))
+	require.NoError(t, os.WriteFile(dir+"/secrets.yaml", []byte("version: \"1\"\nsecrets:\n  K: V"), 0o600))
+
+	origDir, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	defer os.Chdir(origDir)
+
+	args := []string{"hub", "init", "--url", "https://vault.example.com", "--namespace", "/myapp/dev"}
+	var afterRun1 []byte
+	for i := range 2 {
+		cmd := NewRootCmd()
+		cmd.SetArgs(args)
+		var buf bytes.Buffer
+		cmd.SetOut(&buf)
+		cmd.SetErr(&buf)
+		require.NoError(t, cmd.Execute())
+		data, rerr := os.ReadFile(dir + "/.skret.yaml")
+		require.NoError(t, rerr)
+		if i == 0 {
+			afterRun1 = data
+		} else {
+			assert.Contains(t, buf.String(), "unchanged")
+			// "unchanged" must mean unchanged: run 2 leaves exactly the
+			// bytes run 1 wrote.
+			assert.Equal(t, string(afterRun1), string(data))
+		}
+	}
+}
+
+func TestHubInit_NoConfigFile(t *testing.T) {
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	defer os.Chdir(origDir)
+
+	cmd := NewRootCmd()
+	cmd.SetArgs([]string{"hub", "init", "--url", "https://vault.example.com"})
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
+	err := cmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no config file")
+}
+
+// --- hub push namespace override ---
+
+func TestHubPush_NamespaceOverrideFromConfig(t *testing.T) {
+	var gotBody []byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotBody, _ = io.ReadAll(r.Body)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(dir+"/.git", 0o755))
+	cfgYAML := fmt.Sprintf(`
+version: "1"
+default_env: dev
+environments:
+  dev:
+    provider: local
+    file: secrets.yaml
+    path: /from/env/path
+sync:
+  hub:
+    url: %s
+    namespace: /pinned/ns
+`, srv.URL)
+	require.NoError(t, os.WriteFile(dir+"/.skret.yaml", []byte(cfgYAML), 0o644))
+	require.NoError(t, os.WriteFile(dir+"/secrets.yaml", []byte("version: \"1\"\nsecrets:\n  K: V"), 0o600))
+	setFakeHome(t)
+
+	origDir, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	defer os.Chdir(origDir)
+
+	o := &hubOptions{global: &GlobalOpts{}}
+	require.NoError(t, o.runPush(NewRootCmd()))
+	var decoded syncer.Manifest
+	require.NoError(t, json.Unmarshal(gotBody, &decoded))
+	assert.Equal(t, "/pinned/ns", decoded.Namespace)
+}
+
+// --- hub status ---
+
+func statusWorker(t *testing.T, status int, body string, sawAuth *string, sawPath *string) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		*sawPath = r.URL.Path
+		*sawAuth = r.Header.Get("Authorization")
+		w.WriteHeader(status)
+		_, _ = w.Write([]byte(body))
+	}))
+}
+
+func TestHubStatus_TableOutput(t *testing.T) {
+	var sawAuth, sawPath string
+	srv := statusWorker(t, http.StatusOK, `{"ok":true,"namespace_count":2,"key_count":12,"namespaces":[
+		{"namespace":"/app/prod","env":"prod","key_count":8,"generated_at":"2026-09-19T10:00:00Z"},
+		{"namespace":"/app/dev","env":"dev","key_count":4,"generated_at":"2026-09-18T09:00:00Z"}]}`,
+		&sawAuth, &sawPath)
+	defer srv.Close()
+
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(dir+"/.git", 0o755))
+	require.NoError(t, os.WriteFile(dir+"/.skret.yaml", []byte(fmt.Sprintf(`
+version: "1"
+default_env: dev
+environments:
+  dev:
+    provider: local
+    file: secrets.yaml
+sync:
+  hub:
+    url: %s
+`, srv.URL)), 0o644))
+	require.NoError(t, os.WriteFile(dir+"/secrets.yaml", []byte("version: \"1\"\nsecrets:\n  K: V"), 0o600))
+	setFakeHome(t)
+	t.Setenv("SKRET_HUB_TOKEN", "status-tok")
+
+	origDir, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	defer os.Chdir(origDir)
+
+	cmd := NewRootCmd()
+	cmd.SetArgs([]string{"hub", "status"})
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
+	require.NoError(t, cmd.Execute())
+
+	assert.Equal(t, "/api/status", sawPath)
+	assert.Equal(t, "Bearer status-tok", sawAuth)
+	out := buf.String()
+	assert.Contains(t, out, "URL")
+	assert.Contains(t, out, srv.URL)
+	assert.Contains(t, out, "/app/prod")
+	assert.Contains(t, out, "/app/dev")
+	assert.Contains(t, out, "2026-09-19T10:00:00Z")
+}
+
+func TestHubStatus_JSONOutput(t *testing.T) {
+	var sawAuth, sawPath string
+	srv := statusWorker(t, http.StatusOK, `{"ok":true,"namespace_count":1,"key_count":3,"namespaces":[
+		{"namespace":"/app/prod","env":"prod","key_count":3,"generated_at":"2026-09-19T10:00:00Z"}]}`,
+		&sawAuth, &sawPath)
+	defer srv.Close()
+
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	defer os.Chdir(origDir)
+
+	cmd := NewRootCmd()
+	cmd.SetArgs([]string{"hub", "status", "--hub-url", srv.URL, "--format", "json"})
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
+	require.NoError(t, cmd.Execute())
+
+	var st hubStatus
+	require.NoError(t, json.Unmarshal(buf.Bytes(), &st))
+	assert.True(t, st.OK)
+	assert.Equal(t, srv.URL, st.URL)
+	assert.Equal(t, 1, st.NamespaceCount)
+	assert.Equal(t, 3, st.KeyCount)
+	require.Len(t, st.Namespaces, 1)
+	assert.Equal(t, "/app/prod", st.Namespaces[0].Namespace)
+}
+
+func TestHubStatus_Unauthorized(t *testing.T) {
+	var sawAuth, sawPath string
+	srv := statusWorker(t, http.StatusUnauthorized, `{"ok":false,"error":"unauthorized"}`, &sawAuth, &sawPath)
+	defer srv.Close()
+
+	_, err := fetchHubStatus(srv.URL, "wrong-token")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "401")
+	assert.Contains(t, err.Error(), "SKRET_HUB_TOKEN")
+	assert.Equal(t, skret.ExitCode(err), skret.ExitAuthError)
+}
+
+func TestHubStatus_ConnectionRefused(t *testing.T) {
+	lc := &net.ListenConfig{}
+	l, err := lc.Listen(context.Background(), "tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	addr := l.Addr().String()
+	require.NoError(t, l.Close())
+
+	_, err = fetchHubStatus("http://"+addr, "")
+	require.Error(t, err)
+	// Transport-level failure stays a network error through the coding.
+	assert.Equal(t, skret.ExitNetworkError, skret.ExitCode(err))
+}
+
+// TestHubStatus_UnauthorizedExitCodeThroughCLI locks the exit-code contract
+// end to end: a 401 from the hub must surface as exit code 4 (auth), not 7
+// (network), when `hub status` runs as a command.
+func TestHubStatus_UnauthorizedExitCodeThroughCLI(t *testing.T) {
+	var sawAuth, sawPath string
+	srv := statusWorker(t, http.StatusUnauthorized, `{"ok":false,"error":"unauthorized"}`, &sawAuth, &sawPath)
+	defer srv.Close()
+
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	defer os.Chdir(origDir)
+
+	cmd := NewRootCmd()
+	cmd.SetArgs([]string{"hub", "status", "--hub-url", srv.URL})
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
+	err := cmd.Execute()
+	require.Error(t, err)
+	assert.Equal(t, skret.ExitAuthError, skret.ExitCode(err))
+	assert.Contains(t, err.Error(), "SKRET_HUB_TOKEN")
+}
+
+func TestHubStatus_NoHubURL(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(dir+"/.git", 0o755))
+	require.NoError(t, os.WriteFile(dir+"/.skret.yaml", []byte(`
+version: "1"
+default_env: dev
+environments:
+  dev:
+    provider: local
+    file: secrets.yaml
+`), 0o644))
+	require.NoError(t, os.WriteFile(dir+"/secrets.yaml", []byte("version: \"1\"\nsecrets:\n  K: V"), 0o600))
+
+	origDir, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	defer os.Chdir(origDir)
+
+	cmd := NewRootCmd()
+	cmd.SetArgs([]string{"hub", "status"})
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
+	err := cmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no hub URL")
+}
+
+// --- resolveHubURL precedence (shared by push and status) ---
+
+func TestResolveHubURL_Precedence(t *testing.T) {
+	sc := &config.SyncConfig{Hub: &config.HubConfig{URL: "https://from-config"}}
+
+	got, err := resolveHubURL("https://from-flag", sc)
+	require.NoError(t, err)
+	assert.Equal(t, "https://from-flag", got)
+
+	t.Setenv("SKRET_HUB_URL", "https://from-env")
+	got, err = resolveHubURL("", sc)
+	require.NoError(t, err)
+	assert.Equal(t, "https://from-env", got)
+
+	os.Unsetenv("SKRET_HUB_URL")
+	got, err = resolveHubURL("", sc)
+	require.NoError(t, err)
+	assert.Equal(t, "https://from-config", got)
+
+	_, err = resolveHubURL("", nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no hub URL")
 }

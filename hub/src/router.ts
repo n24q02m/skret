@@ -2,8 +2,8 @@ import { getContainer } from "@cloudflare/containers";
 import type { Env, OperatorSyncHealth, SyncHealth, SyncHealthStatus, SyncRunRecord } from "./types";
 import { handleIngest } from "./ingest";
 import { handleExecutorEnvelope } from "./operator-executor-proxy";
-import { checkPassword, mintSession, verifySession, SESSION_TTL } from "./auth";
-import { getAllManifests, MAX_SYNC_STALE_THRESHOLD_SECONDS, MIN_SYNC_STALE_THRESHOLD_SECONDS } from "./store";
+import { checkBearer, checkPassword, mintSession, verifySession, SESSION_TTL } from "./auth";
+import { getAllManifests, summarizeManifests, MAX_SYNC_STALE_THRESHOLD_SECONDS, MIN_SYNC_STALE_THRESHOLD_SECONDS } from "./store";
 import { renderDashboard, renderLogin } from "./render";
 
 const COOKIE = "session";
@@ -22,6 +22,18 @@ export async function handleRequest(req: Request, env: Env): Promise<Response> {
       return rateLimited("rate limited");
     }
     return handleIngest(req, env);
+  }
+  if (req.method === "GET" && pathname === "/api/status") {
+    if (!(await allow(env.INGEST_LIMIT, req))) {
+      return rateLimited("rate limited");
+    }
+    return handleApiStatus(req, env);
+  }
+  if (req.method === "GET" && pathname === "/api/namespaces") {
+    if (!(await allow(env.INGEST_LIMIT, req))) {
+      return rateLimited("rate limited");
+    }
+    return handleApiNamespaces(req, env);
   }
   if (pathname === "/operator/executor-envelope") {
     return handleExecutorEnvelope(req, env);
@@ -134,6 +146,43 @@ async function handleHealthz(env: Env): Promise<Response> {
   }
   return json({ ok: true, kv: "ok", sync });
 }
+
+// The two /api/status + /api/namespaces routes are `skret hub status`'s
+// backend: same bearer credential as POST /api/manifest, same rate limiter,
+// but a strictly smaller projection. summarizeManifests() emits counts and
+// freshness only -- no key names, no fingerprints -- so a token leaked to a
+// reader lets it observe *that manifests exist and when*, not enumerate the
+// secret inventory. That asymmetry is the whole reason these are two routes
+// instead of one "dump everything" endpoint.
+async function handleApiStatus(req: Request, env: Env): Promise<Response> {
+  if (!(await checkBearer(req, env.SKRET_HUB_TOKEN))) {
+    return json({ ok: false, error: "unauthorized" }, 401);
+  }
+  let namespaces;
+  try {
+    namespaces = summarizeManifests(await getAllManifests(env.VAULT_KV));
+  } catch {
+    // Same failure vocabulary as /healthz: say the dependency is broken,
+    // never narrate the exception.
+    return json({ ok: false, error: "kv error" }, 503);
+  }
+  const keyCount = namespaces.reduce((sum, n) => sum + n.key_count, 0);
+  return json({ ok: true, namespace_count: namespaces.length, key_count: keyCount, namespaces });
+}
+
+async function handleApiNamespaces(req: Request, env: Env): Promise<Response> {
+  if (!(await checkBearer(req, env.SKRET_HUB_TOKEN))) {
+    return json({ ok: false, error: "unauthorized" }, 401);
+  }
+  let namespaces;
+  try {
+    namespaces = summarizeManifests(await getAllManifests(env.VAULT_KV));
+  } catch {
+    return json({ ok: false, error: "kv error" }, 503);
+  }
+  return json({ ok: true, namespaces });
+}
+
 async function handleOperatorSyncHealth(req: Request, env: Env): Promise<Response> {
   if (req.method !== "GET") {
     return operatorResponse("method not allowed", 405, { Allow: "GET" });
