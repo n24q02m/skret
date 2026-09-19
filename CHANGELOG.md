@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 <!-- version list -->
 
+## v1.31.1 (2026-09-19)
+
+### Bug Fixes
+
+- **release**: Build skret-mcp in the prepare lane
+  ([#809](https://github.com/n24q02m/skret/pull/809),
+  [`19f5287`](https://github.com/n24q02m/skret/commit/19f5287a67195debff5683d5147eef0727d020f6))
+
+
 ## v1.31.0 (2026-09-19)
 
 ### Bug Fixes
