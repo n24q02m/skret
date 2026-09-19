@@ -203,11 +203,21 @@ func TestHistoryScan_MinLengthFiltersTargets(t *testing.T) {
 	assert.Empty(t, findings)
 }
 
+func TestHistoryScan_EmptyRepo(t *testing.T) {
+	requireGit(t)
+	dir := t.TempDir()
+	runGit(t, dir, "init") // no commits yet
+
+	findings, err := HistoryScan(historyTargets(), dir, HistoryOpts{})
+	require.NoError(t, err)
+	assert.Empty(t, findings)
+}
+
 func TestHistoryScan_NotARepo(t *testing.T) {
 	requireGit(t)
 	dir := t.TempDir()
 
 	_, err := HistoryScan(historyTargets(), dir, HistoryOpts{})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "git rev-list")
+	assert.Contains(t, err.Error(), "git rev-parse")
 }

@@ -53,7 +53,7 @@ skret scan --history
 
 Output rows gain a `COMMIT` column (`commit` in JSON), and `file` is the repo-relative path as git reports it. Because values are matched against real blob content — not patches — this catches values committed and later removed, and reports the exact commit to scrub.
 
-The walk is bounded so a large repository cannot turn into an unbounded job: `--max-count` caps how many commits are visited (default `1000`) and `--since` accepts any git date expression. Binary and oversize blobs are skipped, and blob content streams one object at a time through a single `git cat-file --batch` process, so memory stays flat regardless of history size.
+The walk is bounded so a large repository cannot turn into an unbounded job: `--max-count` caps how many commits are visited (default `1000`) and `--since` accepts any git date expression. A repository with no commits scans empty. Binary and oversize blobs are skipped, and blob content streams one object at a time through a single `git cat-file --batch` process, so memory stays flat regardless of history size.
 
 ### `--since`
 

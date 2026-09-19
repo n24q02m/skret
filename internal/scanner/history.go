@@ -105,8 +105,16 @@ func HistoryScan(targets []Target, dir string, opts HistoryOpts) ([]Finding, err
 }
 
 // historyCommits lists HEAD-reachable commit shas, newest first, capped at
-// maxCount and optionally filtered by a git --since expression.
+// maxCount and optionally filtered by a git --since expression. A directory
+// that is not a git repository is an error; an unborn HEAD (fresh `git init`,
+// no commits yet) is empty history, not an error.
 func historyCommits(dir string, maxCount int, since string) ([]string, error) {
+	if _, err := gitOutput(dir, "rev-parse", "--is-inside-work-tree"); err != nil {
+		return nil, fmt.Errorf("git rev-parse: %w", err)
+	}
+	if _, err := gitOutput(dir, "rev-parse", "--verify", "-q", "HEAD"); err != nil {
+		return nil, nil //nolint:nilerr // intentional: unborn HEAD is empty history, not an error
+	}
 	args := []string{"rev-list", "--max-count=" + strconv.Itoa(maxCount)}
 	if since != "" {
 		args = append(args, "--since="+since)
@@ -137,7 +145,7 @@ type blobRef struct {
 // nothing, which is correct here: every blob they carry was introduced by some
 // non-merge commit that the walk also visits.
 func commitBlobs(dir, commit string) ([]blobRef, error) {
-	raw, err := gitOutput(dir, "diff-tree", "--root", "-r", "--no-commit-id", "-z", commit)
+	raw, err := gitOutput(dir, "diff-tree", "--root", "-r", "-M", "--no-commit-id", "-z", commit)
 	if err != nil {
 		return nil, fmt.Errorf("git diff-tree %s: %w", commit, err)
 	}

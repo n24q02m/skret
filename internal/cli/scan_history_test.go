@@ -68,15 +68,15 @@ func runGitCLIOut(t *testing.T, dir string, args ...string) string {
 	return strings.TrimSpace(string(out))
 }
 
-func runScan(t *testing.T, args ...string) (string, error) {
+func runScan(t *testing.T, args ...string) (string, string, error) {
 	t.Helper()
-	var out bytes.Buffer
+	var stdout, stderr bytes.Buffer
 	cmd := NewRootCmd()
-	cmd.SetOut(&out)
-	cmd.SetErr(&out)
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
 	cmd.SetArgs(append([]string{"scan"}, args...))
 	err := cmd.Execute()
-	return out.String(), err
+	return stdout.String(), stderr.String(), err
 }
 
 func requireLeakErr(t *testing.T, err error) *skret.Error {
@@ -95,18 +95,20 @@ func TestScanCmd_History_FindsLeak(t *testing.T) {
 	historyCommitCLI(t, dir, "c1: clean", map[string]string{"app.env": "API=benign\n"})
 	sha2 := historyCommitCLI(t, dir, "c2: leak", map[string]string{"leaked.env": "API=tok123\n"})
 
-	out, err := runScan(t, "--history")
+	stdout, stderr, err := runScan(t, "--history")
 	se := requireLeakErr(t, err)
 	require.Equal(t, skret.ExitLeakFound, se.Code)
 	assert.Contains(t, se.Message, "git history")
 	assert.NotEmpty(t, skret.RemediationOf(err), "leak-found error carries a remediation hint")
 
-	s := out
+	s := stdout
 	assert.Contains(t, s, "TOKEN")
 	assert.Contains(t, s, "leaked.env")
 	assert.Contains(t, s, sha2)
 	assert.Contains(t, s, "COMMIT")
 	assert.NotContains(t, s, "tok123") // value never shown in output
+	assert.NotContains(t, s, err.Error())
+	assert.NotContains(t, stderr, "tok123") // value never shown on stderr
 	assert.NotContains(t, err.Error(), "tok123")
 }
 
@@ -117,10 +119,10 @@ func TestScanCmd_History_JSON(t *testing.T) {
 	dir := initHistoryRepo(t)
 	historyCommitCLI(t, dir, "c1: leak", map[string]string{"leaked.env": "API=tok123\n"})
 
-	out, err := runScan(t, "--history", "--format", "json")
+	stdout, _, err := runScan(t, "--history", "--format", "json")
 	requireLeakErr(t, err)
 
-	s := out
+	s := stdout
 	assert.NotContains(t, s, "tok123")
 
 	var findings []map[string]any
@@ -139,9 +141,22 @@ func TestScanCmd_History_Clean(t *testing.T) {
 	dir := initHistoryRepo(t)
 	historyCommitCLI(t, dir, "c1", map[string]string{"app.env": "API=benign\n"})
 
-	out, err := runScan(t, "--history")
+	_, stderr, err := runScan(t, "--history")
 	require.NoError(t, err)
-	assert.Contains(t, out, "No leaks found.")
+	assert.Contains(t, stderr, "No leaks found.")
+}
+
+func TestScanCmd_History_CleanJSON(t *testing.T) {
+	if _, err := osexec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	dir := initHistoryRepo(t)
+	historyCommitCLI(t, dir, "c1", map[string]string{"app.env": "API=benign\n"})
+
+	stdout, stderr, err := runScan(t, "--history", "--format", "json")
+	require.NoError(t, err)
+	assert.Equal(t, "[]\n", stdout, "clean history renders an empty findings array on stdout")
+	assert.Contains(t, stderr, "No leaks found.", "status line stays on stderr")
 }
 
 func TestScanCmd_History_MaxCountBounds(t *testing.T) {
@@ -153,9 +168,9 @@ func TestScanCmd_History_MaxCountBounds(t *testing.T) {
 	historyCommitCLI(t, dir, "c2", map[string]string{"app.env": "API=benign\n"})
 
 	// The leak commit falls outside a 1-commit window.
-	out, err := runScan(t, "--history", "--max-count=1")
+	_, stderr, err := runScan(t, "--history", "--max-count=1")
 	require.NoError(t, err)
-	assert.Contains(t, out, "No leaks found.")
+	assert.Contains(t, stderr, "No leaks found.")
 }
 
 func TestScanCmd_History_NotARepo(t *testing.T) {
@@ -165,7 +180,7 @@ func TestScanCmd_History_NotARepo(t *testing.T) {
 	dir := writeLocalTemplateConfig(t)
 	chdirTmp(t, dir)
 
-	_, err := runScan(t, "--history")
+	_, _, err := runScan(t, "--history")
 	se := requireLeakErr(t, err)
 	assert.Equal(t, skret.ExitGenericError, se.Code)
 	assert.Contains(t, se.Message, "history scan failed")
@@ -176,7 +191,7 @@ func TestScanCmd_History_StagedConflict(t *testing.T) {
 	dir := writeLocalTemplateConfig(t)
 	chdirTmp(t, dir)
 
-	_, err := runScan(t, "--staged", "--history")
+	_, _, err := runScan(t, "--staged", "--history")
 	se := requireLeakErr(t, err)
 	assert.Equal(t, skret.ExitGenericError, se.Code)
 	assert.Contains(t, se.Message, "mutually exclusive")
@@ -186,7 +201,7 @@ func TestScanCmd_History_SinceWithoutHistory(t *testing.T) {
 	dir := writeLocalTemplateConfig(t)
 	chdirTmp(t, dir)
 
-	_, err := runScan(t, "--since=2 weeks ago")
+	_, _, err := runScan(t, "--since=2 weeks ago")
 	se := requireLeakErr(t, err)
 	assert.Equal(t, skret.ExitGenericError, se.Code)
 	assert.Contains(t, se.Message, "--since only applies to --history")
@@ -196,7 +211,7 @@ func TestScanCmd_History_BadMaxCount(t *testing.T) {
 	dir := writeLocalTemplateConfig(t)
 	chdirTmp(t, dir)
 
-	_, err := runScan(t, "--history", "--max-count=0")
+	_, _, err := runScan(t, "--history", "--max-count=0")
 	se := requireLeakErr(t, err)
 	assert.Equal(t, skret.ExitGenericError, se.Code)
 	assert.Contains(t, se.Message, "--max-count must be at least 1")
