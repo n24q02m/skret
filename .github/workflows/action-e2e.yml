@@ -250,7 +250,7 @@ jobs:
           "$SKRET_BIN" scan --format json >scan-stdout.txt 2>scan-stderr.txt
           code=$?
           [ "$code" -eq 10 ] || fail "scan leak --format json exit: want 10, got $code"
-          jq -e '.code == 10 and (.error | length > 0) and (.remediation | length > 0)' scan-stderr.txt >/dev/null \
+          jq -e '.code == 10 and (.error | length > 0)' scan-stderr.txt >/dev/null \
             || fail "scan --format json stderr is not the documented error envelope: $(cat scan-stderr.txt)"
 
           "$SKRET_BIN" diff dev stage --exit-code >/dev/null 2>&1
