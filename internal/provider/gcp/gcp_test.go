@@ -90,10 +90,6 @@ func (f *fakeGCP) seedVersions(id string, n int) {
 	}
 }
 
-var timeMinute = time.Minute
-
-var epoch = timestamppb.New(time.Unix(0, 0))
-
 func newProvider(f *fakeGCP) provider.SecretProvider {
 	return skgcp.NewWithClient(f, testProject, testLocation, "")
 }

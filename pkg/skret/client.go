@@ -66,7 +66,7 @@ func New(opts ...Options) (*Client, error) {
 	reg := provider.NewRegistry()
 	reg.Register("local", local.New)
 	reg.Register("aws", aws.New)
-	reg.Register("oci", skoci.New)
+	reg.Register("oci", oci.New)
 	reg.Register("gcp", gcp.New)
 
 	p, err := reg.New(resolved.Provider, resolved)
