@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 <!-- version list -->
 
+## v1.25.0 (2026-09-19)
+
+### Features
+
+- Report TTL expiry hygiene in skret doctor ([#798](https://github.com/n24q02m/skret/pull/798),
+  [`94d6d06`](https://github.com/n24q02m/skret/commit/94d6d069fd4a7b232439c74c329d5a6b647ba869))
+
+- Scan git history for leaked secrets (SK-SCANH) ([#793](https://github.com/n24q02m/skret/pull/793),
+  [`e01adc5`](https://github.com/n24q02m/skret/commit/e01adc56ff6a01e4c430bb93b4f566894bbcd2d4))
+
+
 ## v1.24.0 (2026-09-19)
 
 ### Code Style
