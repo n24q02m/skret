@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 <!-- version list -->
 
+## v1.27.0 (2026-09-19)
+
+### Bug Fixes
+
+- Address gocritic emptyStringTest in audit trimCR
+  ([#800](https://github.com/n24q02m/skret/pull/800),
+  [`c093815`](https://github.com/n24q02m/skret/commit/c0938156ca153b104f39b5f1b4d23597554a1271))
+
+### Features
+
+- Skret audit command with local JSONL trail and CloudTrail export (SK-AUDIT)
+  ([#800](https://github.com/n24q02m/skret/pull/800),
+  [`c093815`](https://github.com/n24q02m/skret/commit/c0938156ca153b104f39b5f1b4d23597554a1271))
+
+
 ## v1.26.0 (2026-09-19)
 
 ### Features
