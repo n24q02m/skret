@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -75,7 +76,9 @@ func watchLoop(ctx context.Context, d watchDeps, child supervisor, initialFP str
 
 // runWatch supervises args as a child subprocess that skret restarts whenever
 // the provider's fingerprint changes, until the child exits or a signal arrives.
-func runWatch(cmd *cobra.Command, p provider.SecretProvider, resolved *config.ResolvedConfig, args []string, secrets []*provider.Secret, env []string, interval time.Duration) error {
+// When noResolve is false, the freshly listed secrets are reference-resolved
+// before every restart, mirroring the initial injection.
+func runWatch(cmd *cobra.Command, p provider.SecretProvider, resolved *config.ResolvedConfig, args []string, secrets []*provider.Secret, env []string, interval time.Duration, noResolve bool) error {
 	_ = secrets // initial secrets already folded into env by the caller
 	if interval < time.Second {
 		interval = time.Second // guard
@@ -101,7 +104,18 @@ func runWatch(cmd *cobra.Command, p provider.SecretProvider, resolved *config.Re
 
 	deps := watchDeps{
 		fingerprint: func(c context.Context) (string, error) { return p.Fingerprint(c, resolved.Path) },
-		list:        func(c context.Context) ([]*provider.Secret, error) { return p.List(c, resolved.Path) },
+		list: func(c context.Context) ([]*provider.Secret, error) {
+			secrets, err := p.List(c, resolved.Path)
+			if err != nil {
+				return nil, err
+			}
+			if !noResolve {
+				if err := resolveInPlace(secrets, resolved.Path); err != nil {
+					return nil, err
+				}
+			}
+			return secrets, nil
+		},
 		buildEnv: func(s []*provider.Secret) []string {
 			return skexec.BuildEnv(s, os.Environ(), resolved.Path, resolved.Exclude)
 		},
@@ -113,6 +127,12 @@ func runWatch(cmd *cobra.Command, p provider.SecretProvider, resolved *config.Re
 	}
 	code, runErr := watchLoop(ctx, deps, child, fp)
 	if runErr != nil {
+		// Keep spec §7.1 exit codes: a restart-path failure can already be a
+		// structured *skret.Error (e.g. a reference cycle in changed values).
+		var sk *skret.Error
+		if errors.As(runErr, &sk) {
+			return runErr
+		}
 		return skret.NewError(skret.ExitExecError, "runtime error", runErr)
 	}
 	if code != 0 {

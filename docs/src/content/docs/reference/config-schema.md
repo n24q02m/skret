@@ -56,6 +56,15 @@ sync:                       # Optional. Declared targets for `skret sync` / `skr
       file: .env.sync       # Optional for dotenv. Defaults to ".env".
   hub:
     url: https://vault.example.com  # Optional. Base URL for `skret hub push`.
+
+notify:                     # Optional. Webhook notifications fired after successful secret mutations.
+  webhook_url: https://hooks.example.com/skret  # Required when notify is present. One URL or a YAML list of URLs.
+  events:                   # Optional. Filter which events fire; omit for all.
+    - set
+    - delete
+    - rotate
+    - sync
+  secret: ${NOTIFY_SECRET}  # Optional. HMAC-SHA256 signing key; receivers verify the X-Skret-Signature header.
 ```
 
 ## Field Reference
@@ -71,6 +80,7 @@ sync:                       # Optional. Declared targets for `skret sync` / `skr
 | `required` | list | No | `[]` | Secret keys that must be present. Commands fail with exit code 2 if any are missing. |
 | `exclude` | list | No | `[]` | Secret keys excluded from `run` and `env` output. |
 | `sync` | map | No | -- | Declared sync targets and hub endpoint for `skret sync` / `skret hub push`. See [Sync Fields](#sync-fields). |
+| `notify` | map | No | -- | Webhook notifications fired after successful secret mutations (`set`/`delete`/`rotate`/`sync`). See [Notify Fields](#notify-fields). |
 
 ### Environment Fields
 
@@ -114,6 +124,30 @@ sync:                       # Optional. Declared targets for `skret sync` / `skr
 
 Exactly one of `worker`/`pages` must be set per `cloudflare` target — setting both, or neither, fails validation. `GITHUB_TOKEN`, `CLOUDFLARE_API_TOKEN`, and `GITLAB_TOKEN` are read from the environment at sync time and are never stored in `.skret.yaml`.
 
+### Notify Fields
+
+`notify` fires webhook notifications after successful secret mutations. The feature is off unless the block is present; payloads carry key names and event metadata only — secret values are never included.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `notify.webhook_url` | string or list | Yes (when `notify` is present) | Absolute `http(s)` URL to POST the JSON payload to. Accepts a single URL or a YAML list for fan-out. |
+| `notify.events` | list | No | Which mutation events fire: `set`, `delete`, `rotate`, `sync`. Omit for all of them. |
+| `notify.secret` | string | No | HMAC-SHA256 signing key. Each request carries `X-Skret-Signature: sha256=<hex>` computed over the raw request body; receivers recompute it to verify authenticity. |
+
+Payload shape (one POST per event; `sync`/`rotate` fire once per completed target):
+
+```json
+{
+  "event": "set",
+  "key_names": ["/myapp/prod/API_KEY"],
+  "env": "prod",
+  "timestamp": "2026-09-19T12:00:00Z",
+  "actor": "ci"
+}
+```
+
+`timestamp` is RFC3339 UTC; `actor` is only present when `SKRET_ACTOR` is set (e.g. `SKRET_ACTOR=ci` in a pipeline). Delivery is timeout-bounded (5s per attempt) and retries once on a 5xx response. A delivery failure never fails the mutation: it warns on stderr, or fails the command after the fact when `--strict-notify` is passed.
+
 ## Validation Rules
 
 skret validates the config at load time and fails fast on errors:
@@ -129,6 +163,8 @@ skret validates the config at load time and fails fast on errors:
 9. `github` sync targets must have a `repo` field
 10. `cloudflare` sync targets must set exactly one of `worker`/`pages`
 11. `gitlab` sync targets must have a `project` field
+12. `notify.webhook_url` must be present when the `notify` block is, and every URL must be absolute `http(s)`
+13. `notify.events` entries must be known events (`set`, `delete`, `rotate`, `sync`)
 
 ## Config Discovery
 

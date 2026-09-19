@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/n24q02m/skret/internal/notify"
 	"github.com/n24q02m/skret/internal/provider"
 	"github.com/n24q02m/skret/pkg/skret"
 	"github.com/spf13/cobra"
@@ -22,9 +23,10 @@ type DeleteResult struct {
 
 func newDeleteCmd(opts *GlobalOpts) *cobra.Command {
 	var (
-		confirm bool
-		force   bool
-		format  string
+		confirm      bool
+		force        bool
+		format       string
+		strictNotify bool
 	)
 
 	cmd := &cobra.Command{
@@ -66,6 +68,11 @@ func newDeleteCmd(opts *GlobalOpts) *cobra.Command {
 				return skret.NewError(skret.ExitProviderError, fmt.Sprintf("delete %q failed", key), err)
 			}
 
+			// The deletion is durable; the webhook reports it (names only).
+			if err := reportMutation(cmd, resolved, strictNotify, notify.EventDelete, key); err != nil {
+				return err
+			}
+
 			if format == "json" {
 				data, err := json.MarshalIndent(DeleteResult{
 					Key: key, Path: resolved.Path, Deleted: true,
@@ -85,6 +92,7 @@ func newDeleteCmd(opts *GlobalOpts) *cobra.Command {
 	cmd.Flags().BoolVar(&confirm, "confirm", false, "skip confirmation prompt")
 	cmd.Flags().BoolVarP(&force, "force", "f", false, "skip confirmation prompt (alias for --confirm)")
 	cmd.Flags().StringVar(&format, "format", "table", "output format (table, json)")
+	cmd.Flags().BoolVar(&strictNotify, "strict-notify", false, "fail the command if the mutation webhook fails (default: warn only)")
 
 	return cmd
 }

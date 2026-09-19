@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/n24q02m/skret/internal/config"
+	"github.com/n24q02m/skret/internal/notify"
 	"github.com/n24q02m/skret/internal/provider"
 	"github.com/n24q02m/skret/internal/syncer"
 	"github.com/n24q02m/skret/pkg/skret"
@@ -28,6 +29,7 @@ type syncOptions struct {
 	rotate        bool
 	dryRun        bool
 	format        string
+	strictNotify  bool
 }
 
 // saveSyncState is kept indirect so focused tests can exercise persistence
@@ -91,6 +93,7 @@ without writing anything or saving sync state.`,
 	cmd.Flags().BoolVar(&o.rotate, "rotate", false, "explicitly overwrite selected target values and record rotation state (conflicts with --no-overwrite)")
 	cmd.Flags().BoolVar(&o.dryRun, "dry-run", false, "print what each target would write and exit; issues no write request and saves no state")
 	cmd.Flags().StringVar(&o.format, "format", "table", "output format (table, json)")
+	cmd.Flags().BoolVar(&o.strictNotify, "strict-notify", false, "fail the command if the mutation webhook fails (default: warn only)")
 
 	cmd.AddCommand(newSyncPlanServerCmd())
 
@@ -310,6 +313,21 @@ func (o *syncOptions) run(cmd *cobra.Command) error {
 				cmd.PrintErrf("Rotated %d secrets to %s\n", len(toSync), s.Name())
 			default:
 				cmd.PrintErrf("Synced %d secrets to %s\n", len(toSync), s.Name())
+			}
+
+			// This target's write is durable; the webhook reports it (names
+			// only, source provider keys). One event per completed target so
+			// a later target's failure cannot un-report an earlier write.
+			ev := notify.EventSync
+			if o.rotate {
+				ev = notify.EventRotate
+			}
+			keyNames := make([]string, 0, len(toSync))
+			for _, sec := range toSync {
+				keyNames = append(keyNames, sec.Key)
+			}
+			if err := reportMutation(cmd, resolved, o.strictNotify, ev, keyNames...); err != nil {
+				return err
 			}
 			return nil
 		}(); err != nil {

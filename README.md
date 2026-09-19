@@ -92,6 +92,7 @@ If you only need a single-cloud injector and you don't care about migration or C
 - **Tab-completion of secret keys**: `skret get <TAB>` completes real key names via a names-only listing — zero decryption, zero KMS cost.
 - **Watch mode**: `skret run --watch -- your-cmd` auto-restarts the command when secrets change. Change detection polls a no-decrypt fingerprint, so it issues zero KMS Decrypt requests.
 - **Leak guard**: `skret scan` checks tracked files for your real managed secret values — precise, no pattern-matching false positives — and exits `10` when one is found, so CI and pre-commit hooks fail on a leak.
+- **Webhook notifications**: fire a names-only, optionally HMAC-signed webhook on every successful `set`/`delete`/`rotate`/`sync` — audit trail for pipelines without a control plane.
 - **Interactive browser**: `skret browse` opens a TUI of your secret keys and reveals each value on demand. The list never decrypts, so browsing is free of KMS cost; only the secret you reveal is decrypted.
 
 ## Install
@@ -289,7 +290,7 @@ Full docs at **[skret.n24q02m.com](https://skret.n24q02m.com)**:
 | `skret scan` | Scan tracked files for any managed secret value and exit 10 on a leak (`--staged` for pre-commit hooks) |
 | `skret browse` | Browse secret keys in an interactive TUI, revealing values on demand (no decryption to browse) |
 | `skret keys init --encrypt-existing` | Set up key material and encrypt the local secrets file at rest (`skret keys show` reports state) |
-| `skret doctor` | Read-only health check: config validity, provider reachability, auth state, local file permissions/encryption intent; exits with the failing check's class (`--format json` for machines) |
+| `skret doctor` | Read-only health check: config validity, provider reachability, auth state, local file permissions and at-rest encryption state; exits with the failing check's class (`--format json` for machines) |
 
 ## Contributing
 

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/n24q02m/skret/internal/auth"
+	"github.com/n24q02m/skret/internal/keystore"
 	"github.com/n24q02m/skret/pkg/skret"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
@@ -376,23 +377,165 @@ func TestDoctorPermStatus_Table(t *testing.T) {
 }
 
 func TestDoctorEncryptionCheck_Table(t *testing.T) {
+	passStatus := func() *keystore.Status {
+		return &keystore.Status{Encrypted: true, Format: "age", KDF: "argon2id", KeyAvailable: true, KeySource: "env:SKRET_AGE_KEY"}
+	}
+
 	tests := []struct {
-		name   string
-		rawEnv map[string]any
-		want   string
+		name        string
+		rawEnv      map[string]any
+		status      *keystore.Status
+		statusErr   error
+		want        string
+		wantClass   int
+		wantRemed   string
+		wantInDetal string
 	}{
-		{"missing-field-is-plaintext-warn", nil, doctorWarn},
-		{"false-is-warn", map[string]any{"encrypted": false}, doctorWarn},
-		{"true-passes", map[string]any{"encrypted": true}, doctorPass},
-		{"non-bool-warns-not-crashes", map[string]any{"encrypted": "yes"}, doctorWarn},
+		{
+			name:   "encrypted-with-key-passes",
+			status: passStatus(),
+			want:   doctorPass,
+		},
+		{
+			name:        "encrypted-without-key-fails-auth-class",
+			status:      &keystore.Status{Encrypted: true, Format: "age", KDF: "argon2id"},
+			want:        doctorFail,
+			wantClass:   skret.ExitAuthError,
+			wantRemed:   "SKRET_AGE_KEY",
+			wantInDetal: "no key material",
+		},
+		{
+			name:   "plaintext-warns",
+			status: &keystore.Status{Encrypted: false},
+			want:   doctorWarn,
+		},
+		{
+			name:        "plaintext-entropy-warnings-surface",
+			status:      &keystore.Status{Warnings: []string{"API_TOKEN", "file holds high-entropy plaintext values"}},
+			want:        doctorWarn,
+			wantInDetal: "API_TOKEN",
+		},
+		{
+			name:        "entropy-warnings-cap-at-three",
+			status:      &keystore.Status{Warnings: []string{"K1", "K2", "K3", "K4", "summary"}},
+			want:        doctorWarn,
+			wantInDetal: "+2 more",
+		},
+		{
+			name:        "encrypted-intent-plaintext-file-warns-pre-migration",
+			rawEnv:      map[string]any{"encrypted": true},
+			status:      &keystore.Status{Encrypted: false},
+			want:        doctorWarn,
+			wantRemed:   "skret keys init --encrypt-existing",
+			wantInDetal: "pre-migration",
+		},
+		{
+			name:      "status-error-warns-never-crashes",
+			statusErr: errors.New("read: permission denied"),
+			want:      doctorWarn,
+		},
+		{
+			name:   "missing-config-flag-tolerated",
+			rawEnv: nil,
+			status: &keystore.Status{Encrypted: false},
+			want:   doctorWarn,
+		},
+		{
+			name:   "non-bool-flag-tolerated",
+			rawEnv: map[string]any{"encrypted": "yes"},
+			status: &keystore.Status{Encrypted: false},
+			want:   doctorWarn,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			check := doctorEncryptionCheck("dev", tt.rawEnv)
+			deps := doctorDeps{
+				statusOf: func(_ string, cfg bool) (*keystore.Status, error) {
+					if tt.status != nil {
+						tt.status.EncryptedCfg = cfg
+					}
+					return tt.status, tt.statusErr
+				},
+			}
+			check := doctorEncryptionCheck(deps, "dev", "unused.yaml", tt.rawEnv)
 			assert.Equal(t, tt.want, check.Status)
 			assert.NotEmpty(t, check.Detail)
+			if tt.wantClass != 0 {
+				assert.Equal(t, tt.wantClass, check.failClass)
+			} else {
+				assert.Zero(t, check.failClass)
+			}
+			if tt.wantRemed != "" {
+				assert.Contains(t, check.Remediation, tt.wantRemed)
+			}
+			if tt.wantInDetal != "" {
+				assert.Contains(t, check.Detail, tt.wantInDetal)
+			}
 		})
 	}
+}
+
+func TestDoctorCmd_EncryptedFileWithKeyPasses(t *testing.T) {
+	// Real keystore round-trip: env-var key material deterministically wins
+	// over any machine keyring (SKRET_AGE_KEY is first in the resolve order).
+	material, err := keystore.GenerateKey()
+	require.NoError(t, err)
+	t.Setenv("SKRET_AGE_KEY", material)
+
+	sealed, err := keystore.Seal(map[string]string{"API_KEY": "v"}, material, nil)
+	require.NoError(t, err)
+	doctorFixture(t, `version: "1"
+default_env: dev
+environments:
+  dev:
+    provider: local
+    file: ./.secrets.dev.yaml
+    encrypted: true
+`, map[string]string{".secrets.dev.yaml": string(sealed)})
+
+	_, stderr, err := runDoctorCmd(t)
+	require.NoError(t, err)
+	assert.Contains(t, stderr, "PASS encryption[dev]: encrypted (format skret-encrypted-v1, kdf argon2id, key from env:SKRET_AGE_KEY)")
+	assert.Contains(t, stderr, "PASS provider[dev]: file loads (1 secret(s))")
+}
+
+func TestDoctorCmd_EncryptedFileWithoutKeyFailsAuthClass(t *testing.T) {
+	// Plain-looking file so provider[dev] loads without touching any key
+	// material; the faked status seam then reports an on-disk envelope with
+	// no available key — the exact branch doctor must surface as auth-class.
+	doctorFixture(t, `version: "1"
+default_env: dev
+environments:
+  dev:
+    provider: local
+    file: ./.secrets.dev.yaml
+`, map[string]string{".secrets.dev.yaml": doctorSecretsFile})
+
+	orig := doctorStatusOf
+	doctorStatusOf = func(_ string, cfg bool) (*keystore.Status, error) {
+		return &keystore.Status{Encrypted: true, Format: keystore.Format, KDF: "argon2id", EncryptedCfg: cfg}, nil
+	}
+	t.Cleanup(func() { doctorStatusOf = orig })
+
+	_, stderr, err := runDoctorCmd(t)
+	require.Error(t, err)
+	assert.Equal(t, skret.ExitAuthError, skret.ExitCode(err))
+	assert.Contains(t, stderr, "FAIL encryption[dev]")
+	assert.Contains(t, stderr, "fix: export SKRET_AGE_KEY=")
+}
+
+func TestDoctorLocalFailureClassification(t *testing.T) {
+	assert.Equal(t, skret.ExitProviderError, doctorLocalFailureClass(errors.New("yaml: unmarshal errors")))
+	assert.Contains(t, doctorLocalFailureRemediation(errors.New("yaml: boom")), "corrupt YAML")
+
+	// A failure that already carries a class + remediation keeps both
+	// (keystore auth errors travel through skret.ExitCode/RemediationOf).
+	carried := skret.NewError(skret.ExitAuthError, "keys: no key material", nil)
+	assert.Equal(t, skret.ExitAuthError, doctorLocalFailureClass(carried))
+	assert.Contains(t, doctorLocalFailureRemediation(carried), "corrupt YAML", "carried class keeps the fallback hint when no remediation attached")
+
+	carriedWithHint := skret.WithRemediation(carried, "set SKRET_AGE_KEY")
+	assert.Contains(t, doctorLocalFailureRemediation(carriedWithHint), "SKRET_AGE_KEY")
 }
 
 func TestDoctorFailure_ClassPrecedence(t *testing.T) {
