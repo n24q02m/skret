@@ -4,6 +4,26 @@ All notable changes to this project will be documented in this file.
 
 <!-- version list -->
 
+## v1.30.0 (2026-09-19)
+
+### Bug Fixes
+
+- **provider**: Echo caller key form in azure single-secret reads
+  ([#801](https://github.com/n24q02m/skret/pull/801),
+  [`4dd00ea`](https://github.com/n24q02m/skret/commit/4dd00eaa51fbaee036050f6aefedd86772b78cae))
+
+### Documentation
+
+- Finish azure/gcp shared-surface rebase resolutions
+  ([#801](https://github.com/n24q02m/skret/pull/801),
+  [`4dd00ea`](https://github.com/n24q02m/skret/commit/4dd00eaa51fbaee036050f6aefedd86772b78cae))
+
+### Features
+
+- **provider**: Add Azure Key Vault provider ([#801](https://github.com/n24q02m/skret/pull/801),
+  [`4dd00ea`](https://github.com/n24q02m/skret/commit/4dd00eaa51fbaee036050f6aefedd86772b78cae))
+
+
 ## v1.29.0 (2026-09-19)
 
 ### Bug Fixes
