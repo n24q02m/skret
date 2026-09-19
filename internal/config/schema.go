@@ -21,6 +21,12 @@ type Environment struct {
 	Profile  string `yaml:"profile,omitempty"`
 	KMSKeyID string `yaml:"kms_key_id,omitempty"`
 	File     string `yaml:"file,omitempty"`
+	// Encrypted declares write-side intent for the local provider: when
+	// true, the provider stores the file as a keystore envelope (see
+	// internal/keystore). Reads auto-detect an envelope on disk regardless
+	// of this flag, so a plaintext file keeps working until
+	// `skret keys init --encrypt-existing` migrates it.
+	Encrypted bool `yaml:"encrypted,omitempty"`
 }
 
 // SyncConfig declares reusable sync routes (targets) + optional hub endpoint.

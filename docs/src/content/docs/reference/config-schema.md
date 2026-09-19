@@ -24,6 +24,7 @@ environments:               # Required. At least one environment must be defined
   dev:
     provider: local         # Required. "local" for YAML-file-based secrets.
     file: ./.secrets.dev.yaml  # Required for local. Path to the secrets file.
+    encrypted: true         # Optional. Store the file as an encrypted envelope (see `skret keys`).
 
 required:                   # Optional. List of secret keys that must exist.
   - DATABASE_URL            # skret fails fast if any required key is missing.
@@ -71,6 +72,7 @@ sync:                       # Optional. Declared targets for `skret sync` / `skr
 | `profile` | string | No | `aws` | AWS credential profile name. Falls back to `AWS_PROFILE` env var. |
 | `kms_key_id` | string | No | `aws` | KMS key ID or alias for SecureString encryption. Defaults to the AWS-managed SSM key (`alias/aws/ssm`). |
 | `file` | string | Yes | `local` | Path to the local secrets YAML file. Relative paths are resolved from the `.skret.yaml` location. |
+| `encrypted` | bool | No | `false` | `local` only. Write-side encryption intent: when `true`, saves store the file as a keystore envelope (`skret-encrypted-v1`, argon2id + XChaCha20-Poly1305). Reads auto-detect an encrypted file on disk regardless of this flag. Set up with `skret keys init --encrypt-existing`. |
 
 ### Sync Fields
 

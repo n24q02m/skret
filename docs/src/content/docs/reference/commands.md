@@ -267,6 +267,48 @@ Notes:
 - `--on-conflict=fail` exits with `ExitConflictError` (6) on the first key that already exists at the destination; `skip` counts and continues; `overwrite` writes without checking.
 - This is a one-time migration into skret's backend. For ongoing propagation outward, use [`skret sync`](/guide/sync/) instead.
 
+## `skret keys init`
+
+Sets up key material for local-file encryption and optionally migrates the plaintext file in place.
+
+```bash
+skret keys init
+skret keys init --encrypt-existing
+skret keys init --file=./.secrets.dev.yaml --encrypt-existing --format json
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--file <path>` | active env's `file` | Local provider file to act on |
+| `--encrypt-existing` | `false` | Convert the plaintext file to an encrypted envelope (atomic write, 0600) and record `encrypted: true` for the active environment in `.skret.yaml` |
+| `--passphrase-stdin` | `false` | Read the passphrase from one stdin line instead of generating/storing a key |
+| `--format <table\|json>` | `table` | `json` prints `{key_source, keyring_stored, file, file_encrypted, already_encrypted, config_updated, kdf}` to stdout |
+
+Notes:
+
+- Key sourcing precedence: `SKRET_AGE_KEY` / `SKRET_LOCAL_KEY` already set (validated, nothing stored) → a fresh 256-bit key generated and stored in the OS keyring (service `skret`, user `local-enc-key`, verified round-trip) → `--passphrase-stdin` → interactive passphrase prompt with confirmation (only when stdin is a terminal).
+- Key material is never printed, logged, or included in the JSON payload.
+- With `--encrypt-existing` on an already-encrypted file, init verifies the current key material decrypts it and reports `already_encrypted` instead of rewriting.
+- If the file does not exist yet, `--encrypt-existing` records the config flag; the first write under it creates the envelope.
+- In non-interactive contexts (CI, scripts) with no env material and no usable keyring, init fails with `ExitAuthError` (4) and a remediation hint instead of prompting.
+
+## `skret keys show`
+
+Reports the encryption state of the local provider file. Secret values are never printed.
+
+```bash
+skret keys show
+skret keys show --format json
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--format <table\|json>` | `table` | `json` prints a `{encrypted, format, kdf, encrypted_config, key_available, key_source, warnings}` object |
+
+Notes:
+
+- `encrypted` reflects the file on disk (envelope sniffing), `encrypted_config` the `encrypted: true` flag in `.skret.yaml` — the two can legitimately differ while a plaintext file is awaiting migration.
+- `key_available` is checked non-interactively (env vars and OS keyring only), so scripts can rely on it without triggering a prompt.
 ## `skret doctor`
 
 Read-only health check for the current skret setup. Prints one `PASS`/`WARN`/`FAIL` line per check on stderr and a summary on stdout; exits `0` when everything passes (warnings never fail), otherwise with the failing check's error class.
@@ -292,4 +334,3 @@ Checks: config parse/schema (`config`), per-environment provider reachability (`
 | 4 | Auth check failed (expired credential) |
 | 7 | Provider unreachable |
 
-See the [Doctor guide](/guide/doctor/) for the full walkthrough.

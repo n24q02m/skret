@@ -395,27 +395,6 @@ func TestDoctorEncryptionCheck_Table(t *testing.T) {
 	}
 }
 
-func TestDoctorCmd_UnknownEnvFieldIsConfigErrorUntilSchemaLands(t *testing.T) {
-	// The encryption lane owns `encrypted`; until its schema change lands,
-	// the typed loader (KnownFields) rejects it and doctor must report that
-	// truthfully — every skret command would fail the same way. The
-	// field-present path itself is covered by TestDoctorEncryptionCheck_Table.
-	doctorFixture(t, `version: "1"
-default_env: dev
-environments:
-  dev:
-    provider: local
-    file: ./.secrets.dev.yaml
-    encrypted: true
-`, map[string]string{".secrets.dev.yaml": doctorSecretsFile})
-
-	_, stderr, err := runDoctorCmd(t)
-	require.Error(t, err, "an unknown typed field must fail the config check, never crash")
-	assert.Equal(t, skret.ExitConfigError, skret.ExitCode(err))
-	assert.Contains(t, stderr, "FAIL config:")
-	assert.Contains(t, stderr, "encrypted", "the yaml error must name the unknown field")
-}
-
 func TestDoctorFailure_ClassPrecedence(t *testing.T) {
 	configFail := DoctorCheck{Status: doctorFail, failClass: skret.ExitConfigError, Name: "config"}
 	providerFail := DoctorCheck{Status: doctorFail, failClass: skret.ExitProviderError, Name: "provider[x]"}

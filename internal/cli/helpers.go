@@ -122,7 +122,14 @@ func loadProvider(opts *GlobalOpts) (*config.ResolvedConfig, provider.SecretProv
 	reg := defaultRegistry()
 	p, err := reg.New(resolved.Provider, resolved)
 	if err != nil {
-		return nil, nil, skret.NewError(skret.ExitProviderError, fmt.Sprintf("init provider %q failed", resolved.Provider), err)
+		// Provider failures default to ExitProviderError, but an error that
+		// already carries a specific spec §7.1 code (e.g. the keystore's
+		// ExitAuthError for a missing/wrong encryption key) keeps it.
+		code := skret.ExitCode(err)
+		if code == skret.ExitGenericError {
+			code = skret.ExitProviderError
+		}
+		return nil, nil, skret.NewError(code, fmt.Sprintf("init provider %q failed", resolved.Provider), err)
 	}
 
 	// Config-resolution debug output (keys/paths only, never secret values).

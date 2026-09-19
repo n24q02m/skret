@@ -26,8 +26,11 @@ type ResolvedConfig struct {
 	Profile     string
 	KMSKeyID    string
 	File        string
-	Required    []string
-	Exclude     []string
+	// Encrypted is the local provider's write-side encryption intent
+	// (env config `encrypted: true`). See Environment.Encrypted.
+	Encrypted bool
+	Required  []string
+	Exclude   []string
 }
 
 // Resolve applies the precedence chain: CLI flags > env vars > config file > defaults.
@@ -65,6 +68,7 @@ func Resolve(cfg *Config, opts ResolveOpts) (*ResolvedConfig, error) {
 		Profile:     firstNonEmpty(opts.Profile, os.Getenv("SKRET_PROFILE"), os.Getenv("AWS_PROFILE"), env.Profile),
 		KMSKeyID:    env.KMSKeyID,
 		File:        firstNonEmpty(opts.File, env.File),
+		Encrypted:   env.Encrypted,
 		Required:    cfg.Required,
 		Exclude:     cfg.Exclude,
 	}, nil
