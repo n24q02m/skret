@@ -46,7 +46,7 @@ func TestPrintSecret(t *testing.T) {
 		{
 			name:         "with metadata output",
 			withMetadata: true,
-			want:         "{\n  \"key\": \"TEST_KEY\",\n  \"meta\": {\n    \"Description\": \"test description\",\n    \"Tags\": null,\n    \"CreatedAt\": \"0001-01-01T00:00:00Z\",\n    \"UpdatedAt\": \"0001-01-01T00:00:00Z\",\n    \"CreatedBy\": \"\"\n  },\n  \"value\": \"test-value\",\n  \"version\": 1\n}\n",
+			want:         "{\n  \"key\": \"TEST_KEY\",\n  \"meta\": {\n    \"Description\": \"test description\",\n    \"Tags\": null,\n    \"CreatedAt\": \"0001-01-01T00:00:00Z\",\n    \"UpdatedAt\": \"0001-01-01T00:00:00Z\",\n    \"CreatedBy\": \"\",\n    \"ExpiresAt\": \"0001-01-01T00:00:00Z\"\n  },\n  \"value\": \"test-value\",\n  \"version\": 1\n}\n",
 		},
 	}
 

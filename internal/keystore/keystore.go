@@ -55,12 +55,16 @@ type kdfParams struct {
 
 // envelope is the on-disk shape of an encrypted local provider file. Secrets
 // values are "v1:<b64 nonce>:<b64 ciphertext+tag>" with the secret key name
-// bound as AEAD additional data.
+// bound as AEAD additional data. Meta carries non-secret per-key metadata
+// (currently expiry timestamps) as plaintext: like the kdf header it holds
+// nothing value-derived, and it must survive round trips without changing
+// the ciphertext scheme.
 type envelope struct {
 	Version string            `yaml:"version"`
 	Format  string            `yaml:"format"`
 	KDF     kdfParams         `yaml:"kdf"`
 	Secrets map[string]string `yaml:"secrets"`
+	Meta    map[string]string `yaml:"meta,omitempty"`
 }
 
 // Detect reports whether raw looks like a keystore envelope. It never
@@ -80,6 +84,12 @@ func Detect(raw []byte) bool {
 // AAD binding: each ciphertext is bound to its key name, so values cannot be
 // swapped between keys without detection.
 func Seal(secrets map[string]string, keyMaterial string, params *kdfParams) ([]byte, error) {
+	return SealWithMeta(secrets, nil, keyMaterial, params)
+}
+
+// SealWithMeta is Seal plus plaintext per-key metadata stored in the
+// envelope header. A nil/empty meta produces byte-identical output to Seal.
+func SealWithMeta(secrets map[string]string, meta map[string]string, keyMaterial string, params *kdfParams) ([]byte, error) {
 	if keyMaterial == "" {
 		return nil, newError(CodeValidationError, "keystore: key material is empty", nil)
 	}
@@ -120,6 +130,7 @@ func Seal(secrets map[string]string, keyMaterial string, params *kdfParams) ([]b
 		Format:  Format,
 		KDF:     *p,
 		Secrets: encoded,
+		Meta:    meta,
 	})
 	if err != nil {
 		return nil, newError(CodeGenericError, "keystore: marshal envelope", err)
@@ -130,43 +141,50 @@ func Seal(secrets map[string]string, keyMaterial string, params *kdfParams) ([]b
 // Open decrypts an envelope previously written by Seal. Wrong key material
 // or tampered bytes return an AuthError carrying an actionable hint.
 func Open(raw []byte, keyMaterial string) (map[string]string, error) {
+	secrets, _, err := OpenWithMeta(raw, keyMaterial)
+	return secrets, err
+}
+
+// OpenWithMeta is Open plus the envelope's per-key metadata map (nil when
+// the envelope predates metadata or carries none).
+func OpenWithMeta(raw []byte, keyMaterial string) (map[string]string, map[string]string, error) {
 	var env envelope
 	if err := yaml.Unmarshal(raw, &env); err != nil {
-		return nil, newError(CodeConfigError, "keystore: parse envelope", err)
+		return nil, nil, newError(CodeConfigError, "keystore: parse envelope", err)
 	}
 	if env.Format != Format {
-		return nil, newError(CodeConfigError,
+		return nil, nil, newError(CodeConfigError,
 			fmt.Sprintf("keystore: unsupported envelope format %q (expected %q)", env.Format, Format), nil)
 	}
 	aead, err := aeadFor(keyMaterial, &env.KDF)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	secrets := make(map[string]string, len(env.Secrets))
 	for k, blob := range env.Secrets {
 		parts := strings.SplitN(blob, ":", 3)
 		if len(parts) != 3 || parts[0] != "v1" {
-			return nil, newError(CodeConfigError,
+			return nil, nil, newError(CodeConfigError,
 				fmt.Sprintf("keystore: malformed ciphertext for key %q", k), nil)
 		}
 		nonce, err := base64.StdEncoding.DecodeString(parts[1])
 		if err != nil {
-			return nil, newError(CodeConfigError, fmt.Sprintf("keystore: nonce for key %q", k), err)
+			return nil, nil, newError(CodeConfigError, fmt.Sprintf("keystore: nonce for key %q", k), err)
 		}
 		ct, err := base64.StdEncoding.DecodeString(parts[2])
 		if err != nil {
-			return nil, newError(CodeConfigError, fmt.Sprintf("keystore: ciphertext for key %q", k), err)
+			return nil, nil, newError(CodeConfigError, fmt.Sprintf("keystore: ciphertext for key %q", k), err)
 		}
 		pt, err := aead.Open(nil, nonce, ct, []byte(k))
 		if err != nil {
-			return nil, withRemediation(newError(CodeAuthError,
+			return nil, nil, withRemediation(newError(CodeAuthError,
 				"keystore: decrypt failed (wrong key material or tampered file)", err),
 				"verify SKRET_AGE_KEY/SKRET_LOCAL_KEY matches the key created by `skret keys init`")
 		}
 		secrets[k] = string(pt)
 	}
-	return secrets, nil
+	return secrets, env.Meta, nil
 }
 
 // aeadFor derives the argon2id key from keyMaterial + params and returns the
