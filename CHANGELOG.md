@@ -4,6 +4,25 @@ All notable changes to this project will be documented in this file.
 
 <!-- version list -->
 
+## v1.32.0 (2026-09-19)
+
+### Bug Fixes
+
+- **hub**: Use http.NoBody for the GET /api/status request (gocritic httpNoBody)
+  ([#810](https://github.com/n24q02m/skret/pull/810),
+  [`2d82e90`](https://github.com/n24q02m/skret/commit/2d82e90f768a86e26e90f3f7e287513d4c0cc449))
+
+### Features
+
+- **hub**: Hub v1 GA — skret hub init/status + worker stats API (names-only)
+  ([#810](https://github.com/n24q02m/skret/pull/810),
+  [`2d82e90`](https://github.com/n24q02m/skret/commit/2d82e90f768a86e26e90f3f7e287513d4c0cc449))
+
+- **hub**: Skret hub init/status and worker stats API (names-only)
+  ([#810](https://github.com/n24q02m/skret/pull/810),
+  [`2d82e90`](https://github.com/n24q02m/skret/commit/2d82e90f768a86e26e90f3f7e287513d4c0cc449))
+
+
 ## v1.31.1 (2026-09-19)
 
 ### Bug Fixes
