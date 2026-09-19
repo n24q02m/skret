@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/n24q02m/skret/internal/auth"
 	"github.com/n24q02m/skret/internal/keystore"
+	"github.com/n24q02m/skret/internal/provider"
 	"github.com/n24q02m/skret/pkg/skret"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
@@ -536,6 +538,98 @@ func TestDoctorLocalFailureClassification(t *testing.T) {
 
 	carriedWithHint := skret.WithRemediation(carried, "set SKRET_AGE_KEY")
 	assert.Contains(t, doctorLocalFailureRemediation(carriedWithHint), "SKRET_AGE_KEY")
+}
+
+func TestDoctorExpiryCheck_Table(t *testing.T) {
+	now := time.Date(2026, 9, 19, 12, 0, 0, 0, time.UTC)
+	deps := doctorDeps{now: func() time.Time { return now }}
+
+	secret := func(key string, expiresAt time.Time) *provider.Secret {
+		s := &provider.Secret{Key: key}
+		s.Meta.ExpiresAt = expiresAt
+		return s
+	}
+
+	t.Run("no-ttl-metadata-emits-no-line", func(t *testing.T) {
+		secrets := []*provider.Secret{secret("A", time.Time{}), {Key: "B"}}
+		assert.Nil(t, doctorExpiryCheck(deps, "dev", secrets))
+	})
+
+	t.Run("empty-secrets-emit-no-line", func(t *testing.T) {
+		assert.Nil(t, doctorExpiryCheck(deps, "dev", nil))
+	})
+
+	t.Run("expired-only", func(t *testing.T) {
+		c := doctorExpiryCheck(deps, "dev", []*provider.Secret{secret("A", now.Add(-time.Hour))})
+		require.NotNil(t, c)
+		assert.Equal(t, "expiry[dev]", c.Name)
+		assert.Equal(t, doctorWarn, c.Status)
+		assert.Empty(t, c.failClass)
+		assert.Contains(t, c.Detail, "1 past expiry (A)")
+		assert.NotContains(t, c.Detail, "expiring within")
+		assert.Contains(t, c.Remediation, "skret rotate <KEY> --ttl")
+	})
+
+	t.Run("nearing-window", func(t *testing.T) {
+		c := doctorExpiryCheck(deps, "dev", []*provider.Secret{secret("A", now.Add(2*time.Hour))})
+		require.NotNil(t, c)
+		assert.Equal(t, doctorWarn, c.Status)
+		assert.Contains(t, c.Detail, fmt.Sprintf("1 expiring within %s (A)", nearExpiryWindow))
+	})
+
+	t.Run("outside-window-is-silent", func(t *testing.T) {
+		c := doctorExpiryCheck(deps, "dev", []*provider.Secret{secret("A", now.Add(30*24*time.Hour))})
+		assert.Nil(t, c)
+	})
+
+	t.Run("mixed-expired-and-nearing", func(t *testing.T) {
+		c := doctorExpiryCheck(deps, "dev", []*provider.Secret{
+			secret("OLD", now.Add(-24*time.Hour)),
+			secret("SOON", now.Add(24*time.Hour)),
+			secret("FRESH", now.Add(90*24*time.Hour)),
+		})
+		require.NotNil(t, c)
+		assert.Contains(t, c.Detail, "1 past expiry (OLD)")
+		assert.Contains(t, c.Detail, "1 expiring within")
+		assert.Contains(t, c.Detail, "(SOON)")
+		assert.NotContains(t, c.Detail, "FRESH")
+	})
+
+	t.Run("multiple-keys-listed", func(t *testing.T) {
+		c := doctorExpiryCheck(deps, "dev", []*provider.Secret{
+			secret("A", now.Add(-time.Minute)),
+			secret("B", now.Add(-2*time.Minute)),
+		})
+		require.NotNil(t, c)
+		assert.Contains(t, c.Detail, "2 past expiry (A, B)")
+	})
+}
+
+func TestDoctorCmd_ExpiryMetadataSurfaces(t *testing.T) {
+	expired := "2020-01-01T00:00:00Z"
+	nearing := time.Now().Add(48 * time.Hour).UTC().Format(time.RFC3339)
+	doctorFixture(t, doctorLocalConfig, map[string]string{".secrets.dev.yaml": fmt.Sprintf(`version: "1"
+secrets:
+  DATABASE_URL: "postgres://dev:dev@localhost/db"
+  API_KEY: "secret123"
+meta:
+  DATABASE_URL: "%s"
+  API_KEY: "%s"
+`, expired, nearing)})
+
+	stdout, stderr, err := runDoctorCmd(t)
+	require.NoError(t, err, "TTL hygiene is advisory: warnings never fail doctor")
+	assert.Contains(t, stderr, "WARN expiry[dev]: 1 past expiry (DATABASE_URL); 1 expiring within")
+	assert.Contains(t, stderr, "fix: rotate with 'skret rotate <KEY> --ttl <duration>'")
+	assert.Equal(t, "doctor: 2 passed, 2 warning(s), 0 failed\n", stdout)
+}
+
+func TestDoctorCmd_NoExpiryMetadataEmitsNoLine(t *testing.T) {
+	doctorFixture(t, doctorLocalConfig, map[string]string{".secrets.dev.yaml": doctorSecretsFile})
+
+	_, stderr, err := runDoctorCmd(t)
+	require.NoError(t, err)
+	assert.NotContains(t, stderr, "expiry[dev]")
 }
 
 func TestDoctorFailure_ClassPrecedence(t *testing.T) {

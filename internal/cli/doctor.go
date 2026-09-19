@@ -16,6 +16,7 @@ import (
 	"github.com/n24q02m/skret/internal/auth"
 	"github.com/n24q02m/skret/internal/config"
 	"github.com/n24q02m/skret/internal/keystore"
+	"github.com/n24q02m/skret/internal/provider"
 	skaws "github.com/n24q02m/skret/internal/provider/aws"
 	"github.com/n24q02m/skret/internal/provider/local"
 	"github.com/n24q02m/skret/pkg/skret"
@@ -295,8 +296,52 @@ func doctorLocalChecks(deps doctorDeps, rawEnv map[string]any, envName string, r
 			doctorPermCheck(deps.goos, envName, absFile),
 			doctorEncryptionCheck(deps, envName, absFile, rawEnv),
 		)
+		if c := doctorExpiryCheck(deps, envName, secrets); c != nil {
+			checks = append(checks, *c)
+		}
 	}
 	return checks
+}
+
+// doctorExpiryCheck reports TTL hygiene for secrets that carry expiry
+// metadata: how many are past expiry and how many fall due within the same
+// 7-day window `skret list` warns at. Advisory only — an expired secret
+// still works, so this never fails the run. Environments whose secrets
+// carry no TTL metadata emit no check line at all.
+func doctorExpiryCheck(deps doctorDeps, envName string, secrets []*provider.Secret) *DoctorCheck {
+	var expired, nearing []string
+	now := deps.now()
+	for _, s := range secrets {
+		if s.Meta.ExpiresAt.IsZero() {
+			continue
+		}
+		switch {
+		case now.After(s.Meta.ExpiresAt):
+			expired = append(expired, s.Key)
+		case s.Meta.ExpiresAt.Sub(now) <= nearExpiryWindow:
+			nearing = append(nearing, s.Key)
+		}
+	}
+	if len(expired) == 0 && len(nearing) == 0 {
+		return nil
+	}
+
+	var detail strings.Builder
+	if len(expired) > 0 {
+		fmt.Fprintf(&detail, "%d past expiry (%s)", len(expired), strings.Join(expired, ", "))
+	}
+	if len(nearing) > 0 {
+		if detail.Len() > 0 {
+			detail.WriteString("; ")
+		}
+		fmt.Fprintf(&detail, "%d expiring within %s (%s)", len(nearing), nearExpiryWindow, strings.Join(nearing, ", "))
+	}
+	return &DoctorCheck{
+		Name:        "expiry[" + envName + "]",
+		Status:      doctorWarn,
+		Detail:      detail.String(),
+		Remediation: "rotate with 'skret rotate <KEY> --ttl <duration>'",
+	}
 }
 
 // doctorLocalFailureClass maps a local-provider load failure to its spec
