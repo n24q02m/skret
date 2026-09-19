@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 <!-- version list -->
 
+## v1.26.0 (2026-09-19)
+
+### Features
+
+- **aws**: Batch reads + VersionId cache for SSM provider (SK-PERF)
+  ([#799](https://github.com/n24q02m/skret/pull/799),
+  [`9f9c1d7`](https://github.com/n24q02m/skret/commit/9f9c1d731a6c0062c9dcb8c2b87dad6c7c226512))
+
+
 ## v1.25.0 (2026-09-19)
 
 ### Features
