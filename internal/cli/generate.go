@@ -153,15 +153,12 @@ func (o *generateOptions) validateAndGenerate(cmd *cobra.Command) ([]GenerateRes
 			return nil, skret.NewError(skret.ExitValidationError,
 				"generate: --charset does not apply to uuid", nil)
 		}
-	} else {
-		if o.length < 1 || o.length > generateMaxLen {
-			return nil, skret.NewError(skret.ExitValidationError,
-				fmt.Sprintf("generate: --length must be between 1 and %d (got %d)", generateMaxLen, o.length), nil)
-		}
+	} else if o.length < 1 || o.length > generateMaxLen {
+		return nil, skret.NewError(skret.ExitValidationError,
+			fmt.Sprintf("generate: --length must be between 1 and %d (got %d)", generateMaxLen, o.length), nil)
 	}
 
-	switch o.genType {
-	case "password":
+	if o.genType == "password" {
 		switch o.charset {
 		case "alnum", "alnum+symbols", "symbols":
 		default:
