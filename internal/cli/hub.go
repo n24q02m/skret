@@ -174,6 +174,12 @@ func hubSyncerStub(typ string) syncer.Syncer {
 		return syncer.NewGitHub("", "", "", "")
 	case "cloudflare":
 		return syncer.NewCloudflare("", "", "", "", "")
+	case "gitlab":
+		return syncer.NewGitLab("", "", "", false, false)
+	case "terraform":
+		return syncer.NewTerraform("")
+	case "k8s", syncer.K8sManifestAlias:
+		return syncer.NewK8s("-", "", "")
 	default:
 		return syncer.NewDotenv("")
 	}

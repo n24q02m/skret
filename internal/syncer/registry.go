@@ -61,6 +61,38 @@ func CanonicalTargetIdentity(tc TargetConfig) (string, error) {
 			return "cloudflare|" + baseURL + "|" + account + "|worker|" + worker, nil
 		}
 		return "cloudflare|" + baseURL + "|" + account + "|pages|" + pages, nil
+	case "gitlab":
+		project := canonicalTargetPart(tc.Fields["project"])
+		if project == "" {
+			return "", fmt.Errorf("gitlab target project is required")
+		}
+		baseURL, err := canonicalEndpoint(tc.Fields["base_url"], "https://gitlab.com")
+		if err != nil {
+			return "", fmt.Errorf("gitlab target base_url: %w", err)
+		}
+		return "gitlab|" + baseURL + "|" + project, nil
+	case "terraform":
+		file := tc.Fields["file"]
+		if file == "" {
+			file = "terraform.tfvars"
+		}
+		abs, err := filepath.Abs(filepath.Clean(file))
+		if err != nil {
+			return "", fmt.Errorf("terraform target path %q: %w", file, err)
+		}
+		return "terraform|" + canonicalTargetPart(abs), nil
+	case "k8s", K8sManifestAlias:
+		file := tc.Fields["file"]
+		if file == "" || file == "-" {
+			// Both stdout spellings are one destination; two stdout k8s
+			// targets in one run would print the same manifest twice.
+			return "k8s|stdout", nil
+		}
+		abs, err := filepath.Abs(filepath.Clean(file))
+		if err != nil {
+			return "", fmt.Errorf("k8s target path %q: %w", file, err)
+		}
+		return "k8s|" + canonicalTargetPart(abs), nil
 	default:
 		return "", fmt.Errorf("sync target type %q is not canonicalizable", tc.Type)
 	}

@@ -1159,3 +1159,85 @@ func TestSyncOptions_TargetFromFlags_Github_ValidRepoAndToken_Succeeds(t *testin
 	require.Len(t, tcs, 1)
 	assert.Equal(t, "owner/repo", tcs[0].Fields["repo"])
 }
+
+// --- SK-SYNC-T: gitlab, terraform, k8s targets ---
+
+func TestSyncOptions_TargetFromFlags_NewTargets(t *testing.T) {
+	t.Run("terraform passes the file flag through", func(t *testing.T) {
+		o := &syncOptions{to: "terraform", file: "skret.auto.tfvars"}
+		tcs, err := o.targetFromFlags("terraform")
+		require.NoError(t, err)
+		require.Len(t, tcs, 1)
+		assert.Equal(t, "terraform", tcs[0].Type)
+		assert.Equal(t, "skret.auto.tfvars", tcs[0].Fields["file"])
+	})
+
+	t.Run("k8s passes the file flag through", func(t *testing.T) {
+		o := &syncOptions{to: "k8s", file: "secret.yaml"}
+		tcs, err := o.targetFromFlags("k8s")
+		require.NoError(t, err)
+		require.Len(t, tcs, 1)
+		assert.Equal(t, "k8s", tcs[0].Type)
+		assert.Equal(t, "secret.yaml", tcs[0].Fields["file"])
+	})
+
+	t.Run("k8s-manifest alias", func(t *testing.T) {
+		o := &syncOptions{to: "k8s-manifest"}
+		tcs, err := o.targetFromFlags("k8s-manifest")
+		require.NoError(t, err)
+		require.Len(t, tcs, 1)
+		assert.Equal(t, "k8s-manifest", tcs[0].Type)
+	})
+
+	t.Run("gitlab requires a declared target", func(t *testing.T) {
+		o := &syncOptions{to: "gitlab"}
+		_, err := o.targetFromFlags("gitlab")
+		require.Error(t, err)
+		assert.ErrorContains(t, err, "sync.targets entry")
+		assert.ErrorContains(t, err, "GITLAB_TOKEN")
+	})
+}
+
+func TestTokenForType_GitLab(t *testing.T) {
+	t.Setenv("GITLAB_TOKEN", "glpat_test")
+	assert.Equal(t, "glpat_test", tokenForType("gitlab"))
+	assert.Equal(t, "", tokenForType("terraform"))
+	assert.Equal(t, "", tokenForType("k8s"))
+}
+
+func TestMutationMethod_GitLab(t *testing.T) {
+	assert.Equal(t, "PUT", mutationMethod(syncer.NewGitLab("42", "t", "", false, false), syncer.TargetConfig{}))
+}
+
+func TestTargetStateID_NewTargets(t *testing.T) {
+	gl := syncer.NewGitLab("42", "t", "", false, false)
+	assert.Equal(t, "gitlab|https://gitlab.com|42",
+		targetStateID(gl, syncer.TargetConfig{Type: "gitlab", Fields: map[string]string{"project": "42"}}))
+
+	tf := syncer.NewTerraform("")
+	assert.Equal(t, "terraform.tfvars", targetStateID(tf, syncer.TargetConfig{Type: "terraform", Fields: map[string]string{}}))
+	assert.Equal(t, "skret.auto.tfvars", targetStateID(tf, syncer.TargetConfig{Type: "terraform", Fields: map[string]string{"file": "skret.auto.tfvars"}}))
+
+	k := syncer.NewK8s("-", "", "")
+	assert.Equal(t, "k8s:stdout", targetStateID(k, syncer.TargetConfig{Type: "k8s", Fields: map[string]string{}}))
+	assert.Equal(t, "secret.yaml", targetStateID(k, syncer.TargetConfig{Type: "k8s", Fields: map[string]string{"file": "secret.yaml"}}))
+}
+
+func TestSyncCmd_TargetAliasFlag(t *testing.T) {
+	cmd := newSyncCmd(&GlobalOpts{})
+	flag := cmd.Flags().Lookup("target")
+	require.NotNil(t, flag, "sync must expose --target as an alias for --to")
+	assert.Equal(t, cmd.Flags().Lookup("to").Value.String(), flag.Value.String())
+}
+
+func TestSyncDestinationMapping_CollisionDetectedForNewTargets(t *testing.T) {
+	secrets := []*provider.Secret{
+		{Key: "/app/db/HOST", Value: "a"},
+		{Key: "/app/cache/HOST", Value: "b"},
+	}
+	for _, target := range []string{"gitlab", "terraform", "k8s", "k8s-manifest"} {
+		err := syncer.ValidateDestinationMapping(target, secrets)
+		require.Error(t, err, "target %s must detect the collision", target)
+		assert.ErrorContains(t, err, "HOST")
+	}
+}

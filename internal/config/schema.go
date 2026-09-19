@@ -37,12 +37,27 @@ type SyncConfig struct {
 
 // SyncTarget is one declared sync destination.
 type SyncTarget struct {
-	Type    string `yaml:"type"`              // github | cloudflare | dotenv
+	Type    string `yaml:"type"`              // github | cloudflare | dotenv | gitlab | terraform | k8s (alias: k8s-manifest)
 	Repo    string `yaml:"repo,omitempty"`    // github
 	Worker  string `yaml:"worker,omitempty"`  // cloudflare worker script
 	Pages   string `yaml:"pages,omitempty"`   // cloudflare pages project
 	Account string `yaml:"account,omitempty"` // cloudflare account id
-	File    string `yaml:"file,omitempty"`    // dotenv
+	File    string `yaml:"file,omitempty"`    // dotenv, terraform, k8s
+	// Project is the GitLab project (numeric id or group/project path) for
+	// gitlab targets.
+	Project string `yaml:"project,omitempty"`
+	// Masked marks gitlab CI/CD variables as masked. The value must satisfy
+	// GitLab masking requirements or the API rejects the write.
+	Masked bool `yaml:"masked,omitempty"`
+	// Protected marks gitlab CI/CD variables as protected (only available to
+	// protected branches/tags).
+	Protected bool `yaml:"protected,omitempty"`
+	// Name is metadata.name of the generated k8s Secret (default
+	// skret-secrets).
+	Name string `yaml:"name,omitempty"`
+	// Namespace, when set, is emitted as metadata.namespace of the generated
+	// k8s Secret.
+	Namespace string `yaml:"namespace,omitempty"`
 	// NoOverwrite makes sync only write keys absent at this target; existing
 	// keys are never overwritten (rotation = delete at target, next sync
 	// repopulates from the provider). The --no-overwrite CLI flag forces this
@@ -126,6 +141,15 @@ func (s *SyncTarget) validate() error {
 		if s.Worker != "" && s.Pages != "" {
 			return fmt.Errorf("config: cloudflare sync target: set exactly one of worker/pages")
 		}
+	case "gitlab":
+		if s.Project == "" {
+			return fmt.Errorf("config: gitlab sync target: project is required")
+		}
+	case "terraform":
+		// file optional (defaults to terraform.tfvars at build time)
+	case "k8s", "k8s-manifest":
+		// file optional (defaults to stdout); name/namespace shape is
+		// validated at build time by the syncer factory
 	case "dotenv":
 		// file optional (defaults to .env at build time)
 	default:

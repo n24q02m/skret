@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -54,22 +55,25 @@ func newSyncCmd(opts *GlobalOpts) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "sync",
-		Short: "Sync secrets to external targets (dotenv, github, cloudflare)",
+		Short: "Sync secrets to external targets (dotenv, github, cloudflare, gitlab, terraform, k8s)",
 		Long: `Sync secrets to one or more external targets.
 
 Targets are declared in .skret.yaml under sync.targets (github, cloudflare
-worker/pages, dotenv); running 'skret sync' with no --to pushes to all of them.
---to accepts a comma-list to pick specific target types. Tokens come from
-GITHUB_TOKEN / CLOUDFLARE_API_TOKEN. Use --skip-unchanged for hash-based drift.
---no-overwrite (or no_overwrite: true per target) only writes keys absent at
-the target, so existing values are never overwritten. Use --rotate for an
-explicit controlled overwrite of selected source keys; --rotate overrides a
-target's no_overwrite setting but cannot combine with --no-overwrite.
---dry-run prints what each target would write and exits without writing anything
-or saving sync state.`,
+worker/pages, dotenv, gitlab, terraform, k8s); running 'skret sync' with no
+--to pushes to all of them. --to (alias: --target) accepts a comma-list to
+pick specific target types. Tokens come from GITHUB_TOKEN /
+CLOUDFLARE_API_TOKEN / GITLAB_TOKEN. Use --skip-unchanged for hash-based
+drift. --no-overwrite (or no_overwrite: true per target) only writes keys
+absent at the target, so existing values are never overwritten. Use --rotate
+for an explicit controlled overwrite of selected source keys; --rotate
+overrides a target's no_overwrite setting but cannot combine with
+--no-overwrite. --dry-run prints what each target would write and exits
+without writing anything or saving sync state.`,
 		Example: `  skret sync
   skret sync --to=github,cloudflare
   skret sync --to=github --github-repo=owner/repo --skip-unchanged
+  skret sync --to=terraform --file=skret.auto.tfvars
+  skret sync --target=k8s --file=secret.yaml
   skret sync --no-overwrite
   skret sync --rotate
   skret sync --config deploy/sync/knowledgeprism.skret.yaml --dry-run`,
@@ -78,8 +82,9 @@ or saving sync state.`,
 		},
 	}
 
-	cmd.Flags().StringVar(&o.to, "to", "", "sync target(s), comma-separated (dotenv, github, cloudflare); default: .skret.yaml sync.targets, else dotenv")
-	cmd.Flags().StringVar(&o.file, "file", "", "output file path (for dotenv)")
+	cmd.Flags().StringVar(&o.to, "to", "", "sync target(s), comma-separated (dotenv, github, cloudflare, gitlab, terraform, k8s); default: .skret.yaml sync.targets, else dotenv")
+	cmd.Flags().StringVar(&o.to, "target", "", "alias for --to")
+	cmd.Flags().StringVar(&o.file, "file", "", "output file path (dotenv, terraform, k8s)")
 	cmd.Flags().StringVar(&o.githubRepo, "github-repo", "", "GitHub repository (owner/repo, comma separated)")
 	cmd.Flags().BoolVar(&o.skipUnchanged, "skip-unchanged", false, "skip secrets whose value is unchanged since the previous successful sync (drift detection)")
 	cmd.Flags().BoolVar(&o.noOverwrite, "no-overwrite", false, "only write secrets absent at the target; never overwrite an existing one (forces no_overwrite for every target)")
@@ -141,7 +146,7 @@ func (o *syncOptions) run(cmd *cobra.Command) error {
 				return skret.NewError(skret.ExitConfigError, fmt.Sprintf("sync: %s", s.Name()), err)
 			}
 			noOv := !o.rotate && (tc.NoOverwrite || o.noOverwrite)
-			journalByDefault := s.Name() == "github" || s.Name() == "cloudflare"
+			journalByDefault := s.Name() == "github" || s.Name() == "cloudflare" || s.Name() == "gitlab"
 
 			// Rotation and all external provider mutations use a durable state
 			// journal. Stateless mode remains available for local dotenv writes.
@@ -257,10 +262,12 @@ func (o *syncOptions) run(cmd *cobra.Command) error {
 			}
 			if !durablePerKey {
 				if err := s.Sync(ctx, toSync); err != nil {
-					// dotenv writes a local file only -- a failure there is I/O, not
-					// network. github/cloudflare stay ExitNetworkError (audit I2).
+					// dotenv/terraform/k8s write local files only -- a failure
+					// there is I/O, not network. External API targets stay
+					// ExitNetworkError (audit I2).
 					exitCode := skret.ExitNetworkError
-					if tc.Type == "dotenv" {
+					switch tc.Type {
+					case "dotenv", "terraform", "k8s", syncer.K8sManifestAlias:
 						exitCode = skret.ExitGenericError
 					}
 					if state != nil && operationID != "" {
@@ -496,12 +503,17 @@ func (o *syncOptions) resolveTargets(sc *config.SyncConfig) ([]syncer.TargetConf
 // expanding ${VAR} references in account (e.g. cloudflare's account id).
 func targetFromConfig(t config.SyncTarget) syncer.TargetConfig {
 	fields := map[string]string{
-		"repo":     t.Repo,
-		"worker":   t.Worker,
-		"pages":    t.Pages,
-		"account":  os.ExpandEnv(t.Account),
-		"file":     t.File,
-		"base_url": t.BaseURL,
+		"repo":      t.Repo,
+		"worker":    t.Worker,
+		"pages":     t.Pages,
+		"account":   os.ExpandEnv(t.Account),
+		"file":      t.File,
+		"base_url":  t.BaseURL,
+		"project":   t.Project,
+		"masked":    strconv.FormatBool(t.Masked),
+		"protected": strconv.FormatBool(t.Protected),
+		"name":      t.Name,
+		"namespace": t.Namespace,
 	}
 	return syncer.TargetConfig{Type: t.Type, Fields: fields, Token: tokenForType(t.Type), NoOverwrite: t.NoOverwrite}
 }
@@ -512,6 +524,10 @@ func (o *syncOptions) targetFromFlags(typ string) ([]syncer.TargetConfig, error)
 	switch typ {
 	case "dotenv":
 		return []syncer.TargetConfig{{Type: "dotenv", Fields: map[string]string{"file": o.file}}}, nil
+	case "terraform":
+		return []syncer.TargetConfig{{Type: "terraform", Fields: map[string]string{"file": o.file}}}, nil
+	case "k8s", syncer.K8sManifestAlias:
+		return []syncer.TargetConfig{{Type: typ, Fields: map[string]string{"file": o.file}}}, nil
 	case "github":
 		token := os.Getenv("GITHUB_TOKEN")
 		var errs []error
@@ -547,6 +563,8 @@ func (o *syncOptions) targetFromFlags(typ string) ([]syncer.TargetConfig, error)
 		return tcs, nil
 	case "cloudflare":
 		return nil, skret.NewError(skret.ExitConfigError, "sync: cloudflare target requires a sync.targets entry in .skret.yaml", nil)
+	case "gitlab":
+		return nil, skret.NewError(skret.ExitConfigError, "sync: gitlab target requires a sync.targets entry in .skret.yaml (project + GITLAB_TOKEN)", nil)
 	default:
 		return nil, skret.NewError(skret.ExitConfigError, fmt.Sprintf("sync: unknown target %q", typ), nil)
 	}
@@ -560,6 +578,8 @@ func tokenForType(typ string) string {
 		return os.Getenv("GITHUB_TOKEN")
 	case "cloudflare":
 		return os.Getenv("CLOUDFLARE_API_TOKEN")
+	case "gitlab":
+		return os.Getenv("GITLAB_TOKEN")
 	}
 	return ""
 }
@@ -567,6 +587,8 @@ func tokenForType(typ string) string {
 func mutationMethod(s syncer.Syncer, tc syncer.TargetConfig) string {
 	switch s.Name() {
 	case "github":
+		return "PUT"
+	case "gitlab":
 		return "PUT"
 	case "cloudflare":
 		if tc.Fields["pages"] != "" {
@@ -588,7 +610,17 @@ func targetStateID(s syncer.Syncer, tc syncer.TargetConfig) string {
 			return file
 		}
 		return ".env"
-	case "github", "cloudflare":
+	case "terraform":
+		if file := tc.Fields["file"]; file != "" {
+			return file
+		}
+		return "terraform.tfvars"
+	case "k8s":
+		if file := tc.Fields["file"]; file != "" && file != "-" {
+			return file
+		}
+		return "k8s:stdout"
+	case "github", "cloudflare", "gitlab":
 		if identity, err := syncer.CanonicalTargetIdentity(tc); err == nil {
 			return identity
 		}

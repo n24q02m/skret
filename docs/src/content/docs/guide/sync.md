@@ -1,9 +1,9 @@
 ---
 title: Sync
-description: "Push secrets from a skret environment to GitHub Actions, Cloudflare, or a dotenv file."
+description: "Push secrets from a skret environment to GitHub Actions, GitLab, Cloudflare, a dotenv file, Terraform tfvars, or a Kubernetes Secret manifest."
 ---
 
-Push secrets from a skret environment to GitHub Actions, Cloudflare, or a dotenv file.
+Push secrets from a skret environment to GitHub Actions, GitLab, Cloudflare, a dotenv file, Terraform tfvars, or a Kubernetes Secret manifest.
 
 ```bash
 skret sync --to=github --github-repo=myorg/myapp
@@ -38,7 +38,7 @@ skret sync
 
 ## `--to`: comma-separated target filter
 
-`--to` selects which target types run, as a comma-separated list:
+`--to` selects which target types run, as a comma-separated list (`--target` is an accepted alias):
 
 ```bash
 skret sync --to=github,dotenv
@@ -94,6 +94,58 @@ sync:
 
 Pages sync is a **partial merge**: only the keys being synced are sent in the PATCH request body. Every other environment variable already configured on the Pages project — set through the dashboard, another tool, or a prior sync with a different key set — is left untouched. skret never reads the existing variables back first, because Cloudflare masks `secret_text` values on GET; a get-then-merge-then-patch would blank every pre-existing secret. Set exactly one of `worker` or `pages` per cloudflare target, never both.
 
+### `gitlab`
+
+Pushes secrets as [GitLab project CI/CD variables](https://docs.gitlab.com/ee/ci/variables/#add-a-cicd-variable-to-a-project) via the project variables API. Requires `project` (numeric project ID or `group/project` path) and `GITLAB_TOKEN` in the environment (a project or group access token with the `api` scope works). Only declarable through `.skret.yaml` — there is no flags-only path for `gitlab`.
+
+```yaml
+sync:
+  targets:
+    - type: gitlab
+      project: mygroup/myapp
+      masked: true       # optional; the value must satisfy GitLab masking requirements
+      protected: true    # optional; variable is exposed only to protected branches/tags
+```
+
+```bash
+export GITLAB_TOKEN=glpat-xxx
+skret sync --to=gitlab
+```
+
+Each secret is stored under its target-side name (the last path segment of the provider key, e.g. `/app/prod/db/PASSWORD` → `PASSWORD`). skret updates existing variables in place and creates missing ones. Because GitLab only allows `A-Z`, `a-z`, `0-9` and `_` in variable keys, a provider key whose last segment contains anything else (a dash, for example) is rejected before any request with a rename hint. `masked: true` makes GitLab reject values that don't meet its masking rules (single line, at least 8 characters, limited charset) — the error includes that remediation.
+
+### `terraform`
+
+Writes secrets as a [tfvars file](https://developer.hashicorp.com/terraform/language/values/variables#variable-definitions-tfvars-files) — one `name = "value"` assignment per secret, sorted by name, HCL-escaped so values survive byte-exact. The file is managed wholesale: every sync rewrites it atomically with exactly the synced keys, so point `file` at a dedicated `.auto.tfvars` (for example `skret.auto.tfvars`) instead of mixing hand-written variables into it.
+
+```bash
+skret sync --to=terraform --file=skret.auto.tfvars
+```
+
+Without `--file` (or a `file:` on the target entry) the output defaults to `terraform.tfvars`. Variable names must be valid HCL identifiers (start with a letter or underscore, then letters, digits, underscores or dashes); anything else fails with a rename hint before any file is written.
+
+### `k8s` (alias `k8s-manifest`)
+
+Renders secrets as a Kubernetes `Secret` manifest (`type: Opaque`, values under `stringData` so the cluster base64-encodes them on apply). This is YAML generation only — skret never talks to a cluster; applying the file stays the operator's job (`kubectl apply`, Flux, Argo, ...).
+
+```bash
+skret sync --to=k8s --file=secret.yaml
+```
+
+- With no `file` (or `file: -`), the manifest is printed to **stdout** — pipe it wherever you need it. Don't combine stdout output with `--format json`: both write to stdout.
+- `name` sets `metadata.name` (default `skret-secrets`); `namespace` adds `metadata.namespace`.
+
+```yaml
+sync:
+  targets:
+    - type: k8s
+      file: deploy/secret.yaml
+      name: myapp-secrets
+      namespace: prod
+```
+
+Secret keys must satisfy the Kubernetes Secret data-key charset (alphanumerics, `-`, `_`, `.`); other names fail with a rename hint before anything is written. `k8s-manifest` is accepted as an exact synonym of `k8s`.
+
 ## Drift-aware sync: `--skip-unchanged`
 
 ```bash
@@ -139,9 +191,11 @@ and Cloudflare secrets are write-only).
 already determines the write set, and a warm value cache could otherwise
 mask a deletion you made at the target on purpose.
 
-Supported targets: `github` (repository Actions secrets) and `cloudflare`
-worker scripts. A `dotenv` target rejects no-overwrite: it rewrites the whole
-file atomically, so "only new keys" would drop every existing line. A
+Supported targets: `github` (repository Actions secrets), `cloudflare`
+worker scripts, and `gitlab` (project CI/CD variables — the write is a
+per-key API upsert, so names can be enumerated and skipped). `dotenv`,
+`terraform`, and `k8s` targets reject no-overwrite: they rewrite the whole
+output atomically, so "only new keys" would drop every existing entry. A
 `cloudflare` pages target rejects it too.
 
 ## `--format json`
