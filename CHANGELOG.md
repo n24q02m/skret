@@ -4,6 +4,36 @@ All notable changes to this project will be documented in this file.
 
 <!-- version list -->
 
+## v1.31.0 (2026-09-19)
+
+### Bug Fixes
+
+- Register mcp config keys in the skret llms manifest
+  ([#808](https://github.com/n24q02m/skret/pull/808),
+  [`ce879f1`](https://github.com/n24q02m/skret/commit/ce879f13d123457eb5858c0cdfd96b9235ae2b3d))
+
+### Documentation
+
+- Link the normative skret spec from the e2e guarantee section
+  ([#806](https://github.com/n24q02m/skret/pull/806),
+  [`8897082`](https://github.com/n24q02m/skret/commit/8897082b9e747e8bda0e1088d7bc8180679757d6))
+
+### Features
+
+- Add skret llms capability manifest (SK-LLMS) ([#805](https://github.com/n24q02m/skret/pull/805),
+  [`a8911ea`](https://github.com/n24q02m/skret/commit/a8911ea3cdee676b03eccae7dafca73885582cad))
+
+- Agent e2e contract harness (SK-AE2E) ([#806](https://github.com/n24q02m/skret/pull/806),
+  [`8897082`](https://github.com/n24q02m/skret/commit/8897082b9e747e8bda0e1088d7bc8180679757d6))
+
+- Publish the skret spec v1.0.0 (SK-SPEC) ([#804](https://github.com/n24q02m/skret/pull/804),
+  [`98c873b`](https://github.com/n24q02m/skret/commit/98c873bfae8c07fa34636bbb47bfaedd92c101c3))
+
+- Skret-mcp MCP server exposing skret over stdio (SK-MCP)
+  ([#808](https://github.com/n24q02m/skret/pull/808),
+  [`ce879f1`](https://github.com/n24q02m/skret/commit/ce879f13d123457eb5858c0cdfd96b9235ae2b3d))
+
+
 ## v1.30.0 (2026-09-19)
 
 ### Bug Fixes
