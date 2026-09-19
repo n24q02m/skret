@@ -4,6 +4,29 @@ All notable changes to this project will be documented in this file.
 
 <!-- version list -->
 
+## v1.24.0 (2026-09-19)
+
+### Code Style
+
+- **cli**: Index target slices to satisfy gocritic rangeValCopy
+  ([#796](https://github.com/n24q02m/skret/pull/796),
+  [`3038489`](https://github.com/n24q02m/skret/commit/3038489d82d9acef322a895d1c9fdfd3176a3eac))
+
+### Features
+
+- Skret rotate command with TTL expiry metadata (SK-ROT)
+  ([#797](https://github.com/n24q02m/skret/pull/797),
+  [`96ce598`](https://github.com/n24q02m/skret/commit/96ce598fbb97189fa750cc7fba14b923b8ea5407))
+
+- Sync targets for gitlab, terraform, and k8s manifests (SK-SYNC-T)
+  ([#796](https://github.com/n24q02m/skret/pull/796),
+  [`3038489`](https://github.com/n24q02m/skret/commit/3038489d82d9acef322a895d1c9fdfd3176a3eac))
+
+- **sync**: Add gitlab, terraform, and k8s sync targets (SK-SYNC-T)
+  ([#796](https://github.com/n24q02m/skret/pull/796),
+  [`3038489`](https://github.com/n24q02m/skret/commit/3038489d82d9acef322a895d1c9fdfd3176a3eac))
+
+
 ## v1.23.0 (2026-09-19)
 
 ### Bug Fixes
