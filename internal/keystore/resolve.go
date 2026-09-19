@@ -39,8 +39,8 @@ type Result struct {
 // keyringGet / keyringSet are vars for test injection (OS keyrings are
 // unavailable on headless CI).
 var (
-	keyringGet = func(service, user string) (string, error) { return keyring.Get(service, user) }
-	keyringSet = func(service, user, value string) error { return keyring.Set(service, user, value) }
+	keyringGet = keyring.Get
+	keyringSet = keyring.Set
 	// readPassword reads a passphrase without echo. Overridable in tests.
 	readPassword = func(prompt string) (string, error) {
 		fmt.Fprint(os.Stderr, prompt)

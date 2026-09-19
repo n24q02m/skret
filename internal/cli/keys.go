@@ -79,10 +79,11 @@ converted to an encrypted envelope in place (atomic write, 0600) and
 }
 
 func (o *keysInitOpts) run(cmd *cobra.Command, opts *GlobalOpts) error {
-	file, cfgPath, cfg, envName, encCfg, err := resolveKeysTarget(opts, o.file)
+	target, err := resolveKeysTarget(opts, o.file)
 	if err != nil {
 		return err
 	}
+	file, cfgPath, cfg, envName, encCfg := target.file, target.cfgPath, target.cfg, target.envName, target.encCfg
 
 	// 1. Env vars win, matching the runtime resolution order.
 	material, source := envKeyMaterial()
@@ -237,11 +238,11 @@ never printed.`,
 }
 
 func (o *keysShowOpts) run(cmd *cobra.Command, opts *GlobalOpts) error {
-	file, _, _, _, encCfg, err := resolveKeysTarget(opts, "")
+	target, err := resolveKeysTarget(opts, "")
 	if err != nil {
 		return err
 	}
-	st, err := keystore.StatusOf(file, encCfg)
+	st, err := keystore.StatusOf(target.file, target.encCfg)
 	if err != nil {
 		return err
 	}
@@ -252,7 +253,7 @@ func (o *keysShowOpts) run(cmd *cobra.Command, opts *GlobalOpts) error {
 		return nil
 	}
 	stdout := cmd.OutOrStdout()
-	fmt.Fprintf(stdout, "file:       %s\n", file)
+	fmt.Fprintf(stdout, "file:       %s\n", target.file)
 	fmt.Fprintf(stdout, "encrypted:  %t\n", st.Encrypted)
 	if st.Encrypted {
 		fmt.Fprintf(stdout, "format:     %s\n", st.Format)
@@ -270,21 +271,27 @@ func (o *keysShowOpts) run(cmd *cobra.Command, opts *GlobalOpts) error {
 	return nil
 }
 
-// resolveKeysTarget locates the local provider file for keys commands:
-// explicit --file > the active environment's file in .skret.yaml. It returns
-// the file path, the config path ("" when no config is in play), the loaded
-// config (nil likewise), the selected environment name, and the env's
-// `encrypted` flag. Keys only apply to the local provider; anything else is
-// a validation error.
-func resolveKeysTarget(opts *GlobalOpts, fileFlag string) (file, cfgPath string, cfg *config.Config, envName string, encCfg bool, err error) {
+// keysTarget is the resolved context for keys commands: the local provider
+// file, the config path ("" when no config is in play), the loaded config
+// (nil likewise), the selected environment name, and the env's `encrypted`
+// flag. Keys only apply to the local provider; anything else is a
+// validation error.
+type keysTarget struct {
+	file    string
+	cfgPath string
+	cfg     *config.Config
+	envName string
+	encCfg  bool
+}
+
+func resolveKeysTarget(opts *GlobalOpts, fileFlag string) (*keysTarget, error) {
 	path, derr := resolveConfigFile(opts)
 	switch {
 	case derr == nil:
-		cfg, err = config.Load(path)
+		cfg, err := config.Load(path)
 		if err != nil {
-			return "", "", nil, "", false, skret.NewError(skret.ExitConfigError, "keys: load config failed", err)
+			return nil, skret.NewError(skret.ExitConfigError, "keys: load config failed", err)
 		}
-		cfgPath = path
 		resolved, rerr := config.Resolve(cfg, config.ResolveOpts{
 			Env:      opts.Env,
 			Provider: opts.Provider,
@@ -294,27 +301,27 @@ func resolveKeysTarget(opts *GlobalOpts, fileFlag string) (file, cfgPath string,
 			File:     fileFlag,
 		})
 		if rerr != nil {
-			return "", "", nil, "", false, skret.NewError(skret.ExitConfigError, "keys: resolve config failed", rerr)
+			return nil, skret.NewError(skret.ExitConfigError, "keys: resolve config failed", rerr)
 		}
 		if resolved.Provider != "local" {
-			return "", "", nil, "", false, skret.NewError(skret.ExitValidationError,
+			return nil, skret.NewError(skret.ExitValidationError,
 				fmt.Sprintf("keys: manages the local provider, but environment %q uses %q", resolved.EnvName, resolved.Provider), nil)
 		}
-		file = fileFlag
+		file := fileFlag
 		if file == "" {
 			file = resolved.File
 		}
 		if file == "" {
-			return "", "", nil, "", false, skret.NewError(skret.ExitConfigError,
+			return nil, skret.NewError(skret.ExitConfigError,
 				fmt.Sprintf("keys: environment %q has no local file configured", resolved.EnvName), nil)
 		}
-		return file, cfgPath, cfg, resolved.EnvName, resolved.Encrypted, nil
+		return &keysTarget{file: file, cfgPath: path, cfg: cfg, envName: resolved.EnvName, encCfg: resolved.Encrypted}, nil
 	case fileFlag != "":
-		return fileFlag, "", nil, "", false, nil
+		return &keysTarget{file: fileFlag}, nil
 	case opts.Config != "":
-		return "", "", nil, "", false, skret.NewError(skret.ExitConfigError, "keys: load config failed", derr)
+		return nil, skret.NewError(skret.ExitConfigError, "keys: load config failed", derr)
 	default:
-		return "", "", nil, "", false, skret.NewError(skret.ExitConfigError,
+		return nil, skret.NewError(skret.ExitConfigError,
 			"keys: no .skret.yaml found and no --file given", nil)
 	}
 }
@@ -384,7 +391,7 @@ func writeFileAtomically0600(path string, data []byte) error {
 }
 
 func trimLine(s string) string {
-	for len(s) > 0 && (s[len(s)-1] == '\n' || s[len(s)-1] == '\r') {
+	for s != "" && (s[len(s)-1] == '\n' || s[len(s)-1] == '\r') {
 		s = s[:len(s)-1]
 	}
 	return s

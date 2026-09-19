@@ -86,7 +86,7 @@ func TestOpenTampered(t *testing.T) {
 	// Corrupt the last byte of the yaml (inside the ciphertext blob region).
 	i := strings.LastIndex(string(raw), ":")
 	require.Greater(t, i, 0)
-	b := []byte(raw)
+	b := append([]byte(nil), raw...)
 	b[i+1] ^= 0x01
 	_, err := Open(b, testMaterial)
 	require.Error(t, err)
