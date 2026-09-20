@@ -215,7 +215,43 @@ func TestRecordKeySuccess_EphemeralKeyReAcksMismatch(t *testing.T) {
 	}
 	err := state.RecordKeySuccess("op-1", &provider.Secret{Key: "K", Value: "v"}, time.Now())
 	require.NoError(t, err)
+
 	assert.Equal(t, hashSecret("v"), state.Outcomes["K"].AcknowledgedHash)
+}
+
+func TestLoadSyncState_LegacyUnkeyedDomainResetsCleanly(t *testing.T) {
+	// Legacy state files carry plain-SHA256 hashes and no hash_domain.
+	// Upgraded installs must reset hash-derived state instead of failing
+	// ErrOperationKeyMismatch on every retry.
+	home := withFakeHome(t)
+	hashKeyOverride = []byte("migration-test-key-32-bytes-padded!")
+	defer func() { hashKeyOverride = nil }()
+
+	path, err := StatePathFor("github", "owner/repo")
+	require.NoError(t, err)
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o700))
+	legacy := `{"target":"github","id":"owner/repo","hashes":{"K":"` +
+		strings.Repeat("a", 64) + `"},"operation_id":"op-old","phase":"awaiting_verification",` +
+		`"outcomes":{"K":{"status":"succeeded","operation_id":"op-old","acknowledged_hash":"` +
+		strings.Repeat("b", 64) + `"}}}`
+	require.NoError(t, os.WriteFile(path, []byte(legacy), 0o600))
+
+	loaded, err := LoadSyncState("github", "owner/repo")
+	require.NoError(t, err)
+	assert.Equal(t, currentHashDomain(), loaded.HashDomain)
+	assert.Empty(t, loaded.Hashes)
+	assert.Empty(t, loaded.OperationID)
+	assert.Empty(t, loaded.Phase)
+	assert.Empty(t, loaded.Outcomes)
+
+	// First post-migration run: record + save + reload roundtrip works.
+	require.NoError(t, loaded.BeginOperation("op-new", []*provider.Secret{{Key: "K", Value: "v"}}, time.Now()))
+	require.NoError(t, loaded.RecordKeySuccess("op-new", &provider.Secret{Key: "K", Value: "v"}, time.Now()))
+	require.NoError(t, SaveSyncState(loaded))
+	reloaded, err := LoadSyncState("github", "owner/repo")
+	require.NoError(t, err)
+	assert.Equal(t, hashSecret("v"), reloaded.Hashes["K"])
+	_ = home
 }
 
 func TestStatePathFor_NoHomeDir(t *testing.T) {

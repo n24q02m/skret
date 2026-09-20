@@ -22,12 +22,19 @@ import (
 	"golang.org/x/crypto/hkdf"
 )
 
-// SyncState tracks per-secret SHA256(value) hashes for drift detection.
+// SyncState tracks per-secret keyed hashes for drift detection.
 type SyncState struct {
 	Target  string            `json:"target"`
 	ID      string            `json:"id"`
 	Hashes  map[string]string `json:"hashes"`
 	Updated time.Time         `json:"updated"`
+
+	// HashDomain identifies the hash key generation that produced Hashes,
+	// SourceDigest, and outcome AcknowledgedHash values. Absent (legacy
+	// unkeyed-SHA256 files) or mismatched domains cause LoadSyncState to
+	// reset all hash-derived operation state so upgraded installs re-sync
+	// cleanly instead of hard-failing on ErrOperationKeyMismatch.
+	HashDomain string `json:"hash_domain,omitempty"`
 
 	// Mutation identity is persisted before an external write. It contains
 	// target scope plus a value-free source digest, never secret values.
@@ -947,8 +954,22 @@ func (s *SyncState) validatePersistedOperationMetadata() error {
 	return nil
 }
 
+// currentHashDomain returns a stable identifier for the active hash key.
+// Keyed by the key itself (not the source) so rotation flips the domain.
+func currentHashDomain() string {
+	mac := hmac.New(sha256.New, hashKeyMaterial())
+	mac.Write([]byte("skret sync-state hash domain v1"))
+	return hex.EncodeToString(mac.Sum(nil))[:16]
+}
+
 // LoadSyncState reads the state file for target+id, returning an empty
-// state if the file does not exist (first-run case).
+// state if the file does not exist (first-run case). When the persisted
+// hash domain is absent (legacy unkeyed-SHA256 files) or differs from the
+// active key's domain, every persisted hash is unverifiable — all
+// hash-derived operation state is reset so the next sync re-acks cleanly
+// instead of hard-failing on ErrOperationKeyMismatch. Completed-operation
+// evidence is intentionally dropped too: its AcknowledgedHash values are
+// bound to the old domain and cannot be re-verified.
 func LoadSyncState(target, id string) (*SyncState, error) {
 	path, err := StatePathFor(target, id)
 	if err != nil {
@@ -967,6 +988,18 @@ func LoadSyncState(target, id string) (*SyncState, error) {
 	}
 	if s.Target != target || s.ID != id {
 		return nil, fmt.Errorf("sync state identity mismatch: stored %q/%q, requested %q/%q", s.Target, s.ID, target, id)
+	}
+	if s.HashDomain != currentHashDomain() {
+		s.HashDomain = currentHashDomain()
+		s.Hashes = map[string]string{}
+		s.SourceDigest = ""
+		s.OperationID = ""
+		s.Phase = ""
+		s.Intent = ""
+		s.StartedAt = nil
+		s.CompletedAt = nil
+		s.LastSuccess = nil
+		s.Outcomes = nil
 	}
 	if s.Hashes == nil {
 		s.Hashes = map[string]string{}
@@ -995,6 +1028,7 @@ func SaveSyncState(s *SyncState) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return fmt.Errorf("create sync state dir: %w", err)
 	}
+	s.HashDomain = currentHashDomain()
 	s.Updated = time.Now().UTC()
 	data, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {
