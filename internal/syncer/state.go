@@ -1,6 +1,7 @@
 package syncer
 
 import (
+	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
@@ -8,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -15,7 +17,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/n24q02m/skret/internal/keystore"
 	"github.com/n24q02m/skret/internal/provider"
+	"golang.org/x/crypto/hkdf"
 )
 
 // SyncState tracks per-secret SHA256(value) hashes for drift detection.
@@ -255,6 +259,14 @@ func (s *SyncState) recordKeySuccess(operationID string, secret *provider.Secret
 	acknowledgedHash := hashSecret(secret.Value)
 	if outcome.Status == OutcomeSucceeded {
 		if outcome.Metadata != nil && outcome.AcknowledgedHash != acknowledgedHash {
+			if hashKeyIsEphemeral() {
+				// Process-random key tier: a persisted hash from another
+				// process can never match — re-acknowledge instead of
+				// hard-failing the resumed operation.
+				outcome.AcknowledgedHash = acknowledgedHash
+				s.Outcomes[secret.Key] = outcome
+				return nil
+			}
 			return ErrOperationKeyMismatch
 		}
 		return nil
@@ -1042,10 +1054,92 @@ func SourceDigest(secrets []*provider.Secret) string {
 	return hex.EncodeToString(digest[:])
 }
 
-// hashSecret returns hex-encoded SHA256 of the secret value.
+// hashSecret returns hex-encoded HMAC-SHA256 of the secret value, keyed by
+// installation-local material. Persisted hashes therefore resist offline
+// dictionary attacks against low-entropy secrets (unkeyed SHA256 did not).
 func hashSecret(value string) string {
-	h := sha256.Sum256([]byte(value))
-	return hex.EncodeToString(h[:])
+	mac := hmac.New(sha256.New, hashKeyMaterial())
+	mac.Write([]byte(value))
+	return hex.EncodeToString(mac.Sum(nil))
+}
+
+var (
+	hashKeyOnce      sync.Once
+	hashKey          []byte
+	hashKeyEphemeral bool
+
+	// hashKeyOverride is a test hook: when non-nil it wins over every
+	// resolution tier, keeping tests deterministic regardless of env,
+	// keyring, or home-dir state. Never set in production code.
+	hashKeyOverride []byte
+)
+
+func hashKeyMaterial() []byte {
+	if hashKeyOverride != nil {
+		return hashKeyOverride
+	}
+	hashKeyOnce.Do(func() {
+		hashKey, hashKeyEphemeral = resolveHashKey()
+	})
+	return hashKey
+}
+
+// hashKeyIsEphemeral reports whether the active hash key is process-random
+// (tier 3): persisted hashes from other processes can never match, so a
+// mismatch is expected rather than evidence of tampering.
+func hashKeyIsEphemeral() bool {
+	hashKeyMaterial()
+	return hashKeyEphemeral
+}
+
+// resolveHashKey derives the state-hash key, in precedence order:
+//  1. SK-ENC key material (SKRET_AGE_KEY → SKRET_LOCAL_KEY → OS keyring),
+//     HKDF-bound to this purpose so the raw encryption key is never reused.
+//  2. A dedicated installation key file (~/.skret/sync-hash.key, mode 0600)
+//     for machines without key material — still keyed, still stable.
+//  3. Process-random last resort (ephemeral): persisted comparisons
+//     over-report changes and resumed-operation mismatches are re-acked
+//     instead of hard-failing.
+func resolveHashKey() ([]byte, bool) {
+	if res, err := keystore.ResolveKeyMaterial(keystore.ResolveOpts{Interactive: false}); err == nil && res.Material != "" {
+		return hkdfDerive([]byte(res.Material), "skret sync-state hash v1"), false
+	}
+	if key, err := hashKeyFile(); err == nil {
+		return key, false
+	}
+	key := make([]byte, sha256.Size)
+	_, _ = rand.Read(key)
+	return key, true
+}
+
+func hkdfDerive(material []byte, info string) []byte {
+	key := make([]byte, sha256.Size)
+	_, _ = io.ReadFull(hkdf.New(sha256.New, material, nil, []byte(info)), key)
+	return key
+}
+
+func hashKeyFile() ([]byte, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil, err
+	}
+	path := filepath.Join(home, ".skret", "sync-hash.key")
+	if data, err := os.ReadFile(path); err == nil {
+		if key, derr := base64.StdEncoding.DecodeString(strings.TrimSpace(string(data))); derr == nil && len(key) == sha256.Size {
+			return key, nil
+		}
+	}
+	key := make([]byte, sha256.Size)
+	if _, err := rand.Read(key); err != nil {
+		return nil, err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return nil, err
+	}
+	if err := os.WriteFile(path, []byte(base64.StdEncoding.EncodeToString(key)), 0o600); err != nil {
+		return nil, err
+	}
+	return key, nil
 }
 
 // FilterUnchanged returns only the secrets whose hash differs from the state.

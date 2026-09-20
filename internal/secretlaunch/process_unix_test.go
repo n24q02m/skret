@@ -25,8 +25,8 @@ func TestResolveUnixChildUser(t *testing.T) {
 	tests := []struct {
 		name    string
 		value   string
-		wantUID int
-		wantGID int
+		wantUID uint32
+		wantGID uint32
 		wantErr bool
 	}{
 		{name: "numeric uid defaults gid", value: "123", wantUID: 123, wantGID: 123},
@@ -55,20 +55,20 @@ func TestResolveUnixChildUserByAccountName(t *testing.T) {
 
 	account, err := user.Current()
 	require.NoError(t, err)
-	wantUID, err := strconv.Atoi(account.Uid)
+	wantUID, err := strconv.ParseUint(account.Uid, 10, 32)
 	require.NoError(t, err)
-	wantGID, err := strconv.Atoi(account.Gid)
+	wantGID, err := strconv.ParseUint(account.Gid, 10, 32)
 	require.NoError(t, err)
 
 	uid, gid, err := resolveUser(account.Username)
 	require.NoError(t, err)
-	assert.Equal(t, wantUID, uid)
-	assert.Equal(t, wantGID, gid)
+	assert.Equal(t, uint32(wantUID), uid)
+	assert.Equal(t, uint32(wantGID), gid)
 
 	uid, gid, err = resolveUser(account.Username + ":321")
 	require.NoError(t, err)
-	assert.Equal(t, wantUID, uid)
-	assert.Equal(t, 321, gid)
+	assert.Equal(t, uint32(wantUID), uid)
+	assert.Equal(t, uint32(321), gid)
 }
 
 func TestApplyUnixChildUserSetsExactCredential(t *testing.T) {

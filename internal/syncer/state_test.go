@@ -1,6 +1,8 @@
 package syncer
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -165,6 +167,55 @@ func TestHashSecret_Stable(t *testing.T) {
 	assert.Equal(t, a, b)
 	assert.NotEqual(t, a, c)
 	assert.Len(t, a, 64) // sha256 hex = 64 chars
+}
+
+func TestHashSecret_IsKeyedNotRawSHA256(t *testing.T) {
+	// Regression for CodeQL go/weak-sensitive-data-hashing: persisted state
+	// hashes must be keyed (HMAC), not raw SHA256 of the secret value.
+	raw := sha256.Sum256([]byte("hello"))
+	assert.NotEqual(t, hex.EncodeToString(raw[:]), hashSecret("hello"))
+}
+
+func TestHashSecret_OverrideDeterministic(t *testing.T) {
+	hashKeyOverride = []byte("test-key-32-bytes-padded-exactly!!")
+	defer func() { hashKeyOverride = nil }()
+	a := hashSecret("value")
+	hashKeyOverride = []byte("other-key-32-bytes-padded-exactly")
+	b := hashSecret("value")
+	assert.NotEqual(t, a, b)
+}
+
+func TestRecordKeySuccess_EphemeralKeyReAcksMismatch(t *testing.T) {
+	// Ephemeral (process-random) key tier: a persisted AcknowledgedHash from
+	// another process can never match — must re-ack, not ErrOperationKeyMismatch.
+	hashKeyOverride = []byte("ephemeral-test-key-32-bytes-padded!")
+	defer func() { hashKeyOverride = nil }()
+	prev := hashKeyEphemeral
+	hashKeyEphemeral = true
+	defer func() { hashKeyEphemeral = prev }()
+
+	withFakeHome(t)
+	deadline := time.Now().Add(time.Hour)
+	state := &SyncState{
+		Target: "github", ID: "owner/repo",
+		OperationID: "op-1", Phase: OperationPhaseAwaitingVerification,
+		Hashes: map[string]string{},
+		Outcomes: map[string]KeyOutcome{
+			"K": {
+				Status: OutcomeSucceeded, OperationID: "op-1",
+				AcknowledgedHash: strings.Repeat("f", 64),
+				Metadata: &OperationMetadata{
+					OldGeneration: 1, CurrentGeneration: 2, IntendedGeneration: 3,
+					LifecycleLabel: "lifecycle-3", KMSEnvelopeRef: "kms/ref-3",
+					Capability: provider.CapabilityNativeCAS, Deadline: &deadline,
+					CanaryState: VerificationStatePending, PostconditionState: VerificationStatePending,
+				},
+			},
+		},
+	}
+	err := state.RecordKeySuccess("op-1", &provider.Secret{Key: "K", Value: "v"}, time.Now())
+	require.NoError(t, err)
+	assert.Equal(t, hashSecret("v"), state.Outcomes["K"].AcknowledgedHash)
 }
 
 func TestStatePathFor_NoHomeDir(t *testing.T) {
