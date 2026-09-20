@@ -1072,8 +1072,10 @@ func SaveSyncState(s *SyncState) error {
 }
 
 // SourceDigest returns a deterministic value-free digest for a source batch.
-// It binds each source key to its SHA256(value), then sorts the pairs so
-// caller ordering cannot change the operation identity.
+// It binds each source key to its keyed hash, then sorts the pairs so
+// caller ordering cannot change the operation identity. The outer digest is
+// HMAC-keyed too: pairs carry secret-derived data, so an unkeyed SHA-256
+// here would keep the offline-dictionary surface CodeQL flags.
 func SourceDigest(secrets []*provider.Secret) string {
 	pairs := make([]string, 0, len(secrets))
 	for _, secret := range secrets {
@@ -1084,8 +1086,9 @@ func SourceDigest(secrets []*provider.Secret) string {
 		pairs = append(pairs, secret.Key+"\x00"+hashSecret(secret.Value))
 	}
 	sort.Strings(pairs)
-	digest := sha256.Sum256([]byte(strings.Join(pairs, "\x00")))
-	return hex.EncodeToString(digest[:])
+	mac := hmac.New(sha256.New, hashKeyMaterial())
+	mac.Write([]byte(strings.Join(pairs, "\x00")))
+	return hex.EncodeToString(mac.Sum(nil))
 }
 
 // hashSecret returns hex-encoded HMAC-SHA256 of the secret value, keyed by
