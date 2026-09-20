@@ -24,45 +24,42 @@ func applyChildUser(command *exec.Cmd, value string) error {
 	if err != nil {
 		return fail(ErrChild)
 	}
-	command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true, Credential: &syscall.Credential{Uid: uint32(uid), Gid: uint32(gid)}}
+	command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true, Credential: &syscall.Credential{Uid: uid, Gid: gid}}
 	return nil
 }
 
-func resolveUser(value string) (int, int, error) {
+func resolveUser(value string) (uint32, uint32, error) {
 	parts := strings.Split(value, ":")
 	if len(parts) > 2 || len(parts) == 0 {
 		return 0, 0, fail(ErrChild)
 	}
-	if uid, err := strconv.Atoi(parts[0]); err == nil {
+	if uid, err := strconv.ParseUint(parts[0], 10, 32); err == nil {
 		gid := uid
 		if len(parts) == 2 {
-			gid, err = strconv.Atoi(parts[1])
-			if err != nil || gid < 0 {
+			gid, err = strconv.ParseUint(parts[1], 10, 32)
+			if err != nil {
 				return 0, 0, fail(ErrChild)
 			}
 		}
-		if uid < 0 {
-			return 0, 0, fail(ErrChild)
-		}
-		return uid, gid, nil
+		return uint32(uid), uint32(gid), nil
 	}
 	account, err := user.Lookup(parts[0])
 	if err != nil {
 		return 0, 0, fail(ErrChild)
 	}
-	uid, err := strconv.Atoi(account.Uid)
+	uid, err := strconv.ParseUint(account.Uid, 10, 32)
 	if err != nil {
 		return 0, 0, fail(ErrChild)
 	}
-	gid := account.Gid
+	gidValue := account.Gid
 	if len(parts) == 2 {
-		gid = parts[1]
+		gidValue = parts[1]
 	}
-	group, err := strconv.Atoi(gid)
+	gid, err := strconv.ParseUint(gidValue, 10, 32)
 	if err != nil {
 		return 0, 0, fail(ErrChild)
 	}
-	return uid, group, nil
+	return uint32(uid), uint32(gid), nil
 }
 
 func signalProcessTree(process *os.Process, signal os.Signal) error {

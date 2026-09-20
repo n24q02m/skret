@@ -1,6 +1,7 @@
 package syncer
 
 import (
+	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
@@ -8,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -15,15 +17,24 @@ import (
 	"sync"
 	"time"
 
+	"github.com/n24q02m/skret/internal/keystore"
 	"github.com/n24q02m/skret/internal/provider"
+	"golang.org/x/crypto/hkdf"
 )
 
-// SyncState tracks per-secret SHA256(value) hashes for drift detection.
+// SyncState tracks per-secret keyed hashes for drift detection.
 type SyncState struct {
 	Target  string            `json:"target"`
 	ID      string            `json:"id"`
 	Hashes  map[string]string `json:"hashes"`
 	Updated time.Time         `json:"updated"`
+
+	// HashDomain identifies the hash key generation that produced Hashes,
+	// SourceDigest, and outcome AcknowledgedHash values. Absent (legacy
+	// unkeyed-SHA256 files) or mismatched domains cause LoadSyncState to
+	// reset all hash-derived operation state so upgraded installs re-sync
+	// cleanly instead of hard-failing on ErrOperationKeyMismatch.
+	HashDomain string `json:"hash_domain,omitempty"`
 
 	// Mutation identity is persisted before an external write. It contains
 	// target scope plus a value-free source digest, never secret values.
@@ -255,6 +266,14 @@ func (s *SyncState) recordKeySuccess(operationID string, secret *provider.Secret
 	acknowledgedHash := hashSecret(secret.Value)
 	if outcome.Status == OutcomeSucceeded {
 		if outcome.Metadata != nil && outcome.AcknowledgedHash != acknowledgedHash {
+			if hashKeyIsEphemeral() {
+				// Process-random key tier: a persisted hash from another
+				// process can never match — re-acknowledge instead of
+				// hard-failing the resumed operation.
+				outcome.AcknowledgedHash = acknowledgedHash
+				s.Outcomes[secret.Key] = outcome
+				return nil
+			}
 			return ErrOperationKeyMismatch
 		}
 		return nil
@@ -935,8 +954,22 @@ func (s *SyncState) validatePersistedOperationMetadata() error {
 	return nil
 }
 
+// currentHashDomain returns a stable identifier for the active hash key.
+// Keyed by the key itself (not the source) so rotation flips the domain.
+func currentHashDomain() string {
+	mac := hmac.New(sha256.New, hashKeyMaterial())
+	mac.Write([]byte("skret sync-state hash domain v1"))
+	return hex.EncodeToString(mac.Sum(nil))[:16]
+}
+
 // LoadSyncState reads the state file for target+id, returning an empty
-// state if the file does not exist (first-run case).
+// state if the file does not exist (first-run case). When the persisted
+// hash domain is absent (legacy unkeyed-SHA256 files) or differs from the
+// active key's domain, every persisted hash is unverifiable — all
+// hash-derived operation state is reset so the next sync re-acks cleanly
+// instead of hard-failing on ErrOperationKeyMismatch. Completed-operation
+// evidence is intentionally dropped too: its AcknowledgedHash values are
+// bound to the old domain and cannot be re-verified.
 func LoadSyncState(target, id string) (*SyncState, error) {
 	path, err := StatePathFor(target, id)
 	if err != nil {
@@ -955,6 +988,18 @@ func LoadSyncState(target, id string) (*SyncState, error) {
 	}
 	if s.Target != target || s.ID != id {
 		return nil, fmt.Errorf("sync state identity mismatch: stored %q/%q, requested %q/%q", s.Target, s.ID, target, id)
+	}
+	if s.HashDomain != currentHashDomain() {
+		s.HashDomain = currentHashDomain()
+		s.Hashes = map[string]string{}
+		s.SourceDigest = ""
+		s.OperationID = ""
+		s.Phase = ""
+		s.Intent = ""
+		s.StartedAt = nil
+		s.CompletedAt = nil
+		s.LastSuccess = nil
+		s.Outcomes = nil
 	}
 	if s.Hashes == nil {
 		s.Hashes = map[string]string{}
@@ -983,6 +1028,7 @@ func SaveSyncState(s *SyncState) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return fmt.Errorf("create sync state dir: %w", err)
 	}
+	s.HashDomain = currentHashDomain()
 	s.Updated = time.Now().UTC()
 	data, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {
@@ -1042,10 +1088,92 @@ func SourceDigest(secrets []*provider.Secret) string {
 	return hex.EncodeToString(digest[:])
 }
 
-// hashSecret returns hex-encoded SHA256 of the secret value.
+// hashSecret returns hex-encoded HMAC-SHA256 of the secret value, keyed by
+// installation-local material. Persisted hashes therefore resist offline
+// dictionary attacks against low-entropy secrets (unkeyed SHA256 did not).
 func hashSecret(value string) string {
-	h := sha256.Sum256([]byte(value))
-	return hex.EncodeToString(h[:])
+	mac := hmac.New(sha256.New, hashKeyMaterial())
+	mac.Write([]byte(value))
+	return hex.EncodeToString(mac.Sum(nil))
+}
+
+var (
+	hashKeyOnce      sync.Once
+	hashKey          []byte
+	hashKeyEphemeral bool
+
+	// hashKeyOverride is a test hook: when non-nil it wins over every
+	// resolution tier, keeping tests deterministic regardless of env,
+	// keyring, or home-dir state. Never set in production code.
+	hashKeyOverride []byte
+)
+
+func hashKeyMaterial() []byte {
+	if hashKeyOverride != nil {
+		return hashKeyOverride
+	}
+	hashKeyOnce.Do(func() {
+		hashKey, hashKeyEphemeral = resolveHashKey()
+	})
+	return hashKey
+}
+
+// hashKeyIsEphemeral reports whether the active hash key is process-random
+// (tier 3): persisted hashes from other processes can never match, so a
+// mismatch is expected rather than evidence of tampering.
+func hashKeyIsEphemeral() bool {
+	hashKeyMaterial()
+	return hashKeyEphemeral
+}
+
+// resolveHashKey derives the state-hash key, in precedence order:
+//  1. SK-ENC key material (SKRET_AGE_KEY → SKRET_LOCAL_KEY → OS keyring),
+//     HKDF-bound to this purpose so the raw encryption key is never reused.
+//  2. A dedicated installation key file (~/.skret/sync-hash.key, mode 0600)
+//     for machines without key material — still keyed, still stable.
+//  3. Process-random last resort (ephemeral): persisted comparisons
+//     over-report changes and resumed-operation mismatches are re-acked
+//     instead of hard-failing.
+func resolveHashKey() ([]byte, bool) {
+	if res, err := keystore.ResolveKeyMaterial(keystore.ResolveOpts{Interactive: false}); err == nil && res.Material != "" {
+		return hkdfDerive([]byte(res.Material), "skret sync-state hash v1"), false
+	}
+	if key, err := hashKeyFile(); err == nil {
+		return key, false
+	}
+	key := make([]byte, sha256.Size)
+	_, _ = rand.Read(key)
+	return key, true
+}
+
+func hkdfDerive(material []byte, info string) []byte {
+	key := make([]byte, sha256.Size)
+	_, _ = io.ReadFull(hkdf.New(sha256.New, material, nil, []byte(info)), key)
+	return key
+}
+
+func hashKeyFile() ([]byte, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil, err
+	}
+	path := filepath.Join(home, ".skret", "sync-hash.key")
+	if data, err := os.ReadFile(path); err == nil {
+		if key, derr := base64.StdEncoding.DecodeString(strings.TrimSpace(string(data))); derr == nil && len(key) == sha256.Size {
+			return key, nil
+		}
+	}
+	key := make([]byte, sha256.Size)
+	if _, err := rand.Read(key); err != nil {
+		return nil, err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return nil, err
+	}
+	if err := os.WriteFile(path, []byte(base64.StdEncoding.EncodeToString(key)), 0o600); err != nil {
+		return nil, err
+	}
+	return key, nil
 }
 
 // FilterUnchanged returns only the secrets whose hash differs from the state.

@@ -1,6 +1,8 @@
 package syncer
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -165,6 +167,193 @@ func TestHashSecret_Stable(t *testing.T) {
 	assert.Equal(t, a, b)
 	assert.NotEqual(t, a, c)
 	assert.Len(t, a, 64) // sha256 hex = 64 chars
+}
+
+func TestHashSecret_IsKeyedNotRawSHA256(t *testing.T) {
+	// Regression for CodeQL go/weak-sensitive-data-hashing: persisted state
+	// hashes must be keyed (HMAC), not raw SHA256 of the secret value.
+	raw := sha256.Sum256([]byte("hello"))
+	assert.NotEqual(t, hex.EncodeToString(raw[:]), hashSecret("hello"))
+}
+
+func TestHashSecret_OverrideDeterministic(t *testing.T) {
+	hashKeyOverride = []byte("test-key-32-bytes-padded-exactly!!")
+	defer func() { hashKeyOverride = nil }()
+	a := hashSecret("value")
+	hashKeyOverride = []byte("other-key-32-bytes-padded-exactly")
+	b := hashSecret("value")
+	assert.NotEqual(t, a, b)
+}
+
+func TestRecordKeySuccess_EphemeralKeyReAcksMismatch(t *testing.T) {
+	// Ephemeral (process-random) key tier: a persisted AcknowledgedHash from
+	// another process can never match — must re-ack, not ErrOperationKeyMismatch.
+	hashKeyOverride = []byte("ephemeral-test-key-32-bytes-padded!")
+	defer func() { hashKeyOverride = nil }()
+	prev := hashKeyEphemeral
+	hashKeyEphemeral = true
+	defer func() { hashKeyEphemeral = prev }()
+
+	withFakeHome(t)
+	deadline := time.Now().Add(time.Hour)
+	state := &SyncState{
+		Target: "github", ID: "owner/repo",
+		OperationID: "op-1", Phase: OperationPhaseAwaitingVerification,
+		Hashes: map[string]string{},
+		Outcomes: map[string]KeyOutcome{
+			"K": {
+				Status: OutcomeSucceeded, OperationID: "op-1",
+				AcknowledgedHash: strings.Repeat("f", 64),
+				Metadata: &OperationMetadata{
+					OldGeneration: 1, CurrentGeneration: 2, IntendedGeneration: 3,
+					LifecycleLabel: "lifecycle-3", KMSEnvelopeRef: "kms/ref-3",
+					Capability: provider.CapabilityNativeCAS, Deadline: &deadline,
+					CanaryState: VerificationStatePending, PostconditionState: VerificationStatePending,
+				},
+			},
+		},
+	}
+	err := state.RecordKeySuccess("op-1", &provider.Secret{Key: "K", Value: "v"}, time.Now())
+	require.NoError(t, err)
+
+	assert.Equal(t, hashSecret("v"), state.Outcomes["K"].AcknowledgedHash)
+}
+
+func TestLoadSyncState_LegacyUnkeyedDomainResetsCleanly(t *testing.T) {
+	// Legacy state files carry plain-SHA256 hashes and no hash_domain.
+	// Upgraded installs must reset hash-derived state instead of failing
+	// ErrOperationKeyMismatch on every retry.
+	home := withFakeHome(t)
+	hashKeyOverride = []byte("migration-test-key-32-bytes-padded!")
+	defer func() { hashKeyOverride = nil }()
+
+	path, err := StatePathFor("github", "owner/repo")
+	require.NoError(t, err)
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o700))
+	legacy := `{"target":"github","id":"owner/repo","hashes":{"K":"` +
+		strings.Repeat("a", 64) + `"},"operation_id":"op-old","phase":"awaiting_verification",` +
+		`"outcomes":{"K":{"status":"succeeded","operation_id":"op-old","acknowledged_hash":"` +
+		strings.Repeat("b", 64) + `"}}}`
+	require.NoError(t, os.WriteFile(path, []byte(legacy), 0o600))
+
+	loaded, err := LoadSyncState("github", "owner/repo")
+	require.NoError(t, err)
+	assert.Equal(t, currentHashDomain(), loaded.HashDomain)
+	assert.Empty(t, loaded.Hashes)
+	assert.Empty(t, loaded.OperationID)
+	assert.Empty(t, loaded.Phase)
+	assert.Empty(t, loaded.Outcomes)
+
+	// First post-migration run: record + save + reload roundtrip works.
+	require.NoError(t, loaded.BeginOperation("op-new", []*provider.Secret{{Key: "K", Value: "v"}}, time.Now()))
+	require.NoError(t, loaded.RecordKeySuccess("op-new", &provider.Secret{Key: "K", Value: "v"}, time.Now()))
+	require.NoError(t, SaveSyncState(loaded))
+	reloaded, err := LoadSyncState("github", "owner/repo")
+	require.NoError(t, err)
+	assert.Equal(t, hashSecret("v"), reloaded.Hashes["K"])
+	_ = home
+}
+
+// resetHashKeyForTest clears the cached hash key so each test controls the
+// resolution tier explicitly.
+func resetHashKeyForTest(t *testing.T) {
+	t.Helper()
+	prevKey, prevEphemeral, prevOverride := hashKey, hashKeyEphemeral, hashKeyOverride
+	hashKey, hashKeyEphemeral, hashKeyOverride = nil, false, nil
+	hashKeyOnce = sync.Once{}
+	t.Cleanup(func() {
+		hashKey, hashKeyEphemeral, hashKeyOverride = prevKey, prevEphemeral, prevOverride
+		hashKeyOnce = sync.Once{}
+	})
+}
+
+func TestResolveHashKey_EnvMaterialTier(t *testing.T) {
+	resetHashKeyForTest(t)
+	t.Setenv("SKRET_AGE_KEY", "test-material")
+	key, ephemeral := resolveHashKey()
+	assert.False(t, ephemeral)
+	assert.Len(t, key, 32)
+	// Same material → same derived key (HKDF determinism).
+	key2, _ := resolveHashKey()
+	assert.Equal(t, key, key2)
+}
+
+func TestResolveHashKey_KeyFileFallbackRoundtrip(t *testing.T) {
+	resetHashKeyForTest(t)
+	// No env material; keyring unavailable on this runner or empty → file tier.
+	home := withFakeHome(t)
+	key1, ephemeral := resolveHashKey()
+	assert.False(t, ephemeral)
+	assert.Len(t, key1, 32)
+	// Second resolution reads the persisted file → identical key.
+	key2, _ := resolveHashKey()
+	assert.Equal(t, key1, key2)
+	data, err := os.ReadFile(filepath.Join(home, ".skret", "sync-hash.key"))
+	require.NoError(t, err)
+	assert.NotEmpty(t, data)
+}
+
+func TestHashKeyFile_CorruptRegenerates(t *testing.T) {
+	resetHashKeyForTest(t)
+	home := withFakeHome(t)
+	dir := filepath.Join(home, ".skret")
+	require.NoError(t, os.MkdirAll(dir, 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "sync-hash.key"), []byte("garbage!!"), 0o600))
+	key, err := hashKeyFile()
+	require.NoError(t, err)
+	assert.Len(t, key, 32)
+}
+
+func TestCurrentHashDomain_KeyBound(t *testing.T) {
+	resetHashKeyForTest(t)
+	hashKeyOverride = []byte("domain-key-a-32-bytes-padded-exact!")
+	d1 := currentHashDomain()
+	hashKeyOverride = []byte("domain-key-b-32-bytes-padded-exact!")
+	d2 := currentHashDomain()
+	assert.NotEqual(t, d1, d2)
+	assert.Len(t, d1, 16)
+}
+
+func TestResolveHashKey_EphemeralWhenNoHome(t *testing.T) {
+	resetHashKeyForTest(t)
+	// No env material, no keyring, and no home dir → process-random tier.
+	if runtime.GOOS == "windows" {
+		t.Setenv("USERPROFILE", "")
+		t.Setenv("HOMEDRIVE", "")
+		t.Setenv("HOMEPATH", "")
+	} else {
+		t.Setenv("HOME", "")
+	}
+	key, ephemeral := resolveHashKey()
+	if ephemeral {
+		assert.Len(t, key, 32)
+		return
+	}
+	t.Skip("UserHomeDir did not error in this environment; ephemeral tier unreachable")
+}
+
+func TestHashKeyFile_NoHome(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Setenv("USERPROFILE", "")
+		t.Setenv("HOMEDRIVE", "")
+		t.Setenv("HOMEPATH", "")
+	} else {
+		t.Setenv("HOME", "")
+	}
+	_, err := hashKeyFile()
+	if err == nil {
+		t.Skip("UserHomeDir did not error in this environment; nothing to assert")
+	}
+	assert.Error(t, err)
+}
+
+func TestHashKeyFile_WriteFailsWhenSkretPathIsFile(t *testing.T) {
+	resetHashKeyForTest(t)
+	home := withFakeHome(t)
+	// ~/.skret exists as a regular file → MkdirAll fails → error path.
+	require.NoError(t, os.WriteFile(filepath.Join(home, ".skret"), []byte("x"), 0o600))
+	_, err := hashKeyFile()
+	assert.Error(t, err)
 }
 
 func TestStatePathFor_NoHomeDir(t *testing.T) {
