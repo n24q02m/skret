@@ -254,6 +254,66 @@ func TestLoadSyncState_LegacyUnkeyedDomainResetsCleanly(t *testing.T) {
 	_ = home
 }
 
+// resetHashKeyForTest clears the cached hash key so each test controls the
+// resolution tier explicitly.
+func resetHashKeyForTest(t *testing.T) {
+	t.Helper()
+	prevKey, prevEphemeral, prevOverride := hashKey, hashKeyEphemeral, hashKeyOverride
+	hashKey, hashKeyEphemeral, hashKeyOverride = nil, false, nil
+	hashKeyOnce = sync.Once{}
+	t.Cleanup(func() {
+		hashKey, hashKeyEphemeral, hashKeyOverride = prevKey, prevEphemeral, prevOverride
+		hashKeyOnce = sync.Once{}
+	})
+}
+
+func TestResolveHashKey_EnvMaterialTier(t *testing.T) {
+	resetHashKeyForTest(t)
+	t.Setenv("SKRET_AGE_KEY", "test-material")
+	key, ephemeral := resolveHashKey()
+	assert.False(t, ephemeral)
+	assert.Len(t, key, 32)
+	// Same material → same derived key (HKDF determinism).
+	key2, _ := resolveHashKey()
+	assert.Equal(t, key, key2)
+}
+
+func TestResolveHashKey_KeyFileFallbackRoundtrip(t *testing.T) {
+	resetHashKeyForTest(t)
+	// No env material; keyring unavailable on this runner or empty → file tier.
+	home := withFakeHome(t)
+	key1, ephemeral := resolveHashKey()
+	assert.False(t, ephemeral)
+	assert.Len(t, key1, 32)
+	// Second resolution reads the persisted file → identical key.
+	key2, _ := resolveHashKey()
+	assert.Equal(t, key1, key2)
+	data, err := os.ReadFile(filepath.Join(home, ".skret", "sync-hash.key"))
+	require.NoError(t, err)
+	assert.NotEmpty(t, data)
+}
+
+func TestHashKeyFile_CorruptRegenerates(t *testing.T) {
+	resetHashKeyForTest(t)
+	home := withFakeHome(t)
+	dir := filepath.Join(home, ".skret")
+	require.NoError(t, os.MkdirAll(dir, 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "sync-hash.key"), []byte("garbage!!"), 0o600))
+	key, err := hashKeyFile()
+	require.NoError(t, err)
+	assert.Len(t, key, 32)
+}
+
+func TestCurrentHashDomain_KeyBound(t *testing.T) {
+	resetHashKeyForTest(t)
+	hashKeyOverride = []byte("domain-key-a-32-bytes-padded-exact!")
+	d1 := currentHashDomain()
+	hashKeyOverride = []byte("domain-key-b-32-bytes-padded-exact!")
+	d2 := currentHashDomain()
+	assert.NotEqual(t, d1, d2)
+	assert.Len(t, d1, 16)
+}
+
 func TestStatePathFor_NoHomeDir(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Setenv("USERPROFILE", "")
