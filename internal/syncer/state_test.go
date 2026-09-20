@@ -314,6 +314,48 @@ func TestCurrentHashDomain_KeyBound(t *testing.T) {
 	assert.Len(t, d1, 16)
 }
 
+func TestResolveHashKey_EphemeralWhenNoHome(t *testing.T) {
+	resetHashKeyForTest(t)
+	// No env material, no keyring, and no home dir → process-random tier.
+	if runtime.GOOS == "windows" {
+		t.Setenv("USERPROFILE", "")
+		t.Setenv("HOMEDRIVE", "")
+		t.Setenv("HOMEPATH", "")
+	} else {
+		t.Setenv("HOME", "")
+	}
+	key, ephemeral := resolveHashKey()
+	if ephemeral {
+		assert.Len(t, key, 32)
+		return
+	}
+	t.Skip("UserHomeDir did not error in this environment; ephemeral tier unreachable")
+}
+
+func TestHashKeyFile_NoHome(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Setenv("USERPROFILE", "")
+		t.Setenv("HOMEDRIVE", "")
+		t.Setenv("HOMEPATH", "")
+	} else {
+		t.Setenv("HOME", "")
+	}
+	_, err := hashKeyFile()
+	if err == nil {
+		t.Skip("UserHomeDir did not error in this environment; nothing to assert")
+	}
+	assert.Error(t, err)
+}
+
+func TestHashKeyFile_WriteFailsWhenSkretPathIsFile(t *testing.T) {
+	resetHashKeyForTest(t)
+	home := withFakeHome(t)
+	// ~/.skret exists as a regular file → MkdirAll fails → error path.
+	require.NoError(t, os.WriteFile(filepath.Join(home, ".skret"), []byte("x"), 0o600))
+	_, err := hashKeyFile()
+	assert.Error(t, err)
+}
+
 func TestStatePathFor_NoHomeDir(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Setenv("USERPROFILE", "")
