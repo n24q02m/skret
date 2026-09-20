@@ -4,6 +4,50 @@ All notable changes to this project will be documented in this file.
 
 <!-- version list -->
 
+## v1.32.1 (2026-09-20)
+
+### Bug Fixes
+
+- **ci**: Run repo-bootstrap tests via stdlib unittest
+  ([#817](https://github.com/n24q02m/skret/pull/817),
+  [`8866798`](https://github.com/n24q02m/skret/commit/88667982ed886cd4f6019a9931ffd50f175d26c7))
+
+- **security**: Hash-domain migration for legacy unkeyed state
+  ([#813](https://github.com/n24q02m/skret/pull/813),
+  [`642d118`](https://github.com/n24q02m/skret/commit/642d11867565014f730c9c099556d9ad63c307f2))
+
+- **security**: Key SourceDigest outer hash too ([#816](https://github.com/n24q02m/skret/pull/816),
+  [`a34af32`](https://github.com/n24q02m/skret/commit/a34af321d73a6af16a346e33dda42a606084880d))
+
+- **security**: Resolve CodeQL alerts — keyed state hashes + bounded uid/gid
+  ([#813](https://github.com/n24q02m/skret/pull/813),
+  [`642d118`](https://github.com/n24q02m/skret/commit/642d11867565014f730c9c099556d9ad63c307f2))
+
+### Continuous Integration
+
+- Wire tests/repo_bootstrap policy suite into repo-bootstrap-verify job
+  ([#814](https://github.com/n24q02m/skret/pull/814),
+  [`b2b3b4a`](https://github.com/n24q02m/skret/commit/b2b3b4a6d94ad26d34bc3ab4af8d647cbc4ef48d))
+
+- Wire tests/repo_bootstrap policy suite into repo-bootstrap-verify job
+  ([#813](https://github.com/n24q02m/skret/pull/813),
+  [`642d118`](https://github.com/n24q02m/skret/commit/642d11867565014f730c9c099556d9ad63c307f2))
+
+### Testing
+
+- **cli**: Seed/assert keyed state hashes via public Update path
+  ([#813](https://github.com/n24q02m/skret/pull/813),
+  [`642d118`](https://github.com/n24q02m/skret/commit/642d11867565014f730c9c099556d9ad63c307f2))
+
+- **syncer**: Cover hash-key error paths (no-home, unwritable dir)
+  ([#813](https://github.com/n24q02m/skret/pull/813),
+  [`642d118`](https://github.com/n24q02m/skret/commit/642d11867565014f730c9c099556d9ad63c307f2))
+
+- **syncer**: Cover hash-key tiers + domain binding
+  ([#813](https://github.com/n24q02m/skret/pull/813),
+  [`642d118`](https://github.com/n24q02m/skret/commit/642d11867565014f730c9c099556d9ad63c307f2))
+
+
 ## v1.32.0 (2026-09-19)
 
 ### Bug Fixes
