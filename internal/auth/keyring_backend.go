@@ -29,28 +29,23 @@ func (b *keyringBackend) read() (*storeFile, error) {
 		}
 		return nil, fmt.Errorf("auth keyring: read index: %w", err)
 	}
-	remaining := idx
-	for {
-		name, rest, found := strings.Cut(remaining, ",")
-		if name != "" {
-			raw, err := keyring.Get(b.service, "cred:"+name)
-			if err != nil {
-				if err != keyring.ErrNotFound {
-					return nil, fmt.Errorf("auth keyring: read %q: %w", name, err)
-				}
-			} else {
-				var c Credential
-				if err := yaml.Unmarshal([]byte(raw), &c); err != nil {
-					return nil, fmt.Errorf("auth keyring: parse %q: %w", name, err)
-				}
-				c.Provider = name
-				f.Providers[name] = &c
+	for _, name := range strings.Split(idx, ",") {
+		if name == "" {
+			continue
+		}
+		raw, err := keyring.Get(b.service, "cred:"+name)
+		if err != nil {
+			if err == keyring.ErrNotFound {
+				continue
 			}
+			return nil, fmt.Errorf("auth keyring: read %q: %w", name, err)
 		}
-		if !found {
-			break
+		var c Credential
+		if err := yaml.Unmarshal([]byte(raw), &c); err != nil {
+			return nil, fmt.Errorf("auth keyring: parse %q: %w", name, err)
 		}
-		remaining = rest
+		c.Provider = name
+		f.Providers[name] = &c
 	}
 	return f, nil
 }

@@ -224,33 +224,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mapfile -d '' -t amd64_archives < <(
-            find dist -maxdepth 1 -type f -name 'skret_*_linux_amd64.tar.gz' -print0
-          )
-          mapfile -d '' -t arm64_archives < <(
-            find dist -maxdepth 1 -type f -name 'skret_*_linux_arm64.tar.gz' -print0
-          )
-          test "${#amd64_archives[@]}" -eq 1
-          test "${#arm64_archives[@]}" -eq 1
-          amd64_archive="${amd64_archives[0]}"
-          arm64_archive="${arm64_archives[0]}"
-          context="$RUNNER_TEMP/sync-image"
-          rm -rf "$context"
-          mkdir -p "$context/linux/amd64" "$context/linux/arm64" "$context/deploy"
-          cp Dockerfile.sync "$context/Dockerfile.sync"
-          cp deploy/sync-entrypoint.sh "$context/deploy/sync-entrypoint.sh"
-          tar -xOf "$amd64_archive" skret > "$context/linux/amd64/skret"
-          tar -xOf "$arm64_archive" skret > "$context/linux/arm64/skret"
-          chmod 0755 "$context/linux/amd64/skret" "$context/linux/arm64/skret"
+          mkdir -p dist
           docker buildx build \
-            --file "$context/Dockerfile.sync" \
+            --file Dockerfile.sync \
             --platform linux/amd64,linux/arm64 \
             --label "org.opencontainers.image.revision=${{ github.sha }}" \
             --label "org.opencontainers.image.version=${{ steps.release.outputs.version }}" \
             --provenance=false \
             --sbom=false \
             --output type=oci,dest=dist/skret-sync.oci.tar \
-            "$context"
+            .
       - name: Generate source manifest
         shell: bash
         env:

@@ -34,8 +34,8 @@ func CanonicalTargetIdentity(tc TargetConfig) (string, error) {
 		return "dotenv|" + canonicalTargetPart(abs), nil
 	case "github":
 		repo := canonicalTargetPart(tc.Fields["repo"])
-		owner, name, found := strings.Cut(repo, "/")
-		if !found || owner == "" || name == "" || strings.Contains(name, "/") {
+		parts := strings.Split(repo, "/")
+		if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
 			return "", fmt.Errorf("github target repo %q must be owner/repo", tc.Fields["repo"])
 		}
 		baseURL, err := canonicalEndpoint(tc.Fields["base_url"], "https://api.github.com")

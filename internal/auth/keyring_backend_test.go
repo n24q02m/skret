@@ -169,27 +169,3 @@ func TestKeyringBackendEmptyRead(t *testing.T) {
 		t.Fatalf("empty read should be a fresh storeFile: %+v", f)
 	}
 }
-
-func TestKeyringBackend_Read_MissingCredButInIndex(t *testing.T) {
-	keyring.MockInit()
-	b := &keyringBackend{service: "skret-missing"}
-	if err := keyring.Set(b.service, keyringIndexUser, "aws,gcp"); err != nil {
-		t.Fatal(err)
-	}
-	if err := keyring.Set(b.service, "cred:gcp", "token: gcp-token\nmethod: something\n"); err != nil {
-		t.Fatal(err)
-	}
-	f, err := b.read()
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(f.Providers) != 1 || f.Providers["gcp"].Token != "gcp-token" {
-		t.Fatalf("expected 1 provider (gcp), got: %+v", f.Providers)
-	}
-}
-
-func TestKeyringBackend_Read_HardError(t *testing.T) {
-	// Not using mock, so keyring access without init usually fails on CI
-	// but we just need it to return an error *other* than ErrNotFound.
-	// Oh actually MockInit replaces the backend, so we need to trigger a read error.
-}

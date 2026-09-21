@@ -59,9 +59,6 @@ func coverageMetadataState(meta *OperationMetadata, status OutcomeStatus, phase 
 
 func writeCoverageStateFile(t *testing.T, state SyncState) {
 	t.Helper()
-	// Fixtures exercise metadata validation, not hash-domain migration:
-	// stamp the current domain so LoadSyncState does not reset the state.
-	state.HashDomain = currentHashDomain()
 	path, err := StatePathFor(state.Target, state.ID)
 	require.NoError(t, err)
 	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o700))

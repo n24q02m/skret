@@ -2,6 +2,8 @@ package cli
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,7 +15,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/n24q02m/skret/internal/provider"
 	"github.com/n24q02m/skret/internal/syncer"
 	"github.com/n24q02m/skret/pkg/skret"
 	"github.com/stretchr/testify/assert"
@@ -100,7 +101,7 @@ sync:
 	assert.Equal(t, syncer.OutcomeSucceeded, state.Outcomes["A"].Status)
 	assert.Equal(t, syncer.OutcomeNeedsReconciliation, state.Outcomes["B"].Status)
 	assert.Equal(t, syncer.OutcomePending, state.Outcomes["C"].Status)
-	assert.Equal(t, keyedHash("A", "alpha"), state.Hashes["A"])
+	assert.Equal(t, sha256Hex("alpha"), state.Hashes["A"])
 	assert.NotContains(t, state.Hashes, "B")
 	assert.NotContains(t, state.Hashes, "C")
 	assert.NotEqual(t, syncer.OperationPhaseSucceeded, state.Phase)
@@ -119,12 +120,9 @@ sync:
 	mu.Unlock()
 }
 
-// keyedHash returns the keyed hash the syncer persists for a secret value,
-// computed through the public Update path (hashSecret is unexported).
-func keyedHash(key, value string) string {
-	s := &syncer.SyncState{}
-	s.Update([]*provider.Secret{{Key: key, Value: value}})
-	return s.Hashes[key]
+func sha256Hex(value string) string {
+	digest := sha256.Sum256([]byte(value))
+	return hex.EncodeToString(digest[:])
 }
 
 func TestSync_PerKeyRecoversPendingOperationAfterFinalJournalSaveFailure(t *testing.T) {
@@ -167,8 +165,8 @@ sync:
 		Phase:       syncer.OperationPhasePending,
 		StartedAt:   &started,
 		Hashes: map[string]string{
-			"A": keyedHash("A", "alpha"),
-			"B": keyedHash("B", "bravo"),
+			"A": sha256Hex("alpha"),
+			"B": sha256Hex("bravo"),
 		},
 		Outcomes: map[string]syncer.KeyOutcome{
 			"A": {Status: syncer.OutcomeSucceeded, OperationID: "op-final-save", UpdatedAt: started},
@@ -256,8 +254,8 @@ sync:
 	assert.Equal(t, syncer.OperationPhasePending, state.Phase)
 	assert.Equal(t, syncer.OutcomeSucceeded, state.Outcomes["A"].Status)
 	assert.Equal(t, syncer.OutcomeSucceeded, state.Outcomes["B"].Status)
-	assert.Equal(t, keyedHash("A", "alpha"), state.Hashes["A"])
-	assert.Equal(t, keyedHash("B", "bravo"), state.Hashes["B"])
+	assert.Equal(t, sha256Hex("alpha"), state.Hashes["A"])
+	assert.Equal(t, sha256Hex("bravo"), state.Hashes["B"])
 	assert.Nil(t, state.CompletedAt)
 	assert.Nil(t, state.LastSuccess)
 }
