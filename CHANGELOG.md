@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 <!-- version list -->
 
+## v1.32.3 (2026-09-21)
+
+### Performance Improvements
+
+- ⚡ bolt: replace string.split with string.cut in github repo canonicalization
+  ([#778](https://github.com/n24q02m/skret/pull/778),
+  [`a0f14a2`](https://github.com/n24q02m/skret/commit/a0f14a2499968628fdac7240513d9126e7c30035))
+
+- ⚡ bolt: zero-allocation path parsing in syncer ([#780](https://github.com/n24q02m/skret/pull/780),
+  [`09732c7`](https://github.com/n24q02m/skret/commit/09732c71f365a5ea0fe7c6a8f9a910ac45af1ed3))
+
+
 ## v1.32.2 (2026-09-21)
 
 ### Bug Fixes
