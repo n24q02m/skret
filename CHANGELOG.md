@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 <!-- version list -->
 
+## v1.33.0 (2026-09-21)
+
+### Code Style
+
+- Gofumpt cmd/skret-compose-gen ([#823](https://github.com/n24q02m/skret/pull/823),
+  [`5eb0ec0`](https://github.com/n24q02m/skret/commit/5eb0ec043ff540c03f8d76ace8b080ba172fc35a))
+
+### Features
+
+- Add skret-compose-gen signed artifact generator
+  ([#823](https://github.com/n24q02m/skret/pull/823),
+  [`5eb0ec0`](https://github.com/n24q02m/skret/commit/5eb0ec043ff540c03f8d76ace8b080ba172fc35a))
+
+
 ## v1.32.5 (2026-09-21)
 
 ### Performance Improvements
