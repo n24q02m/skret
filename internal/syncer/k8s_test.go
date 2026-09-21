@@ -174,3 +174,26 @@ func TestK8sManifestAlias(t *testing.T) {
 		assert.Equal(t, noFile, dash)
 	})
 }
+
+func TestValidDNSSubdomain(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected bool
+	}{
+		{"empty", "", false},
+		{"too long", strings.Repeat("a", 254), false},
+		{"valid", "valid.example.com", true},
+		{"invalid label char", "valid.ex@mple.com", false},
+		{"empty label", "valid..com", false},
+		{"label too long", "valid." + strings.Repeat("a", 64) + ".com", false},
+		{"label starts with hyphen", "valid.-example.com", false},
+		{"label ends with hyphen", "valid.example-.com", false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.expected, validDNSSubdomain(tc.input))
+		})
+	}
+}
