@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 <!-- version list -->
 
+## v1.32.4 (2026-09-21)
+
+### Performance Improvements
+
+- ⚡ bolt: replace strings.split with strings.cut for zero allocation parsing
+  ([#782](https://github.com/n24q02m/skret/pull/782),
+  [`06c9e3e`](https://github.com/n24q02m/skret/commit/06c9e3efcc7bd9180198cfc7118d1371e93d5c99))
+
+
 ## v1.32.3 (2026-09-21)
 
 ### Performance Improvements
