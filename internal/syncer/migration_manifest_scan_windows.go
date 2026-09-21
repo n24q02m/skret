@@ -141,7 +141,17 @@ func windowsStateManifestPathComponents(root string) (string, []string, error) {
 		if len(cleaned) < len(prefix) || !strings.EqualFold(cleaned[:len(prefix)], prefix) {
 			continue
 		}
-		parts := strings.Split(strings.TrimLeft(cleaned[len(prefix):], "\\"), "\\")
+		trimmed := strings.TrimLeft(cleaned[len(prefix):], "\\")
+		var parts []string
+		remaining := trimmed
+		for {
+			part, rest, found := strings.Cut(remaining, "\\")
+			parts = append(parts, part)
+			if !found {
+				break
+			}
+			remaining = rest
+		}
 		if len(parts) < 2 || parts[0] == "" || parts[1] == "" {
 			return "", nil, os.ErrInvalid
 		}
@@ -164,11 +174,18 @@ func windowsStateManifestPathComponents(root string) (string, []string, error) {
 	if remainder == "" {
 		return volumeRoot, nil, nil
 	}
-	parts := strings.Split(remainder, "\\")
-	for _, part := range parts {
+	var parts []string
+	remaining := remainder
+	for {
+		part, rest, found := strings.Cut(remaining, "\\")
 		if part == "" || part == "." || part == ".." {
 			return "", nil, os.ErrInvalid
 		}
+		parts = append(parts, part)
+		if !found {
+			break
+		}
+		remaining = rest
 	}
 	return volumeRoot, parts, nil
 }
