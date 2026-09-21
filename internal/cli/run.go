@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	osexec "os/exec"
@@ -109,6 +110,15 @@ func execCommand(args []string, env []string) error {
 	}
 	err = skexec.Run(binary, args, env)
 	if err != nil {
+		// On Windows the child ran as a subprocess: forward its exit code
+		// verbatim so `skret run --` matches the Unix exec() behavior (and the
+		// documented contract) instead of collapsing every failure to 125.
+		// *osexec.ExitError implements ExitCode() int, which skret.ExitCode
+		// honors. Non-ExitError failures (spawn errors) stay 125.
+		var exitErr *osexec.ExitError
+		if errors.As(err, &exitErr) {
+			return exitErr
+		}
 		return skret.NewError(skret.ExitExecError, "runtime error", err)
 	}
 	return nil

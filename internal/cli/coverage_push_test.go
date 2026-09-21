@@ -3,9 +3,12 @@ package cli
 import (
 	"bytes"
 	"os"
+	osexec "os/exec"
 	"path/filepath"
+	"runtime"
 	"testing"
 
+	"github.com/n24q02m/skret/pkg/skret"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -419,6 +422,20 @@ func TestExecCommand_NotFound(t *testing.T) {
 	err := execCommand([]string{"this_command_does_not_exist_12345"}, os.Environ())
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "command not found")
+}
+
+func TestExecCommand_ChildExitCodeForwarded(t *testing.T) {
+	// On Unix, skexec.Run replaces the process (syscall.Exec) so a non-zero
+	// child exit never returns here — this path is Windows-only.
+	if runtime.GOOS != "windows" {
+		t.Skip("child exit-code forwarding only reachable on Windows")
+	}
+	err := execCommand([]string{"cmd", "/c", "exit 42"}, os.Environ())
+	require.Error(t, err)
+	var exitErr *osexec.ExitError
+	require.ErrorAs(t, err, &exitErr)
+	assert.Equal(t, 42, exitErr.ExitCode())
+	assert.Equal(t, 42, skret.ExitCode(err))
 }
 
 // --- buildSyncers error paths ---

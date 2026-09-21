@@ -204,9 +204,10 @@ Two more things you can use directly:
   SKRET_AGENT_E2E_BINARY=./skret go test ./tests/agent-e2e/ -run TestAgentE2E_ContractSession -v
   ```
 
-One documented platform note: on unix, `skret run -- <cmd>` replaces itself
-with the child, so the child's exit code is skret's exit code byte-for-byte
-(42 is 42). On Windows, skret runs the command as a child process; a child
-that exits non-zero surfaces as exit **125** with the original status on
-stderr. The harness asserts exactly this on each platform, so the difference
-cannot drift from what this page says.
+On every platform, `skret run -- <cmd>` forwards the child's exit code
+byte-for-byte (42 is 42): on unix skret replaces itself via `syscall.Exec`,
+and on Windows the child runs as a subprocess whose `ExitError` is returned
+verbatim and honored by the exit-code mapper. Exit **125** is reserved for
+the case where the command itself could not be executed (not found, spawn
+failure). The harness asserts the forwarded code on each platform, so the
+contract cannot drift from what this page says.
