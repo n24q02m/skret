@@ -232,6 +232,7 @@ func TestGenerateIsDeterministic(t *testing.T) {
 		}
 	}
 }
+
 func TestGenerateMultipleKeysAndSignKeySelection(t *testing.T) {
 	dir := t.TempDir()
 	composePath := writeCompose(t, dir, composeFixture)
@@ -242,7 +243,8 @@ func TestGenerateMultipleKeysAndSignKeySelection(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := filepath.Join(dir, "out")
-	args := append(baseArgs(composePath, keyA, out),
+	args := append(
+		baseArgs(composePath, keyA, out),
 		"--key", "backup="+keyB,
 		"--pubkey", "audit="+base64.StdEncoding.EncodeToString(pubC),
 		"--sign-key", "backup",
