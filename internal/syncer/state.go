@@ -2,7 +2,7 @@ package syncer
 
 import (
 	"crypto/rand"
-	"crypto/sha256"
+	"crypto/sha512"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -685,7 +685,7 @@ func (s *SyncState) RecordOperationVerification(
 }
 
 func validAcknowledgedHash(value string) bool {
-	if len(value) != sha256.Size*2 {
+	if len(value) != sha512.Size256*2 {
 		return false
 	}
 	for index := range len(value) {
@@ -1038,13 +1038,13 @@ func SourceDigest(secrets []*provider.Secret) string {
 		pairs = append(pairs, secret.Key+"\x00"+hashSecret(secret.Value))
 	}
 	sort.Strings(pairs)
-	digest := sha256.Sum256([]byte(strings.Join(pairs, "\x00")))
+	digest := sha512.Sum512_256([]byte(strings.Join(pairs, "\x00")))
 	return hex.EncodeToString(digest[:])
 }
 
-// hashSecret returns hex-encoded SHA256 of the secret value.
+// hashSecret returns hex-encoded SHA512/256 of the secret value.
 func hashSecret(value string) string {
-	h := sha256.Sum256([]byte(value))
+	h := sha512.Sum512_256([]byte(value))
 	return hex.EncodeToString(h[:])
 }
 
