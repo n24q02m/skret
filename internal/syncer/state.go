@@ -252,7 +252,7 @@ func (s *SyncState) recordKeySuccess(operationID string, secret *provider.Secret
 			return err
 		}
 	}
-	acknowledgedHash := hashSecret(secret.Value)
+	acknowledgedHash := digestValue(secret.Value)
 	if outcome.Status == OutcomeSucceeded {
 		if outcome.Metadata != nil && outcome.AcknowledgedHash != acknowledgedHash {
 			return ErrOperationKeyMismatch
@@ -1035,15 +1035,15 @@ func SourceDigest(secrets []*provider.Secret) string {
 			pairs = append(pairs, "<nil>")
 			continue
 		}
-		pairs = append(pairs, secret.Key+"\x00"+hashSecret(secret.Value))
+		pairs = append(pairs, secret.Key+"\x00"+digestValue(secret.Value))
 	}
 	sort.Strings(pairs)
 	digest := sha512.Sum512_256([]byte(strings.Join(pairs, "\x00")))
 	return hex.EncodeToString(digest[:])
 }
 
-// hashSecret returns hex-encoded SHA512/256 of the secret value.
-func hashSecret(value string) string {
+// digestValue returns hex-encoded SHA512/256 of the secret value.
+func digestValue(value string) string {
 	h := sha512.Sum512_256([]byte(value))
 	return hex.EncodeToString(h[:])
 }
@@ -1053,7 +1053,7 @@ func hashSecret(value string) string {
 func (s *SyncState) FilterUnchanged(secrets []*provider.Secret) []*provider.Secret {
 	out := make([]*provider.Secret, 0, len(secrets))
 	for _, sec := range secrets {
-		if s.Hashes[sec.Key] != hashSecret(sec.Value) {
+		if s.Hashes[sec.Key] != digestValue(sec.Value) {
 			out = append(out, sec)
 		}
 	}
@@ -1066,6 +1066,6 @@ func (s *SyncState) Update(secrets []*provider.Secret) {
 		s.Hashes = map[string]string{}
 	}
 	for _, sec := range secrets {
-		s.Hashes[sec.Key] = hashSecret(sec.Value)
+		s.Hashes[sec.Key] = digestValue(sec.Value)
 	}
 }

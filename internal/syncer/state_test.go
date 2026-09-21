@@ -81,8 +81,8 @@ func TestSaveAndLoadSyncState_Roundtrip(t *testing.T) {
 	loaded, err := LoadSyncState("github", "owner/repo")
 	require.NoError(t, err)
 	assert.Len(t, loaded.Hashes, 2)
-	assert.Equal(t, hashSecret("postgres://example"), loaded.Hashes["/myapp/prod/DB_URL"])
-	assert.Equal(t, hashSecret("sk-abc"), loaded.Hashes["/myapp/prod/API_KEY"])
+	assert.Equal(t, digestValue("postgres://example"), loaded.Hashes["/myapp/prod/DB_URL"])
+	assert.Equal(t, digestValue("sk-abc"), loaded.Hashes["/myapp/prod/API_KEY"])
 	assert.False(t, loaded.Updated.IsZero())
 }
 
@@ -98,7 +98,7 @@ func TestFilterUnchanged_NewSecretIncluded(t *testing.T) {
 
 func TestFilterUnchanged_UnchangedExcluded(t *testing.T) {
 	state := &SyncState{Hashes: map[string]string{
-		"K1": hashSecret("v1"),
+		"K1": digestValue("v1"),
 	}}
 	secrets := []*provider.Secret{
 		{Key: "K1", Value: "v1"}, // unchanged → excluded
@@ -111,7 +111,7 @@ func TestFilterUnchanged_UnchangedExcluded(t *testing.T) {
 
 func TestFilterUnchanged_ChangedIncluded(t *testing.T) {
 	state := &SyncState{Hashes: map[string]string{
-		"K1": hashSecret("old-value"),
+		"K1": digestValue("old-value"),
 	}}
 	secrets := []*provider.Secret{
 		{Key: "K1", Value: "new-value"}, // hash differs → included
@@ -127,7 +127,7 @@ func TestUpdate_PopulatesHashes(t *testing.T) {
 		{Key: "K", Value: "v"},
 	})
 	require.NotNil(t, state.Hashes)
-	assert.Equal(t, hashSecret("v"), state.Hashes["K"])
+	assert.Equal(t, digestValue("v"), state.Hashes["K"])
 }
 
 func TestSaveSyncState_CreatesDirWithSecureMode(t *testing.T) {
@@ -159,9 +159,9 @@ func TestLoadSyncState_CorruptFile_ReturnsError(t *testing.T) {
 }
 
 func TestHashSecret_Stable(t *testing.T) {
-	a := hashSecret("hello")
-	b := hashSecret("hello")
-	c := hashSecret("hello!")
+	a := digestValue("hello")
+	b := digestValue("hello")
+	c := digestValue("hello!")
 	assert.Equal(t, a, b)
 	assert.NotEqual(t, a, c)
 	assert.Len(t, a, 64) // sha256 hex = 64 chars
@@ -184,7 +184,7 @@ func TestStatePathFor_NoHomeDir(t *testing.T) {
 
 func TestSaveSyncState_UpdatedTimeStamp(t *testing.T) {
 	withFakeHome(t)
-	state := &SyncState{Target: "github", ID: "owner/repo", Hashes: map[string]string{"K": hashSecret("v")}}
+	state := &SyncState{Target: "github", ID: "owner/repo", Hashes: map[string]string{"K": digestValue("v")}}
 	require.NoError(t, SaveSyncState(state))
 	first := state.Updated
 	assert.False(t, first.IsZero())
@@ -196,7 +196,7 @@ func TestSaveSyncState_UpdatedTimeStamp(t *testing.T) {
 
 func TestSaveSyncState_Atomic(t *testing.T) {
 	home := withFakeHome(t)
-	state := &SyncState{Target: "github", ID: "owner/repo", Hashes: map[string]string{"K": hashSecret("v")}}
+	state := &SyncState{Target: "github", ID: "owner/repo", Hashes: map[string]string{"K": digestValue("v")}}
 	require.NoError(t, SaveSyncState(state))
 
 	path, err := StatePathFor("github", "owner/repo")
@@ -223,7 +223,7 @@ func TestSaveSyncState_ConcurrentSaves(t *testing.T) {
 			state := &SyncState{
 				Target: "github",
 				ID:     "owner/repo",
-				Hashes: map[string]string{"K": hashSecret("value")},
+				Hashes: map[string]string{"K": digestValue("value")},
 			}
 			errs <- SaveSyncState(state)
 		}()
@@ -239,7 +239,7 @@ func TestSaveSyncState_ConcurrentSaves(t *testing.T) {
 	require.NoError(t, err)
 	loaded, err := LoadSyncState("github", "owner/repo")
 	require.NoError(t, err)
-	assert.Equal(t, hashSecret("value"), loaded.Hashes["K"])
+	assert.Equal(t, digestValue("value"), loaded.Hashes["K"])
 
 	entries, err := os.ReadDir(filepath.Dir(path))
 	require.NoError(t, err)
@@ -253,7 +253,7 @@ func TestSaveSyncState_RenameFailureCleansTemp(t *testing.T) {
 	state := &SyncState{
 		Target: "github",
 		ID:     "owner/repo",
-		Hashes: map[string]string{"K": hashSecret("value")},
+		Hashes: map[string]string{"K": digestValue("value")},
 	}
 	path, err := StatePathFor(state.Target, state.ID)
 	require.NoError(t, err)
@@ -326,7 +326,7 @@ func TestSaveSyncState_PathTraversal(t *testing.T) {
 	state := &SyncState{
 		Target: "../../../evil-target",
 		ID:     "../../etc/passwd",
-		Hashes: map[string]string{"K": hashSecret("v")},
+		Hashes: map[string]string{"K": digestValue("v")},
 	}
 	require.NoError(t, SaveSyncState(state))
 
@@ -363,7 +363,7 @@ func TestSyncState_OperationSuccessRecordsLifecycle(t *testing.T) {
 	assert.Equal(t, finished, *state.CompletedAt)
 	assert.Equal(t, finished, *state.LastSuccess)
 	assert.Equal(t, OutcomeSucceeded, state.Outcomes["K1"].Status)
-	assert.Equal(t, hashSecret("v1"), state.Hashes["K1"])
+	assert.Equal(t, digestValue("v1"), state.Hashes["K1"])
 }
 
 func TestSyncState_OperationFailureNeedsReconciliation(t *testing.T) {
@@ -516,7 +516,7 @@ func TestSyncState_RecordKeySuccess_PartialRemainsPending(t *testing.T) {
 	assert.Equal(t, OperationPhasePending, state.Phase)
 	assert.Nil(t, state.CompletedAt)
 	assert.Nil(t, state.LastSuccess)
-	assert.Equal(t, hashSecret("v1"), state.Hashes["K1"])
+	assert.Equal(t, digestValue("v1"), state.Hashes["K1"])
 	assert.NotContains(t, state.Hashes, "K2")
 }
 
@@ -537,7 +537,7 @@ func TestSyncState_RecordKeyNeedsReconciliation_PartialSetsPhase(t *testing.T) {
 	assert.Equal(t, OutcomeNeedsReconciliation, state.Outcomes["K2"].Status)
 	assert.Equal(t, OperationPhaseNeedsReconciliation, state.Phase)
 	assert.Nil(t, state.LastSuccess)
-	assert.Equal(t, hashSecret("v1"), state.Hashes["K1"])
+	assert.Equal(t, digestValue("v1"), state.Hashes["K1"])
 	assert.NotContains(t, state.Hashes, "K2")
 }
 
@@ -570,7 +570,7 @@ func TestSyncState_FinalizeOperation_WaitsForAllAcks(t *testing.T) {
 	require.NotNil(t, state.LastSuccess)
 	assert.Equal(t, finalized, *state.CompletedAt)
 	assert.Equal(t, finalized, *state.LastSuccess)
-	assert.Equal(t, hashSecret("v2"), state.Hashes["K2"])
+	assert.Equal(t, digestValue("v2"), state.Hashes["K2"])
 }
 
 func TestSyncState_FinalizeOperation_RetainsReconciliation(t *testing.T) {
@@ -592,7 +592,7 @@ func TestSyncState_FinalizeOperation_RetainsReconciliation(t *testing.T) {
 	assert.Equal(t, OutcomeSucceeded, state.Outcomes["K1"].Status)
 	assert.Equal(t, OutcomeNeedsReconciliation, state.Outcomes["K2"].Status)
 	assert.Nil(t, state.LastSuccess)
-	assert.Equal(t, hashSecret("v1"), state.Hashes["K1"])
+	assert.Equal(t, digestValue("v1"), state.Hashes["K1"])
 	assert.NotContains(t, state.Hashes, "K2")
 }
 
@@ -899,8 +899,8 @@ func TestSyncState_GenerationPromotesOnlyAfterAcknowledgementsAndVerification(t 
 	}
 	assert.Equal(t, OperationPhaseSucceeded, state.Phase)
 	require.NotNil(t, state.LastSuccess)
-	assert.Equal(t, hashSecret("first"), state.Hashes["K1"])
-	assert.Equal(t, hashSecret("second"), state.Hashes["K2"])
+	assert.Equal(t, digestValue("first"), state.Hashes["K1"])
+	assert.Equal(t, digestValue("second"), state.Hashes["K2"])
 	assert.Equal(t, verifiedAt, *state.LastSuccess)
 }
 
