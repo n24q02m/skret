@@ -1,13 +1,15 @@
-FROM golang:1.26-alpine@sha256:ce864e7223ac17b1775e6fd0b4c0db580c2eb50e7953a427916379e4b92a1628 AS build
-WORKDIR /src
-COPY go.mod go.sum ./
-RUN go mod download
-COPY . .
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/skret ./cmd/skret
-
+# alpine 3.24
 FROM alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
+LABEL org.opencontainers.image.source="https://github.com/n24q02m/skret"
 RUN apk add --no-cache ca-certificates && adduser -D -u 10001 skret
-COPY --from=build /out/skret /usr/local/bin/skret
+# The release pipeline cross-compiles skret for linux/amd64+arm64 before this
+# image builds (goreleaser prepare). The build context nests the prebuilt
+# binary one directory per platform (linux/amd64/skret, linux/arm64/skret) —
+# same layout as the CLI Dockerfile — so no in-image go build is needed and
+# the arm64 leg no longer runs under QEMU. buildx fills TARGETPLATFORM in;
+# declaring the ARG is what brings it into scope.
+ARG TARGETPLATFORM
+COPY $TARGETPLATFORM/skret /usr/local/bin/skret
 COPY deploy/sync-entrypoint.sh /usr/local/bin/sync-entrypoint.sh
 RUN chmod +x /usr/local/bin/sync-entrypoint.sh
 USER skret

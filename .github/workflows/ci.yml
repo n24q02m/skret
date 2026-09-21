@@ -214,13 +214,14 @@ jobs:
       - name: Build sync OCI archive (native arm64)
         run: |
           set -euo pipefail
-          sed -i 's|golang:1.26-alpine@sha256:ce864e7223ac17b1775e6fd0b4c0db580c2eb50e7953a427916379e4b92a1628|golang:1.26-alpine@sha256:c9bc58ef02c419539a6bab6f970844ece1dd9953baf409264f2fa429378e12a7|' Dockerfile.sync
-          sed -i 's|alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b|alpine:3.24@sha256:e7a1a92a5bfeee40966aea60f0796b0e7917cc35591542701834f03a68fa3d18|' Dockerfile.sync
-          grep -q 'sha256:c9bc58ef02c419539a6bab6f970844ece1dd9953baf409264f2fa429378e12a7' Dockerfile.sync
-          grep -q 'sha256:e7a1a92a5bfeee40966aea60f0796b0e7917cc35591542701834f03a68fa3d18' Dockerfile.sync
+          cp Dockerfile.sync context/Dockerfile.sync
+          mkdir -p context/deploy
+          cp deploy/sync-entrypoint.sh context/deploy/sync-entrypoint.sh
+          sed -i 's|alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b|alpine:3.24@sha256:e7a1a92a5bfeee40966aea60f0796b0e7917cc35591542701834f03a68fa3d18|' context/Dockerfile.sync
+          grep -q 'sha256:e7a1a92a5bfeee40966aea60f0796b0e7917cc35591542701834f03a68fa3d18' context/Dockerfile.sync
           docker buildx build \
             --platform linux/arm64 \
-            --file Dockerfile.sync . \
+            --file context/Dockerfile.sync context \
             --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
             --label "org.opencontainers.image.version=0.0.0-ci-${GITHUB_SHA::7}" \
             --provenance=false --sbom=false \
@@ -244,7 +245,7 @@ jobs:
           set -euo pipefail
           docker buildx build \
             --platform linux/arm64 \
-            --file Dockerfile.sync . \
+            --file context/Dockerfile.sync context \
             --provenance=false --sbom=false \
             --load --tag skret-ci:sync
           cid="$(docker run -d -p 18080:8080 skret-ci:sync)"
