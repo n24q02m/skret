@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 <!-- version list -->
 
+## v1.32.5 (2026-09-21)
+
+### Performance Improvements
+
+- ⚡ bolt: optimize map init and strings.Split allocations
+  ([#786](https://github.com/n24q02m/skret/pull/786),
+  [`8098469`](https://github.com/n24q02m/skret/commit/8098469510f4f2b4ace31a807226f95257b70d3a))
+
+
 ## v1.32.4 (2026-09-21)
 
 ### Performance Improvements
