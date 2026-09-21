@@ -4,6 +4,24 @@ All notable changes to this project will be documented in this file.
 
 <!-- version list -->
 
+## v1.32.2 (2026-09-21)
+
+### Bug Fixes
+
+- **cd**: Build sync OCI from prebuilt binaries, drop in-image go build
+  ([#822](https://github.com/n24q02m/skret/pull/822),
+  [`148fe87`](https://github.com/n24q02m/skret/commit/148fe87d549baa5525e785dfb9b9ee675d0c93d6))
+
+- **run**: Forward child exit code on Windows ([#821](https://github.com/n24q02m/skret/pull/821),
+  [`2ac5d5b`](https://github.com/n24q02m/skret/commit/2ac5d5b697c8cb93d40fe869681448bf23f6e337))
+
+### Testing
+
+- **e2e**: Assert forwarded exit code on Windows too
+  ([#821](https://github.com/n24q02m/skret/pull/821),
+  [`2ac5d5b`](https://github.com/n24q02m/skret/commit/2ac5d5b697c8cb93d40fe869681448bf23f6e337))
+
+
 ## v1.32.1 (2026-09-20)
 
 ### Bug Fixes
