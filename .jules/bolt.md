@@ -83,3 +83,7 @@
 ## $(date +%Y-%m-%d) - Strings Split vs Cut Loop (scope: validation vs allocation)
 **Learning:** Replacing `strings.Split` with a manual `strings.Cut` loop is an excellent optimization for avoiding slice allocation when you only need to iterate over and validate path segments (e.g., `validStateManifestPath`). However, using a `strings.Cut` loop to manually `append` elements back into a slice (e.g., in `windowsStateManifestPathComponents`) is a pessimization. Go's native `strings.Split` is highly optimized to pre-calculate capacity and allocate the slice exactly once; manual `append` loops trigger multiple unnecessary internal array reallocations.
 **Action:** Only replace `strings.Split` with `strings.Cut` loops if the resulting slice is no longer needed. If the function must ultimately return a slice of the segments, stick to `strings.Split` as it's the most efficient and readable way to achieve it.
+
+## 2026-09-17 - Use strings.Cut instead of strings.Split for zero-allocation iteration
+**Learning:** Using `strings.Split` for simple string parsing loops allocates a slice. If the function doesn't actually need to return or keep the slice, replacing `strings.Split` with `strings.Cut` within a loop eliminates the slice allocation.
+**Action:** Always prefer `strings.Cut` in loops over `strings.Split` when validating or processing delimited strings where the resulting slice isn't needed or returned. This achieves zero-allocation performance without sacrificing maintainability.
