@@ -109,16 +109,17 @@ func validateSecretEnvironment(values SecretSet) error {
 	return nil
 }
 
+var allowedParentVars = map[string]bool{
+	"HOME": true, "HOSTNAME": true, "LANG": true, "LC_ALL": true,
+	"LC_CTYPE": true, "PATH": true, "SSL_CERT_DIR": true,
+	"SSL_CERT_FILE": true, "TZ": true,
+}
+
 func filteredEnvironment(parent []string, declared map[string]string, values SecretSet) []string {
 	environment := make(map[string]string, len(declared)+values.Len()+8)
-	allowedParent := map[string]bool{
-		"HOME": true, "HOSTNAME": true, "LANG": true, "LC_ALL": true,
-		"LC_CTYPE": true, "PATH": true, "SSL_CERT_DIR": true,
-		"SSL_CERT_FILE": true, "TZ": true,
-	}
 	for _, entry := range parent {
 		name, value, ok := strings.Cut(entry, "=")
-		if ok && allowedParent[name] {
+		if ok && allowedParentVars[name] {
 			environment[name] = value
 		}
 	}
