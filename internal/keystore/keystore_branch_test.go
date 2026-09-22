@@ -121,6 +121,14 @@ func TestOpenMalformedEnvelope(t *testing.T) {
 			wantMsg: "malformed ciphertext",
 		},
 		{
+			name: "missing ciphertext",
+			raw: rewrap(func(env *envelope) {
+				env.Secrets["K1"] = "v1:AAAA"
+			}),
+			errCode: CodeConfigError,
+			wantMsg: "malformed ciphertext",
+		},
+		{
 			name: "nonce not base64",
 			raw: rewrap(func(env *envelope) {
 				env.Secrets["K1"] = "v1:@@@:AAAA"
