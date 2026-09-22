@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 <!-- version list -->
 
+## v1.33.1 (2026-09-22)
+
+### Performance Improvements
+
+- Use strings.Cut in validDNSSubdomain (zero-alloc label walk)
+  ([#820](https://github.com/n24q02m/skret/pull/820),
+  [`18cd76c`](https://github.com/n24q02m/skret/commit/18cd76c17a0872ad42cea45d0f5a4a6d2bb8adaf))
+
+
 ## v1.33.0 (2026-09-21)
 
 ### Code Style
