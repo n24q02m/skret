@@ -87,7 +87,11 @@ func TestOpenTampered(t *testing.T) {
 	i := strings.LastIndex(string(raw), ":")
 	require.Greater(t, i, 0)
 	b := append([]byte(nil), raw...)
-	b[i+1] ^= 0x01
+	if b[i+1] == 'A' {
+		b[i+1] = 'B'
+	} else {
+		b[i+1] = 'A'
+	}
 	_, err := Open(b, testMaterial)
 	require.Error(t, err)
 	assert.Equal(t, CodeAuthError, exitCodeOf(t, err))
