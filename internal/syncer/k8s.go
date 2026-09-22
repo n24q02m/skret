@@ -66,14 +66,19 @@ func validDNSSubdomain(name string) bool {
 	if name == "" || len(name) > 253 {
 		return false
 	}
-	labels := strings.Split(name, ".")
-	for _, label := range labels {
+	remaining := name
+	for {
+		label, rest, found := strings.Cut(remaining, ".")
 		if label == "" || len(label) > 63 {
 			return false
 		}
 		if !validDNSLabel(label) {
 			return false
 		}
+		if !found {
+			break
+		}
+		remaining = rest
 	}
 	return true
 }
