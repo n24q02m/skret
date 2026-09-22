@@ -11,6 +11,8 @@ allowBuilds:
 # pnpm compares the two and `pnpm install --frozen-lockfile` fails outright
 # when they disagree.
 overrides:
+  # sharp <0.35.4: libheif GHSA-g89c-p67h-r497 + GHSA-2jg2-4ch7-h545 (dependabot #40)
+  sharp: "^0.35.4"
   wrangler: "^4.120.0"
   # miniflare@4.20250906.0 (pinned by @cloudflare/vitest-pool-workers) pulls a
   # vulnerable ws@8.18.0 — GHSA-96hv-2xvq-fx4p (high, DoS) + GHSA-58qx-3vcg-4xpx
