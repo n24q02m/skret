@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 <!-- version list -->
 
+## v1.33.3 (2026-09-22)
+
+### Bug Fixes
+
+- **deps**: Override sharp to ^0.35.4 (libheif GHSA-g89c-p67h-r497, GHSA-2jg2-4ch7-h545)
+  ([#828](https://github.com/n24q02m/skret/pull/828),
+  [`517ff2c`](https://github.com/n24q02m/skret/commit/517ff2c8da004fc0142d98c490be2e2522e478e1))
+
+
 ## v1.33.2 (2026-09-22)
 
 ### Bug Fixes
