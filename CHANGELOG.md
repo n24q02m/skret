@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 <!-- version list -->
 
+## v1.33.2 (2026-09-22)
+
+### Bug Fixes
+
+- Deflake TestOpenTampered (deterministic base64-safe flip)
+  ([#827](https://github.com/n24q02m/skret/pull/827),
+  [`1f8c25f`](https://github.com/n24q02m/skret/commit/1f8c25f35fda639b140b47f08af65f430e1dc05d))
+
+### Performance Improvements
+
+- Use strings.Cut instead of strings.SplitN in keystore Open
+  ([#811](https://github.com/n24q02m/skret/pull/811),
+  [`9c0446c`](https://github.com/n24q02m/skret/commit/9c0446c269d22510078b82165fa066b942f63f2e))
+
+
 ## v1.33.1 (2026-09-22)
 
 ### Performance Improvements
