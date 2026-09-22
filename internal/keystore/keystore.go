@@ -163,16 +163,21 @@ func OpenWithMeta(raw []byte, keyMaterial string) (map[string]string, map[string
 
 	secrets := make(map[string]string, len(env.Secrets))
 	for k, blob := range env.Secrets {
-		parts := strings.SplitN(blob, ":", 3)
-		if len(parts) != 3 || parts[0] != "v1" {
+		version, rest, found1 := strings.Cut(blob, ":")
+		if !found1 || version != "v1" {
 			return nil, nil, newError(CodeConfigError,
 				fmt.Sprintf("keystore: malformed ciphertext for key %q", k), nil)
 		}
-		nonce, err := base64.StdEncoding.DecodeString(parts[1])
+		nonceStr, ctStr, found2 := strings.Cut(rest, ":")
+		if !found2 {
+			return nil, nil, newError(CodeConfigError,
+				fmt.Sprintf("keystore: malformed ciphertext for key %q", k), nil)
+		}
+		nonce, err := base64.StdEncoding.DecodeString(nonceStr)
 		if err != nil {
 			return nil, nil, newError(CodeConfigError, fmt.Sprintf("keystore: nonce for key %q", k), err)
 		}
-		ct, err := base64.StdEncoding.DecodeString(parts[2])
+		ct, err := base64.StdEncoding.DecodeString(ctStr)
 		if err != nil {
 			return nil, nil, newError(CodeConfigError, fmt.Sprintf("keystore: ciphertext for key %q", k), err)
 		}
