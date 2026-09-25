@@ -534,11 +534,18 @@ func sortedMapKeys(values map[string]string) []string {
 
 func parseDockerLabels(value string) map[string]string {
 	result := make(map[string]string)
-	for _, entry := range strings.Split(value, ",") {
+	// bolt: Replace strings.Split with a strings.Cut loop to avoid allocating a slice for the label segments.
+	remaining := value
+	for {
+		entry, after, found := strings.Cut(remaining, ",")
 		key, val, ok := strings.Cut(entry, "=")
 		if ok && key != "" {
 			result[key] = val
 		}
+		if !found {
+			break
+		}
+		remaining = after
 	}
 	return result
 }
