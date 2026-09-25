@@ -112,19 +112,24 @@ func (o *llmsOptions) run(cmd *cobra.Command) error {
 	return renderLLMsText(stdout, manifest)
 }
 
+var buildLLMsManifestExitCodes map[string]string
+
+func init() {
+	buildLLMsManifestExitCodes = make(map[string]string, len(llmsExitCodeTable))
+	for _, row := range llmsExitCodeTable {
+		buildLLMsManifestExitCodes[strconv.Itoa(row.code)] = row.Constant + " — " + row.Meaning
+	}
+}
+
 // buildLLMsManifest assembles the manifest from the live command tree, the
 // provider registry, and the curated tables below.
 func buildLLMsManifest(root *cobra.Command) llmsManifest {
 	providers := defaultRegistry().Providers()
-	exitCodes := make(map[string]string, len(llmsExitCodeTable))
-	for _, row := range llmsExitCodeTable {
-		exitCodes[strconv.Itoa(row.code)] = row.Constant + " — " + row.Meaning
-	}
 	return llmsManifest{
 		Version:    version.Version,
 		Commands:   llmsCommandRows(root),
 		Providers:  providers,
-		ExitCodes:  exitCodes,
+		ExitCodes:  buildLLMsManifestExitCodes,
 		EnvVars:    llmsEnvVarRows(),
 		ConfigKeys: llmsConfigKeyRows(),
 	}
