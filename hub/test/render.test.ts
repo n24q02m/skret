@@ -125,6 +125,10 @@ describe("renderDashboard", () => {
     expect(html).toContain('class="tablewrap"');
     expect(html).toContain('class="keyname"');
   });
+  it("provides contextual aria-labels for each table wrapper", () => {
+    const html = renderDashboard([m], FIXED_NOW);
+    expect(html).toContain('aria-label="/klprism/prod prod secrets"');
+  });
   describe("namespace with no keys", () => {
     const noKeys: Manifest = { ...m, keys: [] };
     it("renders an actionable empty row spanning every column", () => {
