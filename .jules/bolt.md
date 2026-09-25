@@ -91,3 +91,6 @@
 ## $(date +%Y-%m-%d) - Hoist Map Initialization
 **Learning:** Initializing literal maps (e.g., `map[string]bool{...}`) inside frequently executed functions dynamically allocates memory and initializes elements on every call, creating unnecessary overhead and GC pressure.
 **Action:** Always hoist statically-defined map literals out of function bodies into package-level variables to ensure they are allocated and initialized only once during program startup.
+## $(date +%Y-%m-%d) - Strings Split vs Cut Loop (scope: validation vs allocation)
+**Learning:** Replacing `strings.Split` with a manual `strings.Cut` loop is an excellent optimization for avoiding slice allocation when you only need to iterate over and validate path segments (e.g., `validStateManifestPath`), or when extracting key-value pairs from comma-separated strings (like `parseDockerLabels` or `resolveUser`).
+**Action:** Always prefer `strings.Cut` in loops over `strings.Split` when validating or processing delimited strings where the resulting slice isn't needed or returned. This achieves zero-allocation performance without sacrificing maintainability.
