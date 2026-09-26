@@ -114,3 +114,38 @@ func TestTTL_EncryptedFileRoundTrip(t *testing.T) {
 	assert.Equal(t, "v1", s.Value)
 	assert.True(t, s.Meta.ExpiresAt.Equal(expiry.UTC()), "expiry must survive the encrypted path")
 }
+
+// TestTTL_MalformedMetaIgnored: a malformed expiry entry is ignored on reads
+// (never fails them) while well-formed entries still surface — through Get
+// and GetBatch alike, and keys absent from the batch result stay absent.
+func TestTTL_MalformedMetaIgnored(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "secrets.yaml")
+	expiry := time.Now().Add(24 * time.Hour).UTC().Truncate(time.Second)
+	body := "version: \"1\"\n" +
+		"secrets:\n" +
+		"  BAD_META: v1\n" +
+		"  GOOD_META: v2\n" +
+		"meta:\n" +
+		"  BAD_META: not-a-timestamp\n" +
+		"  GOOD_META: " + expiry.Format(time.RFC3339) + "\n"
+	require.NoError(t, os.WriteFile(path, []byte(body), 0o600))
+
+	p, err := New(ttlConfigFor(t, path))
+	require.NoError(t, err)
+	defer p.Close()
+
+	s, err := p.Get(context.Background(), "BAD_META")
+	require.NoError(t, err)
+	assert.True(t, s.Meta.ExpiresAt.IsZero(), "malformed expiry must be ignored, not surfaced")
+
+	batch, err := p.GetBatch(context.Background(), []string{"BAD_META", "GOOD_META", "MISSING"})
+	require.NoError(t, err)
+	require.Len(t, batch, 2)
+	byKey := make(map[string]provider.Secret, len(batch))
+	for _, item := range batch {
+		byKey[item.Key] = *item
+	}
+	assert.True(t, byKey["BAD_META"].Meta.ExpiresAt.IsZero())
+	assert.True(t, byKey["GOOD_META"].Meta.ExpiresAt.Equal(expiry), "valid expiry must surface through GetBatch")
+}

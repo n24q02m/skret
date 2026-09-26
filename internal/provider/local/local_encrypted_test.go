@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+	"time"
 
 	"github.com/n24q02m/skret/internal/config"
 	"github.com/n24q02m/skret/internal/keystore"
@@ -210,6 +211,206 @@ func TestLocalEncryptedFingerprintStable(t *testing.T) {
 	fp3, err := p2.Fingerprint(ctx, "")
 	require.NoError(t, err)
 	assert.NotEqual(t, fp1, fp3, "changed content must change the fingerprint")
+}
+
+func TestLocalLegacyEnvelopeReadsAndWritesStayLegacy(t *testing.T) {
+	// A legacy skret-encrypted-v1 envelope on disk reads transparently and
+	// keeps its format on write: migration to the age format is an explicit
+	// `skret keys init --encrypt-existing` step, not an implicit rewrite.
+	encTestEnv(t)
+	dir := t.TempDir()
+	file := filepath.Join(dir, ".secrets.dev.yaml")
+
+	expires := time.Now().Add(24 * time.Hour).UTC().Truncate(time.Second)
+	sealed, err := keystore.SealLegacyWithMeta(map[string]string{"EXISTING": "value-1"},
+		map[string]string{"EXISTING": expires.Format(time.RFC3339)}, encTestMaterial, nil)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(file, sealed, 0o600))
+
+	p, err := local.New(encTestConfig(t, file, true))
+	require.NoError(t, err)
+	defer p.Close()
+
+	ctx := context.Background()
+	secret, err := p.Get(ctx, "EXISTING")
+	require.NoError(t, err)
+	assert.Equal(t, "value-1", secret.Value)
+	assert.Equal(t, expires, secret.Meta.ExpiresAt, "per-key expiry meta must survive the legacy read")
+
+	// Write under an encrypted config: legacy stays legacy.
+	require.NoError(t, p.Set(ctx, "NEW", "value-2", provider.SecretMeta{}))
+	raw, err := os.ReadFile(file)
+	require.NoError(t, err)
+	assert.True(t, keystore.DetectLegacy(raw), "legacy envelope must keep its format until migrated")
+	assert.False(t, keystore.Detect(raw))
+	assert.NotContains(t, string(raw), "value-2", "plaintext must not leak to disk")
+
+	p2, err := local.New(encTestConfig(t, file, true))
+	require.NoError(t, err)
+	defer p2.Close()
+	for key, want := range map[string]string{"EXISTING": "value-1", "NEW": "value-2"} {
+		secret, err := p2.Get(ctx, key)
+		require.NoError(t, err)
+		assert.Equal(t, want, secret.Value)
+	}
+}
+
+func TestLocalKeyCacheSwitchesWhenFormatMigratesOnDisk(t *testing.T) {
+	// The key-material cache is per format: legacy files resolve raw
+	// material, age files resolve an identity. When the on-disk format
+	// changes under a live provider (another terminal migrated it), a
+	// reload must re-resolve instead of failing the age open with legacy
+	// material.
+	encTestEnv(t)
+	dir := t.TempDir()
+	file := filepath.Join(dir, ".secrets.dev.yaml")
+
+	sealed, err := keystore.SealLegacyWithMeta(map[string]string{"EXISTING": "value-1"}, nil, encTestMaterial, nil)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(file, sealed, 0o600))
+
+	p, err := local.New(encTestConfig(t, file, true))
+	require.NoError(t, err)
+	defer p.Close()
+
+	// External migration to the age format with the same env material.
+	migrated, err := keystore.Seal(map[string]string{"EXISTING": "value-1"}, encTestMaterial)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(file, migrated, 0o600))
+
+	ctx := context.Background()
+	_, err = p.Fingerprint(ctx, "")
+	require.NoError(t, err, "reload after on-disk migration must re-resolve the key cache")
+	secret, err := p.Get(ctx, "EXISTING")
+	require.NoError(t, err)
+	assert.Equal(t, "value-1", secret.Value)
+}
+
+func TestLocalNewAuditPathAndDirectoryFileError(t *testing.T) {
+	encTestEnv(t)
+	dir := t.TempDir()
+
+	// A configured audit path is honored (absolute path stored, not probed).
+	file := filepath.Join(dir, ".secrets.dev.yaml")
+	cfg := encTestConfig(t, file, false)
+	cfg.AuditLog = filepath.Join(dir, "custom-audit.log")
+	p, err := local.New(cfg)
+	require.NoError(t, err)
+	defer p.Close()
+	require.NoError(t, p.Set(context.Background(), "K", "v", provider.SecretMeta{}))
+	_, err = os.Stat(cfg.AuditLog)
+	require.NoError(t, err, "audit trail must be created at the configured path")
+
+	// A directory at the file path is a raw read error, not NotExist.
+	p2, err := local.New(encTestConfig(t, dir, false))
+	assert.Error(t, err)
+	assert.Nil(t, p2)
+}
+
+// TestLocalEncryptedLoadFailureBranches drives New into each encrypted-load
+// failure mode through the public surface: a standard age envelope opened
+// with the wrong identity, a legacy envelope opened with wrong material,
+// and a legacy envelope with no material at all. Each must fail provider
+// construction (never hand back a partial provider) and carry the
+// remediation-oriented message callers act on.
+func TestLocalEncryptedLoadFailureBranches(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, ".secrets.dev.yaml")
+
+	// Two distinct X25519 identities: an envelope sealed for idA cannot be
+	// opened by idB — a fast, deterministic wrong-key failure (no scrypt).
+	idA, err := keystore.GenerateIdentity()
+	require.NoError(t, err)
+	idB, err := keystore.GenerateIdentity()
+	require.NoError(t, err)
+
+	sealAge := func(material string) {
+		t.Helper()
+		sealed, err := keystore.Seal(map[string]string{"EXISTING": "value-1"}, material)
+		require.NoError(t, err)
+		require.NoError(t, os.WriteFile(file, sealed, 0o600))
+	}
+	sealLegacy := func(material string) {
+		t.Helper()
+		sealed, err := keystore.SealLegacyWithMeta(map[string]string{"EXISTING": "value-1"}, nil, material, nil)
+		require.NoError(t, err)
+		require.NoError(t, os.WriteFile(file, sealed, 0o600))
+	}
+
+	tests := []struct {
+		name    string
+		seal    func(string)
+		sealMat string
+		env     string
+		wantErr string
+	}{
+		{
+			name:    "age envelope wrong identity",
+			seal:    sealAge,
+			sealMat: idA,
+			env:     idB,
+			wantErr: "decrypt failed",
+		},
+		{
+			name:    "age envelope missing material",
+			seal:    sealAge,
+			sealMat: encTestMaterial,
+			env:     "",
+			wantErr: "no key material available",
+		},
+		{
+			name:    "legacy envelope wrong material",
+			seal:    sealLegacy,
+			sealMat: encTestMaterial,
+			env:     "other-legacy-material",
+			wantErr: "decrypt failed",
+		},
+		{
+			name:    "legacy envelope missing material",
+			seal:    sealLegacy,
+			sealMat: encTestMaterial,
+			env:     "",
+			wantErr: "no key material available",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.seal(tt.sealMat)
+			t.Setenv(keystore.EnvKeyPrimary, tt.env)
+			t.Setenv(keystore.EnvKeyFallback, "")
+
+			p, err := local.New(encTestConfig(t, file, false))
+			require.Error(t, err)
+			assert.Nil(t, p, "a failed load must not return a provider")
+			assert.Contains(t, err.Error(), tt.wantErr)
+		})
+	}
+}
+
+// TestLocalEncryptedCfgWriteWithoutKeyFails: an `encrypted: true` config is
+// a write-side intent; the first write must resolve a key and seal. With no
+// resolvable material the write fails loudly (exit-4 contract) and the file
+// stays untouched plaintext — never a silent plaintext write under an
+// encrypted config.
+func TestLocalEncryptedCfgWriteWithoutKeyFails(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, ".secrets.dev.yaml")
+
+	// A still-plaintext file loads without a key; the key is only needed
+	// when save() seals.
+	p, err := local.New(encTestConfig(t, file, true))
+	require.NoError(t, err)
+	defer p.Close()
+
+	t.Setenv(keystore.EnvKeyPrimary, "")
+	t.Setenv(keystore.EnvKeyFallback, "")
+
+	err = p.Set(context.Background(), "K", "v", provider.SecretMeta{})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no key material available")
+
+	_, err = os.Stat(file)
+	assert.True(t, os.IsNotExist(err), "failed write must not leave a file behind")
 }
 
 func assertMode0600(t *testing.T, mode os.FileMode) {

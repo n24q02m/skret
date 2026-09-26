@@ -135,3 +135,29 @@ func TestProvider_Concurrent_Internal(t *testing.T) {
 		assert.NoError(t, err)
 	}
 }
+
+// TestDelete_SaveError: Delete reports a save failure (e.g. the secrets
+// directory vanished mid-flight) instead of returning success with the
+// mutation silently lost.
+func TestDelete_SaveError(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".secrets.yaml")
+	require.NoError(t, os.WriteFile(path, []byte("version: \"1\"\nsecrets:\n  K: v"), 0o600))
+
+	p := &Provider{filePath: path}
+	require.NoError(t, p.load())
+	require.NoError(t, os.RemoveAll(dir))
+
+	err := p.Delete(context.Background(), "K")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "local: create temp")
+}
+
+// TestSplitLines_TrimsCR: audit text with CRLF line endings (Windows
+// editors, cross-platform sync) parses to the same entries as LF text —
+// the \r preceding each \n is trimmed, LF-only text is untouched.
+func TestSplitLines_TrimsCR(t *testing.T) {
+	assert.Equal(t, []string{"a", "b", "c"}, splitLines("a\r\nb\r\nc"))
+	assert.Equal(t, []string{"a", "b", ""}, splitLines("a\nb\r\n"))
+	assert.Equal(t, []string{""}, splitLines(""))
+}
