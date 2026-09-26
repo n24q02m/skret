@@ -109,7 +109,7 @@ func TestLocalAutoDetectDecryptsReads(t *testing.T) {
 	dir := t.TempDir()
 	file := filepath.Join(dir, ".secrets.dev.yaml")
 
-	sealed, err := keystore.Seal(map[string]string{"EXISTING": "value-1"}, encTestMaterial, nil)
+	sealed, err := keystore.Seal(map[string]string{"EXISTING": "value-1"}, encTestMaterial)
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(file, sealed, 0o600))
 
@@ -166,7 +166,7 @@ func TestLocalEncryptedCfgConvertsPlaintextOnWrite(t *testing.T) {
 func TestLocalEncryptedMissingKeyFailsWithRemediation(t *testing.T) {
 	dir := t.TempDir()
 	file := filepath.Join(dir, ".secrets.dev.yaml")
-	sealed, err := keystore.Seal(map[string]string{"A": "b"}, encTestMaterial, nil)
+	sealed, err := keystore.Seal(map[string]string{"A": "b"}, encTestMaterial)
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(file, sealed, 0o600))
 

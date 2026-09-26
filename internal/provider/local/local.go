@@ -43,21 +43,27 @@ func (f *localFile) expiryFor(key string) (time.Time, bool) {
 
 // Provider reads/writes secrets from a local YAML file.
 //
-// Encryption: when the file on disk is a keystore envelope it is decrypted
+// Encryption: when the file on disk is an encrypted envelope it is decrypted
 // on load and re-encrypted on every save (sticky encDisk), regardless of
-// config. When the environment config declares `encrypted: true` (encCfg),
-// saves produce an envelope even if the file is still plaintext — the
-// declared write-side intent. Plaintext configs with plaintext files behave
-// exactly as before (byte-for-byte), keeping the dev default zero-friction.
+// config. Standard age files (age-encryption.org/v1) resolve an age identity
+// (or the passphrase arm); legacy skret-encrypted-v1 envelopes keep resolving
+// raw material and keep their format on save until
+// `skret keys init --encrypt-existing` migrates them. When the environment
+// config declares `encrypted: true` (encCfg), saves produce an age envelope
+// even if the file is still plaintext — the declared write-side intent.
+// Plaintext configs with plaintext files behave exactly as before
+// (byte-for-byte), keeping the dev default zero-friction.
 type Provider struct {
 	mu       sync.RWMutex
 	filePath string
 	data     localFile
 
-	encCfg  bool   // `encrypted: true` in the active env config (write intent)
-	encDisk bool   // file on disk is a keystore envelope (sticky)
-	keyMat  string // resolved key material ("" until first needed)
-	keySrc  string // provenance of keyMat (env/keyring/passphrase)
+	encCfg    bool   // `encrypted: true` in the active env config (write intent)
+	encDisk   bool   // file on disk is an encrypted envelope (sticky)
+	encLegacy bool   // file on disk is a legacy skret-encrypted-v1 envelope
+	keyMat    string // resolved key material ("" until first needed)
+	keySrc    string // provenance of keyMat (env/keyring/passphrase)
+	keyLegacy bool   // keyMat was resolved for a legacy-format file
 
 	auditPath string // audit trail location ("" = default sibling of filePath)
 	envName   string // active environment, recorded in audit entries
@@ -233,9 +239,10 @@ func (p *Provider) load() error {
 		}
 		return err
 	}
-	if keystore.Detect(raw) {
-		p.encDisk = true
-		if err := p.ensureKey(); err != nil {
+	switch {
+	case keystore.Detect(raw):
+		p.encDisk, p.encLegacy = true, false
+		if err := p.ensureKey(false); err != nil {
 			return err
 		}
 		secrets, meta, err := keystore.OpenWithMeta(raw, p.keyMat)
@@ -244,8 +251,20 @@ func (p *Provider) load() error {
 		}
 		p.data = localFile{Version: "1", Secrets: secrets, Meta: meta}
 		return nil
+	case keystore.DetectLegacy(raw):
+		p.encDisk, p.encLegacy = true, true
+		if err := p.ensureKey(true); err != nil {
+			return err
+		}
+		secrets, meta, err := keystore.OpenLegacyWithMeta(raw, p.keyMat)
+		if err != nil {
+			return err
+		}
+		p.data = localFile{Version: "1", Secrets: secrets, Meta: meta}
+		return nil
+	default:
+		p.encDisk, p.encLegacy = false, false
 	}
-	p.encDisk = false
 	if err := yaml.Unmarshal(raw, &p.data); err != nil {
 		return err
 	}
@@ -255,20 +274,28 @@ func (p *Provider) load() error {
 	return nil
 }
 
-// ensureKey resolves key material at most once per process. The passphrase
-// prompt (interactive terminals only) therefore fires once, not on every
-// reload — important for `run --watch`, which re-loads on each poll.
-func (p *Provider) ensureKey() error {
-	if p.keyMat != "" {
+// ensureKey resolves key material at most once per process per format. The
+// passphrase prompt (interactive terminals only) therefore fires once, not
+// on every reload — important for `run --watch`, which re-loads on each
+// poll. The format matters: legacy envelopes resolve raw key material, age
+// envelopes resolve an age identity (passphrase arm as fallback); if the
+// on-disk format changed since the cached material was resolved (migration
+// in another terminal), the cache is re-resolved.
+func (p *Provider) ensureKey(legacy bool) error {
+	if p.keyMat != "" && p.keyLegacy == legacy {
 		return nil
 	}
-	res, err := keystore.ResolveKeyMaterial(keystore.ResolveOpts{
+	resolve := keystore.ResolveIdentity
+	if legacy {
+		resolve = keystore.ResolveKeyMaterial
+	}
+	res, err := resolve(keystore.ResolveOpts{
 		Interactive: term.IsTerminal(int(os.Stdin.Fd())),
 	})
 	if err != nil {
 		return err
 	}
-	p.keyMat, p.keySrc = res.Material, res.Source
+	p.keyMat, p.keySrc, p.keyLegacy = res.Material, res.Source, legacy
 	return nil
 }
 
@@ -276,10 +303,17 @@ func (p *Provider) save() error {
 	var raw []byte
 	var err error
 	if p.encCfg || p.encDisk {
-		if err := p.ensureKey(); err != nil {
+		legacyWrite := p.encLegacy
+		if err := p.ensureKey(legacyWrite); err != nil {
 			return err
 		}
-		raw, err = keystore.SealWithMeta(p.data.Secrets, p.data.Meta, p.keyMat, nil)
+		if legacyWrite {
+			// Format-preserving write: a legacy envelope stays decryptable
+			// with its existing material until --encrypt-existing migrates it.
+			raw, err = keystore.SealLegacyWithMeta(p.data.Secrets, p.data.Meta, p.keyMat, nil)
+		} else {
+			raw, err = keystore.SealWithMeta(p.data.Secrets, p.data.Meta, p.keyMat)
+		}
 		if err != nil {
 			return err
 		}

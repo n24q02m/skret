@@ -536,6 +536,9 @@ func doctorEncryptionCheck(deps doctorDeps, envName, filePath string, rawEnv map
 		if len(extras) > 0 {
 			detail += " (" + strings.Join(extras, ", ") + ")"
 		}
+		if st.Format == keystore.FormatLegacy {
+			detail += "; legacy skret-encrypted-v1 format, 'skret keys init --encrypt-existing' converts it to the standard age format"
+		}
 		return DoctorCheck{Name: name, Status: doctorPass, Detail: detail}
 	case st.Encrypted:
 		return DoctorCheck{

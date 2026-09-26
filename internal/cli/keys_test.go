@@ -9,12 +9,22 @@ import (
 	"testing"
 
 	"github.com/n24q02m/skret/internal/keystore"
+	"github.com/n24q02m/skret/pkg/skret"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/zalando/go-keyring"
 	"gopkg.in/yaml.v3"
 )
 
 const keysTestMaterial = "cli-keys-test-material"
+
+// resetKeyringMock reinitializes the in-memory go-keyring mock so tests
+// that seed or assert keyring state stay hermetic against test order in
+// the shared process (TestMain installs the mock backend once).
+func resetKeyringMock(t *testing.T) {
+	t.Helper()
+	keyring.MockInit()
+}
 
 // setupKeysRepo creates a repo with a local-provider config and a plaintext
 // secrets file, returning the directory.
@@ -68,7 +78,7 @@ func TestKeysInitEnvSourceNoStorage(t *testing.T) {
 	_, stderr, err := runKeysCmd(t, dir, "", "keys", "init")
 	require.NoError(t, err)
 	assert.Contains(t, stderr, "SKRET_AGE_KEY")
-	assert.Contains(t, stderr, "(not stored by skret)")
+	assert.Contains(t, stderr, "not stored by skret")
 
 	// Without --encrypt-existing the file stays untouched.
 	raw, err := os.ReadFile(filepath.Join(dir, ".secrets.dev.yaml"))
@@ -113,7 +123,8 @@ func TestKeysInitEncryptExistingJSON(t *testing.T) {
 	assert.True(t, payload.FileEncrypted)
 	assert.False(t, payload.AlreadyEncrypted)
 	assert.True(t, payload.ConfigUpdated)
-	assert.Equal(t, "argon2id", payload.KDF)
+	assert.Equal(t, "scrypt", payload.KDF)
+	assert.Equal(t, keystore.Format, payload.Format)
 	assert.NotContains(t, stdout, keysTestMaterial, "key material must never appear in output")
 }
 
@@ -132,6 +143,7 @@ func TestKeysInitEncryptExistingIdempotent(t *testing.T) {
 }
 
 func TestKeysInitPassphraseStdinThenEnvFallback(t *testing.T) {
+	resetKeyringMock(t)
 	dir := setupKeysRepo(t, keysPlaintextFixture)
 
 	// Scripted setup without keyring/env: passphrase comes from stdin.
@@ -210,6 +222,7 @@ func TestKeysShowPlaintextTable(t *testing.T) {
 
 func TestKeysShowEncryptedJSON(t *testing.T) {
 	t.Setenv(keystore.EnvKeyPrimary, keysTestMaterial)
+	resetKeyringMock(t)
 	dir := setupKeysRepo(t, keysPlaintextFixture)
 	_, _, err := runKeysCmd(t, dir, "", "keys", "init", "--encrypt-existing")
 	require.NoError(t, err)
@@ -221,7 +234,8 @@ func TestKeysShowEncryptedJSON(t *testing.T) {
 	var st keystore.Status
 	require.NoError(t, json.Unmarshal([]byte(stdout), &st))
 	assert.True(t, st.Encrypted)
-	assert.Equal(t, "argon2id", st.KDF)
+	assert.Equal(t, keystore.Format, st.Format)
+	assert.Equal(t, "scrypt", st.KDF, "non-age key material seals with the passphrase (scrypt) arm")
 	assert.True(t, st.KeyAvailable)
 	assert.True(t, st.EncryptedCfg)
 }
@@ -259,6 +273,7 @@ func TestKeysInitNonInteractiveWithoutKeyringFails(t *testing.T) {
 	dir := setupKeysRepo(t, keysPlaintextFixture)
 	t.Setenv(keystore.EnvKeyPrimary, "")
 	t.Setenv(keystore.EnvKeyFallback, "")
+	resetKeyringMock(t)
 
 	// The mock keyring makes init succeed by storing the generated key —
 	// assert that path works headlessly (no prompt, no hang).
@@ -306,4 +321,142 @@ environments:
 	require.NoError(t, yaml.Unmarshal(raw, &cfg))
 	assert.True(t, cfg.Environments["dev"].Encrypted)
 	assert.False(t, cfg.Environments["prod"].Encrypted, "only the active env may be flipped")
+}
+
+// legacyFixtureSeal seals a pre-age skret-encrypted-v1 envelope with per-key
+// metadata, as written by skret <= v1.34.0.
+func legacyFixtureSeal(t *testing.T, material string) []byte {
+	t.Helper()
+	raw, err := keystore.SealLegacyWithMeta(map[string]string{
+		"DATABASE_URL": "postgres://dev:dev@localhost/db",
+		"API_TOKEN":    "kW9xP2vQ8mZ5#J7&R4tU6yB3nL0cD1f",
+	}, map[string]string{"API_TOKEN": "2026-10-19T00:00:00Z"}, material, nil)
+	require.NoError(t, err)
+	require.True(t, keystore.DetectLegacy(raw))
+	require.False(t, keystore.Detect(raw), "fixture must be legacy, not age")
+	return raw
+}
+
+func TestKeysInitLegacyMigrationToAge(t *testing.T) {
+	t.Setenv(keystore.EnvKeyPrimary, keysTestMaterial)
+	resetKeyringMock(t)
+	dir := setupKeysRepo(t, "")
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".secrets.dev.yaml"), legacyFixtureSeal(t, keysTestMaterial), 0o600))
+
+	stdout, _, err := runKeysCmd(t, dir, "", "keys", "init", "--encrypt-existing", "--format", "json")
+	require.NoError(t, err)
+
+	var payload keysInitResult
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	assert.True(t, payload.FileEncrypted)
+	assert.False(t, payload.AlreadyEncrypted)
+	assert.Equal(t, keystore.Format, payload.Format)
+
+	raw, err := os.ReadFile(filepath.Join(dir, ".secrets.dev.yaml"))
+	require.NoError(t, err)
+	assert.True(t, keystore.Detect(raw), "migration must produce a standard age file")
+	assert.False(t, keystore.DetectLegacy(raw), "legacy marker must be gone")
+	assert.NotContains(t, string(raw), "postgres://dev:dev@localhost/db", "values must not leak in plaintext")
+
+	// Every value — and the per-key expiry metadata — survives the migration.
+	secrets, meta, err := keystore.OpenWithMeta(raw, keysTestMaterial)
+	require.NoError(t, err)
+	assert.Equal(t, "postgres://dev:dev@localhost/db", secrets["DATABASE_URL"])
+	assert.Equal(t, "kW9xP2vQ8mZ5#J7&R4tU6yB3nL0cD1f", secrets["API_TOKEN"])
+	assert.Equal(t, map[string]string{"API_TOKEN": "2026-10-19T00:00:00Z"}, meta)
+
+	// Downstream commands behave exactly as with any encrypted file.
+	stdout, _, err = runKeysCmd(t, dir, "", "get", "DATABASE_URL", "--plain")
+	require.NoError(t, err)
+	assert.Equal(t, "postgres://dev:dev@localhost/db", stdout)
+}
+
+func TestKeysInitLegacyMigrationToRealAgeKey(t *testing.T) {
+	// The documented new contract: SKRET_AGE_KEY holds a real age private
+	// key. The legacy envelope opens with the legacy material exported as
+	// SKRET_LOCAL_KEY; the migrated file is sealed to the X25519 identity.
+	identity, err := keystore.GenerateIdentity()
+	require.NoError(t, err)
+	t.Setenv(keystore.EnvKeyPrimary, identity)
+	t.Setenv(keystore.EnvKeyFallback, "legacy-argmaterial")
+	resetKeyringMock(t)
+	dir := setupKeysRepo(t, "")
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".secrets.dev.yaml"), legacyFixtureSeal(t, "legacy-argmaterial"), 0o600))
+
+	stdout, _, err := runKeysCmd(t, dir, "", "keys", "init", "--encrypt-existing", "--format", "json")
+	require.NoError(t, err)
+	var payload keysInitResult
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	assert.Equal(t, "X25519", payload.KDF, "a real age key must select the X25519 arm")
+	assert.Equal(t, "env:"+keystore.EnvKeyPrimary, payload.KeySource)
+
+	raw, err := os.ReadFile(filepath.Join(dir, ".secrets.dev.yaml"))
+	require.NoError(t, err)
+	assert.Equal(t, "X25519", keystore.StanzaKind(raw), "file must carry an X25519 recipient stanza")
+	secrets, err := keystore.Open(raw, identity)
+	require.NoError(t, err)
+	assert.Equal(t, "postgres://dev:dev@localhost/db", secrets["DATABASE_URL"])
+}
+
+func TestKeysInitRealAgeKeyPlaintextMigration(t *testing.T) {
+	// Plaintext file + real age key: one command converts the file to the
+	// standard age format sealed to the X25519 keypair.
+	identity, err := keystore.GenerateIdentity()
+	require.NoError(t, err)
+	t.Setenv(keystore.EnvKeyPrimary, identity)
+	resetKeyringMock(t)
+	dir := setupKeysRepo(t, keysPlaintextFixture)
+
+	_, _, err = runKeysCmd(t, dir, "", "keys", "init", "--encrypt-existing")
+	require.NoError(t, err)
+
+	raw, err := os.ReadFile(filepath.Join(dir, ".secrets.dev.yaml"))
+	require.NoError(t, err)
+	assert.True(t, keystore.Detect(raw))
+	assert.Equal(t, "X25519", keystore.StanzaKind(raw))
+	assert.NotContains(t, string(raw), "postgres://dev:dev@localhost/db")
+
+	secrets, err := keystore.Open(raw, identity)
+	require.NoError(t, err)
+	assert.Equal(t, "postgres://dev:dev@localhost/db", secrets["DATABASE_URL"])
+}
+
+func TestKeysInitAlreadyAgeWrongMaterialFails(t *testing.T) {
+	// An age file verified against a foreign key must fail with exit 4,
+	// never silently "migrate" or rewrite.
+	identity, err := keystore.GenerateIdentity()
+	require.NoError(t, err)
+	t.Setenv(keystore.EnvKeyPrimary, identity)
+	resetKeyringMock(t)
+	dir := setupKeysRepo(t, keysPlaintextFixture)
+	_, _, err = runKeysCmd(t, dir, "", "keys", "init", "--encrypt-existing")
+	require.NoError(t, err)
+
+	wrong, werr := keystore.GenerateIdentity()
+	require.NoError(t, werr)
+	t.Setenv(keystore.EnvKeyPrimary, wrong)
+	_, _, err = runKeysCmd(t, dir, "", "keys", "init", "--encrypt-existing")
+	require.Error(t, err)
+	assert.Equal(t, 4, skret.ExitCode(err))
+	assert.Contains(t, err.Error(), "could not decrypt the age-encrypted file")
+
+	raw, err := os.ReadFile(filepath.Join(dir, ".secrets.dev.yaml"))
+	require.NoError(t, err)
+	secrets, err := keystore.Open(raw, identity)
+	require.NoError(t, err, "the failed init must not touch the file")
+	assert.Equal(t, "postgres://dev:dev@localhost/db", secrets["DATABASE_URL"])
+}
+
+func TestKeysInitLegacyMigrationWrongMaterialFails(t *testing.T) {
+	// A legacy envelope no candidate can decrypt must fail with a
+	// migration-focused remediation.
+	t.Setenv(keystore.EnvKeyPrimary, "not-the-original-material")
+	resetKeyringMock(t)
+	dir := setupKeysRepo(t, "")
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".secrets.dev.yaml"), legacyFixtureSeal(t, keysTestMaterial), 0o600))
+
+	_, _, err := runKeysCmd(t, dir, "", "keys", "init", "--encrypt-existing")
+	require.Error(t, err)
+	assert.Equal(t, 4, skret.ExitCode(err))
+	assert.Contains(t, err.Error(), "legacy skret-encrypted-v1 envelope")
 }

@@ -89,8 +89,9 @@ func TestSpecConformance_MarkerLiterals(t *testing.T) {
 	spec := loadSpec(t)
 
 	for _, literal := range []string{
-		"skret-encrypted-v1", // keystore envelope marker (internal/keystore Format)
-		`"error"`,            // JSON error envelope keys (internal/cli/errjson.go)
+		"skret-encrypted-v1",    // legacy keystore envelope marker (internal/keystore FormatLegacy)
+		"age-encryption.org/v1", // standard age envelope marker (internal/keystore Format)
+		`"error"`,               // JSON error envelope keys (internal/cli/errjson.go)
 		`"code"`,
 		`"remediation"`,
 		"125", // ExitExecError convention call-out

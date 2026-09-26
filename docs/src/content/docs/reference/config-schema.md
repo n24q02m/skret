@@ -119,7 +119,7 @@ mcp:                        # Optional. Policy for the skret-mcp server (see gui
 | `vault_url` | string | One of `vault_url`/`vault_name` | `azure` | Absolute `https://` Key Vault endpoint (use for sovereign clouds). Setting both this and `vault_name` requires them to agree. |
 | `vault_name` | string | One of `vault_url`/`vault_name` | `azure` | Vault name (3–24 alphanumeric/dash chars); derives `https://<name>.vault.azure.net`. |
 | `file` | string | Yes | `local` | Path to the local secrets YAML file. Relative paths are resolved from the `.skret.yaml` location. |
-| `encrypted` | bool | No | `false` | `local` only. Write-side encryption intent: when `true`, saves store the file as a keystore envelope (`skret-encrypted-v1`, argon2id + XChaCha20-Poly1305). Reads auto-detect an encrypted file on disk regardless of this flag. Set up with `skret keys init --encrypt-existing`. |
+| `encrypted` | bool | No | `false` | `local` only. Write-side encryption intent: when `true`, saves store the file as a standard age file (`age-encryption.org/v1` — X25519 recipient for age keypairs, scrypt recipient for the passphrase arm) that the standalone `age`/`rage` CLIs can decrypt. Reads auto-detect an encrypted file on disk regardless of this flag; legacy `skret-encrypted-v1` envelopes keep their format until `skret keys init --encrypt-existing` migrates them. |
 | `audit_log` | string | No | `local` | Where the append-only audit trail lives (default: `.skret-audit.log` next to the secrets file). `skret set`/`rotate`/`delete` append one JSONL line per mutation — timestamp, op, key names, env, actor, never values — and `skret audit` renders it. |
 
 ### Sync Fields
