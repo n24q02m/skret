@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 <!-- version list -->
 
+## v1.33.5 (2026-09-26)
+
+### Bug Fixes
+
+- **docs**: Publish spec.md v1 (exit codes, JSON envelope, byte-exact, llms.txt)
+  ([#837](https://github.com/n24q02m/skret/pull/837),
+  [`f407f31`](https://github.com/n24q02m/skret/commit/f407f3104e56b7d96d0b4e9fc862630c61ce71d9))
+
+
 ## v1.33.4 (2026-09-26)
 
 ### Chores
