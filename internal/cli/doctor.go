@@ -69,6 +69,30 @@ var doctorLivenessProbe = skaws.Probe
 // variable so tests stub it instead of touching real Google endpoints.
 var doctorGCPProbe = skgcp.Probe
 
+// doctorProbeKeyName is the sentinel key no real secret uses; doctor's
+// probes read/list under it so they never touch managed values.
+const doctorProbeKeyName = "skret-doctor-probe"
+
+// doctorAWSPermissionProbe issues doctor's data-plane read probe: a Get of
+// the sentinel key under the environment path. The reach probe
+// (GetCallerIdentity) proves identity, not authorization — this probe
+// proves the resolved credentials can actually read the path. A variable so
+// tests stub it instead of touching AWS.
+var doctorAWSPermissionProbe = func(ctx context.Context, resolved *config.ResolvedConfig) error {
+	p, err := skaws.New(resolved)
+	if err != nil {
+		return err
+	}
+	defer p.Close()
+	// Sentinel key under the environment path ("" path → bare key name).
+	sentinel := resolved.Path + "/" + doctorProbeKeyName
+	if resolved.Path == "" {
+		sentinel = doctorProbeKeyName
+	}
+	_, err = p.Get(ctx, sentinel)
+	return err
+}
+
 // doctorStoreFactory builds the credential store doctor reads. A variable so
 // tests point doctor at a scratch store instead of the operator's real one.
 var doctorStoreFactory = auth.NewStore
@@ -238,6 +262,12 @@ func runDoctorChecks(deps doctorDeps, opts *GlobalOpts, timeout time.Duration) [
 			checks = append(checks, doctorLocalChecks(deps, rawEnvs[envName], envName, resolved)...)
 		case "aws":
 			checks = append(checks, doctorAWSReachCheck(deps, envName, timeout, probeCache)...)
+			// Authorization is only worth probing when the reach probe
+			// already proved the identity works (probeCache stores a nil
+			// error for a passing probe).
+			if probeCache["aws"] == nil {
+				checks = append(checks, doctorAWSPermissionCheck(envName, resolved, timeout))
+			}
 			if !authChecked {
 				checks = append(checks, doctorAuthCheck(deps))
 				authChecked = true
@@ -315,6 +345,9 @@ func doctorLocalChecks(deps doctorDeps, rawEnv map[string]any, envName string, r
 		if c := doctorExpiryCheck(deps, envName, secrets); c != nil {
 			checks = append(checks, *c)
 		}
+		if c := doctorUnusedCheck(envName, secrets, resolved); c != nil {
+			checks = append(checks, *c)
+		}
 	}
 	return checks
 }
@@ -357,6 +390,63 @@ func doctorExpiryCheck(deps doctorDeps, envName string, secrets []*provider.Secr
 		Status:      doctorWarn,
 		Detail:      detail.String(),
 		Remediation: "rotate with 'skret rotate <KEY> --ttl <duration>'",
+	}
+}
+
+// doctorUnusedCheck is the best-effort unused-secret detection (spec
+// SK-DOC): key names that never appear in the local provider's audit trail
+// have not been mutated since the trail began. The trail records mutations
+// only — reads are never logged — so a key that is only ever read looks
+// unused; the detail and remediation say so, and the check only ever warns.
+// No trail (or an empty one) means nothing has been observed yet, so the
+// check emits no line at all.
+func doctorUnusedCheck(envName string, secrets []*provider.Secret, resolved *config.ResolvedConfig) *DoctorCheck {
+	entries, _, err := local.ReadAuditLog(local.AuditLogPathFor(resolved))
+	if err != nil || len(entries) == 0 {
+		return nil
+	}
+	mentioned := make(map[string]bool, len(entries))
+	for _, e := range entries {
+		for _, n := range e.KeyNames {
+			mentioned[n] = true
+			mentioned[strings.TrimPrefix(n, resolved.Path+"/")] = true
+			if i := strings.LastIndex(n, "/"); i >= 0 {
+				mentioned[n[i+1:]] = true
+			}
+		}
+	}
+	var unused []string
+	for _, s := range secrets {
+		if mentioned[s.Key] {
+			continue
+		}
+		rel := strings.TrimPrefix(s.Key, resolved.Path+"/")
+		if i := strings.LastIndex(rel, "/"); i >= 0 {
+			rel = rel[i+1:]
+		}
+		if !mentioned[rel] {
+			unused = append(unused, rel)
+		}
+	}
+	if len(unused) == 0 {
+		return nil
+	}
+
+	sort.Strings(unused)
+	shown := unused
+	if len(shown) > 3 {
+		shown = shown[:3]
+	}
+	detail := fmt.Sprintf("%d of %d key(s) never appear in the local audit trail (since %s): %s",
+		len(unused), len(secrets), entries[0].Timestamp, strings.Join(shown, ", "))
+	if more := len(unused) - len(shown); more > 0 {
+		detail += fmt.Sprintf(" (+%d more)", more)
+	}
+	return &DoctorCheck{
+		Name:        "unused[" + envName + "]",
+		Status:      doctorWarn,
+		Detail:      detail,
+		Remediation: "best-effort (local reads are not audited): rotate or delete stale keys",
 	}
 }
 
@@ -536,6 +626,47 @@ func doctorAWSReachCheck(deps doctorDeps, envName string, timeout time.Duration,
 			Remediation: "check network and region (AWS_REGION, or --region)",
 			failClass:   skret.ExitNetworkError,
 		}}
+	}
+}
+
+// doctorAWSPermissionCheck verifies the resolved credentials may actually
+// read under the environment path (spec SK-DOC "IAM permissions"): a
+// sentinel Get classifies as pass (read allowed — a not-found sentinel
+// proves the call was not denied), fail (explicit access denial, auth
+// class), or warn (inconclusive — network/throttling shapes). Read-only by
+// design, like every doctor check.
+func doctorAWSPermissionCheck(envName string, resolved *config.ResolvedConfig, timeout time.Duration) DoctorCheck {
+	name := "permissions[" + envName + "]"
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	err := doctorAWSPermissionProbe(ctx, resolved)
+	cancel()
+	switch {
+	case err == nil:
+		return DoctorCheck{
+			Name:   name,
+			Status: doctorPass,
+			Detail: fmt.Sprintf("can read under %s (sentinel key present)", resolved.Path),
+		}
+	case errors.Is(err, provider.ErrNotFound):
+		return DoctorCheck{
+			Name:   name,
+			Status: doctorPass,
+			Detail: fmt.Sprintf("can read under %s (sentinel probe: not found, no denial)", resolved.Path),
+		}
+	case strings.Contains(strings.ToLower(err.Error()), "accessdenied"):
+		return DoctorCheck{
+			Name:        name,
+			Status:      doctorFail,
+			Detail:      fmt.Sprintf("credentials cannot read under %s: %v", resolved.Path, err),
+			Remediation: "grant ssm:GetParameter on this path to the resolved credentials ('aws iam simulate-principal-policy' lists the current allows)",
+			failClass:   skret.ExitAuthError,
+		}
+	default:
+		return DoctorCheck{
+			Name:   name,
+			Status: doctorWarn,
+			Detail: fmt.Sprintf("inconclusive read probe: %v", err),
+		}
 	}
 }
 
