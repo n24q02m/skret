@@ -4,6 +4,28 @@ All notable changes to this project will be documented in this file.
 
 <!-- version list -->
 
+## v1.34.0 (2026-09-26)
+
+### Bug Fixes
+
+- **mcp**: Drop unnecessary fmt.Sprintf (S1039) ([#838](https://github.com/n24q02m/skret/pull/838),
+  [`065885b`](https://github.com/n24q02m/skret/commit/065885b3b9542ae9cb63ed2e243e37c038cd9ff1))
+
+### Features
+
+- **doctor**: IAM read-permission probe and best-effort unused detection
+  ([#840](https://github.com/n24q02m/skret/pull/840),
+  [`b0370ca`](https://github.com/n24q02m/skret/commit/b0370cae6c0648edc074f27bd56a14a327642ca7))
+
+- **mcp**: Require per-call confirm on write tools
+  ([#838](https://github.com/n24q02m/skret/pull/838),
+  [`065885b`](https://github.com/n24q02m/skret/commit/065885b3b9542ae9cb63ed2e243e37c038cd9ff1))
+
+- **rotate**: Propagate rotated values to configured sync targets
+  ([#839](https://github.com/n24q02m/skret/pull/839),
+  [`b28d841`](https://github.com/n24q02m/skret/commit/b28d841c4316ba71c957d1e48542e5f198c034cb))
+
+
 ## v1.33.5 (2026-09-26)
 
 ### Bug Fixes
