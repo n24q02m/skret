@@ -25,6 +25,9 @@ func newKeysCmd(opts *GlobalOpts) *cobra.Command {
 		Short: "Manage local-file encryption keys",
 		Long: `Manage encryption for the local provider file (.secrets.*.yaml).
 
+Encrypted files use the standard age format (age-encryption.org/v1) and
+decrypt with the external age/rage CLIs, not only with skret.
+
 Key material resolution order (used by every command touching an encrypted
 local file): SKRET_AGE_KEY, then SKRET_LOCAL_KEY, then the OS keyring
 ('skret keys init' seeds it), then — only when stdin is a terminal — an
@@ -52,17 +55,22 @@ func newKeysInitCmd(opts *GlobalOpts) *cobra.Command {
 		Long: `Set up key material used to encrypt the local provider file.
 
 Precedence for sourcing the key:
-  1. SKRET_AGE_KEY / SKRET_LOCAL_KEY already set — validated, nothing stored.
-  2. OS keyring — a fresh 256-bit key is generated and stored
-     (service "skret", user "local-enc-key") and verified round-trip.
-  3. --passphrase-stdin — one passphrase line is read from stdin
-     (scripted setups on machines without an OS keyring).
+  1. SKRET_AGE_KEY / SKRET_LOCAL_KEY already set — an age private key
+     (AGE-SECRET-KEY-1...) uses the age X25519 arm; any other value is used
+     as a passphrase (age scrypt arm). Nothing is stored.
+  2. --passphrase-stdin — one passphrase line is read from stdin (scripted
+     setups on machines without an OS keyring).
+  3. OS keyring — existing material is reused; when none is stored, a fresh
+     age X25519 keypair is generated and stored (service "skret", user
+     "local-enc-key") and verified round-trip.
   4. Interactive passphrase prompt (confirm twice) — only when stdin is a
      terminal; never in non-interactive mode (exit 4 with a remediation hint).
 
 The key material is never printed. With --encrypt-existing the local file is
-converted to an encrypted envelope in place (atomic write, 0600) and
-` + "`encrypted: true`" + ` is recorded for the active environment in .skret.yaml.`,
+converted to the standard age format (age-encryption.org/v1) in place
+(atomic write, 0600): legacy skret-encrypted-v1 envelopes are decrypted and
+re-encrypted with every value kept, and ` + "`encrypted: true`" + ` is recorded
+for the active environment in .skret.yaml.`,
 		Example: `  skret keys init
   skret keys init --encrypt-existing
   skret keys init --file=./.secrets.dev.yaml --encrypt-existing --format json`,
@@ -72,10 +80,38 @@ converted to an encrypted envelope in place (atomic write, 0600) and
 		},
 	}
 	cmd.Flags().StringVar(&ko.file, "file", "", "local provider file (default: file of the active environment in .skret.yaml)")
-	cmd.Flags().BoolVar(&ko.encryptExisting, "encrypt-existing", false, "migrate the plaintext local file to an encrypted envelope in place")
+	cmd.Flags().BoolVar(&ko.encryptExisting, "encrypt-existing", false, "migrate the local file (plaintext or legacy envelope) to the standard age format in place")
 	cmd.Flags().BoolVar(&ko.passphraseStdin, "passphrase-stdin", false, "read the passphrase from stdin (one line) instead of generating/storing a key")
 	cmd.Flags().StringVar(&ko.format, "format", "table", "output format (table, json)")
 	return cmd
+}
+
+// keyCand is one candidate source of key material, in precedence order.
+type keyCand struct {
+	material string
+	source   string
+}
+
+// keysFileState classifies the on-disk local provider file.
+type keysFileState int
+
+const (
+	keysFileMissing keysFileState = iota
+	keysFilePlaintext
+	keysFileAge
+	keysFileLegacy
+)
+
+// keysFileStateOf classifies raw bytes from the local provider file.
+func keysFileStateOf(raw []byte) keysFileState {
+	switch {
+	case keystore.Detect(raw):
+		return keysFileAge
+	case keystore.DetectLegacy(raw):
+		return keysFileLegacy
+	default:
+		return keysFilePlaintext
+	}
 }
 
 func (o *keysInitOpts) run(cmd *cobra.Command, opts *GlobalOpts) error {
@@ -85,95 +121,199 @@ func (o *keysInitOpts) run(cmd *cobra.Command, opts *GlobalOpts) error {
 	}
 	file, cfgPath, cfg, envName, encCfg := target.file, target.cfgPath, target.cfg, target.envName, target.encCfg
 
-	// 1. Env vars win, matching the runtime resolution order.
-	material, source := envKeyMaterial()
-	keyringStored := false
-	if material == "" && o.passphraseStdin {
-		pw, perr := readPassphraseStdin()
-		if perr != nil {
-			return perr
+	result := keysInitResult{File: file, Format: keystore.Format}
+
+	// Classify the on-disk file (migration verification only; plain init
+	// never touches the file).
+	state := keysFileMissing
+	var raw []byte
+	if o.encryptExisting {
+		raw, err = os.ReadFile(file)
+		switch {
+		case err == nil:
+			state = keysFileStateOf(raw)
+		case errors.Is(err, os.ErrNotExist):
+			// Nothing to migrate yet: first write under the flipped config
+			// flag will produce an age envelope.
+		default:
+			return skret.NewError(skret.ExitConfigError,
+				fmt.Sprintf("keys: read %q", file), err)
 		}
-		material, source = pw, keystore.SourcePassphr
 	}
-	if material == "" {
-		key, gerr := keystore.GenerateKey()
+
+	// Resolve candidate key material: env → stdin passphrase → keyring →
+	// prompt. Generation (fresh age X25519 identity into the OS keyring)
+	// happens only when no candidate exists.
+	cands, err := o.keyCandidates()
+	if err != nil {
+		return err
+	}
+
+	switch state {
+	case keysFileAge:
+		// Already a standard age file: verify the material still decrypts it.
+		var mat keyCand
+		var ok bool
+		mat, ok = firstOpen(cands, func(material string) error {
+			_, _, derr := keystore.OpenWithMeta(raw, material)
+			return derr
+		})
+		if !ok {
+			return skret.WithRemediation(
+				skret.NewError(skret.ExitAuthError, "keys: could not decrypt the age-encrypted file with any available key material", nil),
+				fmt.Sprintf("export %s=<AGE-SECRET-KEY-1...> (the key this file was encrypted with), or rerun with --passphrase-stdin < line", keystore.EnvKeyPrimary))
+		}
+		result.KeySource = mat.source
+		result.FileEncrypted = true
+		result.AlreadyEncrypted = true
+		result.KDF = keystore.StanzaKind(raw)
+	case keysFileLegacy:
+		// One-command migration: open the legacy envelope, re-seal every
+		// value (and per-key metadata) into the standard age format.
+		var secrets, meta map[string]string
+		_, ok := firstOpen(cands, func(material string) error {
+			s, m, derr := keystore.OpenLegacyWithMeta(raw, material)
+			if derr == nil {
+				secrets, meta = s, m
+			}
+			return derr
+		})
+		if !ok {
+			return skret.WithRemediation(
+				skret.NewError(skret.ExitAuthError, "keys: could not decrypt the legacy skret-encrypted-v1 envelope with any available key material", nil),
+				fmt.Sprintf("export %s (or %s) with the key material this file was encrypted with, then rerun", keystore.EnvKeyPrimary, keystore.EnvKeyFallback))
+		}
+		// The first candidate seals the new file: an age private key uses
+		// the X25519 arm, anything else the passphrase (scrypt) arm — the
+		// same material decrypts it again later.
+		newMat := cands[0]
+		sealed, serr := keystore.SealWithMeta(secrets, meta, newMat.material)
+		if serr != nil {
+			return serr
+		}
+		if werr := writeFileAtomically0600(file, sealed); werr != nil {
+			return skret.NewError(skret.ExitGenericError,
+				fmt.Sprintf("keys: write age-encrypted %q", file), werr)
+		}
+		result.KeySource = newMat.source
+		result.KeyringStored = false
+		result.FileEncrypted = true
+		result.KDF = keystore.RecipientKind(newMat.material)
+	default:
+		// Plaintext file or no file yet: establish material; the file is
+		// converted by --encrypt-existing here or sealed on the next write
+		// under `encrypted: true`.
+		newMat, generated, gerr := resolveOrCreate(cands)
 		if gerr != nil {
 			return gerr
 		}
-		if serr := keystore.StoreKeyring(key); serr == nil {
-			material, source, keyringStored = key, keystore.SourceKeyring, true
-		} else if term.IsTerminal(int(os.Stdin.Fd())) {
-			// Keyring unusable (headless/no GUI): fall back to the prompt,
-			// which is the same path the provider uses at decrypt time.
-			res, rerr := keystore.ResolveKeyMaterial(keystore.ResolveOpts{Interactive: true})
-			if rerr != nil {
-				return rerr
+		result.KeySource = newMat.source
+		result.KeyringStored = generated
+		result.KDF = keystore.RecipientKind(newMat.material)
+
+		if state == keysFilePlaintext {
+			var f struct {
+				Secrets *map[string]string `yaml:"secrets"`
+				Meta    map[string]string  `yaml:"meta"`
 			}
-			material, source = res.Material, res.Source
-		} else {
-			return skret.WithRemediation(
-				skret.NewError(skret.ExitAuthError, "keys: could not store generated key in OS keyring", nil),
-				fmt.Sprintf("set %s=<key-material>, or rerun with --passphrase-stdin < line", keystore.EnvKeyPrimary))
+			if uerr := yaml.Unmarshal(raw, &f); uerr != nil {
+				return skret.NewError(skret.ExitConfigError,
+					fmt.Sprintf("keys: parse plaintext file %q", file), uerr)
+			}
+			secrets := map[string]string{}
+			if f.Secrets != nil {
+				secrets = *f.Secrets
+			}
+			sealed, serr := keystore.SealWithMeta(secrets, f.Meta, newMat.material)
+			if serr != nil {
+				return serr
+			}
+			if werr := writeFileAtomically0600(file, sealed); werr != nil {
+				return skret.NewError(skret.ExitGenericError,
+					fmt.Sprintf("keys: write age-encrypted %q", file), werr)
+			}
+			result.FileEncrypted = true
 		}
 	}
 
-	result := keysInitResult{
-		KeySource:        source,
-		KeyringStored:    keyringStored,
-		File:             file,
-		FileEncrypted:    false,
-		KDF:              "argon2id",
-		ConfigUpdated:    false,
-		AlreadyEncrypted: false,
-	}
-
-	if o.encryptExisting {
-		raw, rerr := os.ReadFile(file)
-		switch {
-		case rerr == nil:
-			if keystore.Detect(raw) {
-				// Verify the current key material still decrypts it.
-				if _, derr := keystore.Open(raw, material); derr != nil {
-					return derr
-				}
-				result.FileEncrypted = true
-				result.AlreadyEncrypted = true
-			} else {
-				var secrets map[string]string
-				if uerr := yaml.Unmarshal(raw, &struct {
-					Secrets *map[string]string `yaml:"secrets"`
-				}{&secrets}); uerr != nil {
-					return skret.NewError(skret.ExitConfigError,
-						fmt.Sprintf("keys: parse plaintext file %q", file), uerr)
-				}
-				sealed, serr := keystore.Seal(secrets, material, nil)
-				if serr != nil {
-					return serr
-				}
-				if werr := writeFileAtomically0600(file, sealed); werr != nil {
-					return skret.NewError(skret.ExitGenericError,
-						fmt.Sprintf("keys: write encrypted %q", file), werr)
-				}
-				result.FileEncrypted = true
-			}
-		case errors.Is(rerr, os.ErrNotExist):
-			// Nothing to migrate yet: first write under the flipped config
-			// flag will produce an envelope.
-		default:
-			return skret.NewError(skret.ExitConfigError,
-				fmt.Sprintf("keys: read %q", file), rerr)
+	if o.encryptExisting && cfg != nil && !encCfg {
+		if uerr := updateConfigEncryptedFlag(cfg, cfgPath, envName); uerr != nil {
+			return uerr
 		}
-
-		if cfg != nil && !encCfg {
-			if uerr := updateConfigEncryptedFlag(cfg, cfgPath, envName); uerr != nil {
-				return uerr
-			}
-			result.ConfigUpdated = true
-		}
+		result.ConfigUpdated = true
 	}
 
 	reportKeysInit(cmd, o.format, result)
 	return nil
+}
+
+// keyCandidates collects key material in precedence order without side
+// effects: SKRET_AGE_KEY, SKRET_LOCAL_KEY, --passphrase-stdin, the OS
+// keyring, and — only when nothing else exists and stdin is a terminal —
+// the interactive passphrase prompt.
+func (o *keysInitOpts) keyCandidates() ([]keyCand, error) {
+	var cands []keyCand
+	for _, name := range []string{keystore.EnvKeyPrimary, keystore.EnvKeyFallback} {
+		if v := os.Getenv(name); v != "" {
+			cands = append(cands, keyCand{v, keystore.SourceEnv + ":" + name})
+		}
+	}
+	if o.passphraseStdin {
+		pw, err := readPassphraseStdin()
+		if err != nil {
+			return nil, err
+		}
+		cands = append(cands, keyCand{pw, keystore.SourcePassphr})
+	}
+	if v, ok := keystore.KeyringMaterial(); ok {
+		cands = append(cands, keyCand{v, keystore.SourceKeyring})
+	}
+	if len(cands) == 0 && term.IsTerminal(int(os.Stdin.Fd())) {
+		res, err := keystore.ResolveKeyMaterial(keystore.ResolveOpts{Interactive: true})
+		if err != nil {
+			return nil, err
+		}
+		cands = append(cands, keyCand{res.Material, res.Source})
+	}
+	return cands, nil
+}
+
+// resolveOrCreate picks the first candidate or, when none exists, generates
+// a fresh age X25519 identity and stores it in the OS keyring (with the
+// interactive passphrase prompt as the fallback on machines without a
+// usable keyring).
+func resolveOrCreate(cands []keyCand) (keyCand, bool, error) {
+	if len(cands) > 0 {
+		return cands[0], false, nil
+	}
+	key, err := keystore.GenerateIdentity()
+	if err != nil {
+		return keyCand{}, false, err
+	}
+	if serr := keystore.StoreKeyring(key); serr == nil {
+		return keyCand{key, keystore.SourceKeyring}, true, nil
+	} else if term.IsTerminal(int(os.Stdin.Fd())) {
+		// Keyring unusable (headless/no GUI): fall back to the prompt,
+		// which is the same path the provider uses at decrypt time.
+		res, rerr := keystore.ResolveKeyMaterial(keystore.ResolveOpts{Interactive: true})
+		if rerr != nil {
+			return keyCand{}, false, rerr
+		}
+		return keyCand{res.Material, res.Source}, false, nil
+	}
+	return keyCand{}, false, skret.WithRemediation(
+		skret.NewError(skret.ExitAuthError, "keys: could not store generated key in OS keyring", nil),
+		fmt.Sprintf("set %s=<AGE-SECRET-KEY-1...>, or rerun with --passphrase-stdin < line", keystore.EnvKeyPrimary))
+}
+
+// firstOpen returns the first candidate for which opener succeeds.
+func firstOpen(cands []keyCand, opener func(material string) error) (keyCand, bool) {
+	for _, c := range cands {
+		if err := opener(c.material); err == nil {
+			return c, true
+		}
+	}
+	return keyCand{}, false
 }
 
 // keysInitResult is the --format json payload for `keys init`. Key material
@@ -186,6 +326,7 @@ type keysInitResult struct {
 	AlreadyEncrypted bool   `json:"already_encrypted,omitempty"`
 	ConfigUpdated    bool   `json:"config_updated"`
 	KDF              string `json:"kdf"`
+	Format           string `json:"format,omitempty"`
 }
 
 func reportKeysInit(cmd *cobra.Command, format string, r keysInitResult) {
@@ -195,16 +336,20 @@ func reportKeysInit(cmd *cobra.Command, format string, r keysInitResult) {
 		return
 	}
 	w := cmd.ErrOrStderr()
-	switch r.KeySource {
-	case keystore.SourceKeyring:
-		fmt.Fprintln(w, "Key material: generated 256-bit key stored in OS keyring (service \"skret\")")
+	switch {
+	case r.KeyringStored:
+		fmt.Fprintln(w, "Key material: generated age X25519 identity stored in OS keyring (service \"skret\")")
+	case r.KeySource == keystore.SourceKeyring:
+		fmt.Fprintln(w, "Key material: existing OS keyring material reused (service \"skret\")")
+	case r.KDF == "scrypt":
+		fmt.Fprintf(w, "Key material: %s (passphrase arm, age scrypt; not stored by skret)\n", r.KeySource)
 	default:
 		fmt.Fprintf(w, "Key material: %s (not stored by skret)\n", r.KeySource)
 	}
 	if r.AlreadyEncrypted {
-		fmt.Fprintf(w, "%s already encrypted (verified with current key)\n", r.File)
+		fmt.Fprintf(w, "%s already age-encrypted (verified with current key material)\n", r.File)
 	} else if r.FileEncrypted {
-		fmt.Fprintf(w, "Migrated %s to encrypted envelope (%s, atomic write, 0600)\n", r.File, r.KDF)
+		fmt.Fprintf(w, "Migrated %s to age-encrypted envelope (%s, atomic write, 0600)\n", r.File, r.Format)
 	}
 	if r.ConfigUpdated {
 		fmt.Fprintln(w, "Recorded encrypted: true in .skret.yaml")
@@ -222,7 +367,8 @@ func newKeysShowCmd(opts *GlobalOpts) *cobra.Command {
 		Use:   "show",
 		Short: "Report encryption state of the local provider file",
 		Long: `Report encryption state of the local provider file: whether the file on
-disk is an encrypted envelope, the KDF recorded in its header, whether key
+disk is an encrypted envelope (standard age format or legacy
+skret-encrypted-v1), the recipient/KDF recorded in its header, whether key
 material is available non-interactively (and from where), plus warnings —
 including high-entropy values sitting in a plaintext file. Secret values are
 never printed.`,
@@ -324,17 +470,6 @@ func resolveKeysTarget(opts *GlobalOpts, fileFlag string) (*keysTarget, error) {
 		return nil, skret.NewError(skret.ExitConfigError,
 			"keys: no .skret.yaml found and no --file given", nil)
 	}
-}
-
-// envKeyMaterial consults SKRET_AGE_KEY then SKRET_LOCAL_KEY, mirroring the
-// runtime resolution order. Returns ("", "") when neither is set.
-func envKeyMaterial() (material, source string) {
-	for _, name := range []string{keystore.EnvKeyPrimary, keystore.EnvKeyFallback} {
-		if v := os.Getenv(name); v != "" {
-			return v, keystore.SourceEnv + ":" + name
-		}
-	}
-	return "", ""
 }
 
 // readPassphraseStdin reads one passphrase line from stdin (scripted setup).

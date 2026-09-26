@@ -546,6 +546,17 @@ func TestDoctorEncryptionCheck_Table(t *testing.T) {
 			want:   doctorPass,
 		},
 		{
+			name: "legacy-format-passes-with-migration-hint",
+			status: func() *keystore.Status {
+				s := passStatus()
+				s.Format = keystore.FormatLegacy
+				s.KDF = "argon2id"
+				return s
+			}(),
+			want:        doctorPass,
+			wantInDetal: "legacy skret-encrypted-v1 format",
+		},
+		{
 			name:        "encrypted-without-key-fails-auth-class",
 			status:      &keystore.Status{Encrypted: true, Format: "age", KDF: "argon2id"},
 			want:        doctorFail,
@@ -627,11 +638,11 @@ func TestDoctorEncryptionCheck_Table(t *testing.T) {
 func TestDoctorCmd_EncryptedFileWithKeyPasses(t *testing.T) {
 	// Real keystore round-trip: env-var key material deterministically wins
 	// over any machine keyring (SKRET_AGE_KEY is first in the resolve order).
-	material, err := keystore.GenerateKey()
+	material, err := keystore.GenerateIdentity()
 	require.NoError(t, err)
 	t.Setenv("SKRET_AGE_KEY", material)
 
-	sealed, err := keystore.Seal(map[string]string{"API_KEY": "v"}, material, nil)
+	sealed, err := keystore.Seal(map[string]string{"API_KEY": "v"}, material)
 	require.NoError(t, err)
 	doctorFixture(t, `version: "1"
 default_env: dev
@@ -644,7 +655,7 @@ environments:
 
 	_, stderr, err := runDoctorCmd(t)
 	require.NoError(t, err)
-	assert.Contains(t, stderr, "PASS encryption[dev]: encrypted (format skret-encrypted-v1, kdf argon2id, key from env:SKRET_AGE_KEY)")
+	assert.Contains(t, stderr, "PASS encryption[dev]: encrypted (format age-encryption.org/v1, kdf X25519, key from env:SKRET_AGE_KEY)")
 	assert.Contains(t, stderr, "PASS provider[dev]: file loads (1 secret(s))")
 }
 

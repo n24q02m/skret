@@ -1,19 +1,29 @@
 package keystore
 
 import (
-	"encoding/base64"
+	"bytes"
 	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"filippo.io/age"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gopkg.in/yaml.v3"
 )
 
 const testMaterial = "unit-test-key-material"
+
+// testIdentity is a real age X25519 private key (AGE-SECRET-KEY-1...)
+// generated once per test binary; tests that need the X25519 arm use it.
+var testIdentity = func() string {
+	id, err := GenerateIdentity()
+	if err != nil {
+		panic(err)
+	}
+	return id
+}()
 
 // exitCodeOf asserts the error implements the interface pkg/skret.ExitCode
 // recognizes and returns its code — proving the contract without importing
@@ -36,7 +46,7 @@ func remediationOf(err error) string {
 
 func sealForTest(t *testing.T, secrets map[string]string) []byte {
 	t.Helper()
-	raw, err := Seal(secrets, testMaterial, nil)
+	raw, err := Seal(secrets, testMaterial)
 	require.NoError(t, err)
 	return raw
 }
@@ -64,13 +74,38 @@ func TestSealOpenRoundTrip(t *testing.T) {
 	}
 }
 
+func TestSealOpenRoundTripX25519(t *testing.T) {
+	// A real age private key material selects the X25519 arm: the file
+	// carries an X25519 recipient stanza and decrypts with the same key.
+	secrets := map[string]string{"API_KEY": "value-1", "DB_PASS": "s3cr3t"}
+	raw, err := Seal(secrets, testIdentity)
+	require.NoError(t, err)
+	assert.True(t, Detect(raw))
+	assert.Equal(t, "X25519", StanzaKind(raw))
+	assert.NotContains(t, "scrypt", string(raw))
+
+	got, err := Open(raw, testIdentity)
+	require.NoError(t, err)
+	assert.Equal(t, secrets, got)
+}
+
 func TestSealEnvelopeShape(t *testing.T) {
 	raw := sealForTest(t, map[string]string{"K": "hunter2-plain-value"})
 	s := string(raw)
-	assert.Contains(t, s, "format: "+Format)
-	assert.Contains(t, s, "algorithm: argon2id")
-	assert.Contains(t, s, "version: \"1\"")
+	assert.True(t, Detect([]byte(s)))
+	assert.Contains(t, s, Format, "age wire magic must be the first line")
+	assert.Contains(t, s, "-> scrypt ", "passphrase material must produce a scrypt stanza")
 	assert.NotContains(t, s, "hunter2-plain-value", "plaintext value must not appear")
+	assert.NotContains(t, s, "unit-test-key-material", "key material must not appear")
+}
+
+func TestSealPayloadIsPlaintextFileShape(t *testing.T) {
+	// The decrypted payload is a normal plaintext local file — so external
+	// `age -d` output feeds any YAML reader.
+	raw := sealForTest(t, map[string]string{"K": "v"})
+	plain := decryptPayloadForTest(t, raw, testMaterial)
+	assert.Contains(t, plain, "version: \"1\"")
+	assert.Contains(t, plain, "secrets:")
 }
 
 func TestOpenWrongKey(t *testing.T) {
@@ -83,33 +118,28 @@ func TestOpenWrongKey(t *testing.T) {
 
 func TestOpenTampered(t *testing.T) {
 	raw := sealForTest(t, map[string]string{"K": "v"})
-	// Corrupt the last byte of the yaml (inside the ciphertext blob region).
-	i := strings.LastIndex(string(raw), ":")
+	// Flip a payload byte: age authentication must reject the file.
+	i := strings.LastIndex(string(raw), "\n")
 	require.Greater(t, i, 0)
 	b := append([]byte(nil), raw...)
-	if b[i+1] == 'A' {
-		b[i+1] = 'B'
+	if b[i-1] == 'A' {
+		b[i-1] = 'B'
 	} else {
-		b[i+1] = 'A'
+		b[i-1] = 'A'
 	}
 	_, err := Open(b, testMaterial)
 	require.Error(t, err)
 	assert.Equal(t, CodeAuthError, exitCodeOf(t, err))
 }
 
-func TestOpenAADSwapRejected(t *testing.T) {
-	// Swapping ciphertext blobs between key names must fail: each blob is
-	// AEAD-bound to its key name as additional data.
-	raw := sealForTest(t, map[string]string{"K1": "v1", "K2": "v2"})
-	var env envelope
-	require.NoError(t, yaml.Unmarshal(raw, &env))
-	require.Len(t, env.Secrets, 2)
-	env.Secrets["K1"], env.Secrets["K2"] = env.Secrets["K2"], env.Secrets["K1"]
-
-	resealed, err := yaml.Marshal(&env)
+func TestOpenX25519RejectsOtherIdentity(t *testing.T) {
+	other, err := GenerateIdentity()
 	require.NoError(t, err)
-	_, err = Open(resealed, testMaterial)
-	assert.Error(t, err, "swapped ciphertexts must not decrypt")
+	raw, err := Seal(map[string]string{"K": "v"}, testIdentity)
+	require.NoError(t, err)
+	_, err = Open(raw, other)
+	require.Error(t, err, "a different age identity must not decrypt")
+	assert.Equal(t, CodeAuthError, exitCodeOf(t, err))
 }
 
 func TestDetect(t *testing.T) {
@@ -121,7 +151,12 @@ func TestDetect(t *testing.T) {
 		{name: "plaintext yaml", raw: "version: \"1\"\nsecrets:\n  A: b\n", want: false},
 		{name: "garbage", raw: "\x00\x01not yaml at all [", want: false},
 		{name: "empty", raw: "", want: false},
-		{name: "envelope", raw: string(sealForTest(t, map[string]string{"A": "b"})), want: true},
+		{name: "legacy envelope", raw: string(func() []byte {
+			raw, err := SealLegacy(map[string]string{"A": "b"}, testMaterial, nil)
+			require.NoError(t, err)
+			return raw
+		}()), want: false},
+		{name: "age envelope", raw: string(sealForTest(t, map[string]string{"A": "b"})), want: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -131,9 +166,33 @@ func TestDetect(t *testing.T) {
 }
 
 func TestSealEmptyMaterial(t *testing.T) {
-	_, err := Seal(map[string]string{"K": "v"}, "", nil)
+	_, err := Seal(map[string]string{"K": "v"}, "")
 	require.Error(t, err)
 	assert.Equal(t, CodeValidationError, exitCodeOf(t, err))
+	_, err = Open([]byte("age-encryption.org/v1"), "")
+	require.Error(t, err)
+	assert.Equal(t, CodeValidationError, exitCodeOf(t, err))
+}
+
+func TestParseIdentityRejectsNonAgeKey(t *testing.T) {
+	_, err := ParseIdentity("not-an-age-key")
+	require.Error(t, err)
+	assert.Equal(t, CodeValidationError, exitCodeOf(t, err))
+	assert.Contains(t, err.Error(), EnvKeyPrimary)
+
+	id, err := ParseIdentity(testIdentity)
+	require.NoError(t, err)
+	assert.Equal(t, testIdentity, id.String())
+}
+
+func TestGenerateIdentityIsBech32AgeKey(t *testing.T) {
+	key, err := GenerateIdentity()
+	require.NoError(t, err)
+	assert.True(t, strings.HasPrefix(key, "AGE-SECRET-KEY-1"), "age private keys are bech32 with the AGE-SECRET-KEY- HRP")
+	assert.False(t, IsAgeIdentity("hunter2-passphrase"))
+	assert.True(t, IsAgeIdentity(key))
+	assert.Equal(t, "X25519", RecipientKind(key))
+	assert.Equal(t, "scrypt", RecipientKind("hunter2-passphrase"))
 }
 
 // injectKeyring swaps the keyring function vars for the duration of tt.
@@ -259,15 +318,60 @@ func TestResolveKeyMaterialOrder(t *testing.T) {
 	}
 }
 
+func TestResolveIdentityPrefersAgeKeys(t *testing.T) {
+	tests := []struct {
+		name       string
+		primary    string
+		fallback   string
+		keyring    string
+		wantSource string
+	}{
+		{name: "age key in primary env", primary: testIdentity, keyring: "legacy-raw", wantSource: "env:" + EnvKeyPrimary},
+		{name: "age key in fallback env", fallback: testIdentity, keyring: "legacy-raw", wantSource: "env:" + EnvKeyFallback},
+		{name: "age key in keyring", keyring: testIdentity, wantSource: SourceKeyring},
+		{name: "non-age env falls back to passphrase arm", primary: "legacy-raw", keyring: testIdentity, wantSource: "env:" + EnvKeyPrimary},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.primary != "" {
+				t.Setenv(EnvKeyPrimary, tt.primary)
+			}
+			if tt.fallback != "" {
+				t.Setenv(EnvKeyFallback, tt.fallback)
+			}
+			store := map[string]string{}
+			if tt.keyring != "" {
+				store[KeyringService+"\x00"+KeyringUser] = tt.keyring
+			}
+			injectKeyring(t, store, nil, nil)
+
+			res, err := ResolveIdentity(ResolveOpts{Interactive: false})
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantSource, res.Source)
+		})
+	}
+}
+
+func TestResolveIdentityNonInteractiveFailsWithHint(t *testing.T) {
+	t.Setenv(EnvKeyPrimary, "")
+	t.Setenv(EnvKeyFallback, "")
+	injectKeyring(t, map[string]string{}, nil, nil)
+
+	_, err := ResolveIdentity(ResolveOpts{Interactive: false})
+	require.Error(t, err)
+	assert.Equal(t, CodeAuthError, exitCodeOf(t, err))
+	assert.Contains(t, remediationOf(err), EnvKeyPrimary)
+	assert.Contains(t, remediationOf(err), "AGE-SECRET-KEY")
+}
+
 func TestGenerateAndStoreKeyring(t *testing.T) {
 	store := map[string]string{}
 	injectKeyring(t, store, nil, nil)
 
-	key, err := GenerateKey()
+	key, err := GenerateIdentity()
 	require.NoError(t, err)
-	decoded, err := base64.StdEncoding.DecodeString(key)
-	require.NoError(t, err)
-	assert.Len(t, decoded, 32, "generated key must be 256 bits")
+	assert.True(t, strings.HasPrefix(key, "AGE-SECRET-KEY-1"), "generated key must be a bech32 age private key")
+	require.True(t, IsAgeIdentity(key))
 
 	require.NoError(t, StoreKeyring(key))
 	assert.Equal(t, key, store[KeyringService+"\x00"+KeyringUser])
@@ -286,6 +390,10 @@ func TestStatusOf(t *testing.T) {
 	require.NoError(t, os.WriteFile(plainPath, []byte(plaintext), 0o600))
 	encPath := filepath.Join(dir, "enc.yaml")
 	require.NoError(t, os.WriteFile(encPath, sealForTest(t, map[string]string{"A": "b"}), 0o600))
+	legacyPath := filepath.Join(dir, "legacy.yaml")
+	legacyRaw, err := SealLegacy(map[string]string{"A": "b"}, testMaterial, nil)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(legacyPath, legacyRaw, 0o600))
 	missingPath := filepath.Join(dir, "missing.yaml")
 
 	tests := []struct {
@@ -294,6 +402,7 @@ func TestStatusOf(t *testing.T) {
 		cfgEncrypted  bool
 		withKey       bool
 		wantEncrypted bool
+		wantFormat    string
 		wantKDF       string
 		wantWarnKey   string // expected substring of some warning ("" = none)
 		wantKeyAvail  bool
@@ -312,21 +421,32 @@ func TestStatusOf(t *testing.T) {
 			wantKeyAvail: false,
 		},
 		{
-			name:          "encrypted file",
+			name:          "age file",
 			path:          encPath,
 			cfgEncrypted:  true,
 			withKey:       true,
 			wantEncrypted: true,
-			wantKDF:       "argon2id",
+			wantFormat:    Format,
+			wantKDF:       "scrypt",
 			wantKeyAvail:  true,
 		},
 		{
-			name:          "encrypted without key warns",
+			name:          "age file without key warns",
 			path:          encPath,
 			withKey:       false,
 			wantEncrypted: true,
-			wantKDF:       "argon2id",
+			wantFormat:    Format,
+			wantKDF:       "scrypt",
 			wantWarnKey:   "no key material",
+		},
+		{
+			name:          "legacy file reports legacy format and kdf",
+			path:          legacyPath,
+			withKey:       true,
+			wantEncrypted: true,
+			wantFormat:    FormatLegacy,
+			wantKDF:       "argon2id",
+			wantKeyAvail:  true,
 		},
 		{
 			name: "missing file is not an error",
@@ -348,6 +468,7 @@ func TestStatusOf(t *testing.T) {
 			require.NoError(t, err)
 			assert.Equal(t, tt.wantEncrypted, st.Encrypted)
 			assert.Equal(t, tt.cfgEncrypted, st.EncryptedCfg)
+			assert.Equal(t, tt.wantFormat, st.Format)
 			assert.Equal(t, tt.wantKDF, st.KDF)
 			assert.Equal(t, tt.wantKeyAvail, st.KeyAvailable)
 			if tt.wantWarnKey == "" {
@@ -378,4 +499,151 @@ func TestShannonBits(t *testing.T) {
 	}
 	// A 31-symbol string with all distinct characters has log2(31) bits.
 	assert.InDelta(t, 4.9542, ShannonBits("kW9xP2vQ8mZ5#J7&R4tU6yB3nL0cD1f"), 0.001)
+}
+
+// --- age-format edge cases: payload parsing, display helpers, legacy guards ---
+
+// TestOpenWithMetaPayloadEdgeCases: an age envelope that decrypts cleanly
+// but carries a non-YAML payload fails with the config-error contract, and
+// one whose payload simply has no secrets loads as an empty store (never a
+// nil map).
+func TestOpenWithMetaPayloadEdgeCases(t *testing.T) {
+	id, err := age.ParseX25519Identity(testIdentity)
+	require.NoError(t, err)
+
+	encryptRaw := func(plaintext []byte) []byte {
+		t.Helper()
+		var buf bytes.Buffer
+		w, err := age.Encrypt(&buf, id.Recipient())
+		require.NoError(t, err)
+		_, err = w.Write(plaintext)
+		require.NoError(t, err)
+		require.NoError(t, w.Close())
+		return buf.Bytes()
+	}
+
+	t.Run("payload not yaml", func(t *testing.T) {
+		raw := encryptRaw([]byte("{{{not yaml"))
+		secrets, meta, err := OpenWithMeta(raw, testIdentity)
+		require.Error(t, err)
+		assert.Nil(t, secrets)
+		assert.Nil(t, meta)
+		assert.Contains(t, err.Error(), "parse age payload")
+		assert.Equal(t, CodeConfigError, exitCodeOf(t, err))
+	})
+
+	t.Run("payload without secrets", func(t *testing.T) {
+		raw := encryptRaw([]byte("version: \"1\"\n"))
+		secrets, meta, err := OpenWithMeta(raw, testIdentity)
+		require.NoError(t, err)
+		require.NotNil(t, secrets, "missing secrets section must load as an empty map")
+		assert.Empty(t, secrets)
+		assert.Nil(t, meta)
+	})
+}
+
+// TestStanzaKindUnknownHeader: a header without a recognizable recipient
+// stanza reports "unknown" (display metadata only, never a parse error).
+func TestStanzaKindUnknownHeader(t *testing.T) {
+	assert.Equal(t, "unknown", StanzaKind([]byte("age-encryption.org/v1\n--- \n")))
+}
+
+// TestRecipientKindArms: age private keys and age public keys both report
+// the X25519 arm; anything else is passphrase material (scrypt).
+func TestRecipientKindArms(t *testing.T) {
+	assert.Equal(t, "X25519", RecipientKind(testIdentity))
+	id, err := age.ParseX25519Identity(testIdentity)
+	require.NoError(t, err)
+	assert.Equal(t, "X25519", RecipientKind(id.Recipient().String()))
+	assert.Equal(t, "scrypt", RecipientKind(testMaterial))
+}
+
+// TestDetectLegacyNonYAMLAndForeignFormat: bytes that are not YAML at all
+// are not a legacy envelope, and YAML carrying a different format marker
+// is not one either.
+func TestDetectLegacyNonYAMLAndForeignFormat(t *testing.T) {
+	assert.False(t, DetectLegacy([]byte("{{{invalid")))
+	assert.False(t, DetectLegacy([]byte("version: \"1\"\nformat: something-else\n")))
+}
+
+// TestSealLegacyEmptyMaterial: legacy sealing requires key material, like
+// its age counterpart.
+func TestSealLegacyEmptyMaterial(t *testing.T) {
+	_, err := SealLegacyWithMeta(map[string]string{"K": "v"}, nil, "", nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "key material is empty")
+	assert.Equal(t, CodeValidationError, exitCodeOf(t, err))
+}
+
+// TestSealLegacyUnsupportedKDFAlgorithm: a params header naming a foreign
+// KDF fails sealing instead of producing an envelope nothing can re-open.
+func TestSealLegacyUnsupportedKDFAlgorithm(t *testing.T) {
+	_, err := SealLegacyWithMeta(map[string]string{"K": "v"}, nil, testMaterial,
+		&kdfParams{Algorithm: "argon2id-v2", Salt: "c2FsdHNhbHRzYWx0", Time: 3, MemoryKiB: 64, Parallelism: 4})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unsupported kdf algorithm")
+	assert.Equal(t, CodeConfigError, exitCodeOf(t, err))
+}
+
+// TestResolveKeyMaterialPromptConfirmReadError: losing the terminal between
+// the two prompt reads surfaces the confirmation-read failure, not a
+// mismatch or a missing-key condition.
+func TestResolveKeyMaterialPromptConfirmReadError(t *testing.T) {
+	t.Setenv(EnvKeyPrimary, "")
+	t.Setenv(EnvKeyFallback, "")
+	origGet := keyringGet
+	keyringGet = func(string, string) (string, error) { return "", errors.New("no keyring") }
+	t.Cleanup(func() { keyringGet = origGet })
+
+	orig := readPassword
+	calls := 0
+	readPassword = func(string) (string, error) {
+		calls++
+		if calls == 1 {
+			return "first-entry", nil
+		}
+		return "", errors.New("tty gone")
+	}
+	t.Cleanup(func() { readPassword = orig })
+
+	_, err := ResolveKeyMaterial(ResolveOpts{Interactive: true})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "read passphrase confirmation")
+}
+
+// TestResolveIdentityPromptMismatchPassesThrough: a prompt validation
+// failure (entries do not match) is a validation error — ResolveIdentity
+// must pass it through unwrapped rather than rewording it as the canonical
+// "no key material available" condition.
+func TestResolveIdentityPromptMismatchPassesThrough(t *testing.T) {
+	t.Setenv(EnvKeyPrimary, "")
+	t.Setenv(EnvKeyFallback, "")
+	origGet := keyringGet
+	keyringGet = func(string, string) (string, error) { return "", errors.New("no keyring") }
+	t.Cleanup(func() { keyringGet = origGet })
+
+	orig := readPassword
+	responses := []string{"first", "second"}
+	readPassword = func(string) (string, error) {
+		if len(responses) == 0 {
+			return "", errors.New("exhausted")
+		}
+		r := responses[0]
+		responses = responses[1:]
+		return r, nil
+	}
+	t.Cleanup(func() { readPassword = orig })
+
+	_, err := ResolveIdentity(ResolveOpts{Interactive: true})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "passphrases do not match")
+	assert.NotContains(t, err.Error(), "no key material available")
+}
+
+// TestReadPasswordNonTerminalFails: the real prompt path fails immediately
+// when stdin is not a terminal (CI, pipes) — it must never block waiting
+// for input that never arrives.
+func TestReadPasswordNonTerminalFails(t *testing.T) {
+	_, err := readPassword("Enter passphrase: ")
+	require.Error(t, err)
 }

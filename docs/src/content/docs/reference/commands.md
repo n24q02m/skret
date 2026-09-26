@@ -329,16 +329,18 @@ skret keys init --file=./.secrets.dev.yaml --encrypt-existing --format json
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--file <path>` | active env's `file` | Local provider file to act on |
-| `--encrypt-existing` | `false` | Convert the plaintext file to an encrypted envelope (atomic write, 0600) and record `encrypted: true` for the active environment in `.skret.yaml` |
+| `--encrypt-existing` | `false` | Convert the file (plaintext or legacy `skret-encrypted-v1` envelope) to the standard age format (atomic write, 0600) and record `encrypted: true` for the active environment in `.skret.yaml` |
 | `--passphrase-stdin` | `false` | Read the passphrase from one stdin line instead of generating/storing a key |
-| `--format <table\|json>` | `table` | `json` prints `{key_source, keyring_stored, file, file_encrypted, already_encrypted, config_updated, kdf}` to stdout |
+| `--format <table\|json>` | `table` | `json` prints `{key_source, keyring_stored, file, file_encrypted, already_encrypted, config_updated, kdf, format}` to stdout |
 
 Notes:
 
-- Key sourcing precedence: `SKRET_AGE_KEY` / `SKRET_LOCAL_KEY` already set (validated, nothing stored) → a fresh 256-bit key generated and stored in the OS keyring (service `skret`, user `local-enc-key`, verified round-trip) → `--passphrase-stdin` → interactive passphrase prompt with confirmation (only when stdin is a terminal).
+- Encrypted files use the standard age format (`age-encryption.org/v1`) and decrypt with the standalone `age`/`rage` CLIs.
+- Key sourcing precedence: `SKRET_AGE_KEY` / `SKRET_LOCAL_KEY` already set (an age private key `AGE-SECRET-KEY-1...` uses the X25519 arm, any other value the passphrase/scrypt arm; nothing stored) → `--passphrase-stdin` → existing OS keyring material reused, otherwise a fresh age X25519 keypair generated and stored (service `skret`, user `local-enc-key`, verified round-trip) → interactive passphrase prompt with confirmation (only when stdin is a terminal).
 - Key material is never printed, logged, or included in the JSON payload.
-- With `--encrypt-existing` on an already-encrypted file, init verifies the current key material decrypts it and reports `already_encrypted` instead of rewriting.
-- If the file does not exist yet, `--encrypt-existing` records the config flag; the first write under it creates the envelope.
+- With `--encrypt-existing` on a legacy envelope, init decrypts it with the available key material and re-encrypts every value (and per-key expiry) to the age format in one command.
+- With `--encrypt-existing` on an already-age-encrypted file, init verifies the current key material decrypts it and reports `already_encrypted` instead of rewriting.
+- If the file does not exist yet, `--encrypt-existing` records the config flag; the first write under it creates the age-encrypted file.
 - In non-interactive contexts (CI, scripts) with no env material and no usable keyring, init fails with `ExitAuthError` (4) and a remediation hint instead of prompting.
 
 ## `skret keys show`
@@ -356,7 +358,9 @@ skret keys show --format json
 
 Notes:
 
-- `encrypted` reflects the file on disk (envelope sniffing), `encrypted_config` the `encrypted: true` flag in `.skret.yaml` — the two can legitimately differ while a plaintext file is awaiting migration.
+- `encrypted` reflects the file on disk (age magic header or legacy envelope sniffing), `encrypted_config` the `encrypted: true` flag in `.skret.yaml` — the two can legitimately differ while a plaintext file is awaiting migration.
+- `format` is `age-encryption.org/v1` for standard files, `skret-encrypted-v1` for legacy envelopes (report: migrate with `skret keys init --encrypt-existing`).
+- `kdf` reports the recipient side: the age stanza type (`X25519` or `scrypt`) for age files, `argon2id` for legacy envelopes.
 - `key_available` is checked non-interactively (env vars and OS keyring only), so scripts can rely on it without triggering a prompt.
 
 ## `skret audit`

@@ -49,11 +49,12 @@ func TestNoKeyMaterialError(t *testing.T) {
 	assert.Contains(t, err.Hint, EnvKeyPrimary)
 }
 
-func TestOpenMalformedEnvelope(t *testing.T) {
-	sealed := string(sealForTest(t, map[string]string{"K1": "v1", "K2": "v2"}))
-	rewrap := func(mutate func(env *envelope)) []byte {
-		var env envelope
-		require.NoError(t, yaml.Unmarshal([]byte(sealed), &env))
+func TestOpenLegacyMalformedEnvelope(t *testing.T) {
+	legacyRaw, err := SealLegacy(map[string]string{"K1": "v1", "K2": "v2"}, testMaterial, nil)
+	require.NoError(t, err)
+	rewrap := func(mutate func(env *legacyEnvelope)) []byte {
+		var env legacyEnvelope
+		require.NoError(t, yaml.Unmarshal(legacyRaw, &env))
 		mutate(&env)
 		raw, err := yaml.Marshal(&env)
 		require.NoError(t, err)
@@ -74,7 +75,7 @@ func TestOpenMalformedEnvelope(t *testing.T) {
 		},
 		{
 			name: "unknown format",
-			raw: rewrap(func(env *envelope) {
+			raw: rewrap(func(env *legacyEnvelope) {
 				env.Format = "future-format"
 			}),
 			errCode: CodeConfigError,
@@ -82,7 +83,7 @@ func TestOpenMalformedEnvelope(t *testing.T) {
 		},
 		{
 			name: "unsupported kdf",
-			raw: rewrap(func(env *envelope) {
+			raw: rewrap(func(env *legacyEnvelope) {
 				env.KDF.Algorithm = "bcrypt"
 			}),
 			errCode: CodeConfigError,
@@ -90,7 +91,7 @@ func TestOpenMalformedEnvelope(t *testing.T) {
 		},
 		{
 			name: "salt not base64",
-			raw: rewrap(func(env *envelope) {
+			raw: rewrap(func(env *legacyEnvelope) {
 				env.KDF.Salt = "!!!not base64!!!"
 			}),
 			errCode: CodeConfigError,
@@ -98,7 +99,7 @@ func TestOpenMalformedEnvelope(t *testing.T) {
 		},
 		{
 			name: "salt too short",
-			raw: rewrap(func(env *envelope) {
+			raw: rewrap(func(env *legacyEnvelope) {
 				env.KDF.Salt = "YWJj" // "abc"
 			}),
 			errCode: CodeConfigError,
@@ -106,7 +107,7 @@ func TestOpenMalformedEnvelope(t *testing.T) {
 		},
 		{
 			name: "malformed blob",
-			raw: rewrap(func(env *envelope) {
+			raw: rewrap(func(env *legacyEnvelope) {
 				env.Secrets["K1"] = "v9:broken"
 			}),
 			errCode: CodeConfigError,
@@ -114,7 +115,7 @@ func TestOpenMalformedEnvelope(t *testing.T) {
 		},
 		{
 			name: "blob wrong version tag",
-			raw: rewrap(func(env *envelope) {
+			raw: rewrap(func(env *legacyEnvelope) {
 				env.Secrets["K1"] = "v2:AAAA:AAAA"
 			}),
 			errCode: CodeConfigError,
@@ -122,7 +123,7 @@ func TestOpenMalformedEnvelope(t *testing.T) {
 		},
 		{
 			name: "missing ciphertext",
-			raw: rewrap(func(env *envelope) {
+			raw: rewrap(func(env *legacyEnvelope) {
 				env.Secrets["K1"] = "v1:AAAA"
 			}),
 			errCode: CodeConfigError,
@@ -130,7 +131,7 @@ func TestOpenMalformedEnvelope(t *testing.T) {
 		},
 		{
 			name: "nonce not base64",
-			raw: rewrap(func(env *envelope) {
+			raw: rewrap(func(env *legacyEnvelope) {
 				env.Secrets["K1"] = "v1:@@@:AAAA"
 			}),
 			errCode: CodeConfigError,
@@ -138,7 +139,7 @@ func TestOpenMalformedEnvelope(t *testing.T) {
 		},
 		{
 			name: "ciphertext not base64",
-			raw: rewrap(func(env *envelope) {
+			raw: rewrap(func(env *legacyEnvelope) {
 				env.Secrets["K1"] = "v1:AAAAAAAAAAAAAAAAAAAAAAAAAAAA:@@@"
 			}),
 			errCode: CodeConfigError,
@@ -147,7 +148,7 @@ func TestOpenMalformedEnvelope(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := Open(tt.raw, testMaterial)
+			_, err := OpenLegacy(tt.raw, testMaterial)
 			require.Error(t, err)
 			assert.Equal(t, tt.errCode, exitCodeOf(t, err))
 			assert.Contains(t, err.Error(), tt.wantMsg)
@@ -155,7 +156,16 @@ func TestOpenMalformedEnvelope(t *testing.T) {
 	}
 }
 
-func TestSealExplicitParams(t *testing.T) {
+func TestLegacyOpenWrongKeyCarriesMigrationHint(t *testing.T) {
+	raw, err := SealLegacy(map[string]string{"K": "v"}, "original-material", nil)
+	require.NoError(t, err)
+	_, err = OpenLegacy(raw, "wrong-material")
+	require.Error(t, err)
+	assert.Equal(t, CodeAuthError, exitCodeOf(t, err))
+	assert.Contains(t, remediationOf(err), "--encrypt-existing", "legacy decrypt failures must point at the migration command")
+}
+
+func TestSealLegacyExplicitParams(t *testing.T) {
 	// Explicit params (including a caller-provided salt) must be honored
 	// and produce an envelope that opens with the same material.
 	p := &kdfParams{
@@ -165,16 +175,17 @@ func TestSealExplicitParams(t *testing.T) {
 		MemoryKiB:   8 * 1024,
 		Parallelism: 2,
 	}
-	raw, err := Seal(map[string]string{"K": "v"}, testMaterial, p)
+	raw, err := SealLegacy(map[string]string{"K": "v"}, testMaterial, p)
 	require.NoError(t, err)
-	secrets, err := Open(raw, testMaterial)
+	secrets, err := OpenLegacy(raw, testMaterial)
 	require.NoError(t, err)
 	assert.Equal(t, "v", secrets["K"])
 
-	var env envelope
+	var env legacyEnvelope
 	require.NoError(t, yaml.Unmarshal(raw, &env))
 	assert.Equal(t, p.Salt, env.KDF.Salt, "provided salt must be reused")
 	assert.Equal(t, uint32(1), env.KDF.Time)
+	assert.Equal(t, FormatLegacy, env.Format)
 }
 
 func TestPromptPassphraseReadError(t *testing.T) {
@@ -189,9 +200,20 @@ func TestPromptPassphraseReadError(t *testing.T) {
 
 func TestKeyringSetError(t *testing.T) {
 	injectKeyring(t, map[string]string{}, errors.New("keyring locked"), nil)
-	_, err := GenerateKey()
+	_, err := GenerateIdentity()
 	require.NoError(t, err)
 	assert.Error(t, StoreKeyring("material"))
+}
+
+func TestKeyringMaterialAccessor(t *testing.T) {
+	injectKeyring(t, map[string]string{}, nil, nil)
+	_, ok := KeyringMaterial()
+	assert.False(t, ok, "empty keyring must report no material")
+
+	injectKeyring(t, map[string]string{KeyringService + "\x00" + KeyringUser: "stored-material"}, nil, nil)
+	v, ok := KeyringMaterial()
+	require.True(t, ok)
+	assert.Equal(t, "stored-material", v)
 }
 
 func TestStatusOfReadError(t *testing.T) {

@@ -4,6 +4,8 @@ go 1.26
 
 require (
 	cloud.google.com/go/secretmanager v1.21.0
+	filippo.io/age v1.2.1
+	filippo.io/edwards25519 v1.1.0
 	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.23.1
 	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.14.1
 	github.com/Azure/azure-sdk-for-go/sdk/security/keyvault/azsecrets v1.5.0
@@ -23,6 +25,7 @@ require (
 	github.com/googleapis/gax-go/v2 v2.23.0
 	github.com/oracle/oci-go-sdk/v65 v65.125.0
 	github.com/spf13/cobra v1.10.2
+	github.com/spf13/pflag v1.0.9
 	github.com/stretchr/testify v1.12.1
 	github.com/zalando/go-keyring v0.2.8
 	golang.org/x/crypto v0.55.0
@@ -85,7 +88,6 @@ require (
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/sahilm/fuzzy v0.1.1 // indirect
 	github.com/sony/gobreaker/v2 v2.4.0 // indirect
-	github.com/spf13/pflag v1.0.9 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	github.com/youmark/pkcs8 v0.0.0-20240726163527-a2c0da244d78 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect

@@ -295,7 +295,7 @@ Full docs at **[skret.n24q02m.com](https://skret.n24q02m.com)**:
 | `skret template <file>` | Render a template file, substituting `${KEY}` with secret values |
 | `skret scan` | Scan tracked files for any managed secret value and exit 10 on a leak (`--staged` for pre-commit hooks, `--history` to scan git history) |
 | `skret browse` | Browse secret keys in an interactive TUI, revealing values on demand (no decryption to browse) |
-| `skret keys init --encrypt-existing` | Set up key material and encrypt the local secrets file at rest (`skret keys show` reports state) |
+| `skret keys init --encrypt-existing` | Set up key material and encrypt the local secrets file at rest in the standard age format — decryptable with the external `age`/`rage` CLIs (`skret keys show` reports state) |
 | `skret audit` | Show the secret access audit trail — local append-only JSONL log (names only, never values) or AWS CloudTrail export of SSM parameter operations |
 | `skret doctor` | Read-only health check: config validity, provider reachability, auth state, local file permissions and at-rest encryption state; exits with the failing check's class (`--format json` for machines) |
 

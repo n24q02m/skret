@@ -199,3 +199,33 @@ func TestAudit_AppendErrorFailsLoudly(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "audit")
 }
+
+// TestAudit_AppendEntryFailureBranches: append failures must surface, not
+// vanish — the secret mutation already committed, so the caller must learn
+// the trail is incomplete.
+func TestAudit_AppendEntryFailureBranches(t *testing.T) {
+	t.Run("rotate stat failure", func(t *testing.T) {
+		// A NUL byte makes the OS reject the path with a non-NotExist
+		// error: the rotation step must report it rather than treat the
+		// trail as absent.
+		err := AppendAuditEntry(filepath.Join(t.TempDir(), "au\x00dit.log"), AuditEntry{Op: AuditOpSet})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "audit: rotate")
+	})
+	t.Run("trail path is a directory", func(t *testing.T) {
+		// Stat succeeds on a directory (no rotation), parent mkdir
+		// succeeds, and the append itself must fail on the open.
+		err := AppendAuditEntry(t.TempDir(), AuditEntry{Op: AuditOpSet})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "audit: open")
+	})
+	t.Run("trail under a file", func(t *testing.T) {
+		// A path component that is an existing file makes the trail
+		// unwritable; append must fail with the audit-prefixed wrap.
+		blocked := filepath.Join(t.TempDir(), "blocked")
+		require.NoError(t, os.WriteFile(blocked, []byte("x"), 0o600))
+		err := AppendAuditEntry(filepath.Join(blocked, "audit.log"), AuditEntry{Op: AuditOpSet})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "audit:")
+	})
+}

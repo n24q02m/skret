@@ -1,13 +1,13 @@
 package keystore
 
 import (
-	"crypto/rand"
-	"encoding/base64"
+	"errors"
 	"fmt"
 	"math"
 	"os"
 	"sort"
 
+	"filippo.io/age"
 	"github.com/zalando/go-keyring"
 	"golang.org/x/term"
 	"gopkg.in/yaml.v3"
@@ -57,6 +57,10 @@ var (
 // order: SKRET_AGE_KEY → SKRET_LOCAL_KEY → OS keyring → (interactive only)
 // passphrase prompt. Non-interactive without env/keyring material fails with
 // AuthError and a remediation hint.
+//
+// This is the raw-material resolver used for legacy (skret-encrypted-v1)
+// files and sync-state hash derivation. Standard age files resolve through
+// ResolveIdentity instead.
 func ResolveKeyMaterial(opts ResolveOpts) (*Result, error) {
 	for _, name := range []string{EnvKeyPrimary, EnvKeyFallback} {
 		if v := os.Getenv(name); v != "" {
@@ -78,6 +82,47 @@ func ResolveKeyMaterial(opts ResolveOpts) (*Result, error) {
 	return &Result{Material: pw, Source: SourcePassphr}, nil
 }
 
+// ResolveIdentity resolves age-usable key material for standard age files.
+// Source precedence matches ResolveKeyMaterial exactly (SKRET_AGE_KEY →
+// SKRET_LOCAL_KEY → OS keyring → interactive passphrase): whatever value
+// wins, an age private key drives the X25519 arm and any other value the
+// passphrase (scrypt) arm — deterministic, so the material that decrypts a
+// file also re-seals it.
+func ResolveIdentity(opts ResolveOpts) (*Result, error) {
+	res, err := ResolveKeyMaterial(opts)
+	if err != nil {
+		var e *Error
+		if errors.As(err, &e) && e.Code == CodeAuthError {
+			// Reword the hint for the age context; keep the canonical
+			// "no key material available" prefix (exit-4 contract).
+			return nil, &Error{
+				Code:    CodeAuthError,
+				Message: "keys: no key material available (age: set SKRET_AGE_KEY or SKRET_LOCAL_KEY, or run \"skret keys init\" on a machine with an OS keyring)",
+				Hint:    fmt.Sprintf("export %s=<AGE-SECRET-KEY-1...>  # generate one with: age-keygen  (or run: skret keys init)", EnvKeyPrimary),
+			}
+		}
+		return nil, err
+	}
+	return res, nil
+}
+
+// IsAgeIdentity reports whether s parses as an age X25519 private key
+// (AGE-SECRET-KEY-1...).
+func IsAgeIdentity(s string) bool {
+	_, err := age.ParseX25519Identity(s)
+	return err == nil
+}
+
+// KeyringMaterial returns the key material stored in the OS keyring by
+// `skret keys init`, if any.
+func KeyringMaterial() (string, bool) {
+	v, err := keyringGet(KeyringService, KeyringUser)
+	if err != nil || v == "" {
+		return "", false
+	}
+	return v, true
+}
+
 // promptPassphraseConfirm asks for a passphrase twice and requires the
 // entries to match. Never used unless ResolveOpts.Interactive was set.
 func promptPassphraseConfirm() (string, error) {
@@ -96,16 +141,6 @@ func promptPassphraseConfirm() (string, error) {
 		return "", newError(CodeValidationError, "keys: passphrases do not match", nil)
 	}
 	return a, nil
-}
-
-// GenerateKey returns 32 bytes of CSPRNG entropy, base64-encoded — the value
-// stored in the OS keyring by `skret keys init`.
-func GenerateKey() (string, error) {
-	b := make([]byte, 32)
-	if _, err := rand.Read(b); err != nil {
-		return "", newError(CodeGenericError, "keys: generate key", err)
-	}
-	return base64.StdEncoding.EncodeToString(b), nil
 }
 
 // StoreKeyring writes key material to the OS keyring and verifies the write
@@ -137,19 +172,27 @@ type Status struct {
 // reported as not encrypted with no error (nothing to decrypt yet).
 // cfgEncrypted is the `encrypted` flag from the active environment config;
 // it describes write intent, while Encrypted describes on-disk reality.
+// For encrypted files KDF reports the recipient side: the age stanza type
+// ("X25519" or "scrypt") for age files, the legacy KDF ("argon2id") for
+// pre-age envelopes.
 func StatusOf(filePath string, cfgEncrypted bool) (*Status, error) {
 	st := &Status{EncryptedCfg: cfgEncrypted, Warnings: []string{}}
 	raw, err := os.ReadFile(filePath)
 	switch {
 	case err == nil:
-		if Detect(raw) {
+		switch {
+		case Detect(raw):
 			st.Encrypted = true
 			st.Format = Format
-			var env envelope
+			st.KDF = StanzaKind(raw)
+		case DetectLegacy(raw):
+			st.Encrypted = true
+			st.Format = FormatLegacy
+			var env legacyEnvelope
 			if yaml.Unmarshal(raw, &env) == nil {
 				st.KDF = env.KDF.Algorithm
 			}
-		} else {
+		default:
 			st.Warnings = append(st.Warnings, plaintextEntropyWarnings(raw)...)
 		}
 	case os.IsNotExist(err):
@@ -159,7 +202,7 @@ func StatusOf(filePath string, cfgEncrypted bool) (*Status, error) {
 			fmt.Sprintf("keys: read %q", filePath), err)
 	}
 
-	res, resErr := ResolveKeyMaterial(ResolveOpts{Interactive: false})
+	res, resErr := resolveForFormat(st.Format)(ResolveOpts{Interactive: false})
 	if resErr == nil {
 		st.KeyAvailable = true
 		st.KeySource = res.Source
@@ -173,6 +216,17 @@ func StatusOf(filePath string, cfgEncrypted bool) (*Status, error) {
 			"file holds high-entropy plaintext values; consider `skret keys init --encrypt-existing`")
 	}
 	return st, nil
+}
+
+// resolveForFormat picks the key resolver matching the on-disk format:
+// legacy envelopes were sealed with raw material, age files resolve an age
+// identity (with the passphrase arm as fallback). Plaintext/missing files
+// report the age resolver — that is what the next write would use.
+func resolveForFormat(format string) func(ResolveOpts) (*Result, error) {
+	if format == FormatLegacy {
+		return ResolveKeyMaterial
+	}
+	return ResolveIdentity
 }
 
 // entropyMinLength / entropyThreshold define the high-entropy heuristic:
