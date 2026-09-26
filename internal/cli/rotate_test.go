@@ -177,6 +177,130 @@ func TestRotateCmd_TTLRecordedAndPreserved(t *testing.T) {
 		"rotation without --ttl continues the existing cadence")
 }
 
+// TestRotateCmd_RemindAliasMatchesTTL pins the spec flag name: --remind is
+// a full alias of --ttl (same recorded metadata, surfaced by doctor).
+func TestRotateCmd_RemindAliasMatchesTTL(t *testing.T) {
+	dir := rotateSetupRepo(t)
+	rotateRand(t)
+
+	before := time.Now()
+	_, _, err := runRotate(t, dir, "API_KEY", "--remind", "30d")
+	require.NoError(t, err)
+
+	raw, ok := readRotateStore(t, dir).Meta["API_KEY"]
+	require.True(t, ok, "--remind must record the same expiry metadata as --ttl")
+	expiry, perr := time.Parse(time.RFC3339, raw)
+	require.NoError(t, perr)
+	assert.True(t, expiry.After(before.Add(29*24*time.Hour)), "expiry ≈ now+30d: %v", expiry)
+	assert.True(t, expiry.Before(before.Add(31*24*time.Hour)), "expiry ≈ now+30d: %v", expiry)
+}
+
+func TestRotateCmd_TTLAndRemindMutuallyExclusive(t *testing.T) {
+	dir := rotateSetupRepo(t)
+
+	_, _, err := runRotate(t, dir, "API_KEY", "--ttl", "720h", "--remind", "720h")
+	require.Error(t, err)
+	assert.Equal(t, skret.ExitValidationError, skret.ExitCode(err))
+	assert.Equal(t, "secret123", readRotateStore(t, dir).Secrets["API_KEY"],
+		"alias conflict must fail before any mutation")
+}
+
+// rotateSetupRepoWithConfig is rotateSetupRepo with a caller-provided
+// .skret.yaml (used to declare sync targets for propagation tests) and the
+// user home sandboxed so sync state journal files stay in the test.
+func rotateSetupRepoWithConfig(t *testing.T, cfg string) string {
+	t.Helper()
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".git"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".skret.yaml"), []byte(cfg), 0o644))
+	rotateSeedFile(t, dir)
+
+	home := t.TempDir()
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("HOME", home)
+
+	orig, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(dir))
+	t.Cleanup(func() { _ = os.Chdir(orig) })
+	return dir
+}
+
+const rotateSyncTargetsConfig = `
+version: "1"
+default_env: dev
+environments:
+  dev:
+    provider: local
+    file: ./.secrets.dev.yaml
+sync:
+  targets:
+    - type: dotenv
+      file: .env.rotated
+    - type: k8s
+      file: k8s.yaml
+      name: app-secrets
+      namespace: prod
+`
+
+// TestRotateCmd_PropagatesToConfiguredTargets pins the orchestration
+// acceptance: after a successful rotation the new value reaches every
+// declared sync target, and the per-target outcome is reported on stderr.
+func TestRotateCmd_PropagatesToConfiguredTargets(t *testing.T) {
+	dir := rotateSetupRepoWithConfig(t, rotateSyncTargetsConfig)
+	rotateRand(t)
+
+	stdout, stderr, err := runRotate(t, dir, "API_KEY")
+	require.NoError(t, err)
+
+	value := readRotateStore(t, dir).Secrets["API_KEY"]
+	require.NotEqual(t, "secret123", value)
+
+	envData, rerr := os.ReadFile(filepath.Join(dir, ".env.rotated"))
+	require.NoError(t, rerr, "dotenv target must be written by propagation")
+	assert.Contains(t, string(envData), value)
+	k8sData, rerr := os.ReadFile(filepath.Join(dir, "k8s.yaml"))
+	require.NoError(t, rerr, "k8s manifest target must be written by propagation")
+	assert.Contains(t, string(k8sData), value)
+	// Propagation mirrors the whole source store to each target (both
+	// seeded keys), exactly like 'skret sync --rotate'.
+	assert.Contains(t, stderr, "Rotated 2 secrets to dotenv")
+	assert.Contains(t, stderr, "Rotated 2 secrets to k8s")
+	assert.Empty(t, stdout, "propagation must not put values on stdout")
+}
+
+func TestRotateCmd_NoSyncSkipsPropagation(t *testing.T) {
+	dir := rotateSetupRepoWithConfig(t, rotateSyncTargetsConfig)
+	rotateRand(t)
+
+	_, _, err := runRotate(t, dir, "API_KEY", "--no-sync")
+	require.NoError(t, err)
+
+	_, statErr := os.Stat(filepath.Join(dir, ".env.rotated"))
+	assert.True(t, os.IsNotExist(statErr), "--no-sync must not create the target file")
+	_, statErr = os.Stat(filepath.Join(dir, "k8s.yaml"))
+	assert.True(t, os.IsNotExist(statErr), "--no-sync must not create the manifest")
+}
+
+// TestRotateCmd_NoTargetsPropagatesNowhere guards the declaredOnly rule:
+// a config without sync.targets must NOT trigger skret sync's legacy
+// dotenv default during propagation.
+func TestRotateCmd_NoTargetsPropagatesNowhere(t *testing.T) {
+	dir := rotateSetupRepo(t)
+	home := t.TempDir()
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("HOME", home)
+	rotateRand(t)
+
+	_, stderr, err := runRotate(t, dir, "API_KEY")
+	require.NoError(t, err)
+
+	_, statErr := os.Stat(filepath.Join(dir, ".env"))
+	assert.True(t, os.IsNotExist(statErr), "legacy dotenv default must not fire on rotate")
+	assert.NotContains(t, stderr, "target sync failed")
+	assert.NotEqual(t, "secret123", readRotateStore(t, dir).Secrets["API_KEY"])
+}
+
 func TestRotateCmd_MultipleKeys(t *testing.T) {
 	dir := rotateSetupRepo(t)
 	rotateRand(t)

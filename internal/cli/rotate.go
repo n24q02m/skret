@@ -38,9 +38,11 @@ type rotateOptions struct {
 	value        string
 	g            bool
 	ttl          string
+	remind       string
 	yes          bool
 	show         bool
 	strictNotify bool
+	noSync       bool
 	format       string
 }
 
@@ -65,7 +67,14 @@ pass --yes to skip the prompt there too. The new value is never printed:
 stdout carries nothing (table) or the JSON envelope (--format json);
 --show additionally prints the value on stdout, one line per key. Every
 rotation is a new provider version, visible via ` + "`skret history KEY`" + `
-where the provider tracks versions (e.g. AWS).`,
+where the provider tracks versions (e.g. AWS).
+
+Rotation is the full orchestration: after every key is rotated, the new
+values are propagated to the sync targets declared under sync.targets in
+.skret.yaml (the same durable, journaled write as 'skret sync --rotate';
+a target failure warns on stderr and never undoes the rotation, and the
+legacy dotenv default does not apply — no sync.targets, no propagation).
+--no-sync skips propagation. --remind is an alias of --ttl.`,
 		Example: `  skret rotate API_KEY
   skret rotate API_KEY --type hex --length 64
   skret rotate API_KEY --value ghp_replacedmanually --ttl 720h
@@ -84,15 +93,26 @@ where the provider tracks versions (e.g. AWS).`,
 	cmd.Flags().IntVar(&o.length, "length", 32, "generated length in characters (1-1048576; uuid is fixed at 36)")
 	cmd.Flags().StringVar(&o.charset, "charset", "alnum", "generated password charset (alnum, alnum+symbols, symbols)")
 	cmd.Flags().StringVar(&o.ttl, "ttl", "", "record expiry metadata (e.g. 720h, 12h30m, 30d)")
+	cmd.Flags().StringVar(&o.remind, "remind", "", "alias of --ttl: record expiry metadata; overdue keys are flagged by 'skret doctor'")
 	cmd.Flags().BoolVar(&o.yes, "yes", false, "skip the confirmation prompt")
 	cmd.Flags().BoolVar(&o.show, "show", false, "print the new value on stdout (default: never print values)")
 	cmd.Flags().BoolVar(&o.strictNotify, "strict-notify", false, "fail the command if the mutation webhook fails (default: warn only)")
+	cmd.Flags().BoolVar(&o.noSync, "no-sync", false, "skip propagating rotated values to the configured sync.targets (default: propagate after a successful rotation)")
 	cmd.Flags().StringVar(&o.format, "format", "table", "output format (table, json)")
 
 	return cmd
 }
 
 func (o *rotateOptions) run(cmd *cobra.Command, args []string) error {
+	// --remind is the spec name of --ttl; one var wins so downstream code
+	// keeps a single expiry path.
+	if o.remind != "" {
+		if o.ttl != "" {
+			return skret.NewError(skret.ExitValidationError,
+				"rotate: --ttl and --remind are aliases; pass only one", nil)
+		}
+		o.ttl = o.remind
+	}
 	// Validate everything before touching the provider so an invalid
 	// invocation never rotates a subset of the keys.
 	var expiry time.Time
@@ -213,6 +233,26 @@ func (o *rotateOptions) run(cmd *cobra.Command, args []string) error {
 
 		if o.format != "json" {
 			cmd.PrintErrf("Rotated %s\n", key)
+		}
+	}
+
+	// Rotation orchestration ends at the targets: propagate the new values
+	// to the sync targets declared under sync.targets in .skret.yaml.
+	// Declared targets only — the legacy dotenv default does not apply, so
+	// a config without sync.targets propagates nowhere. A target failure
+	// warns on stderr: the rotation itself is durable and must not be
+	// reported as failed because a downstream target was unreachable (the
+	// durable state journal lets the next 'skret sync' catch up).
+	if !o.noSync {
+		so := &syncOptions{
+			global:         o.globals,
+			rotate:         true,
+			format:         "table",
+			declaredOnly:   true,
+			suppressNotify: true,
+		}
+		if err := so.run(cmd); err != nil {
+			cmd.PrintErrf("warning: rotate: target sync failed: %v\n", err)
 		}
 	}
 

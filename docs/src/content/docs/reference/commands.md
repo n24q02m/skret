@@ -179,9 +179,11 @@ skret rotate API_KEY --show
 | `--length <n>` | `32` | Generated length in characters (1–1048576; uuid fixed 36) |
 | `--charset <alnum\|alnum+symbols\|symbols>` | `alnum` | Generated password alphabet |
 | `--ttl <duration>` | -- | Record expiry metadata (e.g. `720h`, `12h30m`, `30d`). Stored as the `skret-expires-at` resource tag on AWS and as file metadata on the local provider. Omitting the flag continues any existing cadence |
+| `--remind <duration>` | -- | Alias of `--ttl` (the spec name of the same expiry reminder; overdue keys are flagged by `skret doctor`). Pass only one of the two |
 | `--yes` | `false` | Skip the confirmation prompt |
 | `--show` | `false` | Print the new value on stdout (one line per key, or the `"value"` field in json) |
 | `--strict-notify` | `false` | Fail the command if the mutation webhook fails (default: warn only) |
+| `--no-sync` | `false` | Skip propagating the rotated values to the configured `sync.targets` |
 | `--format <table\|json>` | `table` | `json` prints `{"key", "path", "rotated", "version"}` per key (plus `"expires_at"` when recorded); one object for a single key, an array for several |
 
 Notes:
@@ -189,6 +191,7 @@ Notes:
 - Non-interactive by design: the confirmation prompt appears only on an interactive terminal — CI and piped invocations rotate without asking; `--yes` skips it there too.
 - The new value is never printed unless `--show`: stdout carries nothing (table) or the JSON envelope (`--format json`); `Rotated KEY` status goes to stderr.
 - Every key is checked before any key rotates, so a missing key fails the whole invocation with `ExitNotFoundError` (5) and leaves every value untouched.
+- After every key rotates, the new values propagate to the targets declared under `sync.targets` in `.skret.yaml` — the same durable, journaled write as `skret sync --rotate` (a config with no `sync.targets` propagates nowhere; the legacy dotenv default does not apply). A target failure warns on stderr and never undoes the rotation; `--no-sync` skips propagation.
 - Each rotation is a new provider version, visible via `skret history KEY` where the provider tracks versions (e.g. AWS; the local provider does not keep history).
 - On AWS the expiry rides the provider-native `skret-expires-at` resource tag; on the local provider it is a `meta:` field in the secrets file (kept outside the encrypted value region — it stays readable metadata in the envelope header). `skret list --values` surfaces both and warns on stderr when a key is expired or expires within 7 days.
 
