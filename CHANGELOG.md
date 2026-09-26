@@ -4,6 +4,25 @@ All notable changes to this project will be documented in this file.
 
 <!-- version list -->
 
+## v1.35.0 (2026-09-26)
+
+### Features
+
+- **enc**: Adopt standard age format for local provider encryption
+  ([#841](https://github.com/n24q02m/skret/pull/841),
+  [`9deb6fd`](https://github.com/n24q02m/skret/commit/9deb6fda54cbe2ac2ba9703535d6dbb0e6586dc7))
+
+### Testing
+
+- **enc**: Cover keystore age payload edges, display helpers, legacy guards
+  ([#841](https://github.com/n24q02m/skret/pull/841),
+  [`9deb6fd`](https://github.com/n24q02m/skret/commit/9deb6fda54cbe2ac2ba9703535d6dbb0e6586dc7))
+
+- **enc**: Cover local provider load, save and audit failure branches
+  ([#841](https://github.com/n24q02m/skret/pull/841),
+  [`9deb6fd`](https://github.com/n24q02m/skret/commit/9deb6fda54cbe2ac2ba9703535d6dbb0e6586dc7))
+
+
 ## v1.34.0 (2026-09-26)
 
 ### Bug Fixes
