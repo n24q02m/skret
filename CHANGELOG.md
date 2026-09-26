@@ -4,6 +4,24 @@ All notable changes to this project will be documented in this file.
 
 <!-- version list -->
 
+## v1.33.4 (2026-09-26)
+
+### Chores
+
+- **renovate**: Cap concurrent PRs at 5 (bot-PR policy D5)
+  ([#834](https://github.com/n24q02m/skret/pull/834),
+  [`d55de7b`](https://github.com/n24q02m/skret/commit/d55de7b9754fb0aff20d3bff6952a874e07febc3))
+
+### Performance Improvements
+
+- ⚡ bolt: hoist exit codes map initialization ([#830](https://github.com/n24q02m/skret/pull/830),
+  [`ffa382f`](https://github.com/n24q02m/skret/commit/ffa382fffb86dab2866928e234f5662e5713c9bc))
+
+- ⚡ bolt: replace strings.Split with strings.Cut in runtime and process_unix
+  ([#836](https://github.com/n24q02m/skret/pull/836),
+  [`140487d`](https://github.com/n24q02m/skret/commit/140487dc17d269036a877f780f2bc96ba136fbf2))
+
+
 ## v1.33.3 (2026-09-22)
 
 ### Bug Fixes
