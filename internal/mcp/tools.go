@@ -57,6 +57,25 @@ func writeGateErr(tool string) toolResult {
 	}
 }
 
+// confirmErr is the policy result for a write call that omits the per-call
+// confirmation argument. The store is never touched.
+func confirmErr(tool string) toolResult {
+	return toolErr(skret.WithRemediation(
+		skret.NewError(skret.ExitValidationError, tool+": per-call confirmation missing", nil),
+		`add "confirm": true to the tool arguments (mirrors the CLI --confirm flag); nothing was mutated`))
+}
+
+// argConfirm reads the per-call write confirmation. Only a JSON boolean
+// true counts; a string "true" or any other type is not a confirmation.
+func argConfirm(args map[string]any) bool {
+	v, ok := args["confirm"]
+	if !ok {
+		return false
+	}
+	b, ok := v.(bool)
+	return ok && b
+}
+
 // argErr builds the standard missing/wrong-typed argument result.
 func argErr(tool, argsShape string) toolResult {
 	return toolErr(skret.WithRemediation(
@@ -80,8 +99,15 @@ const (
 	schemaSet = `{"type":"object","properties":{` +
 		`"key":{"type":"string","description":"Secret key name."},` +
 		`"value":{"type":"string","description":"Secret value to store."},` +
+		`"confirm":{"type":"boolean","description":"Per-call write confirmation: must be true. Mirrors the CLI --confirm flag."},` +
 		`"env":{"type":"string","description":"Target environment name; defaults to the server's resolved environment."}` +
-		`},"required":["key","value"]}`
+		`},"required":["key","value","confirm"]}`
+
+	schemaDelete = `{"type":"object","properties":{` +
+		`"key":{"type":"string","description":"Secret key name."},` +
+		`"confirm":{"type":"boolean","description":"Per-call write confirmation: must be true. Mirrors the CLI --confirm flag."},` +
+		`"env":{"type":"string","description":"Target environment name; defaults to the server's resolved environment."}` +
+		`},"required":["key","confirm"]}`
 )
 
 // tools lists every exposed tool. Write tools are always listed (clients
@@ -118,17 +144,17 @@ func tools() []toolDesc {
 		},
 		{
 			Name:        "skret_set",
-			Description: "Create or update a skret secret. Requires mcp.allow_write: true in .skret.yaml (default off).",
+			Description: "Create or update a skret secret. Requires mcp.allow_write: true in .skret.yaml (default off) AND a per-call \"confirm\": true argument.",
 			InputSchema: json.RawMessage(schemaSet),
 		},
 		{
 			Name:        "skret_delete",
-			Description: "Delete a skret secret. Requires mcp.allow_write: true in .skret.yaml (default off).",
-			InputSchema: json.RawMessage(schemaGet),
+			Description: "Delete a skret secret. Requires mcp.allow_write: true in .skret.yaml (default off) AND a per-call \"confirm\": true argument.",
+			InputSchema: json.RawMessage(schemaDelete),
 		},
 		{
 			Name:        "skret_rotate",
-			Description: "Replace a skret secret's value with an explicit new value (recorded as a rotation in the audit trail). Requires mcp.allow_write: true in .skret.yaml (default off).",
+			Description: "Replace a skret secret's value with an explicit new value (recorded as a rotation in the audit trail). Requires mcp.allow_write: true in .skret.yaml (default off) AND a per-call \"confirm\": true argument.",
 			InputSchema: json.RawMessage(schemaSet),
 		},
 	}
@@ -290,9 +316,9 @@ func (s *Server) toolStatus() toolResult {
 	}))
 }
 
-// toolSet creates or updates a secret (write-gated).
+// toolSet creates or updates a secret (write-gated + confirmed per call).
 func (s *Server) toolSet(args map[string]any) toolResult {
-	const shape = `{"key": "<name>", "value": "<value>"}`
+	const shape = `{"key": "<name>", "value": "<value>", "confirm": true}`
 	if !s.allowWrite() {
 		return writeGateErr("skret_set")
 	}
@@ -300,6 +326,9 @@ func (s *Server) toolSet(args map[string]any) toolResult {
 	value, valOK := argString(args, "value")
 	if !keyOK || !valOK {
 		return argErr("skret_set", shape)
+	}
+	if !argConfirm(args) {
+		return confirmErr("skret_set")
 	}
 	c, env, err := s.clientFor(argEnv(args))
 	if err != nil {
@@ -312,15 +341,18 @@ func (s *Server) toolSet(args map[string]any) toolResult {
 	return textResult(fmt.Sprintf("set %s (env %s)", key, env))
 }
 
-// toolDelete removes a secret (write-gated).
+// toolDelete removes a secret (write-gated + confirmed per call).
 func (s *Server) toolDelete(args map[string]any) toolResult {
-	const shape = `{"key": "<name>"}`
+	const shape = `{"key": "<name>", "confirm": true}`
 	if !s.allowWrite() {
 		return writeGateErr("skret_delete")
 	}
 	key, ok := argString(args, "key")
 	if !ok {
 		return argErr("skret_delete", shape)
+	}
+	if !argConfirm(args) {
+		return confirmErr("skret_delete")
 	}
 	c, env, err := s.clientFor(argEnv(args))
 	if err != nil {
@@ -334,11 +366,11 @@ func (s *Server) toolDelete(args map[string]any) toolResult {
 }
 
 // toolRotate replaces a secret's value, recorded as a rotation in the
-// local provider's audit trail (write-gated). Generation stays with the
-// caller: MCP passes the explicit replacement value, exactly like
-// `skret rotate --value`.
+// local provider's audit trail (write-gated + confirmed per call).
+// Generation stays with the caller: MCP passes the explicit replacement
+// value, exactly like `skret rotate --value`.
 func (s *Server) toolRotate(args map[string]any) toolResult {
-	const shape = `{"key": "<name>", "value": "<new value>"}`
+	const shape = `{"key": "<name>", "value": "<new value>", "confirm": true}`
 	if !s.allowWrite() {
 		return writeGateErr("skret_rotate")
 	}
@@ -346,6 +378,9 @@ func (s *Server) toolRotate(args map[string]any) toolResult {
 	value, valOK := argString(args, "value")
 	if !keyOK || !valOK {
 		return argErr("skret_rotate", shape)
+	}
+	if !argConfirm(args) {
+		return confirmErr("skret_rotate")
 	}
 	c, env, err := s.clientFor(argEnv(args))
 	if err != nil {

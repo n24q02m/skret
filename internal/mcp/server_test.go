@@ -289,7 +289,15 @@ func TestToolsListShape(t *testing.T) {
 	getRequired := byName["skret_get"]["inputSchema"].(map[string]any)["required"].([]any)
 	assert.Equal(t, []any{"key"}, getRequired)
 	setRequired := byName["skret_set"]["inputSchema"].(map[string]any)["required"].([]any)
-	assert.ElementsMatch(t, []any{"key", "value"}, setRequired)
+	assert.ElementsMatch(t, []any{"key", "value", "confirm"}, setRequired)
+	deleteRequired := byName["skret_delete"]["inputSchema"].(map[string]any)["required"].([]any)
+	assert.ElementsMatch(t, []any{"key", "confirm"}, deleteRequired)
+	// Write tools declare the per-call confirm argument in schema and text.
+	for _, name := range []string{"skret_set", "skret_delete", "skret_rotate"} {
+		schemaProps := byName[name]["inputSchema"].(map[string]any)["properties"].(map[string]any)
+		assert.Contains(t, schemaProps, "confirm", name)
+		assert.Contains(t, byName[name]["description"], "confirm", name)
+	}
 }
 
 // tools/call: protocol-level errors ---------------------------------------------
@@ -496,12 +504,12 @@ environments:
 	s := serverFor(t, dir)
 
 	// set a new key
-	resp := toolCall(t, s, 2, "skret_set", `{"key":"NEW_KEY","value":"new-val"}`)
+	resp := toolCall(t, s, 2, "skret_set", `{"key":"NEW_KEY","value":"new-val","confirm":true}`)
 	text, isErr := toolText(t, resp)
 	require.False(t, isErr, text)
 
 	// rotate mutates the value
-	resp = toolCall(t, s, 3, "skret_rotate", `{"key":"API_KEY","value":"rotated-val"}`)
+	resp = toolCall(t, s, 3, "skret_rotate", `{"key":"API_KEY","value":"rotated-val","confirm":true}`)
 	text, isErr = toolText(t, resp)
 	require.False(t, isErr, text)
 
@@ -511,7 +519,7 @@ environments:
 	assert.Equal(t, "rotated-val", text)
 
 	// delete removes it
-	resp = toolCall(t, s, 5, "skret_delete", `{"key":"NEW_KEY"}`)
+	resp = toolCall(t, s, 5, "skret_delete", `{"key":"NEW_KEY","confirm":true}`)
 	_, isErr = toolText(t, resp)
 	require.False(t, isErr)
 	resp = toolCall(t, s, 6, "skret_get", `{"key":"NEW_KEY"}`)
@@ -546,6 +554,49 @@ environments:
 	text, isErr := toolText(t, resp)
 	assert.True(t, isErr, text)
 	assert.Contains(t, text, "skret_set")
+}
+
+// Per-call confirmation: allow_write authorizes the server, each individual
+// write call must still carry "confirm": true (mirror of the CLI --confirm
+// flag). A call without it is refused and the store stays byte-identical.
+func TestWriteRequiresPerCallConfirm(t *testing.T) {
+	cfg := `version: "1"
+default_env: dev
+mcp:
+  allow_write: true
+environments:
+  dev:
+    provider: local
+    file: .secrets.dev.yaml
+`
+	dir := writeFixture(t, cfg, map[string]string{"API_KEY": "keep-me"})
+	s := serverFor(t, dir)
+	before := readSecretsFile(t, dir)
+
+	for _, tc := range []struct{ tool, args string }{
+		{"skret_set", `{"key":"API_KEY","value":"hacked"}`},
+		{"skret_rotate", `{"key":"API_KEY","value":"hacked"}`},
+		{"skret_delete", `{"key":"API_KEY"}`},
+		// A string is not a confirmation: only JSON true counts.
+		{"skret_set", `{"key":"API_KEY","value":"hacked","confirm":"true"}`},
+		{"skret_delete", `{"key":"API_KEY","confirm":false}`},
+	} {
+		resp := toolCall(t, s, 2, tc.tool, tc.args)
+		text, isErr := toolText(t, resp)
+		assert.True(t, isErr, "%s %s: expected refusal", tc.tool, tc.args)
+		assert.Contains(t, text, "per-call confirmation missing", tc.tool)
+		assert.Contains(t, text, `"confirm": true`, tc.tool)
+		assert.Equal(t, before, readSecretsFile(t, dir), "%s without confirm must not touch the store", tc.tool)
+	}
+
+	// confirm: true goes through.
+	resp := toolCall(t, s, 3, "skret_set", `{"key":"API_KEY","value":"new-val","confirm":true}`)
+	_, isErr := toolText(t, resp)
+	require.False(t, isErr)
+	resp = toolCall(t, s, 4, "skret_get", `{"key":"API_KEY"}`)
+	text, isErr := toolText(t, resp)
+	require.False(t, isErr, text)
+	assert.Equal(t, "new-val", text)
 }
 
 // allowed_envs enforcement ---------------------------------------------------
@@ -672,7 +723,7 @@ environments:
 `
 	dir := writeFixture(t, cfg, nil)
 	s := serverFor(t, dir)
-	resp := toolCall(t, s, 2, "skret_delete", `{"key":"GONE"}`)
+	resp := toolCall(t, s, 2, "skret_delete", `{"key":"GONE","confirm":true}`)
 	text, isErr := toolText(t, resp)
 	assert.True(t, isErr, text)
 	assert.Contains(t, text, "not found")

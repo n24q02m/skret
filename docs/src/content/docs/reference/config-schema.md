@@ -182,7 +182,7 @@ Payload shape (one POST per event; `sync`/`rotate` fire once per completed targe
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
-| `mcp.allow_write` | bool | No | `false` | Enable the write tools (`skret_set`/`skret_delete`/`skret_rotate`). While `false`, a write tool call returns an error result naming this field. |
+| `mcp.allow_write` | bool | No | `false` | Enable the write tools (`skret_set`/`skret_delete`/`skret_rotate`). While `false`, a write tool call returns an error result naming this field. Even when `true`, every write call must also carry a per-call `confirm: true` argument. |
 | `mcp.allowed_envs` | list | No | all environments | Restrict which environments the server may access. Every entry must match a declared environment (validated at config load). A request — or a startup `--env` — naming any other environment fails with a remediation. |
 
 ## Validation Rules

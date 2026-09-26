@@ -440,7 +440,7 @@ skret llms --format json
 
 An MCP (Model Context Protocol) server that exposes the same `.skret.yaml` project to AI agent harnesses (Claude Code, OMP, any stdio MCP client) — newline-delimited JSON-RPC 2.0 on stdin/stdout, diagnostics on stderr. See the [MCP guide](/guide/mcp/) for client wiring and the write-gate policy.
 
-Tools: `skret_list` (key names only), `skret_get` (the single value-returning tool), `skret_env` (accessible environment names), `skret_status`/`skret_doctor` (health, no network calls), plus write tools `skret_set`/`skret_delete`/`skret_rotate` that are rejected unless `mcp.allow_write: true` is set under the optional `mcp:` config block (which also carries the optional `allowed_envs` filter). Local-provider reads through MCP are appended to the audit trail as `mcp_read` entries.
+Tools: `skret_list` (key names only), `skret_get` (the single value-returning tool), `skret_env` (accessible environment names), `skret_status`/`skret_doctor` (health, no network calls), plus write tools `skret_set`/`skret_delete`/`skret_rotate` that are rejected unless `mcp.allow_write: true` is set under the optional `mcp:` config block (which also carries the optional `allowed_envs` filter) and each write call additionally carries `confirm: true`. Local-provider reads through MCP are appended to the audit trail as `mcp_read` entries.
 
 | Flag | Default | Description |
 |------|---------|-------------|

@@ -23,9 +23,9 @@ skret-mcp --version
 | `skret_get` | read | the raw value of one key — the only tool that returns values |
 | `skret_env` | read | JSON `{environments: [...], default_env}` — the environments this server may access |
 | `skret_status` / `skret_doctor` | read | JSON health report: resolved env, provider, config file, write policy, version |
-| `skret_set` | write | create or update a secret (`{key, value}`) |
-| `skret_delete` | write | delete a secret (`{key}`) |
-| `skret_rotate` | write | replace a value, recorded as a rotation in the audit trail (`{key, value}`) |
+| `skret_set` | write | create or update a secret (`{key, value, confirm}`) |
+| `skret_delete` | write | delete a secret (`{key, confirm}`) |
+| `skret_rotate` | write | replace a value, recorded as a rotation in the audit trail (`{key, value, confirm}`) |
 
 Every read tool (and every write tool) accepts an optional `env` argument to select a different environment; without it the server uses the environment resolved at startup (`--env`, else `default_env`, else the single declared environment).
 
@@ -52,6 +52,13 @@ environments:
   dev:
     provider: local
     file: .secrets.dev.yaml
+```
+
+`allow_write` authorizes the *server*; each individual write call must additionally carry a per-call `"confirm": true` argument (the MCP mirror of the CLI `--confirm` flag). A call without it is refused and nothing is mutated:
+
+```text
+skret_delete: per-call confirmation missing
+remediation: add "confirm": true to the tool arguments (mirrors the CLI --confirm flag); nothing was mutated
 ```
 
 The `mcp:` block is optional. With no `allowed_envs`, the server may access every declared environment; with the filter set, requests for any other environment fail with a remediation pointing at the filter. The `--env` chosen at startup is validated the same way, so a misconfigured server refuses to start rather than serving an environment it is not allowed to touch.
