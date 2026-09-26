@@ -62,7 +62,7 @@ func writeGateErr(tool string) toolResult {
 func confirmErr(tool string) toolResult {
 	return toolErr(skret.WithRemediation(
 		skret.NewError(skret.ExitValidationError, tool+": per-call confirmation missing", nil),
-		fmt.Sprintf(`add "confirm": true to the tool arguments (mirrors the CLI --confirm flag); nothing was mutated`)))
+		`add "confirm": true to the tool arguments (mirrors the CLI --confirm flag); nothing was mutated`))
 }
 
 // argConfirm reads the per-call write confirmation. Only a JSON boolean
