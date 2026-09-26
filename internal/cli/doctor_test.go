@@ -202,13 +202,159 @@ environments:
 	doctorLivenessProbe = func(_ context.Context) error { probes++; return nil }
 	t.Cleanup(func() { doctorLivenessProbe = orig })
 
+	permProbes := 0
+	probedPaths := map[string]bool{}
+	origPerm := doctorAWSPermissionProbe
+	doctorAWSPermissionProbe = func(_ context.Context, resolved *config.ResolvedConfig) error {
+		permProbes++
+		probedPaths[resolved.Path] = true
+		return provider.ErrNotFound
+	}
+	t.Cleanup(func() { doctorAWSPermissionProbe = origPerm })
+
 	stdout, stderr, err := runDoctorCmd(t)
 	require.NoError(t, err)
-	assert.Equal(t, 1, probes, "probe must run once per command, not per env")
+	assert.Equal(t, 1, probes, "reach probe must run once per command, not per env")
+	assert.Equal(t, 2, permProbes, "permission probe is per environment (paths differ)")
+	assert.True(t, probedPaths["/myapp/prod"] && probedPaths["/myapp/prod2"])
 	assert.Contains(t, stderr, "PASS provider[prod]: reachable")
 	assert.Contains(t, stderr, "PASS provider[prod2]: reachable")
+	assert.Contains(t, stderr, "PASS permissions[prod]: can read under /myapp/prod (sentinel probe: not found, no denial)")
+	assert.Contains(t, stderr, "PASS permissions[prod2]: can read under /myapp/prod2 (sentinel probe: not found, no denial)")
 	assert.Contains(t, stderr, "WARN auth[aws]: no stored credential")
-	assert.Contains(t, stdout, "doctor: 2 passed, 1 warning(s), 0 failed")
+	assert.Contains(t, stdout, "doctor: 4 passed, 1 warning(s), 0 failed")
+}
+
+// The permission probe only runs when the reach probe passed: an unreachable
+// provider has nothing to authorize against.
+func TestDoctorCmd_PermissionCheckSkippedWhenUnreachable(t *testing.T) {
+	doctorFixture(t, `version: "1"
+default_env: prod
+environments:
+  prod:
+    provider: aws
+    path: /myapp/prod
+    region: us-east-1
+`, nil)
+
+	orig := doctorLivenessProbe
+	doctorLivenessProbe = func(_ context.Context) error { return errors.New("dial tcp: connection refused") }
+	t.Cleanup(func() { doctorLivenessProbe = orig })
+
+	permProbes := 0
+	origPerm := doctorAWSPermissionProbe
+	doctorAWSPermissionProbe = func(_ context.Context, _ *config.ResolvedConfig) error {
+		permProbes++
+		return nil
+	}
+	t.Cleanup(func() { doctorAWSPermissionProbe = origPerm })
+
+	_, stderr, err := runDoctorCmd(t)
+	require.Error(t, err)
+	assert.Equal(t, skret.ExitNetworkError, skret.ExitCode(err))
+	assert.Zero(t, permProbes, "permission probe must not run after a failed reach probe")
+	assert.NotContains(t, stderr, "permissions[prod]")
+}
+
+func TestDoctorCmd_AWSPermissionDeniedFailsAuthClass(t *testing.T) {
+	doctorFixture(t, `version: "1"
+default_env: prod
+environments:
+  prod:
+    provider: aws
+    path: /myapp/prod
+    region: us-east-1
+`, nil)
+
+	orig := doctorLivenessProbe
+	doctorLivenessProbe = func(_ context.Context) error { return nil }
+	t.Cleanup(func() { doctorLivenessProbe = orig })
+	origPerm := doctorAWSPermissionProbe
+	doctorAWSPermissionProbe = func(_ context.Context, _ *config.ResolvedConfig) error {
+		return errors.New("operation error SSM: GetParameter, AccessDeniedException: user is not authorized")
+	}
+	t.Cleanup(func() { doctorAWSPermissionProbe = origPerm })
+
+	stdout, stderr, err := runDoctorCmd(t)
+	require.Error(t, err)
+	assert.Equal(t, skret.ExitAuthError, skret.ExitCode(err))
+	assert.Contains(t, stderr, "FAIL permissions[prod]")
+	assert.Contains(t, stderr, "credentials cannot read under /myapp/prod")
+	assert.Contains(t, stderr, "fix: grant ssm:GetParameter")
+	assert.Contains(t, stdout, "doctor: 1 passed, 1 warning(s), 1 failed")
+}
+
+func TestDoctorCmd_AWSPermissionInconclusiveWarns(t *testing.T) {
+	doctorFixture(t, `version: "1"
+default_env: prod
+environments:
+  prod:
+    provider: aws
+    path: /myapp/prod
+    region: us-east-1
+`, nil)
+
+	orig := doctorLivenessProbe
+	doctorLivenessProbe = func(_ context.Context) error { return nil }
+	t.Cleanup(func() { doctorLivenessProbe = orig })
+	origPerm := doctorAWSPermissionProbe
+	doctorAWSPermissionProbe = func(_ context.Context, _ *config.ResolvedConfig) error {
+		return errors.New("dial tcp: i/o timeout")
+	}
+	t.Cleanup(func() { doctorAWSPermissionProbe = origPerm })
+
+	stdout, _, err := runDoctorCmd(t)
+	require.NoError(t, err, "an inconclusive probe warns; it never fails the run")
+	assert.Contains(t, stdout, "doctor: 1 passed, 2 warning(s), 0 failed")
+}
+
+// doctorUnusedCheck: keys absent from the local audit trail warn with
+// names only; mentioned keys are never flagged.
+func TestDoctorCmd_UnusedLocalKeysWarn(t *testing.T) {
+	dir := doctorFixture(t, doctorLocalConfig, map[string]string{".secrets.dev.yaml": doctorSecretsFile})
+	trail := `{"timestamp":"2026-09-20T10:00:00Z","op":"set","key_names":["DATABASE_URL"],"env":"dev","actor":"tester"}` + "\n"
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".skret-audit.log"), []byte(trail), 0o600))
+
+	stdout, stderr, err := runDoctorCmd(t)
+	require.NoError(t, err)
+	assert.Contains(t, stderr, "WARN unused[dev]")
+	assert.Contains(t, stderr, "API_KEY")
+	assert.NotContains(t, stderr, "DATABASE_URL", "keys present in the trail must not be flagged")
+	assert.NotContains(t, stderr, "postgres://dev", "values must never appear in check output")
+	assert.Contains(t, stdout, "doctor: 2 passed, 2 warning(s), 0 failed")
+}
+
+func TestDoctorCmd_UnusedListCappedAtThree(t *testing.T) {
+	secrets := "version: \"1\"\nsecrets:\n"
+	for _, k := range []string{"AAA", "BBB", "CCC", "DDD", "EEE"} {
+		secrets += fmt.Sprintf("  %s: \"value-%s\"\n", k, k)
+	}
+	dir := doctorFixture(t, doctorLocalConfig, map[string]string{".secrets.dev.yaml": secrets})
+	trail := `{"timestamp":"2026-09-20T10:00:00Z","op":"set","key_names":["AAA"],"env":"dev","actor":"tester"}` + "\n"
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".skret-audit.log"), []byte(trail), 0o600))
+
+	_, stderr, err := runDoctorCmd(t)
+	require.NoError(t, err)
+	assert.Contains(t, stderr, "4 of 5 key(s) never appear in the local audit trail")
+	assert.Contains(t, stderr, "+1 more")
+}
+
+func TestDoctorCmd_UnusedSilentWhenTrailAbsentOrComplete(t *testing.T) {
+	t.Run("no audit trail: nothing observed, no check line", func(t *testing.T) {
+		doctorFixture(t, doctorLocalConfig, map[string]string{".secrets.dev.yaml": doctorSecretsFile})
+		_, stderr, err := runDoctorCmd(t)
+		require.NoError(t, err)
+		assert.NotContains(t, stderr, "unused[")
+	})
+
+	t.Run("every key mentioned: no check line", func(t *testing.T) {
+		dir := doctorFixture(t, doctorLocalConfig, map[string]string{".secrets.dev.yaml": doctorSecretsFile})
+		trail := `{"timestamp":"2026-09-20T10:00:00Z","op":"set","key_names":["DATABASE_URL","API_KEY"],"env":"dev","actor":"tester"}` + "\n"
+		require.NoError(t, os.WriteFile(filepath.Join(dir, ".skret-audit.log"), []byte(trail), 0o600))
+		_, stderr, err := runDoctorCmd(t)
+		require.NoError(t, err)
+		assert.NotContains(t, stderr, "unused[")
+	})
 }
 
 func TestDoctorCmd_BadConfigYAMLEnvelopeAndExit(t *testing.T) {
