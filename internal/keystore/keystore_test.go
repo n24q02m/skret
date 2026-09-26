@@ -1,12 +1,14 @@
 package keystore
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"filippo.io/age"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -497,4 +499,151 @@ func TestShannonBits(t *testing.T) {
 	}
 	// A 31-symbol string with all distinct characters has log2(31) bits.
 	assert.InDelta(t, 4.9542, ShannonBits("kW9xP2vQ8mZ5#J7&R4tU6yB3nL0cD1f"), 0.001)
+}
+
+// --- age-format edge cases: payload parsing, display helpers, legacy guards ---
+
+// TestOpenWithMetaPayloadEdgeCases: an age envelope that decrypts cleanly
+// but carries a non-YAML payload fails with the config-error contract, and
+// one whose payload simply has no secrets loads as an empty store (never a
+// nil map).
+func TestOpenWithMetaPayloadEdgeCases(t *testing.T) {
+	id, err := age.ParseX25519Identity(testIdentity)
+	require.NoError(t, err)
+
+	encryptRaw := func(plaintext []byte) []byte {
+		t.Helper()
+		var buf bytes.Buffer
+		w, err := age.Encrypt(&buf, id.Recipient())
+		require.NoError(t, err)
+		_, err = w.Write(plaintext)
+		require.NoError(t, err)
+		require.NoError(t, w.Close())
+		return buf.Bytes()
+	}
+
+	t.Run("payload not yaml", func(t *testing.T) {
+		raw := encryptRaw([]byte("{{{not yaml"))
+		secrets, meta, err := OpenWithMeta(raw, testIdentity)
+		require.Error(t, err)
+		assert.Nil(t, secrets)
+		assert.Nil(t, meta)
+		assert.Contains(t, err.Error(), "parse age payload")
+		assert.Equal(t, CodeConfigError, exitCodeOf(t, err))
+	})
+
+	t.Run("payload without secrets", func(t *testing.T) {
+		raw := encryptRaw([]byte("version: \"1\"\n"))
+		secrets, meta, err := OpenWithMeta(raw, testIdentity)
+		require.NoError(t, err)
+		require.NotNil(t, secrets, "missing secrets section must load as an empty map")
+		assert.Empty(t, secrets)
+		assert.Nil(t, meta)
+	})
+}
+
+// TestStanzaKindUnknownHeader: a header without a recognizable recipient
+// stanza reports "unknown" (display metadata only, never a parse error).
+func TestStanzaKindUnknownHeader(t *testing.T) {
+	assert.Equal(t, "unknown", StanzaKind([]byte("age-encryption.org/v1\n--- \n")))
+}
+
+// TestRecipientKindArms: age private keys and age public keys both report
+// the X25519 arm; anything else is passphrase material (scrypt).
+func TestRecipientKindArms(t *testing.T) {
+	assert.Equal(t, "X25519", RecipientKind(testIdentity))
+	id, err := age.ParseX25519Identity(testIdentity)
+	require.NoError(t, err)
+	assert.Equal(t, "X25519", RecipientKind(id.Recipient().String()))
+	assert.Equal(t, "scrypt", RecipientKind(testMaterial))
+}
+
+// TestDetectLegacyNonYAMLAndForeignFormat: bytes that are not YAML at all
+// are not a legacy envelope, and YAML carrying a different format marker
+// is not one either.
+func TestDetectLegacyNonYAMLAndForeignFormat(t *testing.T) {
+	assert.False(t, DetectLegacy([]byte("{{{invalid")))
+	assert.False(t, DetectLegacy([]byte("version: \"1\"\nformat: something-else\n")))
+}
+
+// TestSealLegacyEmptyMaterial: legacy sealing requires key material, like
+// its age counterpart.
+func TestSealLegacyEmptyMaterial(t *testing.T) {
+	_, err := SealLegacyWithMeta(map[string]string{"K": "v"}, nil, "", nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "key material is empty")
+	assert.Equal(t, CodeValidationError, exitCodeOf(t, err))
+}
+
+// TestSealLegacyUnsupportedKDFAlgorithm: a params header naming a foreign
+// KDF fails sealing instead of producing an envelope nothing can re-open.
+func TestSealLegacyUnsupportedKDFAlgorithm(t *testing.T) {
+	_, err := SealLegacyWithMeta(map[string]string{"K": "v"}, nil, testMaterial,
+		&kdfParams{Algorithm: "argon2id-v2", Salt: "c2FsdHNhbHRzYWx0", Time: 3, MemoryKiB: 64, Parallelism: 4})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unsupported kdf algorithm")
+	assert.Equal(t, CodeConfigError, exitCodeOf(t, err))
+}
+
+// TestResolveKeyMaterialPromptConfirmReadError: losing the terminal between
+// the two prompt reads surfaces the confirmation-read failure, not a
+// mismatch or a missing-key condition.
+func TestResolveKeyMaterialPromptConfirmReadError(t *testing.T) {
+	t.Setenv(EnvKeyPrimary, "")
+	t.Setenv(EnvKeyFallback, "")
+	origGet := keyringGet
+	keyringGet = func(string, string) (string, error) { return "", errors.New("no keyring") }
+	t.Cleanup(func() { keyringGet = origGet })
+
+	orig := readPassword
+	calls := 0
+	readPassword = func(string) (string, error) {
+		calls++
+		if calls == 1 {
+			return "first-entry", nil
+		}
+		return "", errors.New("tty gone")
+	}
+	t.Cleanup(func() { readPassword = orig })
+
+	_, err := ResolveKeyMaterial(ResolveOpts{Interactive: true})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "read passphrase confirmation")
+}
+
+// TestResolveIdentityPromptMismatchPassesThrough: a prompt validation
+// failure (entries do not match) is a validation error — ResolveIdentity
+// must pass it through unwrapped rather than rewording it as the canonical
+// "no key material available" condition.
+func TestResolveIdentityPromptMismatchPassesThrough(t *testing.T) {
+	t.Setenv(EnvKeyPrimary, "")
+	t.Setenv(EnvKeyFallback, "")
+	origGet := keyringGet
+	keyringGet = func(string, string) (string, error) { return "", errors.New("no keyring") }
+	t.Cleanup(func() { keyringGet = origGet })
+
+	orig := readPassword
+	responses := []string{"first", "second"}
+	readPassword = func(string) (string, error) {
+		if len(responses) == 0 {
+			return "", errors.New("exhausted")
+		}
+		r := responses[0]
+		responses = responses[1:]
+		return r, nil
+	}
+	t.Cleanup(func() { readPassword = orig })
+
+	_, err := ResolveIdentity(ResolveOpts{Interactive: true})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "passphrases do not match")
+	assert.NotContains(t, err.Error(), "no key material available")
+}
+
+// TestReadPasswordNonTerminalFails: the real prompt path fails immediately
+// when stdin is not a terminal (CI, pipes) — it must never block waiting
+// for input that never arrives.
+func TestReadPasswordNonTerminalFails(t *testing.T) {
+	_, err := readPassword("Enter passphrase: ")
+	require.Error(t, err)
 }
