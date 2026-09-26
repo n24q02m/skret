@@ -30,6 +30,14 @@ type syncOptions struct {
 	dryRun        bool
 	format        string
 	strictNotify  bool
+	// declaredOnly restricts targets to the sync.targets declared in
+	// .skret.yaml: the legacy "no target configured → dotenv" default does
+	// not fire. `skret rotate` propagation runs in this mode so a config
+	// without sync.targets propagates nowhere.
+	declaredOnly bool
+	// suppressNotify skips the per-target mutation webhook. `skret rotate`
+	// already reports each rotated key before propagation runs.
+	suppressNotify bool
 }
 
 // saveSyncState is kept indirect so focused tests can exercise persistence
@@ -318,16 +326,20 @@ func (o *syncOptions) run(cmd *cobra.Command) error {
 			// This target's write is durable; the webhook reports it (names
 			// only, source provider keys). One event per completed target so
 			// a later target's failure cannot un-report an earlier write.
-			ev := notify.EventSync
-			if o.rotate {
-				ev = notify.EventRotate
-			}
-			keyNames := make([]string, 0, len(toSync))
-			for _, sec := range toSync {
-				keyNames = append(keyNames, sec.Key)
-			}
-			if err := reportMutation(cmd, resolved, o.strictNotify, ev, keyNames...); err != nil {
-				return err
+			// `skret rotate` propagation suppresses this: rotate already
+			// reported every rotated key before propagating.
+			if !o.suppressNotify {
+				ev := notify.EventSync
+				if o.rotate {
+					ev = notify.EventRotate
+				}
+				keyNames := make([]string, 0, len(toSync))
+				for _, sec := range toSync {
+					keyNames = append(keyNames, sec.Key)
+				}
+				if err := reportMutation(cmd, resolved, o.strictNotify, ev, keyNames...); err != nil {
+					return err
+				}
 			}
 			return nil
 		}(); err != nil {
@@ -511,7 +523,7 @@ func (o *syncOptions) resolveTargets(sc *config.SyncConfig) ([]syncer.TargetConf
 		}
 	}
 
-	if len(out) == 0 {
+	if len(out) == 0 && !o.declaredOnly {
 		// Legacy default: dotenv.
 		out = append(out, syncer.TargetConfig{Type: "dotenv", Fields: map[string]string{"file": o.file}})
 	}
