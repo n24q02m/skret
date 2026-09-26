@@ -9,7 +9,7 @@
   "schedule": [
     "before 5am every weekday"
   ],
-  "prConcurrentLimit": 3,
+  "prConcurrentLimit": 5,
   "semanticCommits": "enabled",
   "commitMessagePrefix": "fix(deps):",
   "commitMessageAction": "update",
