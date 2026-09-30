@@ -14,17 +14,26 @@ class CandidateReleaseWorkflowTests(unittest.TestCase):
     def workflow(self) -> str:
         return CD_WORKFLOW.read_text(encoding="utf-8")
 
-    def test_release_lane_runs_on_main_push_and_dispatch_and_has_lanes(self) -> None:
+    def test_release_lane_is_dispatch_only_and_has_lanes(self) -> None:
         workflow = self.workflow()
         trigger_block = workflow.split("permissions:", 1)[0]
         self.assertIn("workflow_dispatch:", trigger_block)
-        # Single-main ladder: merge to main drives the release lane. Pushes to
-        # any other branch must not trigger it.
-        self.assertRegex(trigger_block, r"(?m)^  push:\n    branches:\n      - main$")
-        # Release lane only runs on push/dispatch; schedule and
+        # Release is manual dispatch only: no push trigger may cut a release.
+        self.assertNotRegex(trigger_block, r"(?m)^  push:")
+        self.assertNotIn("pull_request:", trigger_block)
+        self.assertIn("RELEASE_TYPE: ${{ inputs.release_type }}", trigger_block)
+        release_type = trigger_block.split("release_type:", 1)[1].split("\nenv:", 1)[0]
+        self.assertIn("type: choice", release_type)
+        self.assertIn("required: true", release_type)
+        self.assertRegex(release_type, r"options:\n\s+- beta\n\s+- stable")
+        self.assertNotIn("default:", release_type)
+        # Release lane only runs on dispatch; schedule and
         # branch_protection_rule events skip it (folded in from scorecard.yml).
+        self.assertIn("if: github.event_name == 'workflow_dispatch'", workflow)
+        self.assertNotIn("event_name == 'push'", workflow)
         self.assertIn(
-            "if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'",
+            "name: ${{ inputs.release_type == 'beta' && 'beta-publish' "
+            "|| 'stable-publish' }}",
             workflow,
         )
         self.assertIn("group: skret-release-prepare", workflow)

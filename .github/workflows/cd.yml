@@ -6,9 +6,6 @@ name: CD
 # publication to the signed BSR G1 publisher. No deploy job exists here.
 
 on:
-  push:
-    branches:
-      - main
   branch_protection_rule:
   schedule:
     - cron: "0 3 * * 1"
@@ -17,16 +14,14 @@ on:
       release_type:
         description: "Candidate channel"
         required: true
-        default: beta
         type: choice
         options:
           - beta
           - stable
 
 env:
-# Release lane: merge to main auto-publishes stable; beta only via manual dispatch (release_type=beta).
-  # workflow_dispatch keeps release_type as an explicit override.
-  RELEASE_TYPE: ${{ github.event_name == 'push' && 'stable' || inputs.release_type }}
+  # Release lane: dispatch-only (release_type=beta|stable); push never releases.
+  RELEASE_TYPE: ${{ inputs.release_type }}
 
 permissions:
   contents: read
@@ -37,9 +32,9 @@ concurrency:
 
 jobs:
   triage:
-    # Release lane only runs on push/dispatch; schedule and
+    # Release lane only runs on dispatch; schedule and
     # branch_protection_rule events (folded in from scorecard.yml) skip it.
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch'
     name: Resolve channel and release demand
     runs-on: ubuntu-latest
     permissions:
@@ -87,7 +82,7 @@ jobs:
           if [ "${{ steps.probe.outputs.released }}" = "true" ]; then
             echo "proceed=true" >> "$GITHUB_OUTPUT"
           else
-            echo "No release due; CD ladder no-op for this push."
+            echo "No release due; CD ladder no-op for this dispatch."
             echo "proceed=false" >> "$GITHUB_OUTPUT"
           fi
 
@@ -563,7 +558,7 @@ jobs:
     if: always() && needs.prepare.result == 'success'
     runs-on: ubuntu-latest
     environment:
-      name: ${{ github.event_name == 'push' && (github.ref_name == 'staging' && 'beta-publish' || 'stable-publish') || (inputs.release_type == 'beta' && 'beta-publish' || 'stable-publish') }}
+      name: ${{ inputs.release_type == 'beta' && 'beta-publish' || 'stable-publish' }}
     permissions:
       contents: write
       id-token: write
@@ -856,15 +851,11 @@ jobs:
           if ($out -notlike "*$($env:EXPECTED_VERSION)*") { throw "version mismatch: $out" }
 
   # ============================================================================
-  # Demo GIF render (merged from demo.yml; push touching demo.tape / dispatch)
+  # Demo GIF render (merged from demo.yml; dispatch only)
   # ============================================================================
   render:
     name: Demo GIF render
-    if: >-
-      github.event_name == 'workflow_dispatch'
-      || (github.event_name == 'push'
-          && (contains(github.event.head_commit.added, 'demo.tape')
-              || contains(github.event.head_commit.modified, 'demo.tape')))
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
       contents: write
