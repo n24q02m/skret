@@ -23,18 +23,25 @@
   },
   "packageRules": [
     {
+      "description": "Hold every update for 7 days so a malicious or yanked release is caught before it lands",
+      "matchPackageNames": ["*"],
+      "minimumReleaseAge": "7 days"
+    },
+    {
       "matchPackageNames": [
         "pnpm"
       ],
       "allowedVersions": "<11",
-      "description": "Hold pnpm <11. pnpm 11 makes ERR_PNPM_IGNORED_BUILDS (esbuild/sharp) fatal, breaking 'pnpm install --frozen-lockfile' in the docs Deploy Docs CD job."
+      "description": "Hold pnpm <11. pnpm 11 makes ERR_PNPM_IGNORED_BUILDS (esbuild/sharp) fatal, breaking 'pnpm install --frozen-lockfile' in the docs Deploy Docs CD job.",
+      "minimumReleaseAge": "7 days"
     },
     {
       "description": "Pin GitHub Actions to SHA for security",
       "matchManagers": [
         "github-actions"
       ],
-      "pinDigests": true
+      "pinDigests": true,
+      "minimumReleaseAge": "7 days"
     }
   ]
 }
