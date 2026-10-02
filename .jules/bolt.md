@@ -94,3 +94,7 @@
 ## $(date +%Y-%m-%d) - Strings Split vs Cut Loop (scope: validation vs allocation)
 **Learning:** Replacing `strings.Split` with a manual `strings.Cut` loop is an excellent optimization for avoiding slice allocation when you only need to iterate over and validate path segments (e.g., `validStateManifestPath`), or when extracting key-value pairs from comma-separated strings (like `parseDockerLabels` or `resolveUser`).
 **Action:** Always prefer `strings.Cut` in loops over `strings.Split` when validating or processing delimited strings where the resulting slice isn't needed or returned. This achieves zero-allocation performance without sacrificing maintainability.
+
+## 2026-09-28 - Strings Split vs Cut Loop (scope: validation vs allocation)
+**Learning:** Replacing `strings.Split` with a manual `strings.Cut` loop avoids slice allocation when iterating over and validating comma-separated command-line arguments (like `o.to` and `o.githubRepo`). Go's native `strings.Split` allocates a slice, which can be avoided by iterating inline.
+**Action:** Always prefer `strings.Cut` in loops over `strings.Split` when parsing and processing delimited strings where the resulting slice isn't needed or returned. This achieves zero-allocation performance without sacrificing maintainability.
