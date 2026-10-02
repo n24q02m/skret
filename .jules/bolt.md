@@ -94,3 +94,6 @@
 ## $(date +%Y-%m-%d) - Strings Split vs Cut Loop (scope: validation vs allocation)
 **Learning:** Replacing `strings.Split` with a manual `strings.Cut` loop is an excellent optimization for avoiding slice allocation when you only need to iterate over and validate path segments (e.g., `validStateManifestPath`), or when extracting key-value pairs from comma-separated strings (like `parseDockerLabels` or `resolveUser`).
 **Action:** Always prefer `strings.Cut` in loops over `strings.Split` when validating or processing delimited strings where the resulting slice isn't needed or returned. This achieves zero-allocation performance without sacrificing maintainability.
+## 2026-09-27 - Zero-allocation fast path for EnvName generation
+**Learning:** `KeyToEnvName` was unconditionally building a new string using `strings.Builder` on every secret injected into an environment, leading to unnecessary allocations when environment variables are already properly formatted uppercase (the most common case).
+**Action:** Always scan strings for required mutations before falling back to `strings.Builder`. A fast path that returns the original string if no mutations are required reduces allocations to zero for the happy path and executes significantly faster.
