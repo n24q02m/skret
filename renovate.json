@@ -24,7 +24,9 @@
   "packageRules": [
     {
       "description": "Hold every update for 7 days so a malicious or yanked release is caught before it lands",
-      "matchPackageNames": ["*"],
+      "matchPackageNames": [
+        "*"
+      ],
       "minimumReleaseAge": "7 days"
     },
     {
@@ -42,6 +44,17 @@
       ],
       "pinDigests": true,
       "minimumReleaseAge": "7 days"
+    },
+    {
+      "description": "Automerge low-risk dependency updates (patch, digest, pin) once the 7-day release-age hold and all required checks pass",
+      "matchUpdateTypes": [
+        "patch",
+        "digest",
+        "pin"
+      ],
+      "automerge": true,
+      "automergeType": "pr",
+      "platformAutomerge": true
     }
   ]
 }
