@@ -18,3 +18,9 @@ overrides:
   # vulnerable ws@8.18.0 — GHSA-96hv-2xvq-fx4p (high, DoS) + GHSA-58qx-3vcg-4xpx
   # (moderate). 8.21.0 is the patched latest 8.x; a minor bump, API-compatible.
   ws: "^8.21.0"
+  # undici 7.29.0 (pulled by @cloudflare/containers + vitest-pool-workers chain)
+  # is flagged by 6 dependabot advisories (#44,#45,#46,#47,#50,#51: DoS via
+  # orphaned RetryHandler, response splitting, cookie caching, chunk truncation,
+  # TLS bypass in BalancedPool, unsafe-method caching). 7.30.0 is the latest
+  # patched 7.x; same major, API-compatible.
+  undici: "^7.30.0"
