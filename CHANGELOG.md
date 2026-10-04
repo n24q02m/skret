@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 <!-- version list -->
 
+## v1.36.0-beta.2 (2026-10-04)
+
+### Bug Fixes
+
+- **deps**: Bump edwards25519 v1.1.1 and undici 7.30.0 for security advisories
+  ([#859](https://github.com/n24q02m/skret/pull/859),
+  [`f3544a2`](https://github.com/n24q02m/skret/commit/f3544a2aa0895f075236d439d6d1bbd03170fa03))
+
+### Features
+
+- Regenerate demo.gif ([#858](https://github.com/n24q02m/skret/pull/858),
+  [`1ccb0f4`](https://github.com/n24q02m/skret/commit/1ccb0f4dfc3dc6c561674af454aaae9eea77d47e))
+
+
 ## v1.36.0-beta.1 (2026-10-04)
 
 ### Bug Fixes
