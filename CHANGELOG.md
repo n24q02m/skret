@@ -4,6 +4,52 @@ All notable changes to this project will be documented in this file.
 
 <!-- version list -->
 
+## v1.36.0-beta.1 (2026-10-04)
+
+### Bug Fixes
+
+- Hold every Renovate update for 7 days ([#853](https://github.com/n24q02m/skret/pull/853),
+  [`f0343e5`](https://github.com/n24q02m/skret/commit/f0343e54607c926da71fae8abfb157eec2fe6c3c))
+
+- Make release dispatch-only (remove push-triggered stable)
+  ([#848](https://github.com/n24q02m/skret/pull/848),
+  [`d5bfdb6`](https://github.com/n24q02m/skret/commit/d5bfdb62a7e08ba8b5ee58ee7f8aba5408f75b6d))
+
+- **deps**: Enable renovate automerge for patch/digest/pin updates
+  ([#857](https://github.com/n24q02m/skret/pull/857),
+  [`dd9e62e`](https://github.com/n24q02m/skret/commit/dd9e62ed5d0a5357470a5c0fcc79804483f58986))
+
+### Chores
+
+- Drop stray render.ts.orig artifact from palette branch
+  ([#851](https://github.com/n24q02m/skret/pull/851),
+  [`6ceb81d`](https://github.com/n24q02m/skret/commit/6ceb81d006fee5de9eb1c8c387616f39fa0646a0))
+
+- **deps**: Automerge patch/digest/pin updates via renovate
+  ([#857](https://github.com/n24q02m/skret/pull/857),
+  [`dd9e62e`](https://github.com/n24q02m/skret/commit/dd9e62ed5d0a5357470a5c0fcc79804483f58986))
+
+### Features
+
+- 🎨 palette: add contextual ARIA labels to secret tables
+  ([#851](https://github.com/n24q02m/skret/pull/851),
+  [`6ceb81d`](https://github.com/n24q02m/skret/commit/6ceb81d006fee5de9eb1c8c387616f39fa0646a0))
+
+### Performance Improvements
+
+- ⚡ bolt: add zero-allocation fast-path to keytoenvname
+  ([#852](https://github.com/n24q02m/skret/pull/852),
+  [`8849689`](https://github.com/n24q02m/skret/commit/884968955ab47b0dc1be10053802025b6688af76))
+
+- ⚡ bolt: replace strings.Split with strings.Cut in cli sync parsing
+  ([#857](https://github.com/n24q02m/skret/pull/857),
+  [`dd9e62e`](https://github.com/n24q02m/skret/commit/dd9e62ed5d0a5357470a5c0fcc79804483f58986))
+
+- ⚡ bolt: replace strings.Split with strings.Cut in cli sync parsing
+  ([#855](https://github.com/n24q02m/skret/pull/855),
+  [`ccf8cd7`](https://github.com/n24q02m/skret/commit/ccf8cd783b40a3f00215c06cfeda30ec7d8c3cf4))
+
+
 ## v1.35.0 (2026-09-26)
 
 ### Features
