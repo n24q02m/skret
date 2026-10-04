@@ -60,3 +60,6 @@
 ## 2026-10-01 - [Contextual ARIA Labels for Repeated UI Regions]
 **Learning:** When a UI contains multiple regions or elements of the same type (e.g., multiple scrollable tables), each element's `aria-label` must incorporate contextual data (like its corresponding namespace or environment) to uniquely identify it. Using identical, generic labels across multiple elements degrades the experience for screen reader users.
 **Action:** Always dynamically generate `aria-label` attributes to include specific identifiers for iterative UI elements.
+## 2026-10-04 - [Accessible Badges with Context]
+**Learning:** Visual badges (like 'stale' or 'error') require hidden context for screen readers (e.g., `<span class="sr-only">Warning: </span>`) and tooltips for visual users to understand what the state implies.
+**Action:** Always wrap visual status badges with an `sr-only` descriptive prefix and add a `title` attribute explaining the threshold/meaning of the badge.
