@@ -273,7 +273,7 @@ jobs:
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: "24"
-      - uses: denoland/setup-deno@e9d4163cd6ca2c8b600cc40b0faa795fb5aa45eb # v2
+      - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
       - run: deno --version
 
       - name: Install Hub dependencies
