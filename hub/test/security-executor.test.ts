@@ -209,7 +209,7 @@ function namespaceFor(status: string = "accepted") {
       redactedResult?: Uint8Array,
     ) => {
       if (redactedResult) storedResult = redactedResult.slice();
-      operation = { ...(operation ?? {}), status: "succeeded" };
+      operation = { ...operation, status: "succeeded" };
       return operation;
     },
   );
