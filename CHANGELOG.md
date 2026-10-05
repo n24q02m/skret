@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 <!-- version list -->
 
+## v1.36.0 (2026-10-05)
+
+### Features
+
+- Regenerate demo.gif ([#860](https://github.com/n24q02m/skret/pull/860),
+  [`857b80d`](https://github.com/n24q02m/skret/commit/857b80d86dad52029d8f6a828950ab936cd2a111))
+
+
 ## v1.36.0-beta.2 (2026-10-04)
 
 ### Bug Fixes
