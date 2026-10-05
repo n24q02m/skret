@@ -11,6 +11,10 @@ description = "Setup development environment"
 run = [
   "mise install",
   "go mod download",
+  # TS workspaces (stack standard 2026-08-25): bun + deno provisioned above;
+  # install their dependencies so the hub/docs gates run on a fresh clone.
+  "bun install --cwd hub",
+  "bun install --cwd docs",
   "python -m pip install pre-commit",
   "pre-commit install",
   "pre-commit install --hook-type commit-msg",
