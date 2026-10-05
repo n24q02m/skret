@@ -18,13 +18,13 @@ repos:
       # the same three linters locally that CI enforces per push/PR.
       - id: hub-stack-gates
         name: hub stack gates (biome + oxlint + oxfmt)
-        entry: bash -c 'cd hub && bun run check && bun run lint:ox'
+        entry: bash -c 'test -d hub/node_modules || exit 0; cd hub && bun run check && bun run lint:ox'
         language: system
         files: ^hub/.*\.(ts|js|mjs|json|jsonc)$
         pass_filenames: false
       - id: docs-stack-gates
         name: docs stack gates (biome + oxlint + oxfmt)
-        entry: bash -c 'cd docs && bun run check && bun run lint:ox'
+        entry: bash -c 'test -d docs/node_modules || exit 0; cd docs && bun run check && bun run lint:ox'
         language: system
         files: ^docs/.*\.(ts|js|mjs|json|jsonc|md|mdx)$
         pass_filenames: false
