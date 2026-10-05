@@ -82,13 +82,13 @@ golangci-lint run --fix ./...
 
 The repo uses these hooks (run automatically on `git commit`):
 
-| Hook | Description |
-|------|-------------|
-| `trailing-whitespace` | Removes trailing whitespace |
-| `end-of-file-fixer` | Ensures files end with a newline |
-| `check-yaml` | Validates YAML syntax |
-| `check-added-large-files` | Prevents committing large files |
-| `enforce-commit` | Rejects commits without `feat:` or `fix:` prefix |
+| Hook                      | Description                                      |
+| ------------------------- | ------------------------------------------------ |
+| `trailing-whitespace`     | Removes trailing whitespace                      |
+| `end-of-file-fixer`       | Ensures files end with a newline                 |
+| `check-yaml`              | Validates YAML syntax                            |
+| `check-added-large-files` | Prevents committing large files                  |
+| `enforce-commit`          | Rejects commits without `feat:` or `fix:` prefix |
 
 Run hooks manually:
 

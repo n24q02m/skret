@@ -1,12 +1,20 @@
 [tools]
 go = "1.26.5"
 golangci-lint = "latest"
+# Stack standard 2026-08-25 (revised 2026-09-17): TS workspaces (hub/, docs/)
+# run on bun+deno with biome (linter-only) + oxlint + oxfmt.
+bun = "latest"
+deno = "latest"
 
 [tasks.setup]
 description = "Setup development environment"
 run = [
   "mise install",
   "go mod download",
+  # TS workspaces (stack standard 2026-08-25): bun + deno provisioned above;
+  # install their dependencies so the hub/docs gates run on a fresh clone.
+  "bun install --cwd hub",
+  "bun install --cwd docs",
   "python -m pip install pre-commit",
   "pre-commit install",
   "pre-commit install --hook-type commit-msg",

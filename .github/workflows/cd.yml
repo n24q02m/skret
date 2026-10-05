@@ -269,25 +269,21 @@ jobs:
             --exclude hub/node_modules \
             --exclude docs/node_modules
 
-      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
-        with:
-          version: 10
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: "24"
-          cache: pnpm
-          cache-dependency-path: |
-            hub/pnpm-lock.yaml
-            docs/pnpm-lock.yaml
+      - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+      - run: deno --version
 
       - name: Install Hub dependencies
         working-directory: hub
-        run: pnpm install --frozen-lockfile
+        run: bun install --frozen-lockfile
       - name: Verify Hub sources
         working-directory: hub
         run: |
-          pnpm test
-          pnpm typecheck
+          bun run test
+          bun run typecheck
 
       - name: Build ordinary Hub bundle
         working-directory: hub
@@ -295,7 +291,7 @@ jobs:
         run: |
           set -euo pipefail
           rm -rf "$RUNNER_TEMP/hub-bundle"
-          pnpm exec wrangler deploy --dry-run --config wrangler.jsonc --outdir "$RUNNER_TEMP/hub-bundle"
+          bunx wrangler deploy --dry-run --config wrangler.jsonc --outdir "$RUNNER_TEMP/hub-bundle"
 
       - name: Build security executor bundle
         working-directory: hub
@@ -303,11 +299,11 @@ jobs:
         run: |
           set -euo pipefail
           rm -rf "$RUNNER_TEMP/security-executor-bundle"
-          pnpm exec wrangler deploy --dry-run --config wrangler.executor.jsonc --outdir "$RUNNER_TEMP/security-executor-bundle"
+          bunx wrangler deploy --dry-run --config wrangler.executor.jsonc --outdir "$RUNNER_TEMP/security-executor-bundle"
 
       - name: Install docs dependencies
         working-directory: docs
-        run: pnpm install --frozen-lockfile
+        run: bun install --frozen-lockfile
 
       - name: Build docs bundle
         shell: bash
@@ -320,7 +316,7 @@ jobs:
           set -euo pipefail
           cp install.sh docs/public/install.sh
           cp install.ps1 docs/public/install.ps1
-          pnpm --dir docs astro build
+          (cd docs && bun run build)
           mkdir -p docs/dist/.well-known
           source_manifest_digest="sha256:$(tr -d '\r\n' < dist/source-manifest.sha256)"
           python scripts/release_manifests.py deployment \

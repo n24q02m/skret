@@ -7,20 +7,20 @@ description: "skret uses structured exit codes to indicate the type of failure:"
 
 skret uses structured exit codes to indicate the type of failure:
 
-| Code | Name | Description | Common Cause |
-|------|------|-------------|-------------|
-| 0 | Success | Operation completed | -- |
-| 1 | Generic error | Unclassified failure | Unexpected runtime error |
-| 2 | Config error | Configuration problem | `.skret.yaml` not found, invalid schema |
-| 3 | Provider error | Backend failure | AWS SSM unreachable, API error |
-| 4 | Auth error | Authentication failed | Missing/expired AWS credentials |
-| 5 | Not found | Secret does not exist | Wrong key name or path |
-| 6 | Conflict error | Resource conflict | Key already exists (with `--on-conflict=fail`) |
-| 7 | Network error | Connectivity issue | No internet, DNS failure, timeout |
-| 8 | Validation error | Invalid input | Value exceeds 4 KB limit, bad key format |
-| 9 | Drift detected | Sets differ | `skret diff <A> <B> --exit-code` found a difference between the two sets |
-| 10 | Leak found | Secret value in a tracked file | `skret scan` (or `--staged`) found a real secret value committed to a tracked file |
-| 125 | Exec error | Process execution failed | Command not found in `skret run --` |
+| Code | Name             | Description                    | Common Cause                                                                       |
+| ---- | ---------------- | ------------------------------ | ---------------------------------------------------------------------------------- |
+| 0    | Success          | Operation completed            | --                                                                                 |
+| 1    | Generic error    | Unclassified failure           | Unexpected runtime error                                                           |
+| 2    | Config error     | Configuration problem          | `.skret.yaml` not found, invalid schema                                            |
+| 3    | Provider error   | Backend failure                | AWS SSM unreachable, API error                                                     |
+| 4    | Auth error       | Authentication failed          | Missing/expired AWS credentials                                                    |
+| 5    | Not found        | Secret does not exist          | Wrong key name or path                                                             |
+| 6    | Conflict error   | Resource conflict              | Key already exists (with `--on-conflict=fail`)                                     |
+| 7    | Network error    | Connectivity issue             | No internet, DNS failure, timeout                                                  |
+| 8    | Validation error | Invalid input                  | Value exceeds 4 KB limit, bad key format                                           |
+| 9    | Drift detected   | Sets differ                    | `skret diff <A> <B> --exit-code` found a difference between the two sets           |
+| 10   | Leak found       | Secret value in a tracked file | `skret scan` (or `--staged`) found a real secret value committed to a tracked file |
+| 125  | Exec error       | Process execution failed       | Command not found in `skret run --`                                                |
 
 Check exit codes in scripts:
 

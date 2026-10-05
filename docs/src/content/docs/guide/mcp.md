@@ -17,15 +17,15 @@ skret-mcp --version
 
 ## Tools
 
-| Tool | Kind | Output |
-|------|------|--------|
-| `skret_list` | read | JSON array of key names for an environment — names only, values structurally excluded |
-| `skret_get` | read | the raw value of one key — the only tool that returns values |
-| `skret_env` | read | JSON `{environments: [...], default_env}` — the environments this server may access |
-| `skret_status` / `skret_doctor` | read | JSON health report: resolved env, provider, config file, write policy, version |
-| `skret_set` | write | create or update a secret (`{key, value, confirm}`) |
-| `skret_delete` | write | delete a secret (`{key, confirm}`) |
-| `skret_rotate` | write | replace a value, recorded as a rotation in the audit trail (`{key, value, confirm}`) |
+| Tool                            | Kind  | Output                                                                                |
+| ------------------------------- | ----- | ------------------------------------------------------------------------------------- |
+| `skret_list`                    | read  | JSON array of key names for an environment — names only, values structurally excluded |
+| `skret_get`                     | read  | the raw value of one key — the only tool that returns values                          |
+| `skret_env`                     | read  | JSON `{environments: [...], default_env}` — the environments this server may access   |
+| `skret_status` / `skret_doctor` | read  | JSON health report: resolved env, provider, config file, write policy, version        |
+| `skret_set`                     | write | create or update a secret (`{key, value, confirm}`)                                   |
+| `skret_delete`                  | write | delete a secret (`{key, confirm}`)                                                    |
+| `skret_rotate`                  | write | replace a value, recorded as a rotation in the audit trail (`{key, value, confirm}`)  |
 
 Every read tool (and every write tool) accepts an optional `env` argument to select a different environment; without it the server uses the environment resolved at startup (`--env`, else `default_env`, else the single declared environment).
 
@@ -45,8 +45,8 @@ version: "1"
 default_env: dev
 
 mcp:
-  allow_write: true        # default false
-  allowed_envs: [dev]      # optional: restrict which envs MCP may touch
+  allow_write: true # default false
+  allowed_envs: [dev] # optional: restrict which envs MCP may touch
 
 environments:
   dev:
@@ -54,7 +54,7 @@ environments:
     file: .secrets.dev.yaml
 ```
 
-`allow_write` authorizes the *server*; each individual write call must additionally carry a per-call `"confirm": true` argument (the MCP mirror of the CLI `--confirm` flag). A call without it is refused and nothing is mutated:
+`allow_write` authorizes the _server_; each individual write call must additionally carry a per-call `"confirm": true` argument (the MCP mirror of the CLI `--confirm` flag). A call without it is refused and nothing is mutated:
 
 ```text
 skret_delete: per-call confirmation missing
@@ -104,12 +104,12 @@ Any client that supports stdio MCP servers works the same way: command `skret-mc
 
 ## Flags
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--workdir <dir>` | current directory | Where to discover `.skret.yaml` |
-| `--env <name>` | `default_env` | Pin the environment (must satisfy `allowed_envs`) |
-| `--provider <name>` | config | Override the provider |
-| `--path <prefix>` | config | Override the secret path prefix |
-| `--version` | -- | Print version and exit |
+| Flag                | Default           | Description                                       |
+| ------------------- | ----------------- | ------------------------------------------------- |
+| `--workdir <dir>`   | current directory | Where to discover `.skret.yaml`                   |
+| `--env <name>`      | `default_env`     | Pin the environment (must satisfy `allowed_envs`) |
+| `--provider <name>` | config            | Override the provider                             |
+| `--path <prefix>`   | config            | Override the secret path prefix                   |
+| `--version`         | --                | Print version and exit                            |
 
 Diagnostics go to stderr only; stdout carries protocol messages exclusively.

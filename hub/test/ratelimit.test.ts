@@ -1,7 +1,7 @@
-import { SELF, env, runInDurableObject } from "cloudflare:test";
-import { describe, it, expect } from "vitest";
+import { env, runInDurableObject, SELF } from "cloudflare:test";
+import { describe, expect, it } from "vitest";
+import { ATTEMPTS_KEY, LOGIN_ATTEMPTS, type LoginGate } from "../src/gate";
 import { handleRequest } from "../src/router";
-import { LOGIN_ATTEMPTS, ATTEMPTS_KEY, type LoginGate } from "../src/gate";
 import type { Env } from "../src/types";
 
 // Split deliberately: the wiring ("is the binding actually on this route?")
@@ -117,7 +117,10 @@ describe("rate limiting", () => {
 
   it("charges the limiter the client address Cloudflare stamped on the request", async () => {
     const seen: string[] = [];
-    await handleRequest(post("/login", { "CF-Connecting-IP": "203.0.113.20" }), envWith(true, seen));
+    await handleRequest(
+      post("/login", { "CF-Connecting-IP": "203.0.113.20" }),
+      envWith(true, seen),
+    );
     expect(seen).toEqual(["203.0.113.20"]);
 
     // Off Cloudflare's edge there is no such header. Those requests share one

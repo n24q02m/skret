@@ -181,6 +181,6 @@ export function renderLogin(error?: string): string {
       `<label for="password" class="sr-only">Relay password</label>` +
       `<input type="password" id="password" name="password" placeholder="relay password" autocomplete="current-password" autofocus required${aria}>` +
       `<button type="submit">Enter</button></form>`,
-    title
+    title,
   );
 }

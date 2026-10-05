@@ -28,10 +28,10 @@ Never create tags manually. Always use the workflow.
 
 ## Release Types
 
-| Type | Version Example | Use Case |
-|------|----------------|----------|
-| Stable | `v0.2.0` | Production-ready release |
-| Beta | `v0.3.0-beta.1` | Testing before stable |
+| Type   | Version Example | Use Case                 |
+| ------ | --------------- | ------------------------ |
+| Stable | `v0.2.0`        | Production-ready release |
+| Beta   | `v0.3.0-beta.1` | Testing before stable    |
 
 ### Beta to Stable Promotion
 
@@ -43,10 +43,10 @@ PSR automatically determines the version number from commits since the last rele
 
 ## Commit Impact on Versions
 
-| Commit Prefix | Version Bump |
-|---------------|-------------|
-| `fix:` | Patch (`1.12.0` -> `1.12.1`) |
-| `feat:` | Minor (`1.12.0` -> `1.13.0`) |
+| Commit Prefix | Version Bump                 |
+| ------------- | ---------------------------- |
+| `fix:`        | Patch (`1.12.0` -> `1.12.1`) |
+| `feat:`       | Minor (`1.12.0` -> `1.13.0`) |
 
 `semantic-release.toml` sets `major_on_zero = false`, so unlike the PSR
 default, this project never treated 0.x minor bumps as safe for breaking
@@ -80,14 +80,14 @@ not routine use; see "Never create tags manually" above)
 
 GoReleaser produces binaries for:
 
-| OS | Architecture | Artifact |
-|----|-------------|----------|
-| Linux | amd64 | `skret_VERSION_linux_amd64.tar.gz` |
-| Linux | arm64 | `skret_VERSION_linux_arm64.tar.gz` |
-| macOS | amd64 | `skret_VERSION_darwin_amd64.tar.gz` |
-| macOS | arm64 | `skret_VERSION_darwin_arm64.tar.gz` |
-| Windows | amd64 | `skret_VERSION_windows_amd64.zip` |
-| Windows | arm64 | `skret_VERSION_windows_arm64.zip` |
+| OS      | Architecture | Artifact                            |
+| ------- | ------------ | ----------------------------------- |
+| Linux   | amd64        | `skret_VERSION_linux_amd64.tar.gz`  |
+| Linux   | arm64        | `skret_VERSION_linux_arm64.tar.gz`  |
+| macOS   | amd64        | `skret_VERSION_darwin_amd64.tar.gz` |
+| macOS   | arm64        | `skret_VERSION_darwin_arm64.tar.gz` |
+| Windows | amd64        | `skret_VERSION_windows_amd64.zip`   |
+| Windows | arm64        | `skret_VERSION_windows_arm64.zip`   |
 
 The container image reuses the two Linux binaries above rather than rebuilding
 them, so `docker pull ghcr.io/n24q02m/skret` resolves on both architectures.

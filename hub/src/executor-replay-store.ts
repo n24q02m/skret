@@ -176,6 +176,7 @@ function validateScopeField(value: unknown): void {
     value.length === 0 ||
     value.length > MAX_SCOPE_FIELD_LENGTH ||
     value.trim() !== value ||
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: matching control characters is the purpose of this input-validation guard
     /[\u0000-\u001f\u007f]/u.test(value)
   ) {
     throw new ExecutorReplayInvalidRequestError();

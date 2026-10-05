@@ -53,12 +53,12 @@ does not contain a deployment command or credential setup.
 
 ```bash
 cd hub
-pnpm install
-pnpm test
-pnpm typecheck
-pnpm dryrun
-pnpm exec wrangler deploy --dry-run --config wrangler.jsonc --outdir "$TMPDIR/skret-hub"
-pnpm exec wrangler deploy --dry-run --config wrangler.executor.jsonc --outdir "$TMPDIR/skret-executor"
+bun install
+bun run test
+bun run typecheck
+bun run dryrun
+bunx wrangler deploy --dry-run --config wrangler.jsonc --outdir "$TMPDIR/skret-hub"
+bunx wrangler deploy --dry-run --config wrangler.executor.jsonc --outdir "$TMPDIR/skret-executor"
 ```
 
 ## Hardening (owner-side)

@@ -49,10 +49,10 @@ environments:
     provider: oci
     path: /myapp/prod
     region: ap-singapore-1
-    compartment_id: ocid1.compartment.oc1..xxx  # Required
-    vault_id: ocid1.vault.oc1..yyy              # Required
-    key_id: ocid1.key.oc1..zzz                  # Required for `skret set` of new secrets
-    profile: DEFAULT                            # Optional. Profile in ~/.oci/config
+    compartment_id: ocid1.compartment.oc1..xxx # Required
+    vault_id: ocid1.vault.oc1..yyy # Required
+    key_id: ocid1.key.oc1..zzz # Required for `skret set` of new secrets
+    profile: DEFAULT # Optional. Profile in ~/.oci/config
 ```
 
 `key_id` is only consulted when skret creates a secret that does not exist
@@ -106,11 +106,11 @@ skret run -- node server.js
 
 ## Quotas
 
-| Resource | Limit |
-|----------|-------|
-| Secret content size (via skret) | 25 KB |
-| Secret name length | 255 characters |
-| Default vault | Free (150 secrets, software-protected keys) |
+| Resource                        | Limit                                       |
+| ------------------------------- | ------------------------------------------- |
+| Secret content size (via skret) | 25 KB                                       |
+| Secret name length              | 255 characters                              |
+| Default vault                   | Free (150 secrets, software-protected keys) |
 
 A value over 25 KB fails with OCI's `LimitExceeded`-class error, surfaced as
 a provider error (skret exit code **3**) — see [error

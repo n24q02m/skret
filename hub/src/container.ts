@@ -1,15 +1,15 @@
 import { Container, type State, type StopParams } from "@cloudflare/containers";
-import type { Env, OperatorSyncHealth, SyncHealth, SyncRunMetadata } from "./types";
 import {
-  SYNC_ACTIVE_RUN_KEY,
-  SYNC_PLANNER_STOP_STATE_KEY,
   completeSyncRun,
   ensureStartedSyncRun,
-  getSyncHealth as readSyncHealth,
-  getOperatorSyncHealth as readOperatorSyncHealth,
   putStartedSyncRun,
+  getOperatorSyncHealth as readOperatorSyncHealth,
+  getSyncHealth as readSyncHealth,
   resolveSyncHealthConfig,
+  SYNC_ACTIVE_RUN_KEY,
+  SYNC_PLANNER_STOP_STATE_KEY,
 } from "./store";
+import type { Env, OperatorSyncHealth, SyncHealth, SyncRunMetadata } from "./types";
 
 const PLANNER_STOP_RECONCILE_TIMEOUT_MS = 5000;
 const PLANNER_RPC_TIMEOUT_MS = 500;
@@ -74,10 +74,7 @@ export class SyncContainer extends Container<Env> {
         let state: State;
         let activeRunId: string | undefined;
         try {
-          state = await boundedPlannerOperation(
-            this.getState(),
-            PLANNER_RPC_TIMEOUT_MS,
-          );
+          state = await boundedPlannerOperation(this.getState(), PLANNER_RPC_TIMEOUT_MS);
           activeRunId =
             (await boundedPlannerOperation(
               this.ctx.storage.get<string>(SYNC_ACTIVE_RUN_KEY),
@@ -141,10 +138,7 @@ export class SyncContainer extends Container<Env> {
       if (this.plannerStartInFlight === readyPromise) this.plannerStartInFlight = undefined;
     }
   }
-  private async writePlannerStopState(
-    next: PlannerStopState,
-    force = false,
-  ): Promise<void> {
+  private async writePlannerStopState(next: PlannerStopState, force = false): Promise<void> {
     await this.ctx.storage.transaction(async (transaction) => {
       const current = await transaction.get<string>(SYNC_PLANNER_STOP_STATE_KEY);
       if (
@@ -201,11 +195,9 @@ export class SyncContainer extends Container<Env> {
         activeRunId = undefined;
         await this.markPlannerStopUncertain();
       }
-      const stopped =
-        state?.status === "stopped" || state?.status === "stopped_with_code";
+      const stopped = state?.status === "stopped" || state?.status === "stopped_with_code";
       const activeRunPresent = activeRunId !== null;
-      const retryStop =
-        !stopAttempted || !stopped || activeRunPresent;
+      const retryStop = !stopAttempted || !stopped || activeRunPresent;
       if (retryStop && Date.now() - lastStopAttempt >= 250) {
         const remainingBeforeStop = deadline - Date.now();
         if (remainingBeforeStop <= 0) return;
@@ -241,8 +233,7 @@ export class SyncContainer extends Container<Env> {
         try {
           // The SDK skips onStop for state=stopped; terminalize the durable
           // active run explicitly before any restart can reuse its identity.
-          const exitCode =
-            state?.status === "stopped_with_code" ? (state.exitCode ?? 0) : 0;
+          const exitCode = state?.status === "stopped_with_code" ? (state.exitCode ?? 0) : 0;
           await boundedPlannerOperation(
             this.onStop({ exitCode, reason: "runtime_signal" }),
             Math.min(PLANNER_RPC_TIMEOUT_MS, remainingBeforeTerminalize),
@@ -302,19 +293,11 @@ export class SyncContainer extends Container<Env> {
   // Public health reads receive only the coarse freshness projection. Detailed
   // run records remain in Durable Object storage for authenticated operators.
   async getSyncHealth(): Promise<SyncHealth> {
-    return readSyncHealth(
-      this.ctx.storage,
-      new Date(),
-      resolveSyncHealthConfig(this.env),
-    );
+    return readSyncHealth(this.ctx.storage, new Date(), resolveSyncHealthConfig(this.env));
   }
 
   async getOperatorSyncHealth(): Promise<OperatorSyncHealth> {
-    return readOperatorSyncHealth(
-      this.ctx.storage,
-      new Date(),
-      resolveSyncHealthConfig(this.env),
-    );
+    return readOperatorSyncHealth(this.ctx.storage, new Date(), resolveSyncHealthConfig(this.env));
   }
 
   // Once onStart() persists a record, onStop() is the sole terminal transition

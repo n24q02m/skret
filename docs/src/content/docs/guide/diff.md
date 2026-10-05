@@ -40,12 +40,12 @@ Secret values are **never printed** in any output mode.
 
 The default table output shows only key names and their status:
 
-| Status | Meaning |
-|--------|---------|
-| `only_a` | Key exists in A only |
-| `only_b` | Key exists in B only |
-| `changed` | Key exists in both; values differ |
-| `same` | Key exists in both; values match |
+| Status    | Meaning                                        |
+| --------- | ---------------------------------------------- |
+| `only_a`  | Key exists in A only                           |
+| `only_b`  | Key exists in B only                           |
+| `changed` | Key exists in both; values differ              |
+| `same`    | Key exists in both; values match               |
 | `unknown` | Cannot compare (e.g. write-only GitHub secret) |
 
 ### `--show-hash`
@@ -87,15 +87,15 @@ The JSON object has the following shape:
 }
 ```
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `a` | string | Label for the first side |
-| `b` | string | Label for the second side |
-| `only_a` | string array | Keys present in A only |
-| `only_b` | string array | Keys present in B only |
-| `changed` | string array | Keys present in both with differing values |
-| `unknown` | string array | Keys that could not be compared (write-only side) |
-| `same_count` | number | Count of keys that are identical on both sides |
+| Field        | Type         | Description                                       |
+| ------------ | ------------ | ------------------------------------------------- |
+| `a`          | string       | Label for the first side                          |
+| `b`          | string       | Label for the second side                         |
+| `only_a`     | string array | Keys present in A only                            |
+| `only_b`     | string array | Keys present in B only                            |
+| `changed`    | string array | Keys present in both with differing values        |
+| `unknown`    | string array | Keys that could not be compared (write-only side) |
+| `same_count` | number       | Count of keys that are identical on both sides    |
 
 ## CI drift gate with `--exit-code`
 
@@ -105,7 +105,7 @@ The JSON object has the following shape:
 name: Drift check
 on:
   schedule:
-    - cron: '0 8 * * *'   # Daily 8am
+    - cron: "0 8 * * *" # Daily 8am
 
 permissions:
   id-token: write

@@ -1,30 +1,33 @@
+import type { ExecutorEnvelope } from "./executor-envelope-verifier";
 import {
-  ProviderEnvelopeLifecycle,
-  canonicalSourceIdentity,
-  type PreparedProviderGeneration,
-  type SourceIdentity,
-} from "./executor-provider-crypto";
-import {
+  type CanonicalTargetIdentity,
   canonicalCloudflareTarget,
   canonicalGitHubTarget,
   canonicalTargetSet,
   createTargetOperation,
-  type CanonicalTargetIdentity,
   type TargetOperation,
+  type TargetSet,
   type TargetWriteResult,
 } from "./executor-provider-clients";
-import type {
-  ProviderOperationRecord,
-  ProviderOperationStart,
-  ProviderOperationStore,
-} from "./provider-operation-store";
-import type { ExecutorEnvelope } from "./executor-envelope-verifier";
+import {
+  canonicalSourceIdentity,
+  type PreparedProviderGeneration,
+  type ProviderEnvelopeLifecycle,
+  type SourceIdentity,
+} from "./executor-provider-crypto";
 import type {
   PrivateExecutorHandlerOptions,
   PrivateExecutorReplayStore,
   PrivateExecutorRoleAuthority,
   PrivateExecutorRoleAuthorityBinding,
 } from "./private-executor-handler";
+import type {
+  ProviderDispatchRequest,
+  ProviderOperationRecord,
+  ProviderOperationStart,
+  ProviderOperationStartResult,
+  ProviderOperationStore,
+} from "./provider-operation-store";
 
 export const PROVIDER_DISPATCH_SCHEMA = "skret/executor/provider-dispatch/v1" as const;
 export const PROVIDER_VERIFICATION_SCHEMA = "skret/executor/provider-verification/v1" as const;
@@ -144,6 +147,7 @@ export function buildProviderPrivateExecutorOptions(
       input.expectedAudience.length === 0 ||
       input.expectedAudience.length > 256 ||
       input.expectedAudience.trim() !== input.expectedAudience ||
+      // biome-ignore lint/suspicious/noControlCharactersInRegex: matching control characters is the purpose of this input-validation guard
       /[\u0000-\u001f\u007f]/u.test(input.expectedAudience) ||
       !isProviderPrivateAuthority(input.dispatchAuthority) ||
       !isProviderPrivateAuthority(input.verificationAuthority) ||
@@ -156,7 +160,8 @@ export function buildProviderPrivateExecutorOptions(
     }
     let keysDiffer = false;
     for (let index = 0; index < input.dispatchAuthority.publicKey.byteLength; index += 1) {
-      keysDiffer ||= input.dispatchAuthority.publicKey[index] !== input.verificationAuthority.publicKey[index];
+      keysDiffer ||=
+        input.dispatchAuthority.publicKey[index] !== input.verificationAuthority.publicKey[index];
     }
     if (!keysDiffer) return null;
 
@@ -207,10 +212,10 @@ function isProviderPrivateAuthority(value: unknown): value is ProviderPrivateExe
   const fields = Object.keys(candidate);
   return (
     fields.length === 4 &&
-    Object.prototype.hasOwnProperty.call(candidate, "publicKey") &&
-    Object.prototype.hasOwnProperty.call(candidate, "generation") &&
-    Object.prototype.hasOwnProperty.call(candidate, "notAfter") &&
-    Object.prototype.hasOwnProperty.call(candidate, "capabilityDigest") &&
+    Object.hasOwn(candidate, "publicKey") &&
+    Object.hasOwn(candidate, "generation") &&
+    Object.hasOwn(candidate, "notAfter") &&
+    Object.hasOwn(candidate, "capabilityDigest") &&
     candidate.publicKey instanceof Uint8Array &&
     candidate.publicKey.byteLength === 32 &&
     typeof candidate.generation === "number" &&
@@ -244,9 +249,9 @@ function validateProviderAuthorityBinding(binding: ProviderAuthorityBinding): vo
     !binding ||
     typeof binding !== "object" ||
     Object.keys(binding).length !== 3 ||
-    !Object.prototype.hasOwnProperty.call(binding, "dispatchGeneration") ||
-    !Object.prototype.hasOwnProperty.call(binding, "verificationGeneration") ||
-    !Object.prototype.hasOwnProperty.call(binding, "capabilityDigest") ||
+    !Object.hasOwn(binding, "dispatchGeneration") ||
+    !Object.hasOwn(binding, "verificationGeneration") ||
+    !Object.hasOwn(binding, "capabilityDigest") ||
     !Number.isSafeInteger(binding.dispatchGeneration) ||
     binding.dispatchGeneration <= 0 ||
     !Number.isSafeInteger(binding.verificationGeneration) ||
@@ -265,17 +270,18 @@ function validateProviderExecutionAuthority(
   binding: ProviderAuthorityBinding,
 ): void {
   validateProviderAuthorityBinding(binding);
-  const expectedGeneration = expectedRole === PROVIDER_DISPATCH_ROLE
-    ? binding.dispatchGeneration
-    : binding.verificationGeneration;
+  const expectedGeneration =
+    expectedRole === PROVIDER_DISPATCH_ROLE
+      ? binding.dispatchGeneration
+      : binding.verificationGeneration;
   if (
     !authority ||
     typeof authority !== "object" ||
     Object.keys(authority).length !== 4 ||
-    !Object.prototype.hasOwnProperty.call(authority, "role") ||
-    !Object.prototype.hasOwnProperty.call(authority, "generation") ||
-    !Object.prototype.hasOwnProperty.call(authority, "notAfter") ||
-    !Object.prototype.hasOwnProperty.call(authority, "capabilityDigest") ||
+    !Object.hasOwn(authority, "role") ||
+    !Object.hasOwn(authority, "generation") ||
+    !Object.hasOwn(authority, "notAfter") ||
+    !Object.hasOwn(authority, "capabilityDigest") ||
     authority.role !== expectedRole ||
     authority.generation !== expectedGeneration ||
     !Number.isSafeInteger(authority.notAfter) ||
@@ -329,7 +335,7 @@ export async function executeProviderDispatchBody(
   validateDependencies(dependencies);
   const now = readNow(dependencies);
   validateProviderExecutionAuthority(authority, PROVIDER_DISPATCH_ROLE, now, binding);
-  let targetSet;
+  let targetSet: TargetSet;
   try {
     targetSet = await canonicalTargetSet([document.target]);
   } catch {
@@ -338,10 +344,8 @@ export async function executeProviderDispatchBody(
   if (
     targetSet.digest !== document.operation.target_digest ||
     authority.capabilityDigest !== targetSet.digest ||
-    document.operation.operator_identity !== providerAuthorityIdentity(
-      binding.dispatchGeneration,
-      binding.verificationGeneration,
-    ) ||
+    document.operation.operator_identity !==
+      providerAuthorityIdentity(binding.dispatchGeneration, binding.verificationGeneration) ||
     document.operation.target_identity !== document.target.canonical ||
     document.operation.capability !== document.target.capability ||
     document.operation.generation !== document.source_identity.lifecycleLabel ||
@@ -358,7 +362,7 @@ export async function executeProviderDispatchBody(
     throw new ProviderExecutorInvalidRequestError();
   }
 
-  let started;
+  let started: ProviderOperationStartResult;
   try {
     started = await dependencies.operations.start(document.operation, now);
   } catch {
@@ -370,7 +374,7 @@ export async function executeProviderDispatchBody(
     return operationResponse(started.operation);
   }
 
-  let claimed;
+  let claimed: ProviderDispatchRequest | null;
   try {
     claimed = await dependencies.operations.claim(
       document.operation.operation_id,
@@ -496,10 +500,8 @@ export async function executeProviderVerificationBody(
   if (
     existing.target_identity !== document.acknowledged_target_identity ||
     existing.target_digest !== authority.capabilityDigest ||
-    existing.operator_identity !== providerAuthorityIdentity(
-      binding.dispatchGeneration,
-      binding.verificationGeneration,
-    )
+    existing.operator_identity !==
+      providerAuthorityIdentity(binding.dispatchGeneration, binding.verificationGeneration)
   ) {
     throw new ProviderExecutorInvalidRequestError();
   }
@@ -520,10 +522,12 @@ export async function executeProviderVerificationBody(
   if (record.status !== "succeeded") return operationResponse(record);
   const cleanup = await dependencies.lifecycle.cleanup({
     operationId: record.operation_id,
-    acknowledgements: [{
-      targetIdentity: document.acknowledged_target_identity,
-      acknowledged: true,
-    }],
+    acknowledgements: [
+      {
+        targetIdentity: document.acknowledged_target_identity,
+        acknowledged: true,
+      },
+    ],
     canary: document.canary,
     postconditions: document.postconditions,
     explicitVerification: true,
@@ -552,12 +556,16 @@ async function parseDispatchDocument(body: Uint8Array): Promise<ProviderDispatch
     throw new ProviderExecutorInvalidRequestError();
   }
   const target = canonicalTargetIdentity(targetInput);
-  if (JSON.stringify(target) !== JSON.stringify(targetInput)) throw new ProviderExecutorInvalidRequestError();
+  if (JSON.stringify(target) !== JSON.stringify(targetInput))
+    throw new ProviderExecutorInvalidRequestError();
   validateOperationShape(operation);
   if (typeof parsed.invocation_id !== "string" || !OPERATION_ID.test(parsed.invocation_id)) {
     throw new ProviderExecutorInvalidRequestError();
   }
-  if (typeof parsed.kms_key_reference !== "string" || !SAFE_REFERENCE.test(parsed.kms_key_reference)) {
+  if (
+    typeof parsed.kms_key_reference !== "string" ||
+    !SAFE_REFERENCE.test(parsed.kms_key_reference)
+  ) {
     throw new ProviderExecutorInvalidRequestError();
   }
   return {
@@ -591,7 +599,11 @@ function parseVerificationDocument(body: Uint8Array): ProviderVerificationDocume
 }
 
 function parseCanonicalBody(body: Uint8Array): Record<string, unknown> {
-  if (!(body instanceof Uint8Array) || body.byteLength === 0 || body.byteLength > MAX_PROVIDER_BODY_BYTES) {
+  if (
+    !(body instanceof Uint8Array) ||
+    body.byteLength === 0 ||
+    body.byteLength > MAX_PROVIDER_BODY_BYTES
+  ) {
     throw new ProviderExecutorInvalidRequestError();
   }
   let text: string;
@@ -646,14 +658,25 @@ function validateOperationShape(operation: Record<string, unknown>): void {
   if (stringFields.some((value) => typeof value !== "string" || !SAFE_REFERENCE.test(value))) {
     throw new ProviderExecutorInvalidRequestError();
   }
-  if (!OPERATION_ID.test(operation.operation_id as string) || !GENERATION_ID.test(operation.generation as string)) {
+  if (
+    !OPERATION_ID.test(operation.operation_id as string) ||
+    !GENERATION_ID.test(operation.generation as string)
+  ) {
     throw new ProviderExecutorInvalidRequestError();
   }
-  for (const digest of [operation.source_fingerprint, operation.source_digest, operation.target_digest]) {
-    if (typeof digest !== "string" || !SHA256_DIGEST.test(digest)) throw new ProviderExecutorInvalidRequestError();
+  for (const digest of [
+    operation.source_fingerprint,
+    operation.source_digest,
+    operation.target_digest,
+  ]) {
+    if (typeof digest !== "string" || !SHA256_DIGEST.test(digest))
+      throw new ProviderExecutorInvalidRequestError();
   }
   for (const generation of [operation.old_generation_ref, operation.current_generation_ref]) {
-    if (generation !== null && (typeof generation !== "string" || !GENERATION_ID.test(generation))) {
+    if (
+      generation !== null &&
+      (typeof generation !== "string" || !GENERATION_ID.test(generation))
+    ) {
       throw new ProviderExecutorInvalidRequestError();
     }
   }
@@ -690,18 +713,20 @@ async function recordAmbiguousOutcome(
   now: number,
 ): Promise<Uint8Array> {
   try {
-    return operationResponse(await dependencies.operations.recordOutcome(
-      operationID,
-      invocationID,
-      {
-        status: "unknown",
-        provider_state_oid: null,
-        canary: "unknown",
-        postconditions: "unknown",
-        error_code: errorCode,
-      },
-      now,
-    ));
+    return operationResponse(
+      await dependencies.operations.recordOutcome(
+        operationID,
+        invocationID,
+        {
+          status: "unknown",
+          provider_state_oid: null,
+          canary: "unknown",
+          postconditions: "unknown",
+          error_code: errorCode,
+        },
+        now,
+      ),
+    );
   } catch {
     throw new ProviderExecutorUnavailableError();
   }
@@ -725,7 +750,10 @@ function operationResponse(record: ProviderOperationRecord): Uint8Array {
   return responseBytes({ operation_id: record.operation_id, status: record.status });
 }
 
-function responseBytes(value: { readonly operation_id: string; readonly status: string }): Uint8Array {
+function responseBytes(value: {
+  readonly operation_id: string;
+  readonly status: string;
+}): Uint8Array {
   return new TextEncoder().encode(JSON.stringify(value));
 }
 

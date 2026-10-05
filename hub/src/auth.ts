@@ -76,7 +76,9 @@ export async function verifySession(secret: string, cookie: string): Promise<boo
   if (got.byteLength !== expected.byteLength) return false;
   if (!crypto.subtle.timingSafeEqual(got, expected)) return false;
   try {
-    const payload = JSON.parse(new TextDecoder().decode(b64urlDecode(payloadB64))) as { exp?: unknown };
+    const payload = JSON.parse(new TextDecoder().decode(b64urlDecode(payloadB64))) as {
+      exp?: unknown;
+    };
     return typeof payload.exp === "number" && payload.exp > Math.floor(Date.now() / 1000);
   } catch {
     return false;

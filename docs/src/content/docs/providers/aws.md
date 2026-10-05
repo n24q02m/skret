@@ -45,8 +45,8 @@ environments:
     provider: aws
     path: /myapp/prod
     region: us-east-1
-    profile: production    # Uses named profile from ~/.aws/credentials
-    kms_key_id: arn:aws:kms:us-east-1:123456789:key/abc-def  # Optional
+    profile: production # Uses named profile from ~/.aws/credentials
+    kms_key_id: arn:aws:kms:us-east-1:123456789:key/abc-def # Optional
 ```
 
 ## Usage
@@ -73,11 +73,11 @@ skret only ever writes AWS SSM **Standard**-tier parameters -- it never sets
 skret is the Standard-tier cap, regardless of what your AWS account otherwise
 supports.
 
-| Resource | Limit |
-|----------|-------|
+| Resource                         | Limit                                                      |
+| -------------------------------- | ---------------------------------------------------------- |
 | Parameter value size (via skret) | 4 KB (Standard tier only; skret does not request Advanced) |
-| Parameters per account/region | 10,000 (standard) |
-| GetParametersByPath throughput | 40 TPS |
+| Parameters per account/region    | 10,000 (standard)                                          |
+| GetParametersByPath throughput   | 40 TPS                                                     |
 
 ### Batch reads and in-process caching
 

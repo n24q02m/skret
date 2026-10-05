@@ -17,20 +17,20 @@ A conformance test (`pkg/skret/spec_conformance_test.go`) enforces the exit-code
 
 skret exits with exactly one code from this table. Codes are a closed set: a release MUST NOT exit with any other value, and new values require a spec minor version.
 
-| Code | Constant (`pkg/skret`) | Meaning |
-|------|------------------------|---------|
-| 0 | `ExitSuccess` | Operation completed successfully |
-| 1 | `ExitGenericError` | Unclassified error |
-| 2 | `ExitConfigError` | Configuration problem (missing/invalid `.skret.yaml`, unsupported schema `version`, undeclared env, missing required keys) |
-| 3 | `ExitProviderError` | Backend provider failure (SSM/Key Vault/Secret Manager/Vault/local I/O) |
-| 4 | `ExitAuthError` | Authentication failed (credentials missing/invalid, no encryption key material) |
-| 5 | `ExitNotFoundError` | Secret does not exist |
-| 6 | `ExitConflictError` | Resource conflict (e.g. key exists with `--on-conflict=fail`) |
-| 7 | `ExitNetworkError` | Network/connectivity failure |
-| 8 | `ExitValidationError` | Input validation failed (bad flag value, oversized payload, unresolvable `${KEY}` reference) |
-| 9 | `ExitDrift` | Drift detected (`diff --exit-code` only) |
-| 10 | `ExitLeakFound` | A managed secret value was found in a scanned file (`scan`, `scan --staged`, `scan --history`) |
-| 125 | `ExitExecError` | The child command passed to `run --` could not be executed (matches docker/podman convention) |
+| Code | Constant (`pkg/skret`) | Meaning                                                                                                                    |
+| ---- | ---------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| 0    | `ExitSuccess`          | Operation completed successfully                                                                                           |
+| 1    | `ExitGenericError`     | Unclassified error                                                                                                         |
+| 2    | `ExitConfigError`      | Configuration problem (missing/invalid `.skret.yaml`, unsupported schema `version`, undeclared env, missing required keys) |
+| 3    | `ExitProviderError`    | Backend provider failure (SSM/Key Vault/Secret Manager/Vault/local I/O)                                                    |
+| 4    | `ExitAuthError`        | Authentication failed (credentials missing/invalid, no encryption key material)                                            |
+| 5    | `ExitNotFoundError`    | Secret does not exist                                                                                                      |
+| 6    | `ExitConflictError`    | Resource conflict (e.g. key exists with `--on-conflict=fail`)                                                              |
+| 7    | `ExitNetworkError`     | Network/connectivity failure                                                                                               |
+| 8    | `ExitValidationError`  | Input validation failed (bad flag value, oversized payload, unresolvable `${KEY}` reference)                               |
+| 9    | `ExitDrift`            | Drift detected (`diff --exit-code` only)                                                                                   |
+| 10   | `ExitLeakFound`        | A managed secret value was found in a scanned file (`scan`, `scan --staged`, `scan --history`)                             |
+| 125  | `ExitExecError`        | The child command passed to `run --` could not be executed (matches docker/podman convention)                              |
 
 Rules:
 
@@ -86,23 +86,23 @@ When a command invoked with `--format json` fails, it MUST print exactly one JSO
 
 Resolution order for one configuration value, first non-empty wins:
 
-| Value | Precedence |
-|-------|-----------|
-| `default_env`, `provider`, `path` | CLI flag → `SKRET_*` env var → `.skret.yaml` environment field |
-| `region`, `profile` | CLI flag → `SKRET_REGION`/`SKRET_PROFILE` → `AWS_REGION`/`AWS_PROFILE` → `.skret.yaml` environment field |
-| GCP project | CLI flag → `GOOGLE_CLOUD_PROJECT` → `.skret.yaml` `project` |
-| Without a config file (ephemeral mode) | CLI flag → `SKRET_ENV` (default `prod`) → `SKRET_PROVIDER` (default `aws`) |
+| Value                                  | Precedence                                                                                               |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `default_env`, `provider`, `path`      | CLI flag → `SKRET_*` env var → `.skret.yaml` environment field                                           |
+| `region`, `profile`                    | CLI flag → `SKRET_REGION`/`SKRET_PROFILE` → `AWS_REGION`/`AWS_PROFILE` → `.skret.yaml` environment field |
+| GCP project                            | CLI flag → `GOOGLE_CLOUD_PROJECT` → `.skret.yaml` `project`                                              |
+| Without a config file (ephemeral mode) | CLI flag → `SKRET_ENV` (default `prod`) → `SKRET_PROVIDER` (default `aws`)                               |
 
 Other environment variables with defined behavior:
 
-| Variable | Effect |
-|----------|--------|
-| `SKRET_AGE_KEY` | Primary key material for the local encrypted provider (§10) |
-| `SKRET_LOCAL_KEY` | Fallback key material for the local encrypted provider (§10) |
-| `SKRET_ACTOR` | Actor recorded in audit log entries and webhook payloads (e.g. `SKRET_ACTOR=ci`) |
-| `SKRET_LOG`, `SKRET_LOG_FORMAT` | Log level and format for stderr logging |
-| `SKRET_EXPERIMENTAL=1` | Gates experimental commands (`history`, `rollback`) |
-| `SKRET_HUB_URL`, `SKRET_HUB_TOKEN` | Vault dashboard endpoint and token |
+| Variable                           | Effect                                                                           |
+| ---------------------------------- | -------------------------------------------------------------------------------- |
+| `SKRET_AGE_KEY`                    | Primary key material for the local encrypted provider (§10)                      |
+| `SKRET_LOCAL_KEY`                  | Fallback key material for the local encrypted provider (§10)                     |
+| `SKRET_ACTOR`                      | Actor recorded in audit log entries and webhook payloads (e.g. `SKRET_ACTOR=ci`) |
+| `SKRET_LOG`, `SKRET_LOG_FORMAT`    | Log level and format for stderr logging                                          |
+| `SKRET_EXPERIMENTAL=1`             | Gates experimental commands (`history`, `rollback`)                              |
+| `SKRET_HUB_URL`, `SKRET_HUB_TOKEN` | Vault dashboard endpoint and token                                               |
 
 ## 7. Config schema
 
@@ -111,28 +111,28 @@ Other environment variables with defined behavior:
 Required structure:
 
 ```yaml
-version: "1"                  # required, exactly "1"
-default_env: prod             # optional; must name a declared environment
-project: my-project           # optional
-environments:                 # required, at least one
+version: "1" # required, exactly "1"
+default_env: prod # optional; must name a declared environment
+project: my-project # optional
+environments: # required, at least one
   prod:
-    provider: aws             # aws | azure | gcp | oci | local
-    path: /myapp/prod         # aws: required
+    provider: aws # aws | azure | gcp | oci | local
+    path: /myapp/prod # aws: required
     region: us-east-1
     profile: production
-    file: .secrets.prod.yaml  # local: required
-    encrypted: true           # local: write-side encryption intent (§10)
-    audit_log: .skret-audit.log  # local: audit trail override
-    project: my-gcp-project   # gcp: project id
-    vault_url: https://myvault.vault.azure.net/  # azure (or vault_name)
-    compartment_id: ocid1...  # oci
-    vault_id: ocid1...        # oci
-    key_id: ocid1...          # oci: master key for new secrets
-    kms_key_id: alias/...     # aws: KMS key for SecureString
-required: [DATABASE_URL]      # optional; missing keys fail with exit 2
-exclude: [PUBLIC_FLAG]        # optional; never injected by env/run
-sync:                         # optional; reusable sync targets + hub
-notify:                       # optional; webhook fan-out on mutations
+    file: .secrets.prod.yaml # local: required
+    encrypted: true # local: write-side encryption intent (§10)
+    audit_log: .skret-audit.log # local: audit trail override
+    project: my-gcp-project # gcp: project id
+    vault_url: https://myvault.vault.azure.net/ # azure (or vault_name)
+    compartment_id: ocid1... # oci
+    vault_id: ocid1... # oci
+    key_id: ocid1... # oci: master key for new secrets
+    kms_key_id: alias/... # aws: KMS key for SecureString
+required: [DATABASE_URL] # optional; missing keys fail with exit 2
+exclude: [PUBLIC_FLAG] # optional; never injected by env/run
+sync: # optional; reusable sync targets + hub
+notify: # optional; webhook fan-out on mutations
 ```
 
 Validation is two-phase and MUST stay that way: structural checks (version, at least one environment, `default_env` resolves, sync/notify shape) run for every command; per-environment provider requirements run only for the environment actually selected, so a broken unused environment cannot block a working one.
@@ -141,13 +141,13 @@ Validation is two-phase and MUST stay that way: structural checks (version, at l
 
 skret keys are provider-neutral: bare leaf (`DB_PASSWORD`) or slash-delimited (`/myapp/prod/DB_PASSWORD`). The resolved `path` prefixes bare leaves. Per-provider mapping, all deterministic:
 
-| Provider | Name skret stores | Rules |
-|----------|-------------------|-------|
-| `aws` | SSM parameter name `path/KEY` | Full path-prefixed name; already-qualified keys pass through. Git Bash/MSYS path-mangled arguments are recovered heuristically (with a warning). 4 KB value cap (Standard tier). |
-| `local` | YAML mapping key, verbatim | Any YAML string key in the secrets file. |
-| `gcp` | Secret ID, verbatim | `^[a-zA-Z0-9_-]{1,255}$`; a single leading `/` is stripped. Environment `path` MUST be empty — isolation is one GCP project per environment. Payload cap 64 KiB. |
-| `azure` | Key Vault secret name, sanitized | Only `[A-Za-z0-9-]` survive; every other rune becomes `-`; runs of `-` collapse; leading/trailing `-` trimmed; truncated to 127 chars. Mapping is deterministic but LOSSY: `DB_URL` and `DB-URL` collide. |
-| `oci` | Vault secret name, encoded | Path becomes a `-`-joined prefix token; prefix and leaf join with a single `_`; `/` inside the leaf becomes `-`. Result must be 1–255 chars of letters, digits, `.`, `-`, `_`. Paths differing only by `/`-vs-`-` spelling collide within one vault — use distinct vaults. |
+| Provider | Name skret stores                | Rules                                                                                                                                                                                                                                                                      |
+| -------- | -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `aws`    | SSM parameter name `path/KEY`    | Full path-prefixed name; already-qualified keys pass through. Git Bash/MSYS path-mangled arguments are recovered heuristically (with a warning). 4 KB value cap (Standard tier).                                                                                           |
+| `local`  | YAML mapping key, verbatim       | Any YAML string key in the secrets file.                                                                                                                                                                                                                                   |
+| `gcp`    | Secret ID, verbatim              | `^[a-zA-Z0-9_-]{1,255}$`; a single leading `/` is stripped. Environment `path` MUST be empty — isolation is one GCP project per environment. Payload cap 64 KiB.                                                                                                           |
+| `azure`  | Key Vault secret name, sanitized | Only `[A-Za-z0-9-]` survive; every other rune becomes `-`; runs of `-` collapse; leading/trailing `-` trimmed; truncated to 127 chars. Mapping is deterministic but LOSSY: `DB_URL` and `DB-URL` collide.                                                                  |
+| `oci`    | Vault secret name, encoded       | Path becomes a `-`-joined prefix token; prefix and leaf join with a single `_`; `/` inside the leaf becomes `-`. Result must be 1–255 chars of letters, digits, `.`, `-`, `_`. Paths differing only by `/`-vs-`-` spelling collide within one vault — use distinct vaults. |
 
 ## 9. `${KEY}` reference semantics
 

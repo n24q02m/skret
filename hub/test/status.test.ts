@@ -1,5 +1,5 @@
 import { env, SELF } from "cloudflare:test";
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 
 const good = {
   namespace: "/klprism/prod",
@@ -80,9 +80,7 @@ describe("status + namespaces shape", () => {
         key_count: number;
       }>;
     };
-    const st = (await (
-      await get("/api/status", "Bearer test-hub-token")
-    ).json()) as StatusBody;
+    const st = (await (await get("/api/status", "Bearer test-hub-token")).json()) as StatusBody;
     expect(st).toEqual({
       ok: true,
       namespace_count: 1,

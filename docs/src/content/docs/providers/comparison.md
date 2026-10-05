@@ -7,15 +7,15 @@ skret supports multiple cloud-provider secret backends. This page ranks them by 
 
 ## TL;DR
 
-| Rank | Backend | Monthly cost* | Recommended for |
-|------|---------|---------------|-----------------|
-| 1 | **AWS SSM Parameter Store (Standard)** | **$0** | Default for most users — AWS-native or mixed-cloud |
-| 2 | **OCI Vault (software-protected)** | **$0** | Best rotation; users with OCI tenancy |
-| 3 | **Azure Key Vault (Standard)** | **~$0.09** | Azure-native workloads, multi-cloud DR |
-| 4 | **GCP Secret Manager** | **~$20** | GCP-native workloads, large (>25 KB) payloads |
-| 5 | **AWS Secrets Manager** | **~$136** | Only when managed rotation (RDS/Redshift) is required |
+| Rank | Backend                                | Monthly cost* | Recommended for                                       |
+| ---- | -------------------------------------- | ------------- | ----------------------------------------------------- |
+| 1    | **AWS SSM Parameter Store (Standard)** | **$0**        | Default for most users — AWS-native or mixed-cloud    |
+| 2    | **OCI Vault (software-protected)**     | **$0**        | Best rotation; users with OCI tenancy                 |
+| 3    | **Azure Key Vault (Standard)**         | **~$0.09**    | Azure-native workloads, multi-cloud DR                |
+| 4    | **GCP Secret Manager**                 | **~$20**      | GCP-native workloads, large (>25 KB) payloads         |
+| 5    | **AWS Secrets Manager**                | **~$136**     | Only when managed rotation (RDS/Redshift) is required |
 
-\* *Cost based on reference scenario: 17 repos × 20 secrets/repo × 1,000 reads/day (30k/month), `ap-southeast-1`/Singapore region.*
+\* _Cost based on reference scenario: 17 repos × 20 secrets/repo × 1,000 reads/day (30k/month), `ap-southeast-1`/Singapore region._
 
 ## Choosing a backend
 
@@ -41,43 +41,43 @@ Mixing backends in a single `.skret.yaml` -- default environment on SSM, specifi
 
 ### Solo developer (1 repo × 20 secrets × 100 reads/day)
 
-| Backend | Monthly cost |
-|---------|-------------|
-| AWS SSM Standard | $0 |
-| OCI Vault | $0 (within 150 free cap) |
-| Azure Key Vault | ~$0.01 |
-| GCP Secret Manager | ~$0.84 (14 active versions × $0.06) |
-| AWS Secrets Manager | ~$8.00 |
+| Backend             | Monthly cost                        |
+| ------------------- | ----------------------------------- |
+| AWS SSM Standard    | $0                                  |
+| OCI Vault           | $0 (within 150 free cap)            |
+| Azure Key Vault     | ~$0.01                              |
+| GCP Secret Manager  | ~$0.84 (14 active versions × $0.06) |
+| AWS Secrets Manager | ~$8.00                              |
 
 ### Small team (5 repos × 30 secrets × 5,000 reads/day)
 
-| Backend | Monthly cost |
-|---------|-------------|
-| AWS SSM Standard | $0 |
-| OCI Vault | $0 (150 free cap applies) |
-| Azure Key Vault | ~$0.45 |
-| GCP Secret Manager | ~$9 |
-| AWS Secrets Manager | ~$60 |
+| Backend             | Monthly cost              |
+| ------------------- | ------------------------- |
+| AWS SSM Standard    | $0                        |
+| OCI Vault           | $0 (150 free cap applies) |
+| Azure Key Vault     | ~$0.45                    |
+| GCP Secret Manager  | ~$9                       |
+| AWS Secrets Manager | ~$60                      |
 
 ### skret reference scale (17 repos × 20 secrets × 1,000 reads/day)
 
-| Backend | Monthly cost |
-|---------|-------------|
-| AWS SSM Standard | $0 |
-| OCI Vault | $0 (overflow uses free software keys) |
-| Azure Key Vault | ~$0.09 |
-| GCP Secret Manager | ~$20.10 |
-| AWS Secrets Manager | ~$136.15 |
+| Backend             | Monthly cost                          |
+| ------------------- | ------------------------------------- |
+| AWS SSM Standard    | $0                                    |
+| OCI Vault           | $0 (overflow uses free software keys) |
+| Azure Key Vault     | ~$0.09                                |
+| GCP Secret Manager  | ~$20.10                               |
+| AWS Secrets Manager | ~$136.15                              |
 
 ### Large scale (100 repos × 50 secrets × 100,000 reads/day)
 
-| Backend | Monthly cost |
-|---------|-------------|
-| AWS SSM Standard | $0 to ~$1.50 (may need Higher Throughput) |
-| OCI Vault | $0 (software keys; verify billing) |
-| Azure Key Vault | ~$0.90 |
-| GCP Secret Manager | ~$300 |
-| AWS Secrets Manager | ~$2,000 |
+| Backend             | Monthly cost                              |
+| ------------------- | ----------------------------------------- |
+| AWS SSM Standard    | $0 to ~$1.50 (may need Higher Throughput) |
+| OCI Vault           | $0 (software keys; verify billing)        |
+| Azure Key Vault     | ~$0.90                                    |
+| GCP Secret Manager  | ~$300                                     |
+| AWS Secrets Manager | ~$2,000                                   |
 
 ## Feature matrix
 

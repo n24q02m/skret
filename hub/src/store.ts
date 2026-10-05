@@ -1,4 +1,5 @@
 import type {
+  Env,
   Manifest,
   NamespaceSummary,
   OperatorSyncHealth,
@@ -9,7 +10,6 @@ import type {
   SyncRunRecord,
   SyncRunStatus,
   SyncRunStopReason,
-  Env,
 } from "./types";
 
 const PREFIX = "manifest:";
@@ -32,9 +32,7 @@ export interface SyncRunStorageOperation {
 }
 
 export interface SyncRunStorage extends SyncRunStorageOperation {
-  transaction<T>(
-    closure: (transaction: SyncRunStorageOperation) => Promise<T>,
-  ): Promise<T>;
+  transaction<T>(closure: (transaction: SyncRunStorageOperation) => Promise<T>): Promise<T>;
 }
 
 export class SyncRunAlreadyActiveError extends Error {
@@ -123,12 +121,8 @@ export function summarizeManifests(manifests: Manifest[]): NamespaceSummary[] {
       generated_at: m.generated_at,
       key_count: m.keys.length,
     }))
-    .sort(
-      (a, b) =>
-        a.namespace.localeCompare(b.namespace) || a.env.localeCompare(b.env),
-    );
+    .sort((a, b) => a.namespace.localeCompare(b.namespace) || a.env.localeCompare(b.env));
 }
-
 
 export function syncRunKey(runId: string): string {
   return `${SYNC_RUN_PREFIX}${runId}`;
@@ -259,9 +253,7 @@ export async function getOperatorSyncHealth(
 ): Promise<OperatorSyncHealth> {
   const validatedConfig = validateSyncHealthConfig(config);
   const activeRunId = await storage.get<string>(SYNC_ACTIVE_RUN_KEY);
-  const activeRecord = activeRunId
-    ? await getSyncRun(storage, activeRunId)
-    : undefined;
+  const activeRecord = activeRunId ? await getSyncRun(storage, activeRunId) : undefined;
   const activeRun = activeRecord?.status === "started" ? activeRecord : null;
   const lastCompletion = (await getLastCompletionSyncRun(storage)) ?? null;
   const successRecord = await getLastSuccessSyncRun(storage);
@@ -352,11 +344,7 @@ export async function completeSyncRun(
   const cleanExit = reason === "exit" && exitCode === 0;
   const status: SyncRunStatus = cleanExit ? "succeeded" : "failed";
   const classification: SyncRunClassification =
-    reason === "runtime_signal"
-      ? "runtime_signal"
-      : cleanExit
-        ? "clean_exit"
-        : "nonzero_exit";
+    reason === "runtime_signal" ? "runtime_signal" : cleanExit ? "clean_exit" : "nonzero_exit";
 
   return storage.transaction(async (transaction) => {
     const started = await transaction.get<SyncRunRecord>(key);
@@ -389,7 +377,6 @@ export async function completeSyncRun(
   });
 }
 
-
 async function repairTerminalRun(
   storage: SyncRunStorageOperation,
   record: SyncRunRecord,
@@ -400,10 +387,7 @@ async function repairTerminalRun(
   await clearActiveRun(storage, runId);
 }
 
-async function clearActiveRun(
-  storage: SyncRunStorageOperation,
-  runId: string,
-): Promise<void> {
+async function clearActiveRun(storage: SyncRunStorageOperation, runId: string): Promise<void> {
   const activeRunId = await storage.get<string>(SYNC_ACTIVE_RUN_KEY);
   if (activeRunId === runId) await storage.delete(SYNC_ACTIVE_RUN_KEY);
 }
@@ -474,9 +458,7 @@ function copySyncRunRecord(record: SyncRunRecord): SyncRunRecord {
   };
 }
 
-async function nextCompletionSequence(
-  storage: SyncRunStorageOperation,
-): Promise<number> {
+async function nextCompletionSequence(storage: SyncRunStorageOperation): Promise<number> {
   const current = await storage.get<number>(SYNC_COMPLETION_SEQUENCE_KEY);
   if (
     current !== undefined &&
@@ -513,14 +495,11 @@ function validCompletionSequence(value: number | undefined): number | null {
 }
 
 function normalizeString(value: string | null | undefined): string | null {
-  return value && value.trim() ? value : null;
+  return value?.trim() ? value : null;
 }
 
 function normalizeCount(value: number | null | undefined): number | null {
-  return value !== null &&
-    value !== undefined &&
-    Number.isSafeInteger(value) &&
-    value >= 0
+  return value !== null && value !== undefined && Number.isSafeInteger(value) && value >= 0
     ? value
     : null;
 }

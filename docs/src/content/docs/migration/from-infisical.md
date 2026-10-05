@@ -25,9 +25,9 @@ skret env --format=dotenv
 
 ## Command Mapping
 
-| Infisical | skret |
-|-----------|-------|
-| `infisical secrets get KEY` | `skret get KEY` |
+| Infisical                         | skret                 |
+| --------------------------------- | --------------------- |
+| `infisical secrets get KEY`       | `skret get KEY`       |
 | `infisical secrets set KEY=VALUE` | `skret set KEY VALUE` |
-| `infisical run -- cmd` | `skret run -- cmd` |
-| `infisical export` | `skret env` |
+| `infisical run -- cmd`            | `skret run -- cmd`    |
+| `infisical export`                | `skret env`           |

@@ -1,6 +1,6 @@
 import { env } from "cloudflare:test";
-import { describe, it, expect } from "vitest";
-import { manifestKey, putManifest, getAllManifests } from "../src/store";
+import { describe, expect, it } from "vitest";
+import { getAllManifests, manifestKey, putManifest } from "../src/store";
 import type { Manifest } from "../src/types";
 
 function sampleManifest(ns: string, environment: string): Manifest {

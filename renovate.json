@@ -30,14 +30,6 @@
       "minimumReleaseAge": "7 days"
     },
     {
-      "matchPackageNames": [
-        "pnpm"
-      ],
-      "allowedVersions": "<11",
-      "description": "Hold pnpm <11. pnpm 11 makes ERR_PNPM_IGNORED_BUILDS (esbuild/sharp) fatal, breaking 'pnpm install --frozen-lockfile' in the docs Deploy Docs CD job.",
-      "minimumReleaseAge": "7 days"
-    },
-    {
       "description": "Pin GitHub Actions to SHA for security",
       "matchManagers": [
         "github-actions"

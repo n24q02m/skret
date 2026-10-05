@@ -1,30 +1,29 @@
 import { DurableObject } from "cloudflare:workers";
+import type { ExecutorEnvelope } from "./executor-envelope-verifier";
+import {
+  createOperationStoreAdapter,
+  EXECUTOR_OPERATION_OBJECT_NAME,
+  type ExecutorOperationStore,
+  executorOperationFingerprint,
+  type SecurityExecutorOperations,
+} from "./executor-operation-store";
 import {
   DEFAULT_EXECUTOR_REPLAY_SWEEP_LIMIT,
   DurableExecutorReplayStore,
   ExecutorReplayInvalidRequestError,
   ExecutorReplayRejectedError,
-  ExecutorReplayStoreUnavailableError,
   type ExecutorReplayScope,
+  ExecutorReplayStoreUnavailableError,
 } from "./executor-replay-store";
-import type { ExecutorEnvelope } from "./executor-envelope-verifier";
 import {
   handlePrivateExecutorEnvelope,
   MAX_PRIVATE_EXECUTOR_ROLES,
-  PRIVATE_EXECUTOR_PATH,
   type PrivateExecutorHandlerOptions,
   type PrivateExecutorReplayStore,
   type PrivateExecutorRoleAuthority,
   type PrivateExecutorRoleAuthorityBinding,
 } from "./private-executor-handler";
 
-import {
-  createOperationStoreAdapter,
-  executorOperationFingerprint,
-  EXECUTOR_OPERATION_OBJECT_NAME,
-  type ExecutorOperationStore,
-  type SecurityExecutorOperations,
-} from "./executor-operation-store";
 export { SecurityExecutorOperations } from "./executor-operation-store";
 export const SECURITY_EXECUTOR_SERVICE = "skret-security-executor";
 export const SECURITY_EXECUTOR_REPLAY_BINDING = "EXECUTOR_REPLAY";
@@ -48,6 +47,7 @@ const SHA256_DIGEST_PATTERN = /^sha256:[a-f0-9]{64}$/u;
 const SHA256_HEX_PATTERN = /^[a-f0-9]{64}$/u;
 const STANDARD_BASE64_PATTERN = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/u;
 const CONFIG_HEX_PATTERN = /^[0-9a-fA-F]+$/u;
+// biome-ignore lint/suspicious/noControlCharactersInRegex: matching control characters is the purpose of this input-validation guard
 const CONTROL_CHARACTER_PATTERN = /[\u0000-\u001f\u007f]/u;
 const WINDOWS_CANONICAL_ABSOLUTE_PATH_PATTERN = /^[A-Za-z]:\\(?:[^\\/]+(?:\\[^\\/]+)*)?$/u;
 const EXECUTOR_CLIENT_AUTHORITY_FIELDS = [
@@ -131,7 +131,11 @@ export class SecurityExecutorReplay extends DurableObject<SecurityExecutorEnv> {
     startAfter?: string | null,
   ): Promise<SecurityExecutorReplaySweepResult> {
     try {
-      const result = await new DurableExecutorReplayStore(this.ctx.storage).sweep(now, limit, startAfter);
+      const result = await new DurableExecutorReplayStore(this.ctx.storage).sweep(
+        now,
+        limit,
+        startAfter,
+      );
       return { status: "swept", removed: result.removed, nextAfter: result.nextAfter };
     } catch (error) {
       if (error instanceof ExecutorReplayInvalidRequestError) return { status: "invalid" };
@@ -177,12 +181,7 @@ export async function buildSecurityExecutorOptions(
   now?: number,
 ): Promise<PrivateExecutorHandlerOptions | null> {
   const buildNow = now ?? Date.now();
-  if (
-    !env ||
-    typeof env !== "object" ||
-    !Number.isSafeInteger(buildNow) ||
-    buildNow < 0
-  ) {
+  if (!env || typeof env !== "object" || !Number.isSafeInteger(buildNow) || buildNow < 0) {
     return null;
   }
   const expectedAudience = readConfigText(env.EXECUTOR_EXPECTED_AUDIENCE);
@@ -219,8 +218,16 @@ export async function buildSecurityExecutorOptions(
   let responseKey: CryptoKey;
   let stateManifestKey: CryptoKey;
   try {
-    responseKey = await crypto.subtle.importKey("raw", responseKeyBytes, "AES-GCM", false, ["encrypt"]);
-    stateManifestKey = await crypto.subtle.importKey("raw", stateManifestPublicKey, "Ed25519", false, ["verify"]);
+    responseKey = await crypto.subtle.importKey("raw", responseKeyBytes, "AES-GCM", false, [
+      "encrypt",
+    ]);
+    stateManifestKey = await crypto.subtle.importKey(
+      "raw",
+      stateManifestPublicKey,
+      "Ed25519",
+      false,
+      ["verify"],
+    );
   } catch {
     return null;
   }
@@ -253,7 +260,10 @@ export async function buildSecurityExecutorOptions(
   };
 }
 
-export async function handleSecurityExecutorRequest(request: Request, env: SecurityExecutorEnv): Promise<Response> {
+export async function handleSecurityExecutorRequest(
+  request: Request,
+  env: SecurityExecutorEnv,
+): Promise<Response> {
   const options = await buildSecurityExecutorOptions(env);
   if (!options) return emptyResponse(503);
   try {
@@ -267,10 +277,7 @@ const worker = {
   async scheduled(_controller: ScheduledController, env: SecurityExecutorEnv): Promise<void> {
     const replayNamespace = env?.EXECUTOR_REPLAY;
     const operationNamespace = env?.EXECUTOR_OPERATIONS;
-    if (
-      !hasReplayNamespace(replayNamespace) ||
-      !hasOperationNamespace(operationNamespace)
-    ) {
+    if (!hasReplayNamespace(replayNamespace) || !hasOperationNamespace(operationNamespace)) {
       throw new Error("executor maintenance unavailable");
     }
 
@@ -310,7 +317,6 @@ const worker = {
   },
 };
 export default worker;
-
 
 async function executeMetadataMigration(
   body: Uint8Array,
@@ -401,13 +407,7 @@ async function executeMetadataMigration(
     );
   } catch (error) {
     try {
-      await operationStore.complete(
-        metadata.operation_id,
-        invocationID,
-        "failed",
-        null,
-        now,
-      );
+      await operationStore.complete(metadata.operation_id, invocationID, "failed", null, now);
     } catch {
       // The watchdog retains the active operation when terminal persistence
       // is unavailable; never report a false acknowledgement.
@@ -476,7 +476,10 @@ function parseMetadataMigrationRequest(
     "state_manifest",
   ];
   const keys = Object.keys(parsed);
-  if (keys.length !== expectedFields.length || expectedFields.some((field) => !Object.prototype.hasOwnProperty.call(parsed, field))) {
+  if (
+    keys.length !== expectedFields.length ||
+    expectedFields.some((field) => !Object.hasOwn(parsed, field))
+  ) {
     return null;
   }
 
@@ -546,9 +549,16 @@ async function verifyStateManifestAuthority(
   now: number,
 ): Promise<boolean> {
   const manifest = await parseStateManifest(metadata.state_manifest, envelope, now);
-  if (!manifest || manifest.digest !== envelope.manifest_digest || manifest.digest !== metadata.manifest_digest) return false;
+  if (
+    !manifest ||
+    manifest.digest !== envelope.manifest_digest ||
+    manifest.digest !== metadata.manifest_digest
+  )
+    return false;
 
-  const matchingRows = manifest.files.filter((file) => file.path === relativeManifestPath(manifest.source_root, metadata.state_path));
+  const matchingRows = manifest.files.filter(
+    (file) => file.path === relativeManifestPath(manifest.source_root, metadata.state_path),
+  );
   if (matchingRows.length !== 1) return false;
   const row = matchingRows[0];
   if (
@@ -560,7 +570,12 @@ async function verifyStateManifestAuthority(
   }
 
   try {
-    return await crypto.subtle.verify("Ed25519", stateManifestKey, manifest.signature, manifest.canonicalBytes);
+    return await crypto.subtle.verify(
+      "Ed25519",
+      stateManifestKey,
+      manifest.signature,
+      manifest.canonicalBytes,
+    );
   } catch {
     return false;
   }
@@ -590,9 +605,21 @@ async function parseStateManifest(
   }
   if (!isRecord(parsed)) return null;
 
-  const expectedFields = ["version", "role", "audience", "source_root", "files", "nonce", "expires_at", "signature"];
+  const expectedFields = [
+    "version",
+    "role",
+    "audience",
+    "source_root",
+    "files",
+    "nonce",
+    "expires_at",
+    "signature",
+  ];
   const keys = Object.keys(parsed);
-  if (keys.length !== expectedFields.length || expectedFields.some((field) => !Object.prototype.hasOwnProperty.call(parsed, field))) {
+  if (
+    keys.length !== expectedFields.length ||
+    expectedFields.some((field) => !Object.hasOwn(parsed, field))
+  ) {
     return null;
   }
 
@@ -631,9 +658,9 @@ async function parseStateManifest(
     const rowKeys = Object.keys(value);
     if (
       rowKeys.length !== 3 ||
-      !Object.prototype.hasOwnProperty.call(value, "path") ||
-      !Object.prototype.hasOwnProperty.call(value, "size") ||
-      !Object.prototype.hasOwnProperty.call(value, "sha256")
+      !Object.hasOwn(value, "path") ||
+      !Object.hasOwn(value, "size") ||
+      !Object.hasOwn(value, "sha256")
     ) {
       return null;
     }
@@ -688,7 +715,11 @@ function decodeStateManifestBase64(value: unknown): Uint8Array | null {
   return decodeStandardBase64(value, undefined, MAX_STATE_MANIFEST_BYTES);
 }
 
-function decodeStandardBase64(value: unknown, expectedLength?: number, maxLength?: number): Uint8Array | null {
+function decodeStandardBase64(
+  value: unknown,
+  expectedLength?: number,
+  maxLength?: number,
+): Uint8Array | null {
   if (
     typeof value !== "string" ||
     value.length === 0 ||
@@ -704,13 +735,22 @@ function decodeStandardBase64(value: unknown, expectedLength?: number, maxLength
     return null;
   }
   const decoded = Uint8Array.from(binary, (character) => character.charCodeAt(0));
-  if (toBase64(decoded) !== value || (expectedLength !== undefined && decoded.byteLength !== expectedLength)) return null;
+  if (
+    toBase64(decoded) !== value ||
+    (expectedLength !== undefined && decoded.byteLength !== expectedLength)
+  )
+    return null;
   if (maxLength !== undefined && decoded.byteLength > maxLength) return null;
   return decoded;
 }
 
 function validStateManifestText(value: string): boolean {
-  return value.length > 0 && value.length <= MAX_METADATA_TEXT_LENGTH && value.trim() === value && !CONTROL_CHARACTER_PATTERN.test(value);
+  return (
+    value.length > 0 &&
+    value.length <= MAX_METADATA_TEXT_LENGTH &&
+    value.trim() === value &&
+    !CONTROL_CHARACTER_PATTERN.test(value)
+  );
 }
 
 function validStateManifestRelativePath(value: string): boolean {
@@ -727,7 +767,9 @@ function validStateManifestRelativePath(value: string): boolean {
     return false;
   }
   const components = value.split("/");
-  return components.every((component) => component.length > 0 && component !== "." && component !== "..");
+  return components.every(
+    (component) => component.length > 0 && component !== "." && component !== "..",
+  );
 }
 
 function validCanonicalAbsolutePath(value: string, allowRoot: boolean): boolean {
@@ -741,17 +783,24 @@ function validCanonicalAbsolutePath(value: string, allowRoot: boolean): boolean 
   }
   if (POSIX_CANONICAL_ABSOLUTE_PATH_PATTERN.test(value)) {
     if (value === "/") return allowRoot;
-    return value.split("/").slice(1).every((component) => component.length > 0 && component !== "." && component !== "..");
+    return value
+      .split("/")
+      .slice(1)
+      .every((component) => component.length > 0 && component !== "." && component !== "..");
   }
   if (WINDOWS_CANONICAL_ABSOLUTE_PATH_PATTERN.test(value)) {
     if (value.length === 3) return allowRoot;
     const components = value.slice(3).split("\\");
-    return components.every((component) => component.length > 0 && component !== "." && component !== "..");
+    return components.every(
+      (component) => component.length > 0 && component !== "." && component !== "..",
+    );
   }
   if (UNC_CANONICAL_ABSOLUTE_PATH_PATTERN.test(value)) {
     const components = value.slice(2).split("\\");
     if (components.length === 2) return allowRoot;
-    return components.every((component) => component.length > 0 && component !== "." && component !== "..");
+    return components.every(
+      (component) => component.length > 0 && component !== "." && component !== "..",
+    );
   }
   return false;
 }
@@ -790,7 +839,10 @@ interface ParsedStateManifestExpiry {
 
 function parseStateManifestRFC3339(value: unknown): ParsedStateManifestExpiry | null {
   if (typeof value !== "string") return null;
-  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,9}))?(Z|([+-])(\d{2}):(\d{2}))$/u.exec(value);
+  const match =
+    /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,9}))?(Z|([+-])(\d{2}):(\d{2}))$/u.exec(
+      value,
+    );
   if (!match) return null;
   const year = Number(match[1]);
   const month = Number(match[2]);
@@ -799,7 +851,7 @@ function parseStateManifestRFC3339(value: unknown): ParsedStateManifestExpiry | 
   const minute = Number(match[5]);
   const second = Number(match[6]);
   const fraction = match[7] ?? "";
-  const nanoseconds = Number((fraction + "000000000").slice(0, 9));
+  const nanoseconds = Number(`${fraction}000000000`.slice(0, 9));
   const milliseconds = Math.floor(nanoseconds / 1_000_000);
   const date = new Date(0);
   date.setUTCFullYear(year, month - 1, day);
@@ -837,7 +889,10 @@ function canonicalStateManifestBytes(document: Record<string, unknown>): Uint8Ar
     "\u2028": "\\u2028",
     "\u2029": "\\u2029",
   };
-  const encoded = JSON.stringify(document).replace(/[<>&\u2028\u2029]/gu, (character) => canonicalEscapes[character]);
+  const encoded = JSON.stringify(document).replace(
+    /[<>&\u2028\u2029]/gu,
+    (character) => canonicalEscapes[character],
+  );
   return new TextEncoder().encode(encoded);
 }
 
@@ -865,7 +920,7 @@ function scanJsonValue(text: string, start: number): JsonScanResult | null {
   }
 
   let next = index;
-  while (next < text.length && !' \t\r\n,]}'.includes(text[next])) next += 1;
+  while (next < text.length && !" \t\r\n,]}".includes(text[next])) next += 1;
   return next === index ? null : { next, duplicate: false };
 }
 
@@ -937,7 +992,7 @@ function scanJsonString(text: string, start: number): number | null {
 
 function skipJsonWhitespace(text: string, start: number): number {
   let index = start;
-  while (index < text.length && ' \t\r\n'.includes(text[index])) index += 1;
+  while (index < text.length && " \t\r\n".includes(text[index])) index += 1;
   return index;
 }
 
@@ -977,15 +1032,16 @@ function parseExecutorClientAuthorities(
     const fields = Object.keys(candidate);
     if (
       fields.length !== expectedFields.length ||
-      expectedFields.some((field) => !Object.prototype.hasOwnProperty.call(candidate, field))
+      expectedFields.some((field) => !Object.hasOwn(candidate, field))
     ) {
       return null;
     }
 
     const publicKey = decodeStandardBase64(candidate.public_key, ED25519_PUBLIC_KEY_BYTES);
-    const expiry = typeof candidate.not_after === "string"
-      ? parseStateManifestRFC3339(candidate.not_after)
-      : null;
+    const expiry =
+      typeof candidate.not_after === "string"
+        ? parseStateManifestRFC3339(candidate.not_after)
+        : null;
     if (
       publicKey === null ||
       typeof candidate.generation !== "number" ||
@@ -1035,9 +1091,7 @@ function readConfigText(value: unknown): string | null {
 }
 
 function readConfigDigest(value: unknown): string | null {
-  return typeof value === "string" && SHA256_DIGEST_PATTERN.test(value)
-    ? value
-    : null;
+  return typeof value === "string" && SHA256_DIGEST_PATTERN.test(value) ? value : null;
 }
 
 function decodeConfiguredBytes(value: unknown, expectedLength: number): Uint8Array | null {
@@ -1065,15 +1119,20 @@ function decodeConfiguredBytes(value: unknown, expectedLength: number): Uint8Arr
   const canonicalStandard = toBase64(decoded);
   const canonicalStandardRaw = canonicalStandard.replace(/=+$/u, "");
   const canonicalUrl = encodeBase64Url(decoded);
-  if (value !== canonicalStandard && value !== canonicalStandardRaw && value !== canonicalUrl) return null;
+  if (value !== canonicalStandard && value !== canonicalStandardRaw && value !== canonicalUrl)
+    return null;
   return decoded;
 }
-function hasOperationNamespace(value: unknown): value is DurableObjectNamespace<SecurityExecutorOperations> {
+function hasOperationNamespace(
+  value: unknown,
+): value is DurableObjectNamespace<SecurityExecutorOperations> {
   if (!value || typeof value !== "object" || !("getByName" in value)) return false;
   return typeof value.getByName === "function";
 }
 
-function hasReplayNamespace(value: unknown): value is DurableObjectNamespace<SecurityExecutorReplay> {
+function hasReplayNamespace(
+  value: unknown,
+): value is DurableObjectNamespace<SecurityExecutorReplay> {
   if (!value || typeof value !== "object" || !("getByName" in value)) return false;
   return typeof value.getByName === "function";
 }

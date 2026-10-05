@@ -6,16 +6,33 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
-    "dryrun": "wrangler deploy --dry-run"
+    "dryrun": "wrangler deploy --dry-run",
+    "check": "biome check src test && oxfmt --check src test",
+    "lint:ox": "oxlint src test",
+    "fmt:check": "oxfmt --check src test"
   },
   "dependencies": {
     "@cloudflare/containers": "^0.3.7"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.5.15",
     "@cloudflare/vitest-pool-workers": "^0.22.0",
     "@cloudflare/workers-types": "^4.20260702.1",
+    "oxfmt": "^0.71.0",
+    "oxlint": "^1.86.0",
     "typescript": "^5.9.3",
     "vitest": "^4.1.10",
     "wrangler": "^4.120.0"
+  },
+  "trustedDependencies": [
+    "esbuild",
+    "sharp",
+    "workerd"
+  ],
+  "overrides": {
+    "sharp": "^0.35.4",
+    "wrangler": "^4.120.0",
+    "ws": "^8.21.0",
+    "undici": "^7.30.0"
   }
 }

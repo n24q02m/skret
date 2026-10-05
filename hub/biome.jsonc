@@ -1,0 +1,30 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.3.x/schema.json",
+  // Stack standard 2026-08-25 (revised 2026-09-17): oxfmt is the
+  // formatter-of-record, so Biome runs LINTER-ONLY. Two formatters gating the
+  // same tree fight each other on CSS/JSONC.
+  "formatter": {
+    "enabled": false
+  },
+  "linter": {
+    "enabled": true
+  },
+  "overrides": [
+    {
+      // Tests deliberately inject malformed/extra-shaped values and assert on
+      // internal storage maps; `any` casts and non-null assertions are the
+      // honest expression there. Production code keeps both rules on.
+      "includes": ["test/**"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noExplicitAny": "off"
+          },
+          "style": {
+            "noNonNullAssertion": "off"
+          }
+        }
+      }
+    }
+  ]
+}

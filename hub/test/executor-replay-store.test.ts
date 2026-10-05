@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   DurableExecutorReplayStore,
   EXECUTOR_REPLAY_PREFIX,
-  executorReplayKey,
   type ExecutorReplayScope,
+  executorReplayKey,
 } from "../src/executor-replay-store";
 
 const NOW = 1_000;
@@ -20,7 +20,11 @@ const SCOPE: ExecutorReplayScope = {
 type ReplayValue = { digest: string; expiresAt: number };
 type ReplayTransaction = {
   get<T>(key: string): Promise<T | undefined>;
-  list<T>(options?: { prefix?: string; limit?: number; startAfter?: string }): Promise<Map<string, T>>;
+  list<T>(options?: {
+    prefix?: string;
+    limit?: number;
+    startAfter?: string;
+  }): Promise<Map<string, T>>;
   put<T>(key: string, value: T): Promise<void>;
   delete(key: string): Promise<boolean>;
 };
@@ -72,7 +76,11 @@ function storeFor(storage: FakeDurableStorage): DurableExecutorReplayStore {
   return new DurableExecutorReplayStore(storage as unknown as DurableObjectStorage);
 }
 
-function seed(storage: FakeDurableStorage, scope: ExecutorReplayScope, value: ReplayValue): Promise<void> {
+function _seed(
+  storage: FakeDurableStorage,
+  scope: ExecutorReplayScope,
+  value: ReplayValue,
+): Promise<void> {
   return executorReplayKey(scope).then((key) => {
     storage.values.set(key, value);
   });
@@ -243,7 +251,9 @@ describe("DurableExecutorReplayStore", () => {
     expect(
       results
         .filter((result): result is PromiseRejectedResult => result.status === "rejected")
-        .every((result) => result.reason instanceof Error && result.reason.message === "replay rejected"),
+        .every(
+          (result) => result.reason instanceof Error && result.reason.message === "replay rejected",
+        ),
     ).toBe(true);
   });
 });

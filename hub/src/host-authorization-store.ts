@@ -112,7 +112,6 @@ export type HostAuthorizationHeadResult =
   | { readonly status: "not_found" }
   | { readonly status: "invalid_state" };
 
-
 export class HostAuthorizationInputError extends Error {
   readonly code: "invalid" | "noncanonical" | "duplicate_key";
 
@@ -130,7 +129,11 @@ interface StoredGeneration {
 }
 
 type ParsedGeneration =
-  | { readonly ok: true; readonly document: HostAuthorizationGeneration; readonly payload: Uint8Array }
+  | {
+      readonly ok: true;
+      readonly document: HostAuthorizationGeneration;
+      readonly payload: Uint8Array;
+    }
   | { readonly ok: false; readonly status: "invalid" | "noncanonical" | "duplicate_key" };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -146,26 +149,33 @@ function hasOnlyFields(value: Record<string, unknown>, fields: readonly string[]
   return keys.length === fields.length && keys.every((key) => fields.includes(key));
 }
 
-
 function compareStrings(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
 }
 
-function compareMappingKeys(left: HostAuthorizationMapping, right: HostAuthorizationMapping): number {
+function compareMappingKeys(
+  left: HostAuthorizationMapping,
+  right: HostAuthorizationMapping,
+): number {
   const hashComparison = compareStrings(left.verified_jwt_hash, right.verified_jwt_hash);
-  return hashComparison !== 0 ? hashComparison : compareStrings(left.mapped_instance, right.mapped_instance);
+  return hashComparison !== 0
+    ? hashComparison
+    : compareStrings(left.mapped_instance, right.mapped_instance);
 }
 
 function validateSafeText(value: unknown): asserts value is string {
-  if (typeof value !== "string" || !SAFE_TEXT_PATTERN.test(value)) throw new HostAuthorizationInputError("invalid");
+  if (typeof value !== "string" || !SAFE_TEXT_PATTERN.test(value))
+    throw new HostAuthorizationInputError("invalid");
 }
 
 function validateDigest(value: unknown): asserts value is string {
-  if (typeof value !== "string" || !SHA256_DIGEST_PATTERN.test(value)) throw new HostAuthorizationInputError("invalid");
+  if (typeof value !== "string" || !SHA256_DIGEST_PATTERN.test(value))
+    throw new HostAuthorizationInputError("invalid");
 }
 
 function validateTime(value: unknown): asserts value is number {
-  if (!Number.isSafeInteger(value) || (value as number) < 0) throw new HostAuthorizationInputError("invalid");
+  if (!Number.isSafeInteger(value) || (value as number) < 0)
+    throw new HostAuthorizationInputError("invalid");
 }
 
 function validateSortedList(value: unknown): asserts value is readonly string[] {
@@ -183,7 +193,8 @@ function validateSortedList(value: unknown): asserts value is readonly string[] 
 }
 
 function validateMapping(value: unknown): asserts value is HostAuthorizationMapping {
-  if (!isRecord(value) || !exactFields(value, MAPPING_FIELDS)) throw new HostAuthorizationInputError("noncanonical");
+  if (!isRecord(value) || !exactFields(value, MAPPING_FIELDS))
+    throw new HostAuthorizationInputError("noncanonical");
   validateDigest(value.verified_jwt_hash);
   validateSafeText(value.mapped_instance);
   validateSafeText(value.role);
@@ -194,16 +205,24 @@ function validateMapping(value: unknown): asserts value is HostAuthorizationMapp
   validateSortedList(value.ghcr_allowlist);
 }
 
-function validateGenerationInput(value: unknown): asserts value is HostAuthorizationGenerationInput {
-  if (!isRecord(value) || !exactFields(value, GENERATION_FIELDS)) throw new HostAuthorizationInputError("noncanonical");
-  if (value.version !== 1 || !Number.isSafeInteger(value.generation) || (value.generation as number) < 1) {
+function validateGenerationInput(
+  value: unknown,
+): asserts value is HostAuthorizationGenerationInput {
+  if (!isRecord(value) || !exactFields(value, GENERATION_FIELDS))
+    throw new HostAuthorizationInputError("noncanonical");
+  if (
+    value.version !== 1 ||
+    !Number.isSafeInteger(value.generation) ||
+    (value.generation as number) < 1
+  ) {
     throw new HostAuthorizationInputError("invalid");
   }
   if (value.previous_head_hash !== null) validateDigest(value.previous_head_hash);
   validateSafeText(value.issuer);
   validateTime(value.issued_at);
   validateTime(value.expires_at);
-  if ((value.expires_at as number) <= (value.issued_at as number)) throw new HostAuthorizationInputError("invalid");
+  if ((value.expires_at as number) <= (value.issued_at as number))
+    throw new HostAuthorizationInputError("invalid");
   if ((value.generation as number) === 1 && value.previous_head_hash !== null) {
     throw new HostAuthorizationInputError("invalid");
   }
@@ -226,7 +245,9 @@ function validateGenerationInput(value: unknown): asserts value is HostAuthoriza
   }
 }
 
-function unsignedGenerationDocument(input: HostAuthorizationGenerationInput): HostAuthorizationGenerationInput {
+function unsignedGenerationDocument(
+  input: HostAuthorizationGenerationInput,
+): HostAuthorizationGenerationInput {
   return {
     version: 1,
     generation: input.generation,
@@ -247,7 +268,9 @@ function unsignedGenerationDocument(input: HostAuthorizationGenerationInput): Ho
   };
 }
 
-export function canonicalHostAuthorizationGenerationPayload(input: HostAuthorizationGenerationInput): string {
+export function canonicalHostAuthorizationGenerationPayload(
+  input: HostAuthorizationGenerationInput,
+): string {
   validateGenerationInput(input);
   return JSON.stringify(unsignedGenerationDocument(input));
 }
@@ -279,7 +302,8 @@ export async function createSignedHostAuthorizationGeneration(
 }
 
 function parseSignedGeneration(serialized: string): ParsedGeneration {
-  if (typeof serialized !== "string" || serialized.length === 0) return { ok: false, status: "invalid" };
+  if (typeof serialized !== "string" || serialized.length === 0)
+    return { ok: false, status: "invalid" };
   let parsed: unknown;
   try {
     parsed = JSON.parse(serialized);
@@ -291,7 +315,8 @@ function parseSignedGeneration(serialized: string): ParsedGeneration {
   }
   if (JSON.stringify(parsed) !== serialized) return { ok: false, status: "noncanonical" };
   const signature = parsed.signature;
-  if (typeof signature !== "string" || !SIGNATURE_PATTERN.test(signature)) return { ok: false, status: "invalid" };
+  if (typeof signature !== "string" || !SIGNATURE_PATTERN.test(signature))
+    return { ok: false, status: "invalid" };
   let input: HostAuthorizationGenerationInput;
   try {
     const { signature: _signature, ...unsigned } = parsed;
@@ -342,7 +367,9 @@ export async function hostAuthorizationHeadHash(signedGeneration: string): Promi
   return digestBytes(new TextEncoder().encode(signedGeneration));
 }
 
-async function importTrustedPublicKey(value: HostAuthorizationPublicKey): Promise<CryptoKey | null> {
+async function importTrustedPublicKey(
+  value: HostAuthorizationPublicKey,
+): Promise<CryptoKey | null> {
   if (typeof CryptoKey !== "undefined" && value instanceof CryptoKey) return value;
   let bytes: Uint8Array;
   if (value instanceof Uint8Array) {
@@ -421,7 +448,8 @@ export class HostAuthorizationStore {
 
   constructor(storage: HostAuthorizationStorage, trustedPublicKey: HostAuthorizationPublicKey) {
     this.storage = storage;
-    this.trustedPublicKey = trustedPublicKey instanceof Uint8Array ? new Uint8Array(trustedPublicKey) : trustedPublicKey;
+    this.trustedPublicKey =
+      trustedPublicKey instanceof Uint8Array ? new Uint8Array(trustedPublicKey) : trustedPublicKey;
   }
 
   private readonly storage: HostAuthorizationStorage;
@@ -440,7 +468,8 @@ export class HostAuthorizationStore {
     }
     if (now < parsed.document.issued_at) return { status: "not_yet_valid" };
     if (now >= parsed.document.expires_at) return { status: "expired" };
-    if (!(await verifyGeneration(parsed, this.trustedPublicKey))) return { status: "signature_invalid" };
+    if (!(await verifyGeneration(parsed, this.trustedPublicKey)))
+      return { status: "signature_invalid" };
     let headHash: string;
     try {
       headHash = await hostAuthorizationHeadHash(serializedGeneration);
@@ -451,28 +480,45 @@ export class HostAuthorizationStore {
     try {
       return await this.storage.transaction(async (transaction) => {
         const rawHead = await transaction.get<unknown>(HEAD_KEY);
-        if (rawHead !== undefined && !validHead(rawHead)) return { status: "invalid_state" } as const;
+        if (rawHead !== undefined && !validHead(rawHead))
+          return { status: "invalid_state" } as const;
         const currentHead = rawHead as HostAuthorizationHead | undefined;
         const currentHash = currentHead?.head_hash ?? null;
         if (options.expectedHeadHash !== undefined && options.expectedHeadHash !== currentHash) {
           return { status: "head_mismatch" } as const;
         }
         const existing = await transaction.get<unknown>(generationKey(parsed.document.generation));
-        if (existing !== undefined && !validStoredGeneration(existing)) return { status: "invalid_state" } as const;
+        if (existing !== undefined && !validStoredGeneration(existing))
+          return { status: "invalid_state" } as const;
         if (currentHead !== undefined && parsed.document.generation <= currentHead.generation) {
-          if (currentHead.generation === parsed.document.generation && currentHead.head_hash === headHash) {
-            return { status: "replay", generation: parsed.document.generation, head_hash: headHash } as const;
+          if (
+            currentHead.generation === parsed.document.generation &&
+            currentHead.head_hash === headHash
+          ) {
+            return {
+              status: "replay",
+              generation: parsed.document.generation,
+              head_hash: headHash,
+            } as const;
           }
           return { status: "stale" } as const;
         }
         if (existing !== undefined) {
-          if (existing.head_hash === headHash && existing.signed_generation === serializedGeneration) {
-            return { status: "replay", generation: parsed.document.generation, head_hash: headHash } as const;
+          if (
+            existing.head_hash === headHash &&
+            existing.signed_generation === serializedGeneration
+          ) {
+            return {
+              status: "replay",
+              generation: parsed.document.generation,
+              head_hash: headHash,
+            } as const;
           }
           return { status: "conflict" } as const;
         }
         if (currentHead === undefined) {
-          if (parsed.document.generation !== 1 || parsed.document.previous_head_hash !== null) return { status: "stale" } as const;
+          if (parsed.document.generation !== 1 || parsed.document.previous_head_hash !== null)
+            return { status: "stale" } as const;
         } else if (parsed.document.previous_head_hash !== currentHead.head_hash) {
           return { status: "stale" } as const;
         }
@@ -481,8 +527,15 @@ export class HostAuthorizationStore {
           head_hash: headHash,
           signed_generation: serializedGeneration,
         } satisfies StoredGeneration);
-        await transaction.put(HEAD_KEY, { generation: parsed.document.generation, head_hash: headHash } satisfies HostAuthorizationHead);
-        return { status: "activated", generation: parsed.document.generation, head_hash: headHash } as const;
+        await transaction.put(HEAD_KEY, {
+          generation: parsed.document.generation,
+          head_hash: headHash,
+        } satisfies HostAuthorizationHead);
+        return {
+          status: "activated",
+          generation: parsed.document.generation,
+          head_hash: headHash,
+        } as const;
       });
     } catch {
       return { status: "invalid_state" };
@@ -494,7 +547,7 @@ export class HostAuthorizationStore {
     options: HostAuthorizationHeadOptions = {},
   ): Promise<HostAuthorizationLookupResult> {
     if (!isRecord(request)) return { status: "invalid_request" };
-    if (Object.prototype.hasOwnProperty.call(request, "caller_role")) {
+    if (Object.hasOwn(request, "caller_role")) {
       return hasOnlyFields(request, ["verified_jwt_hash", "mapped_instance", "caller_role"])
         ? { status: "caller_role_denied" }
         : { status: "invalid_request" };
@@ -519,17 +572,27 @@ export class HostAuthorizationStore {
         const rawHead = await transaction.get<unknown>(HEAD_KEY);
         if (rawHead === undefined) return { status: "not_found" } as const;
         if (!validHead(rawHead)) return { status: "invalid_state" } as const;
-        if (options.expectedHeadHash !== undefined && options.expectedHeadHash !== rawHead.head_hash) {
+        if (
+          options.expectedHeadHash !== undefined &&
+          options.expectedHeadHash !== rawHead.head_hash
+        ) {
           return { status: "head_mismatch" } as const;
         }
         const stored = await transaction.get<unknown>(generationKey(rawHead.generation));
-        if (!validStoredGeneration(stored) || stored.generation !== rawHead.generation || stored.head_hash !== rawHead.head_hash) {
+        if (
+          !validStoredGeneration(stored) ||
+          stored.generation !== rawHead.generation ||
+          stored.head_hash !== rawHead.head_hash
+        ) {
           return { status: "invalid_state" } as const;
         }
         const parsed = parseSignedGeneration(stored.signed_generation);
         if (!parsed.ok) return { status: "invalid_state" } as const;
         const actualHash = await hostAuthorizationHeadHash(stored.signed_generation);
-        if (actualHash !== rawHead.head_hash || !(await verifyGeneration(parsed, this.trustedPublicKey))) {
+        if (
+          actualHash !== rawHead.head_hash ||
+          !(await verifyGeneration(parsed, this.trustedPublicKey))
+        ) {
           return { status: "invalid_state" } as const;
         }
         if (now < parsed.document.issued_at) return { status: "not_yet_valid" } as const;
@@ -543,7 +606,9 @@ export class HostAuthorizationStore {
           const sameHash = parsed.document.mappings.some(
             (candidate) => candidate.verified_jwt_hash === request.verified_jwt_hash,
           );
-          return sameHash ? { status: "cross_instance" } as const : { status: "not_found" } as const;
+          return sameHash
+            ? ({ status: "cross_instance" } as const)
+            : ({ status: "not_found" } as const);
         }
         return {
           status: "authorized",

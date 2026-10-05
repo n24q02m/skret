@@ -58,7 +58,6 @@ export class SourceUnavailableError extends ProviderEnvelopeError {
   }
 }
 
-
 export class ProviderLabelBoundaryError extends ProviderEnvelopeError {
   constructor() {
     super("provider label boundary");
@@ -128,25 +127,47 @@ export function canonicalSourceIdentity(input: SourceIdentity): SourceIdentity {
   const region = readCanonicalText(input.region, 128);
   const fullParameterName = readCanonicalText(input.fullParameterName, 2_048);
   const lifecycleLabel = readCanonicalText(input.lifecycleLabel, 100);
-  if (!SAFE_ID.test(partition) || !SAFE_ID.test(account) || !SAFE_ID.test(region) || !SAFE_LABEL.test(lifecycleLabel)) {
+  if (
+    !SAFE_ID.test(partition) ||
+    !SAFE_ID.test(account) ||
+    !SAFE_ID.test(region) ||
+    !SAFE_LABEL.test(lifecycleLabel)
+  ) {
     throw new ProviderSourceBoundaryError();
   }
-  if (!fullParameterName.startsWith("/") || fullParameterName.endsWith("/") || fullParameterName.includes("//") || /[\u0000-\u001f\u007f]/u.test(fullParameterName)) {
+  if (
+    !fullParameterName.startsWith("/") ||
+    fullParameterName.endsWith("/") ||
+    fullParameterName.includes("//") ||
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: matching control characters is the purpose of this input-validation guard
+    /[\u0000-\u001f\u007f]/u.test(fullParameterName)
+  ) {
     throw new ProviderSourceBoundaryError();
   }
   if (!Number.isSafeInteger(input.version) || input.version < 1) {
     throw new ProviderSourceBoundaryError();
   }
-  return Object.freeze({ partition, account, region, fullParameterName, version: input.version, lifecycleLabel });
+  return Object.freeze({
+    partition,
+    account,
+    region,
+    fullParameterName,
+    version: input.version,
+    lifecycleLabel,
+  });
 }
 
 export function createEnvelopeContext(input: EnvelopeContextInput): ProviderEnvelopeContext {
-  if (!isRecord(input) || (input.schema !== undefined && input.schema !== PROVIDER_ENVELOPE_SCHEMA)) {
+  if (
+    !isRecord(input) ||
+    (input.schema !== undefined && input.schema !== PROVIDER_ENVELOPE_SCHEMA)
+  ) {
     throw new InvalidProviderEnvelopeError();
   }
   const operationId = readCanonicalText(input.operationId, 256);
   const generation = readCanonicalText(input.generation, 256);
-  if (!SAFE_ID.test(operationId) || !SAFE_ID.test(generation)) throw new InvalidProviderEnvelopeError();
+  if (!SAFE_ID.test(operationId) || !SAFE_ID.test(generation))
+    throw new InvalidProviderEnvelopeError();
   const sourceIdentity = canonicalSourceIdentity(input.sourceIdentity);
   if (!SHA256_DIGEST.test(input.targetSetDigest)) throw new InvalidProviderEnvelopeError();
   return Object.freeze({
@@ -175,9 +196,11 @@ function sourceIdentityBytes(source: SourceIdentity): Uint8Array {
 export function encodeLengthPrefixed(parts: readonly Uint8Array[]): Uint8Array {
   let total = 0;
   for (const part of parts) {
-    if (!(part instanceof Uint8Array) || part.byteLength > 0xffff_ffff) throw new InvalidProviderEnvelopeError();
+    if (!(part instanceof Uint8Array) || part.byteLength > 0xffff_ffff)
+      throw new InvalidProviderEnvelopeError();
     total += 4 + part.byteLength;
-    if (total > 0xffff_ffff || total > MAX_ENVELOPE_COMPONENT_BYTES) throw new InvalidProviderEnvelopeError();
+    if (total > 0xffff_ffff || total > MAX_ENVELOPE_COMPONENT_BYTES)
+      throw new InvalidProviderEnvelopeError();
   }
   const output = new Uint8Array(total);
   const view = new DataView(output.buffer);
@@ -204,7 +227,9 @@ export function canonicalProviderContextBytes(context: ProviderEnvelopeContext):
   ]);
 }
 
-export function canonicalKmsEncryptionContext(context: ProviderEnvelopeContext): Readonly<Record<string, string>> {
+export function canonicalKmsEncryptionContext(
+  context: ProviderEnvelopeContext,
+): Readonly<Record<string, string>> {
   const canonical = createEnvelopeContext(context);
   return Object.freeze({
     schema: canonical.schema,
@@ -218,7 +243,9 @@ export function canonicalKmsEncryptionContext(context: ProviderEnvelopeContext):
 }
 
 export async function providerContextDigest(context: ProviderEnvelopeContext): Promise<string> {
-  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", canonicalProviderContextBytes(context)));
+  const digest = new Uint8Array(
+    await crypto.subtle.digest("SHA-256", canonicalProviderContextBytes(context)),
+  );
   return `sha256:${toHex(digest)}`;
 }
 
@@ -255,7 +282,10 @@ export class KmsClient {
     this.#transport = transport;
   }
 
-  async generateDataKey(keyReference: string, context: ProviderEnvelopeContext): Promise<KmsGeneratedDataKey> {
+  async generateDataKey(
+    keyReference: string,
+    context: ProviderEnvelopeContext,
+  ): Promise<KmsGeneratedDataKey> {
     validateReference(keyReference);
     let result: KmsGeneratedDataKey | undefined;
     try {
@@ -264,10 +294,18 @@ export class KmsClient {
         keySpec: "AES_256",
         encryptionContext: canonicalKmsEncryptionContext(context),
       });
-      if (!(result.plaintextDataKey instanceof Uint8Array) || result.plaintextDataKey.byteLength !== DATA_KEY_BYTES || !(result.encryptedDataKey instanceof Uint8Array) || result.encryptedDataKey.byteLength === 0) {
+      if (
+        !(result.plaintextDataKey instanceof Uint8Array) ||
+        result.plaintextDataKey.byteLength !== DATA_KEY_BYTES ||
+        !(result.encryptedDataKey instanceof Uint8Array) ||
+        result.encryptedDataKey.byteLength === 0
+      ) {
         throw new KmsOperationError();
       }
-      return { plaintextDataKey: result.plaintextDataKey.slice(), encryptedDataKey: result.encryptedDataKey.slice() };
+      return {
+        plaintextDataKey: result.plaintextDataKey.slice(),
+        encryptedDataKey: result.encryptedDataKey.slice(),
+      };
     } catch (error) {
       if (error instanceof KmsOperationError) throw error;
       throw new KmsOperationError();
@@ -277,14 +315,14 @@ export class KmsClient {
     }
   }
 
-
   async decryptDataKey(
     keyReference: string,
     encryptedDataKey: Uint8Array,
     context: ProviderEnvelopeContext,
   ): Promise<KmsDecryptedDataKey> {
     validateReference(keyReference);
-    if (!(encryptedDataKey instanceof Uint8Array) || encryptedDataKey.byteLength === 0) throw new KmsOperationError();
+    if (!(encryptedDataKey instanceof Uint8Array) || encryptedDataKey.byteLength === 0)
+      throw new KmsOperationError();
     let result: KmsDecryptedDataKey | undefined;
     try {
       result = await this.#transport.decrypt({
@@ -292,7 +330,10 @@ export class KmsClient {
         encryptedDataKey: encryptedDataKey.slice(),
         encryptionContext: canonicalKmsEncryptionContext(context),
       });
-      if (!(result.plaintextDataKey instanceof Uint8Array) || result.plaintextDataKey.byteLength !== DATA_KEY_BYTES) {
+      if (
+        !(result.plaintextDataKey instanceof Uint8Array) ||
+        result.plaintextDataKey.byteLength !== DATA_KEY_BYTES
+      ) {
         throw new KmsOperationError();
       }
       return { plaintextDataKey: result.plaintextDataKey.slice() };
@@ -351,7 +392,9 @@ export interface AwsUnlabelParameterVersionRequest {
 }
 
 export interface AwsSourceTransport {
-  describeParameterVersion(request: AwsDescribeParameterVersionRequest): Promise<AwsParameterMetadata | null>;
+  describeParameterVersion(
+    request: AwsDescribeParameterVersionRequest,
+  ): Promise<AwsParameterMetadata | null>;
   readParameterVersion(request: AwsReadParameterVersionRequest): Promise<Uint8Array | null>;
   labelParameterVersion(request: AwsLabelParameterVersionRequest): Promise<void>;
   readParameterLabel(request: AwsReadParameterLabelRequest): Promise<number | null>;
@@ -412,7 +455,8 @@ export class AwsSourceClient {
     const identity = canonicalSourceIdentity(sourceIdentity);
     validateMetadata(identity, metadata);
     const existing = metadata.labels.find((binding) => binding.label === identity.lifecycleLabel);
-    if (existing !== undefined && existing.version !== identity.version) throw new ProviderLabelDriftError();
+    if (existing !== undefined && existing.version !== identity.version)
+      throw new ProviderLabelDriftError();
     if (existing === undefined && metadata.labels.length >= MAX_AWS_PARAMETER_LABELS) {
       throw new ProviderLabelBoundaryError();
     }
@@ -519,10 +563,15 @@ export interface DecryptProviderEnvelopeInput {
   readonly kms: KmsClient;
 }
 
-export async function createProviderEnvelope(input: CreateProviderEnvelopeInput): Promise<PersistedProviderEnvelope> {
+export async function createProviderEnvelope(
+  input: CreateProviderEnvelopeInput,
+): Promise<PersistedProviderEnvelope> {
   const context = createEnvelopeContext(input.context);
   validateReference(input.keyReference);
-  if (!(input.plaintext instanceof Uint8Array) || input.plaintext.byteLength > MAX_ENVELOPE_COMPONENT_BYTES) {
+  if (
+    !(input.plaintext instanceof Uint8Array) ||
+    input.plaintext.byteLength > MAX_ENVELOPE_COMPONENT_BYTES
+  ) {
     throw new InvalidProviderEnvelopeError();
   }
   const plaintext = input.plaintext;
@@ -539,13 +588,20 @@ export async function createProviderEnvelope(input: CreateProviderEnvelopeInput)
   try {
     const generated = await input.kms.generateDataKey(input.keyReference, context);
     dataKey = generated.plaintextDataKey;
-    const iv = input.iv === undefined ? crypto.getRandomValues(new Uint8Array(AES_GCM_IV_BYTES)) : input.iv.slice();
+    const iv =
+      input.iv === undefined
+        ? crypto.getRandomValues(new Uint8Array(AES_GCM_IV_BYTES))
+        : input.iv.slice();
     if (iv.byteLength !== AES_GCM_IV_BYTES) throw new InvalidProviderEnvelopeError();
     contextBytes = canonicalProviderContextBytes(context);
     additionalData = envelopeAdditionalData(context, references);
     const derived = await deriveEnvelopeKeys(dataKey, contextBytes);
     const ciphertext = new Uint8Array(
-      await crypto.subtle.encrypt({ name: "AES-GCM", iv, additionalData, tagLength: 128 }, derived.aesKey, plaintextCopy),
+      await crypto.subtle.encrypt(
+        { name: "AES-GCM", iv, additionalData, tagLength: 128 },
+        derived.aesKey,
+        plaintextCopy,
+      ),
     );
     macInput = envelopeMacInput(additionalData, plaintextCopy);
     const mac = new Uint8Array(await crypto.subtle.sign("HMAC", derived.macKey, macInput));
@@ -572,7 +628,9 @@ export async function createProviderEnvelope(input: CreateProviderEnvelopeInput)
   }
 }
 
-export async function decryptProviderEnvelope(input: DecryptProviderEnvelopeInput): Promise<Uint8Array> {
+export async function decryptProviderEnvelope(
+  input: DecryptProviderEnvelopeInput,
+): Promise<Uint8Array> {
   const context = createEnvelopeContext(input.context);
   validateReference(input.keyReference);
   const encoded = decodePersistedEnvelope(input.envelope);
@@ -585,7 +643,11 @@ export async function decryptProviderEnvelope(input: DecryptProviderEnvelopeInpu
   let plaintext: Uint8Array | undefined;
   let success = false;
   try {
-    const decryptedKey = await input.kms.decryptDataKey(input.keyReference, encoded.encryptedDataKey, context);
+    const decryptedKey = await input.kms.decryptDataKey(
+      input.keyReference,
+      encoded.encryptedDataKey,
+      context,
+    );
     dataKey = decryptedKey.plaintextDataKey;
     contextBytes = canonicalProviderContextBytes(context);
     additionalData = envelopeAdditionalData(context, encoded.references);
@@ -631,20 +693,33 @@ interface DerivedEnvelopeKeys {
   readonly macKey: CryptoKey;
 }
 
-async function deriveEnvelopeKeys(dataKey: Uint8Array, contextBytes: Uint8Array): Promise<DerivedEnvelopeKeys> {
+async function deriveEnvelopeKeys(
+  dataKey: Uint8Array,
+  contextBytes: Uint8Array,
+): Promise<DerivedEnvelopeKeys> {
   let salt: Uint8Array | undefined;
   try {
     salt = new Uint8Array(await crypto.subtle.digest("SHA-256", contextBytes));
     const baseKey = await crypto.subtle.importKey("raw", dataKey, "HKDF", false, ["deriveKey"]);
     const aesKey = await crypto.subtle.deriveKey(
-      { name: "HKDF", hash: "SHA-256", salt, info: textEncoder.encode(`${PROVIDER_ENVELOPE_SCHEMA}/aes-gcm`) },
+      {
+        name: "HKDF",
+        hash: "SHA-256",
+        salt,
+        info: textEncoder.encode(`${PROVIDER_ENVELOPE_SCHEMA}/aes-gcm`),
+      },
       baseKey,
       { name: "AES-GCM", length: 256 },
       false,
       ["encrypt", "decrypt"],
     );
     const macKey = await crypto.subtle.deriveKey(
-      { name: "HKDF", hash: "SHA-256", salt, info: textEncoder.encode(`${PROVIDER_ENVELOPE_SCHEMA}/hmac-sha256`) },
+      {
+        name: "HKDF",
+        hash: "SHA-256",
+        salt,
+        info: textEncoder.encode(`${PROVIDER_ENVELOPE_SCHEMA}/hmac-sha256`),
+      },
       baseKey,
       { name: "HMAC", hash: "SHA-256", length: 256 },
       false,
@@ -682,22 +757,46 @@ function decodePersistedEnvelope(envelope: PersistedProviderEnvelope): {
   readonly contextDigest: string;
   readonly references: readonly EnvelopeReference[];
 } {
-  if (!isRecord(envelope) || envelope.schema !== PROVIDER_ENVELOPE_SCHEMA || !SHA256_DIGEST.test(envelope.contextDigest)) {
+  if (
+    !isRecord(envelope) ||
+    envelope.schema !== PROVIDER_ENVELOPE_SCHEMA ||
+    !SHA256_DIGEST.test(envelope.contextDigest)
+  ) {
     throw new InvalidProviderEnvelopeError();
   }
   const ciphertext = fromBase64Url(envelope.ciphertext);
   const iv = fromBase64Url(envelope.iv);
   const mac = fromBase64Url(envelope.mac);
   const encryptedDataKey = fromBase64Url(envelope.encryptedDataKey);
-  if (ciphertext === null || ciphertext.byteLength < AES_GCM_TAG_BYTES || iv === null || iv.byteLength !== AES_GCM_IV_BYTES || mac === null || mac.byteLength !== 32 || encryptedDataKey === null || encryptedDataKey.byteLength === 0) {
+  if (
+    ciphertext === null ||
+    ciphertext.byteLength < AES_GCM_TAG_BYTES ||
+    iv === null ||
+    iv.byteLength !== AES_GCM_IV_BYTES ||
+    mac === null ||
+    mac.byteLength !== 32 ||
+    encryptedDataKey === null ||
+    encryptedDataKey.byteLength === 0
+  ) {
     throw new InvalidProviderEnvelopeError();
   }
   if (!Array.isArray(envelope.references)) throw new InvalidProviderEnvelopeError();
   const references = normalizeReferences(envelope.references as readonly EnvelopeReference[]);
-  return { ciphertext, iv, mac, encryptedDataKey, contextDigest: envelope.contextDigest, references };
+  return {
+    ciphertext,
+    iv,
+    mac,
+    encryptedDataKey,
+    contextDigest: envelope.contextDigest,
+    references,
+  };
 }
 
-export type LifecycleKillPoint = "after-final-acknowledgement" | "during-canary" | "after-canary" | "during-cleanup";
+export type LifecycleKillPoint =
+  | "after-final-acknowledgement"
+  | "during-canary"
+  | "after-canary"
+  | "during-cleanup";
 export type LifecycleEvent = "source-read" | "label-readback" | "kms-generate" | "envelope-created";
 
 export interface PrepareProviderEnvelopeInput {
@@ -795,7 +894,6 @@ const PERSISTED_PROVIDER_ENVELOPE_FIELDS = [
   "contextDigest",
   "references",
 ] as const;
-
 
 const PROVIDER_ENVELOPE_GENERATION_PREFIX = "private:provider-envelope-generation:";
 
@@ -900,14 +998,14 @@ export class ProviderEnvelopeLifecycle {
     );
   }
 
-
   async getRetained(operationId: string): Promise<PreparedProviderGeneration | undefined> {
     return this.#store.get(operationId);
   }
 
   async cleanup(input: CleanupProviderEnvelopeInput): Promise<CleanupProviderEnvelopeResult> {
     const retained = await this.#store.get(input.operationId);
-    if (retained === undefined || !cleanupVerificationMatches(retained, input)) return { status: "retained" };
+    if (retained === undefined || !cleanupVerificationMatches(retained, input))
+      return { status: "retained" };
     try {
       await input.onKillPoint?.("after-final-acknowledgement");
       await input.onKillPoint?.("during-canary");
@@ -921,7 +1019,9 @@ export class ProviderEnvelopeLifecycle {
     return { status: "cleaned" };
   }
 
-  async recover(input: { readonly prepared: PreparedProviderGeneration }): Promise<ProviderRecoveryResult> {
+  async recover(input: {
+    readonly prepared: PreparedProviderGeneration;
+  }): Promise<ProviderRecoveryResult> {
     try {
       const sourceRead = await this.#source.readExact(input.prepared.sourceIdentity);
       zeroize(sourceRead.value);
@@ -977,12 +1077,19 @@ async function validatePreparedProviderGeneration(
     }
     const operationId = readCanonicalText(value.operationId, 256);
     const generation = readCanonicalText(value.generation, 256);
-    if (!SAFE_ID.test(operationId) || !SAFE_ID.test(generation) || (expectedOperationId !== undefined && operationId !== expectedOperationId)) {
+    if (
+      !SAFE_ID.test(operationId) ||
+      !SAFE_ID.test(generation) ||
+      (expectedOperationId !== undefined && operationId !== expectedOperationId)
+    ) {
       throw new InvalidProviderEnvelopeError();
     }
     validateReference(value.keyReference);
-    const sourceIdentity = canonicalSourceIdentity(value.sourceIdentity as unknown as SourceIdentity);
-    if (JSON.stringify(sourceIdentity) !== JSON.stringify(value.sourceIdentity)) throw new InvalidProviderEnvelopeError();
+    const sourceIdentity = canonicalSourceIdentity(
+      value.sourceIdentity as unknown as SourceIdentity,
+    );
+    if (JSON.stringify(sourceIdentity) !== JSON.stringify(value.sourceIdentity))
+      throw new InvalidProviderEnvelopeError();
     const context = createEnvelopeContext(value.context as unknown as ProviderEnvelopeContext);
     if (
       JSON.stringify(context) !== JSON.stringify(value.context) ||
@@ -1000,7 +1107,9 @@ async function validatePreparedProviderGeneration(
       throw new InvalidProviderEnvelopeError();
     }
     const targetSetDigest = await sha256Digest(
-      encodeLengthPrefixed(targetIdentities.map((targetIdentity) => textEncoder.encode(targetIdentity))),
+      encodeLengthPrefixed(
+        targetIdentities.map((targetIdentity) => textEncoder.encode(targetIdentity)),
+      ),
     );
     if (targetSetDigest !== context.targetSetDigest) throw new InvalidProviderEnvelopeError();
 
@@ -1010,12 +1119,14 @@ async function validatePreparedProviderGeneration(
     }
     decoded = decodePersistedEnvelope(envelope);
     if (
-      decoded.contextDigest !== await providerContextDigest(context) ||
+      decoded.contextDigest !== (await providerContextDigest(context)) ||
       JSON.stringify(decoded.references) !== JSON.stringify(envelope.references)
     ) {
       throw new InvalidProviderEnvelopeError();
     }
-    const references = new Set(decoded.references.map((reference) => `${reference.kind}\u0000${reference.id}`));
+    const references = new Set(
+      decoded.references.map((reference) => `${reference.kind}\u0000${reference.id}`),
+    );
     if (
       !references.has(`source\u0000${sourceReference(sourceIdentity)}`) ||
       !references.has(`kms\u0000${value.keyReference}`) ||
@@ -1053,19 +1164,27 @@ function cleanupVerificationMatches(
   retained: PreparedProviderGeneration,
   input: CleanupProviderEnvelopeInput,
 ): boolean {
-  if (!input.explicitVerification || input.canary !== "passed" || input.postconditions !== "passed") return false;
+  if (!input.explicitVerification || input.canary !== "passed" || input.postconditions !== "passed")
+    return false;
   if (input.acknowledgements.length !== retained.targetIdentities.length) return false;
   const expected = new Set(retained.targetIdentities);
   const seen = new Set<string>();
   for (const acknowledgement of input.acknowledgements) {
-    if (!SAFE_REFERENCE.test(acknowledgement.targetIdentity) || !acknowledgement.acknowledged || !expected.has(acknowledgement.targetIdentity) || seen.has(acknowledgement.targetIdentity)) return false;
+    if (
+      !SAFE_REFERENCE.test(acknowledgement.targetIdentity) ||
+      !acknowledgement.acknowledged ||
+      !expected.has(acknowledgement.targetIdentity) ||
+      seen.has(acknowledgement.targetIdentity)
+    )
+      return false;
     seen.add(acknowledgement.targetIdentity);
   }
   return seen.size === expected.size;
 }
 
 function normalizeTargetIdentities(targetIdentities: readonly string[]): readonly string[] {
-  if (!Array.isArray(targetIdentities) || targetIdentities.length === 0) throw new InvalidProviderEnvelopeError();
+  if (!Array.isArray(targetIdentities) || targetIdentities.length === 0)
+    throw new InvalidProviderEnvelopeError();
   const normalized = targetIdentities.map((targetIdentity) => {
     const value = readCanonicalText(targetIdentity, 2_048);
     if (!SAFE_REFERENCE.test(value)) throw new InvalidProviderEnvelopeError();
@@ -1075,8 +1194,11 @@ function normalizeTargetIdentities(targetIdentities: readonly string[]): readonl
   return Object.freeze([...normalized].sort(compareCanonicalText));
 }
 
-function normalizeReferences(references: readonly EnvelopeReference[]): readonly EnvelopeReference[] {
-  if (!Array.isArray(references) || references.length > 64) throw new InvalidProviderEnvelopeError();
+function normalizeReferences(
+  references: readonly EnvelopeReference[],
+): readonly EnvelopeReference[] {
+  if (!Array.isArray(references) || references.length > 64)
+    throw new InvalidProviderEnvelopeError();
   const normalized = references.map((reference) => {
     if (!isValidReference(reference)) throw new InvalidProviderEnvelopeError();
     return Object.freeze({ kind: reference.kind, id: reference.id });
@@ -1095,7 +1217,16 @@ function sourceReference(source: SourceIdentity): string {
 }
 
 function validateMetadata(sourceIdentity: SourceIdentity, metadata: AwsParameterMetadata): void {
-  if (!isRecord(metadata) || metadata.exists !== true || metadata.parameterName !== sourceIdentity.fullParameterName || metadata.version !== sourceIdentity.version || !Number.isSafeInteger(metadata.versionCount) || metadata.versionCount < 1 || metadata.versionCount > MAX_AWS_PARAMETER_VERSIONS || !Array.isArray(metadata.labels)) {
+  if (
+    !isRecord(metadata) ||
+    metadata.exists !== true ||
+    metadata.parameterName !== sourceIdentity.fullParameterName ||
+    metadata.version !== sourceIdentity.version ||
+    !Number.isSafeInteger(metadata.versionCount) ||
+    metadata.versionCount < 1 ||
+    metadata.versionCount > MAX_AWS_PARAMETER_VERSIONS ||
+    !Array.isArray(metadata.labels)
+  ) {
     throw new ProviderSourceBoundaryError();
   }
   for (const binding of metadata.labels) {
@@ -1119,18 +1250,31 @@ function compareCanonicalText(left: string, right: string): number {
 }
 
 function readCanonicalText(value: unknown, maxLength: number): string {
-  if (typeof value !== "string" || value.length === 0 || value.length > maxLength || value.trim() !== value || /[\u0000-\u001f\u007f]/u.test(value)) {
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    value.length > maxLength ||
+    value.trim() !== value ||
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: matching control characters is the purpose of this input-validation guard
+    /[\u0000-\u001f\u007f]/u.test(value)
+  ) {
     throw new InvalidProviderEnvelopeError();
   }
   return value;
 }
 
 function validateReference(value: unknown): asserts value is string {
-  if (typeof value !== "string" || !SAFE_REFERENCE.test(value)) throw new InvalidProviderEnvelopeError();
+  if (typeof value !== "string" || !SAFE_REFERENCE.test(value))
+    throw new InvalidProviderEnvelopeError();
 }
 
 function isValidReference(value: unknown): value is EnvelopeReference {
-  return isRecord(value) && (value.kind === "source" || value.kind === "kms" || value.kind === "target") && typeof value.id === "string" && SAFE_REFERENCE.test(value.id);
+  return (
+    isRecord(value) &&
+    (value.kind === "source" || value.kind === "kms" || value.kind === "target") &&
+    typeof value.id === "string" &&
+    SAFE_REFERENCE.test(value.id)
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -1157,7 +1301,8 @@ function toBase64Url(bytes: Uint8Array): string {
 }
 
 function fromBase64Url(value: unknown): Uint8Array | null {
-  if (typeof value !== "string" || value.length === 0 || !/^[A-Za-z0-9_-]+$/u.test(value)) return null;
+  if (typeof value !== "string" || value.length === 0 || !/^[A-Za-z0-9_-]+$/u.test(value))
+    return null;
   const normalized = value.replace(/-/gu, "+").replace(/_/gu, "/");
   const padded = normalized + "=".repeat((4 - (normalized.length % 4)) % 4);
   try {

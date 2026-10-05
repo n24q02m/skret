@@ -10,35 +10,35 @@ skret uses a `.skret.yaml` file in your project root to define environments, pro
 ## Schema
 
 ```yaml
-version: "1"              # Required. Config schema version.
-project: myapp             # Optional. Project name.
-default_env: prod          # Optional. Default environment.
+version: "1" # Required. Config schema version.
+project: myapp # Optional. Project name.
+default_env: prod # Optional. Default environment.
 
-environments:              # Required. At least one environment.
+environments: # Required. At least one environment.
   prod:
-    provider: aws          # Required. "aws", "azure", "local", "gcp", or "oci".
-    path: /myapp/prod      # Required for aws. SSM path prefix.
-    region: us-east-1      # Optional for aws/oci. Provider region.
-    profile: production    # Optional for aws/oci. Credential profile name.
-    kms_key_id: arn:...    # Optional for aws. Custom KMS key.
-    compartment_id: ocid1.compartment.oc1..xxx  # Required for oci. Compartment OCID.
-    vault_id: ocid1.vault.oc1..yyy              # Required for oci. Vault OCID.
-    key_id: ocid1.key.oc1..zzz                  # Optional for oci. Master key for new secrets.
+    provider: aws # Required. "aws", "azure", "local", "gcp", or "oci".
+    path: /myapp/prod # Required for aws. SSM path prefix.
+    region: us-east-1 # Optional for aws/oci. Provider region.
+    profile: production # Optional for aws/oci. Credential profile name.
+    kms_key_id: arn:... # Optional for aws. Custom KMS key.
+    compartment_id: ocid1.compartment.oc1..xxx # Required for oci. Compartment OCID.
+    vault_id: ocid1.vault.oc1..yyy # Required for oci. Vault OCID.
+    key_id: ocid1.key.oc1..zzz # Optional for oci. Master key for new secrets.
 
   gcp:
     provider: gcp
-    project: my-gcp-project  # Required for gcp. GCP project id.
-    region: us-east1         # Optional for gcp. GCP location (omit for global).
+    project: my-gcp-project # Required for gcp. GCP project id.
+    region: us-east1 # Optional for gcp. GCP location (omit for global).
 
   dev:
-    provider: local        # Required. "local" for YAML file.
-    file: ./.secrets.dev.yaml  # Required for local. Path to secrets file.
+    provider: local # Required. "local" for YAML file.
+    file: ./.secrets.dev.yaml # Required for local. Path to secrets file.
 
-required:                  # Optional. Secrets that must exist.
+required: # Optional. Secrets that must exist.
   - DATABASE_URL
   - API_KEY
 
-exclude:                   # Optional. Secrets to exclude from injection.
+exclude: # Optional. Secrets to exclude from injection.
   - DEBUG_TOKEN
 ```
 
@@ -78,15 +78,15 @@ Configuration values are resolved in this order (highest wins):
 
 ## Environment Variables
 
-| Variable | Description |
-|----------|-------------|
-| `SKRET_ENV` | Override target environment |
-| `SKRET_PROVIDER` | Override provider |
-| `SKRET_PATH` | Override secret path prefix |
-| `SKRET_REGION` | Override AWS region |
-| `SKRET_PROFILE` | Override AWS profile |
-| `SKRET_LOG` | Log level (debug, info, warn, error) |
-| `SKRET_LOG_FORMAT` | Log format (text, json) |
+| Variable           | Description                          |
+| ------------------ | ------------------------------------ |
+| `SKRET_ENV`        | Override target environment          |
+| `SKRET_PROVIDER`   | Override provider                    |
+| `SKRET_PATH`       | Override secret path prefix          |
+| `SKRET_REGION`     | Override AWS region                  |
+| `SKRET_PROFILE`    | Override AWS profile                 |
+| `SKRET_LOG`        | Log level (debug, info, warn, error) |
+| `SKRET_LOG_FORMAT` | Log format (text, json)              |
 
 ## Local Secrets File
 

@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
-  HostAuthorizationStore,
+  createSignedHostAuthorizationGeneration,
   type HostAuthorizationMapping,
   type HostAuthorizationStorage,
-  createSignedHostAuthorizationGeneration,
+  HostAuthorizationStore,
 } from "../src/host-authorization-store";
 
 const NOW = 1_700_000_000_000;
@@ -107,10 +107,14 @@ describe("HostAuthorizationStore", () => {
     const store = new HostAuthorizationStore(new MemoryStorage(), await publicKeyBytes(publicKey));
     const signed = await createSignedHostAuthorizationGeneration(generation(1), privateKey);
 
-    expect((await store.activate(` ${signed}`, { expectedHeadHash: null, now: NOW })).status).toBe("noncanonical");
+    expect((await store.activate(` ${signed}`, { expectedHeadHash: null, now: NOW })).status).toBe(
+      "noncanonical",
+    );
     const parsed = JSON.parse(signed) as Record<string, unknown>;
     parsed.issuer = "other-issuer";
-    expect((await store.activate(JSON.stringify(parsed), { expectedHeadHash: null, now: NOW })).status).toBe("signature_invalid");
+    expect(
+      (await store.activate(JSON.stringify(parsed), { expectedHeadHash: null, now: NOW })).status,
+    ).toBe("signature_invalid");
   });
 
   it("rejects duplicate mapping keys and expired generations", async () => {
@@ -122,7 +126,9 @@ describe("HostAuthorizationStore", () => {
       generation(1, { expires_at: NOW - 1 }),
       privateKey,
     );
-    expect((await store.activate(expired, { expectedHeadHash: null, now: NOW })).status).toBe("expired");
+    expect((await store.activate(expired, { expectedHeadHash: null, now: NOW })).status).toBe(
+      "expired",
+    );
   });
 
   it("enforces CAS, monotonic generations, and replay rejection", async () => {
@@ -132,27 +138,35 @@ describe("HostAuthorizationStore", () => {
     const activated = await store.activate(first, { expectedHeadHash: null, now: NOW });
     expect(activated.status).toBe("activated");
     if (activated.status !== "activated") return;
-    expect((await store.activate(first, { expectedHeadHash: activated.head_hash, now: NOW })).status).toBe("replay");
-    expect((await store.activate(first, { expectedHeadHash: null, now: NOW })).status).toBe("head_mismatch");
+    expect(
+      (await store.activate(first, { expectedHeadHash: activated.head_hash, now: NOW })).status,
+    ).toBe("replay");
+    expect((await store.activate(first, { expectedHeadHash: null, now: NOW })).status).toBe(
+      "head_mismatch",
+    );
 
     const downgrade = await createSignedHostAuthorizationGeneration(
       generation(1, { issuer: "different-signed-generation" }),
       privateKey,
     );
-    expect((await store.activate(downgrade, { expectedHeadHash: activated.head_hash, now: NOW })).status).toBe("stale");
+    expect(
+      (await store.activate(downgrade, { expectedHeadHash: activated.head_hash, now: NOW })).status,
+    ).toBe("stale");
 
     const next = await createSignedHostAuthorizationGeneration(
       generation(2, { previous_head_hash: `sha256:${"d".repeat(64)}` }),
       privateKey,
     );
-    expect((await store.activate(next, { expectedHeadHash: activated.head_hash, now: NOW })).status).toBe("stale");
+    expect(
+      (await store.activate(next, { expectedHeadHash: activated.head_hash, now: NOW })).status,
+    ).toBe("stale");
     const validNext = await createSignedHostAuthorizationGeneration(
       generation(2, { previous_head_hash: activated.head_hash }),
       privateKey,
     );
-    expect((await store.activate(validNext, { expectedHeadHash: activated.head_hash, now: NOW })).status).toBe(
-      "activated",
-    );
+    expect(
+      (await store.activate(validNext, { expectedHeadHash: activated.head_hash, now: NOW })).status,
+    ).toBe("activated");
   });
 
   it("denies caller roles and cross-instance lookups", async () => {
@@ -163,21 +177,44 @@ describe("HostAuthorizationStore", () => {
     expect(activated.status).toBe("activated");
 
     expect(
-      (await store.lookup({ verified_jwt_hash: HASH_A, mapped_instance: "ocid1.instance.oc1..host-a", caller_role: "admin" }, { now: NOW })).status,
+      (
+        await store.lookup(
+          {
+            verified_jwt_hash: HASH_A,
+            mapped_instance: "ocid1.instance.oc1..host-a",
+            caller_role: "admin",
+          },
+          { now: NOW },
+        )
+      ).status,
     ).toBe("caller_role_denied");
     expect(
       (
         await store.lookup(
-          { verified_jwt_hash: HASH_A, mapped_instance: "ocid1.instance.oc1..host-a", role: "admin" } as never,
+          {
+            verified_jwt_hash: HASH_A,
+            mapped_instance: "ocid1.instance.oc1..host-a",
+            role: "admin",
+          } as never,
           { now: NOW },
         )
       ).status,
     ).toBe("invalid_request");
     expect(
-      (await store.lookup({ verified_jwt_hash: HASH_A, mapped_instance: "ocid1.instance.oc1..host-b" }, { now: NOW })).status,
+      (
+        await store.lookup(
+          { verified_jwt_hash: HASH_A, mapped_instance: "ocid1.instance.oc1..host-b" },
+          { now: NOW },
+        )
+      ).status,
     ).toBe("cross_instance");
     expect(
-      (await store.lookup({ verified_jwt_hash: HASH_B, mapped_instance: "ocid1.instance.oc1..host-b" }, { now: NOW })).status,
+      (
+        await store.lookup(
+          { verified_jwt_hash: HASH_B, mapped_instance: "ocid1.instance.oc1..host-b" },
+          { now: NOW },
+        )
+      ).status,
     ).toBe("not_found");
   });
 
