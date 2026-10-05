@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { mintSession, SESSION_TTL } from "../src/auth";
+import {
+  handleExecutorEnvelope,
+  MAX_EXECUTOR_ENVELOPE_BYTES,
+} from "../src/operator-executor-proxy";
 import { handleRequest } from "../src/router";
-import { handleExecutorEnvelope, MAX_EXECUTOR_ENVELOPE_BYTES } from "../src/operator-executor-proxy";
 import type { Env } from "../src/types";
 
 const RELAY_PASSWORD = "test-relay-password";
@@ -39,7 +42,10 @@ function env(executor?: FakeExecutor): Env {
 describe("authenticated executor envelope proxy", () => {
   it("rejects non-POST requests when called directly", async () => {
     const { executor, requests } = fakeExecutor(new Response("should not run", { status: 200 }));
-    const response = await handleExecutorEnvelope(new Request(`${EXECUTOR_ORIGIN}/operator/executor-envelope`), env(executor));
+    const response = await handleExecutorEnvelope(
+      new Request(`${EXECUTOR_ORIGIN}/operator/executor-envelope`),
+      env(executor),
+    );
 
     expect(response.status).toBe(405);
     expect(response.headers.get("Allow")).toBe("POST");
@@ -79,7 +85,10 @@ describe("authenticated executor envelope proxy", () => {
 
   it("forwards exact bytes to the fixed path with only safe derived headers", async () => {
     const body = new Uint8Array([0, 1, 2, 255, 10, 13, 42]);
-    const upstream = new Response("accepted", { status: 202, headers: { "Content-Type": "text/plain" } });
+    const upstream = new Response("accepted", {
+      status: 202,
+      headers: { "Content-Type": "text/plain" },
+    });
     const { executor, requests } = fakeExecutor(upstream);
     const cookie = await sessionCookie();
     const request = new Request(`${EXECUTOR_ORIGIN}/operator/executor-envelope?ignored=yes`, {

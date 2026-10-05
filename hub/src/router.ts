@@ -1,10 +1,22 @@
 import { getContainer } from "@cloudflare/containers";
-import type { Env, OperatorSyncHealth, SyncHealth, SyncHealthStatus, SyncRunRecord } from "./types";
+import { checkBearer, checkPassword, mintSession, SESSION_TTL, verifySession } from "./auth";
 import { handleIngest } from "./ingest";
 import { handleExecutorEnvelope } from "./operator-executor-proxy";
-import { checkBearer, checkPassword, mintSession, verifySession, SESSION_TTL } from "./auth";
-import { getAllManifests, summarizeManifests, MAX_SYNC_STALE_THRESHOLD_SECONDS, MIN_SYNC_STALE_THRESHOLD_SECONDS } from "./store";
 import { renderDashboard, renderLogin } from "./render";
+import {
+  getAllManifests,
+  MAX_SYNC_STALE_THRESHOLD_SECONDS,
+  MIN_SYNC_STALE_THRESHOLD_SECONDS,
+  summarizeManifests,
+} from "./store";
+import type {
+  Env,
+  NamespaceSummary,
+  OperatorSyncHealth,
+  SyncHealth,
+  SyncHealthStatus,
+  SyncRunRecord,
+} from "./types";
 
 const COOKIE = "session";
 
@@ -158,7 +170,7 @@ async function handleApiStatus(req: Request, env: Env): Promise<Response> {
   if (!(await checkBearer(req, env.SKRET_HUB_TOKEN))) {
     return json({ ok: false, error: "unauthorized" }, 401);
   }
-  let namespaces;
+  let namespaces: NamespaceSummary[];
   try {
     namespaces = summarizeManifests(await getAllManifests(env.VAULT_KV));
   } catch {
@@ -174,7 +186,7 @@ async function handleApiNamespaces(req: Request, env: Env): Promise<Response> {
   if (!(await checkBearer(req, env.SKRET_HUB_TOKEN))) {
     return json({ ok: false, error: "unauthorized" }, 401);
   }
-  let namespaces;
+  let namespaces: NamespaceSummary[];
   try {
     namespaces = summarizeManifests(await getAllManifests(env.VAULT_KV));
   } catch {
@@ -211,9 +223,7 @@ async function handleOperatorSyncHealth(req: Request, env: Env): Promise<Respons
   }
 
   const health = projectOperatorSyncHealth(raw);
-  return health === null
-    ? operatorResponse("sync health unavailable", 503)
-    : json(health);
+  return health === null ? operatorResponse("sync health unavailable", 503) : json(health);
 }
 
 function projectSyncHealth(value: unknown): SyncHealth | null {
@@ -239,8 +249,7 @@ function projectSyncHealth(value: unknown): SyncHealth | null {
       ? candidate.age_seconds
       : null;
   const fingerprintMatch =
-    candidate.fingerprint_match === null ||
-    typeof candidate.fingerprint_match === "boolean"
+    candidate.fingerprint_match === null || typeof candidate.fingerprint_match === "boolean"
       ? candidate.fingerprint_match
       : null;
 
@@ -262,8 +271,7 @@ function projectOperatorSyncHealth(value: unknown): OperatorSyncHealth | null {
   const lastSuccess = projectSyncRunRecord(candidate.last_success);
   const activeRun = projectSyncRunRecord(candidate.active_run);
   const expectedFingerprint =
-    candidate.expected_fingerprint === null ||
-    typeof candidate.expected_fingerprint === "string"
+    candidate.expected_fingerprint === null || typeof candidate.expected_fingerprint === "string"
       ? projectFingerprint(candidate.expected_fingerprint)
       : undefined;
   const staleThreshold =
@@ -357,15 +365,13 @@ function projectSyncRunRecord(value: unknown): SyncRunRecord | null {
         ? candidate.targetCount
         : undefined;
   const startedAt =
-    typeof candidate.startedAt === "string" &&
-    Number.isFinite(Date.parse(candidate.startedAt))
+    typeof candidate.startedAt === "string" && Number.isFinite(Date.parse(candidate.startedAt))
       ? candidate.startedAt
       : null;
   const endedAt =
     candidate.endedAt === null
       ? null
-      : typeof candidate.endedAt === "string" &&
-          Number.isFinite(Date.parse(candidate.endedAt))
+      : typeof candidate.endedAt === "string" && Number.isFinite(Date.parse(candidate.endedAt))
         ? candidate.endedAt
         : undefined;
   const status = candidate.status;
@@ -374,8 +380,7 @@ function projectSyncRunRecord(value: unknown): SyncRunRecord | null {
   const exitCode =
     candidate.exitCode === null
       ? null
-      : typeof candidate.exitCode === "number" &&
-          Number.isSafeInteger(candidate.exitCode)
+      : typeof candidate.exitCode === "number" && Number.isSafeInteger(candidate.exitCode)
         ? candidate.exitCode
         : undefined;
   if (
@@ -423,9 +428,7 @@ function projectFingerprint(value: unknown): string | null | undefined {
 
 function projectBoundedString(value: unknown): string | null {
   if (typeof value !== "string" || value.length === 0 || value.length > 256) return null;
-  return [...value].some((char) => char.charCodeAt(0) < 0x20 || char === "\u007f")
-    ? null
-    : value;
+  return [...value].some((char) => char.charCodeAt(0) < 0x20 || char === "\u007f") ? null : value;
 }
 
 function projectNullableBoundedString(value: unknown): string | null | undefined {
@@ -433,7 +436,7 @@ function projectNullableBoundedString(value: unknown): string | null | undefined
   return projectBoundedString(value);
 }
 
-function isCleanSuccessRecord(record: SyncRunRecord): boolean {
+function _isCleanSuccessRecord(record: SyncRunRecord): boolean {
   return (
     record.status === "succeeded" &&
     record.classification === "clean_exit" &&
@@ -469,7 +472,9 @@ function isRunClassification(value: unknown): value is SyncRunRecord["classifica
 }
 
 function isRunReason(value: unknown): value is SyncRunRecord["reason"] {
-  return value === null || value === "exit" || value === "runtime_signal" || value === "start_failure";
+  return (
+    value === null || value === "exit" || value === "runtime_signal" || value === "start_failure"
+  );
 }
 
 function deriveHealthStatus(

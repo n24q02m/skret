@@ -1,16 +1,16 @@
-import { describe, it, expect, vi } from "vitest";
 import { Container, type State } from "@cloudflare/containers";
+import { describe, expect, it, vi } from "vitest";
 import { SyncContainer } from "../src/container";
+import worker from "../src/index";
 import {
+  completeSyncRun,
   SYNC_ACTIVE_RUN_KEY,
   SYNC_LAST_COMPLETION_KEY,
   SYNC_LAST_SUCCESS_KEY,
   SYNC_PLANNER_STOP_STATE_KEY,
   SYNC_RUN_PREFIX,
-  completeSyncRun,
   syncRunKey,
 } from "../src/store";
-import worker from "../src/index";
 import type { Env, SyncRunMetadata, SyncRunRecord } from "../src/types";
 
 type TestStorageOperation = {
@@ -46,9 +46,7 @@ function fakeStorage(): TestStorage {
     async delete(key: string): Promise<boolean> {
       return values.delete(key);
     },
-    async transaction<T>(
-      closure: (transaction: TestStorageOperation) => Promise<T>,
-    ): Promise<T> {
+    async transaction<T>(closure: (transaction: TestStorageOperation) => Promise<T>): Promise<T> {
       const previous = transactionTail;
       let release!: () => void;
       transactionTail = new Promise<void>((resolve) => {
@@ -115,7 +113,9 @@ describe("SyncContainer", () => {
   it("does not create a terminal run when startup has not reached onStart", async () => {
     const { container, storage } = fakeEnv({});
 
-    await expect(container.onStop({ exitCode: 17, reason: "runtime_signal" })).resolves.toBeUndefined();
+    await expect(
+      container.onStop({ exitCode: 17, reason: "runtime_signal" }),
+    ).resolves.toBeUndefined();
 
     expect(await storage.get<string>(SYNC_ACTIVE_RUN_KEY)).toBeUndefined();
     expect([...storage.values.keys()].filter((key) => key.startsWith(SYNC_RUN_PREFIX))).toEqual([]);
@@ -183,7 +183,6 @@ describe("SyncContainer", () => {
     expect(results.every((result) => result.status === "rejected")).toBe(true);
     expect(stop).toHaveBeenCalledTimes(2);
   });
-
 });
 describe("sync health projection", () => {
   it("returns an unknown freshness state when no clean success exists", async () => {
@@ -219,13 +218,7 @@ describe("sync health projection", () => {
     try {
       const { container, storage } = fakeEnv({});
       const runId = await container.beginRun();
-      await completeSyncRun(
-        storage,
-        runId,
-        "2026-08-22T00:00:10.000Z",
-        0,
-        "exit",
-      );
+      await completeSyncRun(storage, runId, "2026-08-22T00:00:10.000Z", 0, "exit");
 
       await expect(container.getSyncHealth()).resolves.toEqual({
         status: "healthy",
@@ -249,13 +242,7 @@ describe("sync health projection", () => {
         SYNC_STALE_THRESHOLD_SECONDS: "90",
       });
       const runId = await container.beginRun({ configFingerprint: "expected" });
-      await completeSyncRun(
-        storage,
-        runId,
-        "2026-08-22T00:00:10.000Z",
-        0,
-        "exit",
-      );
+      await completeSyncRun(storage, runId, "2026-08-22T00:00:10.000Z", 0, "exit");
 
       await expect(container.getSyncHealth()).resolves.toEqual({
         status: "stale",
@@ -278,13 +265,7 @@ describe("sync health projection", () => {
         SYNC_EXPECTED_FINGERPRINT: "expected",
       });
       const runId = await container.beginRun({ configFingerprint: "other" });
-      await completeSyncRun(
-        storage,
-        runId,
-        "2026-08-22T00:00:10.000Z",
-        0,
-        "exit",
-      );
+      await completeSyncRun(storage, runId, "2026-08-22T00:00:10.000Z", 0, "exit");
 
       await expect(container.getSyncHealth()).resolves.toMatchObject({
         status: "fingerprint_drift",
@@ -313,7 +294,6 @@ describe("sync health projection", () => {
     });
   });
 });
-
 
 // Build a fake env whose SYNC namespace resolves (getContainer calls
 // idFromName + get) to a stub with lifecycle and readiness-start spies. This
@@ -578,7 +558,6 @@ describe("scheduled()", () => {
     });
   });
 
-
   it("starts the planner with only the SYNC binding", async () => {
     const { env, start, beginRun } = fakeEnv({});
 
@@ -630,31 +609,13 @@ describe("durable sync run records", () => {
   it("does not let a replayed older clean run regress last success", async () => {
     const { container, storage } = fakeEnv({});
     const firstRunId = await container.beginRun();
-    await completeSyncRun(
-      storage,
-      firstRunId,
-      "2026-08-22T00:00:10.000Z",
-      0,
-      "exit",
-    );
+    await completeSyncRun(storage, firstRunId, "2026-08-22T00:00:10.000Z", 0, "exit");
     const secondRunId = await container.beginRun();
-    await completeSyncRun(
-      storage,
-      secondRunId,
-      "2026-08-22T00:00:20.000Z",
-      0,
-      "exit",
-    );
+    await completeSyncRun(storage, secondRunId, "2026-08-22T00:00:20.000Z", 0, "exit");
     expect(await storage.get<string>(SYNC_LAST_SUCCESS_KEY)).toBe(secondRunId);
     expect(await storage.get<string>(SYNC_LAST_COMPLETION_KEY)).toBe(secondRunId);
 
-    await completeSyncRun(
-      storage,
-      firstRunId,
-      "2026-08-22T00:00:10.000Z",
-      0,
-      "exit",
-    );
+    await completeSyncRun(storage, firstRunId, "2026-08-22T00:00:10.000Z", 0, "exit");
 
     expect(await storage.get<string>(SYNC_LAST_SUCCESS_KEY)).toBe(secondRunId);
     expect(await storage.get<string>(SYNC_LAST_COMPLETION_KEY)).toBe(secondRunId);
@@ -667,13 +628,7 @@ describe("durable sync run records", () => {
     expect(await storage.get<string>(SYNC_LAST_SUCCESS_KEY)).toBeUndefined();
 
     const validFirstRunId = await container.beginRun();
-    await completeSyncRun(
-      storage,
-      validFirstRunId,
-      "2026-08-22T00:00:10.000Z",
-      0,
-      "exit",
-    );
+    await completeSyncRun(storage, validFirstRunId, "2026-08-22T00:00:10.000Z", 0, "exit");
     expect(await storage.get<string>(SYNC_LAST_SUCCESS_KEY)).toBe(validFirstRunId);
 
     const invalidLaterRunId = await container.beginRun();
@@ -682,13 +637,7 @@ describe("durable sync run records", () => {
 
     await storage.put(SYNC_LAST_SUCCESS_KEY, invalidLaterRunId);
     const validSecondRunId = await container.beginRun();
-    await completeSyncRun(
-      storage,
-      validSecondRunId,
-      "2026-08-22T00:00:20.000Z",
-      0,
-      "exit",
-    );
+    await completeSyncRun(storage, validSecondRunId, "2026-08-22T00:00:20.000Z", 0, "exit");
     expect(await storage.get<string>(SYNC_LAST_SUCCESS_KEY)).toBe(validSecondRunId);
   });
 
@@ -712,26 +661,13 @@ describe("durable sync run records", () => {
     expect(await storage.get<string>(SYNC_LAST_COMPLETION_KEY)).toBe(failedRunId);
     const details = await container.getOperatorSyncHealth();
     expect(details.alerts.nonzero_completion).toBe(true);
-
   });
   it("resolves the nonzero alert with a later clean completion without deleting history", async () => {
     const { container, storage } = fakeEnv({});
     const failedRunId = await container.beginRun();
-    await completeSyncRun(
-      storage,
-      failedRunId,
-      "2026-08-22T00:00:10.000Z",
-      17,
-      "exit",
-    );
+    await completeSyncRun(storage, failedRunId, "2026-08-22T00:00:10.000Z", 17, "exit");
     const cleanRunId = await container.beginRun();
-    await completeSyncRun(
-      storage,
-      cleanRunId,
-      "2026-08-22T00:00:20.000Z",
-      0,
-      "exit",
-    );
+    await completeSyncRun(storage, cleanRunId, "2026-08-22T00:00:20.000Z", 0, "exit");
 
     const details = await container.getOperatorSyncHealth();
     expect(details.alerts.nonzero_completion).toBe(false);

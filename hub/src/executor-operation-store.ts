@@ -4,13 +4,13 @@ import {
   type ProviderControlDecision,
   type ProviderDispatchRequest,
   type ProviderDispatchResponse,
+  type ProviderInvocationOutcome,
   type ProviderLastSuccess,
   type ProviderOperationRecord,
   type ProviderOperationStart,
   type ProviderOperationStartResult,
-  type ProviderVerification,
-  type ProviderInvocationOutcome,
   type ProviderOperationWatchdogResult,
+  type ProviderVerification,
 } from "./provider-operation-store";
 
 const OPERATION_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
@@ -105,7 +105,11 @@ export interface ExecutorOperationStorage extends ExecutorOperationTransaction {
 }
 export interface ExecutorOperationStore {
   begin(request: ExecutorOperationStart, now?: number): Promise<ExecutorOperationStartResult>;
-  recordInvocationTimeout(operationID: string, invocationID: string, now?: number): Promise<ExecutorOperationRecord>;
+  recordInvocationTimeout(
+    operationID: string,
+    invocationID: string,
+    now?: number,
+  ): Promise<ExecutorOperationRecord>;
   complete(
     operationID: string,
     invocationID: string,
@@ -139,7 +143,10 @@ export class DurableExecutorOperationStore implements ExecutorOperationStore {
     private readonly scheduleAlarm?: (timestamp: number) => Promise<void>,
   ) {}
 
-  async begin(request: ExecutorOperationStart, now = Date.now()): Promise<ExecutorOperationStartResult> {
+  async begin(
+    request: ExecutorOperationStart,
+    now = Date.now(),
+  ): Promise<ExecutorOperationStartResult> {
     validateStart(request, now);
     const result = await this.storage.transaction(async (transaction) => {
       const key = operationKey(request.operation_id);
@@ -246,10 +253,7 @@ export class DurableExecutorOperationStore implements ExecutorOperationStore {
         observed_at: now,
         result_digest: null,
       });
-      if (
-        current.status !== "active" ||
-        current.active_invocation_id !== invocationID
-      ) {
+      if (current.status !== "active" || current.active_invocation_id !== invocationID) {
         return current;
       }
       const timedOut: ExecutorOperationRecord = {
@@ -504,17 +508,13 @@ export class DurableExecutorOperationStore implements ExecutorOperationStore {
     for (const operationID of queuedIDs) {
       if (active.includes(operationID)) continue;
       const operation = await transaction.get<ExecutorOperationRecord>(operationKey(operationID));
-      if (
-        operation?.status === "queued" &&
-        operation.schedule_digest === scheduleDigest
-      ) {
+      if (operation?.status === "queued" && operation.schedule_digest === scheduleDigest) {
         candidates.push(operation);
       }
     }
     candidates.sort(
       (left, right) =>
-        left.created_at - right.created_at ||
-        left.operation_id.localeCompare(right.operation_id),
+        left.created_at - right.created_at || left.operation_id.localeCompare(right.operation_id),
     );
     const next = candidates[0];
     if (!next) return null;
@@ -537,7 +537,9 @@ export class DurableExecutorOperationStore implements ExecutorOperationStore {
       if (!active || active.length === 0) return;
       let next: number | null = null;
       for (const operationID of active) {
-        const operation = await this.storage.get<ExecutorOperationRecord>(operationKey(operationID));
+        const operation = await this.storage.get<ExecutorOperationRecord>(
+          operationKey(operationID),
+        );
         if (!operation) continue;
         next = earlierAlarm(next, operationAlarmAt(operation));
       }
@@ -561,9 +563,8 @@ export class DurableExecutorOperationStore implements ExecutorOperationStore {
 
 export class SecurityExecutorOperations extends DurableObject<SecurityExecutorOperationEnv> {
   private get operationStore(): DurableExecutorOperationStore {
-    return new DurableExecutorOperationStore(
-      this.ctx.storage,
-      (timestamp) => this.scheduleAlarmAt(timestamp),
+    return new DurableExecutorOperationStore(this.ctx.storage, (timestamp) =>
+      this.scheduleAlarmAt(timestamp),
     );
   }
 
@@ -604,7 +605,12 @@ export class SecurityExecutorOperations extends DurableObject<SecurityExecutorOp
     response: ProviderDispatchResponse,
     now = Date.now(),
   ): Promise<ProviderOperationRecord> {
-    const result = await this.providerStore().recordOutcome(operationID, invocationID, response, now);
+    const result = await this.providerStore().recordOutcome(
+      operationID,
+      invocationID,
+      response,
+      now,
+    );
     await this.scheduleProviderWatchdog(result, now);
     return result;
   }
@@ -665,7 +671,10 @@ export class SecurityExecutorOperations extends DurableObject<SecurityExecutorOp
     return this.providerStore().readLastSuccess(targetIdentity, targetDigest, sourceFingerprint);
   }
 
-  async begin(request: ExecutorOperationStart, now = Date.now()): Promise<ExecutorOperationStartResult> {
+  async begin(
+    request: ExecutorOperationStart,
+    now = Date.now(),
+  ): Promise<ExecutorOperationStartResult> {
     return this.operationStore.begin(request, now);
   }
 
@@ -712,9 +721,7 @@ export class SecurityExecutorOperations extends DurableObject<SecurityExecutorOp
       const storage = this.ctx.storage as typeof this.ctx.storage & {
         getAlarm?: () => Promise<number | null>;
       };
-      const current = typeof storage.getAlarm === "function"
-        ? await storage.getAlarm()
-        : null;
+      const current = typeof storage.getAlarm === "function" ? await storage.getAlarm() : null;
       if (current === null || current === undefined || timestamp < current) {
         await this.ctx.storage.setAlarm(timestamp);
       }
@@ -730,8 +737,9 @@ export class SecurityExecutorOperations extends DurableObject<SecurityExecutorOp
     try {
       const executorResult = await this.watchdog(now);
       const providerResult = await this.providerWatchdog(now);
-      const candidateAlarms = [executorResult.next_alarm_at, providerResult.next_alarm_at]
-        .filter((timestamp): timestamp is number => timestamp !== null);
+      const candidateAlarms = [executorResult.next_alarm_at, providerResult.next_alarm_at].filter(
+        (timestamp): timestamp is number => timestamp !== null,
+      );
       shouldReschedule = candidateAlarms.length > 0;
       if (shouldReschedule) nextAlarm = Math.min(...candidateAlarms);
     } finally {
@@ -749,14 +757,7 @@ export function createOperationStoreAdapter(
     recordInvocationTimeout: (operationID, invocationID, timestamp) =>
       stub.recordInvocationTimeout(operationID, invocationID, timestamp),
     complete: (operationID, invocationID, status, resultDigest, timestamp, redactedResult) =>
-      stub.complete(
-        operationID,
-        invocationID,
-        status,
-        resultDigest,
-        timestamp,
-        redactedResult,
-      ),
+      stub.complete(operationID, invocationID, status, resultDigest, timestamp, redactedResult),
     readResult: (operationID) => stub.readResult(operationID),
     requestCancel: (operationID, timestamp) => stub.requestCancel(operationID, timestamp),
     watchdog: (timestamp) => stub.watchdog(timestamp),
@@ -831,23 +832,22 @@ function validateStart(request: ExecutorOperationStart, now: number): void {
 }
 
 function holdsExecutionLane(status: ExecutorOperationStatus): boolean {
-  return (
-    status === "active" ||
-    status === "timed_out" ||
-    status === "cancel_requested"
-  );
+  return status === "active" || status === "timed_out" || status === "cancel_requested";
 }
 
 function validateOperationID(operationID: string): void {
-  if (typeof operationID !== "string" || !OPERATION_ID_PATTERN.test(operationID)) throw new ExecutorOperationInvalidRequestError();
+  if (typeof operationID !== "string" || !OPERATION_ID_PATTERN.test(operationID))
+    throw new ExecutorOperationInvalidRequestError();
 }
 
 function validateInvocationID(invocationID: string): void {
-  if (typeof invocationID !== "string" || !OPERATION_ID_PATTERN.test(invocationID)) throw new ExecutorOperationInvalidRequestError();
+  if (typeof invocationID !== "string" || !OPERATION_ID_PATTERN.test(invocationID))
+    throw new ExecutorOperationInvalidRequestError();
 }
 
 function validateDigest(digest: string): void {
-  if (typeof digest !== "string" || !DIGEST_PATTERN.test(digest)) throw new ExecutorOperationInvalidRequestError();
+  if (typeof digest !== "string" || !DIGEST_PATTERN.test(digest))
+    throw new ExecutorOperationInvalidRequestError();
 }
 
 function validateInvocationOutcome(outcome: ExecutorInvocationOutcome): void {

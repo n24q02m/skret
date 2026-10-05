@@ -9,6 +9,7 @@ const GENERATION_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
 const IDENTIFIER_PATTERN = /^[\u0021-\u007e]{1,2048}$/u;
 const OID_PATTERN = /^[\u0021-\u007e]{1,2048}$/u;
 const NONCE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
+// biome-ignore lint/suspicious/noControlCharactersInRegex: matching control characters is the purpose of this input-validation guard
 const CONTROL_TEXT_PATTERN = /[\u0000-\u001f\u007f]/u;
 const STANDARD_BASE64_PATTERN = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/u;
 const MAX_PROVIDER_OPERATION_LIFETIME_MS = 15 * 60_000;
@@ -196,7 +197,11 @@ export type ProviderOperationStorage = ExecutorOperationStorage;
 
 export interface ProviderOperationStore {
   start(request: ProviderOperationStart, now?: number): Promise<ProviderOperationStartResult>;
-  claim(operationID: string, invocationID: string, now?: number): Promise<ProviderDispatchRequest | null>;
+  claim(
+    operationID: string,
+    invocationID: string,
+    now?: number,
+  ): Promise<ProviderDispatchRequest | null>;
   recordOutcome(
     operationID: string,
     invocationID: string,
@@ -205,9 +210,16 @@ export interface ProviderOperationStore {
   ): Promise<ProviderOperationRecord>;
   watchdog(now?: number): Promise<ProviderOperationWatchdogResult>;
   applyDecision(decision: ProviderControlDecision, now?: number): Promise<ProviderOperationRecord>;
-  verify(operationID: string, verification: ProviderVerification, now?: number): Promise<ProviderOperationRecord>;
+  verify(
+    operationID: string,
+    verification: ProviderVerification,
+    now?: number,
+  ): Promise<ProviderOperationRecord>;
   read(operationID: string): Promise<ProviderOperationRecord | null>;
-  readInvocationOutcome(operationID: string, invocationID: string): Promise<ProviderInvocationOutcome | null>;
+  readInvocationOutcome(
+    operationID: string,
+    invocationID: string,
+  ): Promise<ProviderInvocationOutcome | null>;
   readLastSuccess(
     targetIdentity: string,
     targetDigest: string,
@@ -266,7 +278,10 @@ export function canonicalProviderControlDecisionBytes(
     expires_at: decision.expires_at,
     approval_nonce: decision.approval_nonce,
   };
-  const encoded = JSON.stringify(document).replace(/[<>&\u2028\u2029]/gu, (character) => CANONICAL_HTML_ESCAPES[character]);
+  const encoded = JSON.stringify(document).replace(
+    /[<>&\u2028\u2029]/gu,
+    (character) => CANONICAL_HTML_ESCAPES[character],
+  );
   return new TextEncoder().encode(encoded);
 }
 
@@ -286,20 +301,28 @@ export class DurableProviderOperationStore implements ProviderOperationStore {
     }
   }
 
-  async start(request: ProviderOperationStart, now = Date.now()): Promise<ProviderOperationStartResult> {
+  async start(
+    request: ProviderOperationStart,
+    now = Date.now(),
+  ): Promise<ProviderOperationStartResult> {
     validateNow(now);
     validateStart(request, now);
     return this.storage.transaction(async (transaction) => {
-      const existing = await transaction.get<ProviderOperationRecord>(operationKey(request.operation_id));
+      const existing = await transaction.get<ProviderOperationRecord>(
+        operationKey(request.operation_id),
+      );
       if (existing) {
         if (!sameStart(existing, request)) return { status: "conflict" } as const;
-        if (unresolved(existing.status)) await addActiveOperation(transaction, existing.operation_id);
+        if (unresolved(existing.status))
+          await addActiveOperation(transaction, existing.operation_id);
         return { status: "existing", operation: copyRecord(existing) } as const;
       }
 
       const fence = await transaction.get<ProviderTargetFence>(fenceKey(request.target_identity));
       if (fence) {
-        const fencedOperation = await transaction.get<ProviderOperationRecord>(operationKey(fence.operation_id));
+        const fencedOperation = await transaction.get<ProviderOperationRecord>(
+          operationKey(fence.operation_id),
+        );
         if (fencedOperation && unresolved(fencedOperation.status)) {
           await addActiveOperation(transaction, fencedOperation.operation_id);
           return { status: "fenced", operation: copyRecord(fencedOperation) } as const;
@@ -331,7 +354,11 @@ export class DurableProviderOperationStore implements ProviderOperationStore {
     });
   }
 
-  async claim(operationID: string, invocationID: string, now = Date.now()): Promise<ProviderDispatchRequest | null> {
+  async claim(
+    operationID: string,
+    invocationID: string,
+    now = Date.now(),
+  ): Promise<ProviderDispatchRequest | null> {
     validateNow(now);
     validateOperationID(operationID);
     validateOperationID(invocationID);
@@ -406,7 +433,8 @@ export class DurableProviderOperationStore implements ProviderOperationStore {
         observed_at: now,
       };
       if (existingOutcome) {
-        if (!sameOutcome(existingOutcome, outcome)) throw new ProviderOperationOutcomeConflictError();
+        if (!sameOutcome(existingOutcome, outcome))
+          throw new ProviderOperationOutcomeConflictError();
         return copyRecord(current);
       }
       if (
@@ -437,9 +465,8 @@ export class DurableProviderOperationStore implements ProviderOperationStore {
         observed_state_oid: response.provider_state_oid ?? current.observed_state_oid,
         canary: response.canary,
         postconditions: response.postconditions,
-        failure_code: terminalDeadline && response.status !== "rejected"
-          ? "deadline"
-          : response.error_code,
+        failure_code:
+          terminalDeadline && response.status !== "rejected" ? "deadline" : response.error_code,
       };
       await transaction.put(operationKeyValue, finished);
       if (isTerminal(nextStatus)) {
@@ -452,7 +479,6 @@ export class DurableProviderOperationStore implements ProviderOperationStore {
     });
   }
 
-
   async applyDecision(
     decision: ProviderControlDecision,
     now = Date.now(),
@@ -460,13 +486,17 @@ export class DurableProviderOperationStore implements ProviderOperationStore {
     validateNow(now);
     validateControlDecision(decision, now);
     const keyBytes = this.controlPublicKey?.slice();
-    if (!keyBytes || keyBytes.byteLength !== 32) throw new ProviderOperationDecisionRejectedError();
+    if (keyBytes?.byteLength !== 32) throw new ProviderOperationDecisionRejectedError();
 
-    const current = await this.storage.get<ProviderOperationRecord>(operationKey(decision.operation_id));
+    const current = await this.storage.get<ProviderOperationRecord>(
+      operationKey(decision.operation_id),
+    );
     if (!current) throw new ProviderOperationDecisionRejectedError();
     validateDecisionBinding(decision, current, now, this.expectedIssuer);
     try {
-      const imported = await crypto.subtle.importKey("raw", keyBytes, ED25519_ALGORITHM, false, ["verify"]);
+      const imported = await crypto.subtle.importKey("raw", keyBytes, ED25519_ALGORITHM, false, [
+        "verify",
+      ]);
       const valid = await crypto.subtle.verify(
         ED25519_ALGORITHM,
         imported,
@@ -523,9 +553,14 @@ export class DurableProviderOperationStore implements ProviderOperationStore {
       if (!current) throw new ProviderOperationInvalidRequestError("unknown provider operation");
       if (isTerminal(current.status)) return copyRecord(current);
       if (current.status !== "awaiting_verification" && current.status !== "cancel_requested") {
-        throw new ProviderOperationInvalidRequestError("provider operation is not awaiting verification");
+        throw new ProviderOperationInvalidRequestError(
+          "provider operation is not awaiting verification",
+        );
       }
-      if (current.observed_state_oid !== null && current.observed_state_oid !== verification.provider_state_oid) {
+      if (
+        current.observed_state_oid !== null &&
+        current.observed_state_oid !== verification.provider_state_oid
+      ) {
         throw new ProviderOperationDecisionRejectedError();
       }
 
@@ -533,7 +568,10 @@ export class DurableProviderOperationStore implements ProviderOperationStore {
       let completedAt: number | null = null;
       let failureCode = current.failure_code;
       if (now >= current.deadline_at) {
-        status = current.status === "cancel_requested" ? "cancel_needs_reconciliation" : "needs_reconciliation";
+        status =
+          current.status === "cancel_requested"
+            ? "cancel_needs_reconciliation"
+            : "needs_reconciliation";
         failureCode = "deadline";
       } else if (current.status === "cancel_requested") {
         status = "cancel_needs_reconciliation";
@@ -555,9 +593,8 @@ export class DurableProviderOperationStore implements ProviderOperationStore {
         postconditions: verification.postconditions,
         failure_code: failureCode,
         active_invocation_id: null,
-        current_generation_ref: status === "succeeded"
-          ? current.intended_generation_ref
-          : current.current_generation_ref,
+        current_generation_ref:
+          status === "succeeded" ? current.intended_generation_ref : current.current_generation_ref,
       };
       await transaction.put(key, finished);
       if (status === "succeeded") {
@@ -646,17 +683,21 @@ export class DurableProviderOperationStore implements ProviderOperationStore {
     });
   }
 
-
   async read(operationID: string): Promise<ProviderOperationRecord | null> {
     validateOperationID(operationID);
     const operation = await this.storage.get<ProviderOperationRecord>(operationKey(operationID));
     return operation ? copyRecord(operation) : null;
   }
 
-  async readInvocationOutcome(operationID: string, invocationID: string): Promise<ProviderInvocationOutcome | null> {
+  async readInvocationOutcome(
+    operationID: string,
+    invocationID: string,
+  ): Promise<ProviderInvocationOutcome | null> {
     validateOperationID(operationID);
     validateOperationID(invocationID);
-    const outcome = await this.storage.get<ProviderInvocationOutcome>(invocationKey(operationID, invocationID));
+    const outcome = await this.storage.get<ProviderInvocationOutcome>(
+      invocationKey(operationID, invocationID),
+    );
     return outcome ? { ...outcome } : null;
   }
 
@@ -668,7 +709,9 @@ export class DurableProviderOperationStore implements ProviderOperationStore {
     validateIdentifier(targetIdentity);
     validateDigest(targetDigest);
     validateDigest(sourceFingerprint);
-    const result = await this.storage.get<ProviderLastSuccess>(lastSuccessKeyFromParts(targetIdentity, targetDigest, sourceFingerprint));
+    const result = await this.storage.get<ProviderLastSuccess>(
+      lastSuccessKeyFromParts(targetIdentity, targetDigest, sourceFingerprint),
+    );
     return result ? { ...result } : null;
   }
 }
@@ -682,9 +725,15 @@ export class ProviderOperationCoordinator {
 
   async run(request: ProviderOperationStart, now = this.clock()): Promise<ProviderOperationRecord> {
     const started = await this.store.start(request, now);
-    if (started.status === "conflict") throw new ProviderOperationInvalidRequestError("provider operation conflict");
-    if (started.status === "fenced") throw new ProviderOperationInvalidRequestError("provider target fenced");
-    if (isTerminal(started.operation.status) || started.operation.status === "needs_reconciliation" || started.operation.status === "cancel_needs_reconciliation") {
+    if (started.status === "conflict")
+      throw new ProviderOperationInvalidRequestError("provider operation conflict");
+    if (started.status === "fenced")
+      throw new ProviderOperationInvalidRequestError("provider target fenced");
+    if (
+      isTerminal(started.operation.status) ||
+      started.operation.status === "needs_reconciliation" ||
+      started.operation.status === "cancel_needs_reconciliation"
+    ) {
       return started.operation;
     }
     const invocationID = `${request.operation_id}-attempt-${started.operation.attempt + 1}`;
@@ -708,7 +757,12 @@ export class ProviderOperationCoordinator {
       };
     }
     const observedAt = this.clock();
-    const recorded = await this.store.recordOutcome(request.operation_id, invocationID, response, observedAt);
+    const recorded = await this.store.recordOutcome(
+      request.operation_id,
+      invocationID,
+      response,
+      observedAt,
+    );
     if (
       recorded.status === "awaiting_verification" &&
       response.status === "committed" &&
@@ -716,11 +770,15 @@ export class ProviderOperationCoordinator {
       response.canary === "passed" &&
       response.postconditions === "passed"
     ) {
-      return this.store.verify(request.operation_id, {
-        provider_state_oid: response.provider_state_oid,
-        canary: response.canary,
-        postconditions: response.postconditions,
-      }, observedAt);
+      return this.store.verify(
+        request.operation_id,
+        {
+          provider_state_oid: response.provider_state_oid,
+          canary: response.canary,
+          postconditions: response.postconditions,
+        },
+        observedAt,
+      );
     }
     return recorded;
   }
@@ -740,7 +798,8 @@ interface ProviderDecisionConsumption {
 }
 
 function validateStart(request: ProviderOperationStart, now: number): void {
-  if (!isObjectWithExactFields(request, START_FIELDS)) throw new ProviderOperationInvalidRequestError();
+  if (!isObjectWithExactFields(request, START_FIELDS))
+    throw new ProviderOperationInvalidRequestError();
   validateOperationID(request.operation_id);
   validateGeneration(request.generation);
   validateDigest(request.source_fingerprint);
@@ -757,8 +816,10 @@ function validateStart(request: ProviderOperationStart, now: number): void {
 }
 
 function validateControlDecision(decision: ProviderControlDecision, now: number): void {
-  if (!isObjectWithExactFields(decision, DECISION_FIELDS)) throw new ProviderOperationDecisionRejectedError();
-  if (decision.version !== CONTROL_DECISION_VERSION || !isControlAction(decision.action)) throw new ProviderOperationDecisionRejectedError();
+  if (!isObjectWithExactFields(decision, DECISION_FIELDS))
+    throw new ProviderOperationDecisionRejectedError();
+  if (decision.version !== CONTROL_DECISION_VERSION || !isControlAction(decision.action))
+    throw new ProviderOperationDecisionRejectedError();
   validateOperationID(decision.operation_id, ProviderOperationDecisionRejectedError);
   validateGeneration(decision.generation, ProviderOperationDecisionRejectedError);
   validateDigest(decision.source_fingerprint, ProviderOperationDecisionRejectedError);
@@ -768,7 +829,8 @@ function validateControlDecision(decision: ProviderControlDecision, now: number)
   validateReason(decision.reason, ProviderOperationDecisionRejectedError);
   validateIdentifier(decision.issuer, ProviderOperationDecisionRejectedError);
   validateNonce(decision.nonce, ProviderOperationDecisionRejectedError);
-  if (decision.approval_nonce !== null) validateNonce(decision.approval_nonce, ProviderOperationDecisionRejectedError);
+  if (decision.approval_nonce !== null)
+    validateNonce(decision.approval_nonce, ProviderOperationDecisionRejectedError);
   validateDecisionTime(decision.issued_at, decision.expires_at, now);
   const signature = decodeBase64(decision.signature);
   if (signature.byteLength !== 64) throw new ProviderOperationDecisionRejectedError();
@@ -782,11 +844,9 @@ function validateDecisionBinding(
 ): void {
   const stateMatches =
     decision.current_state_oid === operation.observed_state_oid ||
-    (
-      decision.action === "confirm_applied" &&
+    (decision.action === "confirm_applied" &&
       operation.observed_state_oid === null &&
-      decision.current_state_oid !== null
-    );
+      decision.current_state_oid !== null);
   if (
     decision.operation_id !== operation.operation_id ||
     decision.generation !== operation.generation ||
@@ -814,7 +874,11 @@ function applyDecisionTransition(
     decision.action === "confirm_applied" ||
     decision.action === "confirm_not_applied" ||
     decision.action === "supersede";
-  if (operation.capability === "owner_risk_gate" && ownerAction && decision.approval_nonce !== decision.nonce) {
+  if (
+    operation.capability === "owner_risk_gate" &&
+    ownerAction &&
+    decision.approval_nonce !== decision.nonce
+  ) {
     throw new ProviderOperationDecisionRejectedError();
   }
   if (operation.capability !== "owner_risk_gate" && decision.approval_nonce !== null) {
@@ -822,8 +886,12 @@ function applyDecisionTransition(
   }
   if (decision.action === "cancel") return applyCancelDecision(operation, now);
   if (decision.action === "replay_once") {
-    if (operation.status !== "needs_reconciliation") throw new ProviderOperationDecisionRejectedError();
-    if (operation.capability !== "enforced_exclusive" && operation.capability !== "owner_risk_gate") {
+    if (operation.status !== "needs_reconciliation")
+      throw new ProviderOperationDecisionRejectedError();
+    if (
+      operation.capability !== "enforced_exclusive" &&
+      operation.capability !== "owner_risk_gate"
+    ) {
       throw new ProviderOperationDecisionRejectedError();
     }
     return {
@@ -856,14 +924,19 @@ function applyDecisionTransition(
     };
   }
   if (decision.action === "confirm_not_applied") {
-    if (operation.status !== "needs_reconciliation" && operation.status !== "cancel_needs_reconciliation") {
+    if (
+      operation.status !== "needs_reconciliation" &&
+      operation.status !== "cancel_needs_reconciliation"
+    ) {
       throw new ProviderOperationDecisionRejectedError();
     }
     if (operation.capability !== "native_cas" && operation.capability !== "owner_risk_gate") {
       throw new ProviderOperationDecisionRejectedError();
     }
-    if (decision.current_state_oid !== operation.observed_state_oid) throw new ProviderOperationDecisionRejectedError();
-    const status: ProviderOperationStatus = operation.status === "cancel_needs_reconciliation" ? "cancelled" : "failed";
+    if (decision.current_state_oid !== operation.observed_state_oid)
+      throw new ProviderOperationDecisionRejectedError();
+    const status: ProviderOperationStatus =
+      operation.status === "cancel_needs_reconciliation" ? "cancelled" : "failed";
     return {
       ...operation,
       status,
@@ -874,7 +947,10 @@ function applyDecisionTransition(
     };
   }
   if (decision.action === "supersede") {
-    if (operation.status !== "needs_reconciliation" && operation.status !== "cancel_needs_reconciliation") {
+    if (
+      operation.status !== "needs_reconciliation" &&
+      operation.status !== "cancel_needs_reconciliation"
+    ) {
       throw new ProviderOperationDecisionRejectedError();
     }
     return {
@@ -889,7 +965,10 @@ function applyDecisionTransition(
   throw new ProviderOperationDecisionRejectedError();
 }
 
-function applyCancelDecision(operation: ProviderOperationRecord, now: number): ProviderOperationRecord {
+function applyCancelDecision(
+  operation: ProviderOperationRecord,
+  now: number,
+): ProviderOperationRecord {
   if (isTerminal(operation.status)) throw new ProviderOperationDecisionRejectedError();
   let status: ProviderOperationStatus = operation.status;
   let completedAt = operation.completed_at;
@@ -911,7 +990,13 @@ function applyCancelDecision(operation: ProviderOperationRecord, now: number): P
 }
 
 function validateDispatchResponse(response: ProviderDispatchResponse): void {
-  const fields = ["status", "provider_state_oid", "canary", "postconditions", "error_code"] as const;
+  const fields = [
+    "status",
+    "provider_state_oid",
+    "canary",
+    "postconditions",
+    "error_code",
+  ] as const;
   if (!isObjectWithExactFields(response, fields)) throw new ProviderOperationInvalidRequestError();
   if (!isDispatchStatus(response.status)) throw new ProviderOperationInvalidRequestError();
   validateNullableOID(response.provider_state_oid);
@@ -935,7 +1020,8 @@ function validateDispatchResponse(response: ProviderDispatchResponse): void {
 
 function validateVerification(verification: ProviderVerification): void {
   const fields = ["provider_state_oid", "canary", "postconditions"] as const;
-  if (!isObjectWithExactFields(verification, fields)) throw new ProviderOperationInvalidRequestError();
+  if (!isObjectWithExactFields(verification, fields))
+    throw new ProviderOperationInvalidRequestError();
   validateOID(verification.provider_state_oid);
   if (verification.canary !== "passed" && verification.canary !== "failed") {
     throw new ProviderOperationInvalidRequestError();
@@ -965,11 +1051,13 @@ function validateDeadline(deadlineAt: number, now: number): void {
     !Number.isSafeInteger(deadlineAt) ||
     deadlineAt <= now ||
     deadlineAt > now + MAX_PROVIDER_OPERATION_LIFETIME_MS
-  ) throw new ProviderOperationInvalidRequestError("invalid provider operation deadline");
+  )
+    throw new ProviderOperationInvalidRequestError("invalid provider operation deadline");
 }
 
 function validateNow(now: number): void {
-  if (!Number.isSafeInteger(now) || now < 0) throw new ProviderOperationInvalidRequestError("invalid provider operation time");
+  if (!Number.isSafeInteger(now) || now < 0)
+    throw new ProviderOperationInvalidRequestError("invalid provider operation time");
 }
 
 type ProviderErrorConstructor = new (message?: string) => Error;
@@ -1037,7 +1125,8 @@ function validateReason(
     value.length > 512 ||
     value.trim() !== value ||
     CONTROL_TEXT_PATTERN.test(value)
-  ) throw new ErrorType("invalid provider operation reason");
+  )
+    throw new ErrorType("invalid provider operation reason");
 }
 
 function decodeBase64(value: unknown): Uint8Array {
@@ -1061,18 +1150,28 @@ function encodeBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
-function isObjectWithExactFields<T extends readonly string[]>(value: unknown, fields: T): value is Record<T[number], unknown> {
+function isObjectWithExactFields<T extends readonly string[]>(
+  value: unknown,
+  fields: T,
+): value is Record<T[number], unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
   const keys = Object.keys(value);
-  return keys.length === fields.length && fields.every((field) => Object.prototype.hasOwnProperty.call(value, field));
+  return keys.length === fields.length && fields.every((field) => Object.hasOwn(value, field));
 }
 
 function isCapability(value: unknown): value is ProviderOperationCapability {
-  return value === "native_cas" || value === "enforced_exclusive" || value === "owner_risk_gate" || value === "blocked";
+  return (
+    value === "native_cas" ||
+    value === "enforced_exclusive" ||
+    value === "owner_risk_gate" ||
+    value === "blocked"
+  );
 }
 
 function isDispatchStatus(value: unknown): value is ProviderDispatchStatus {
-  return value === "committed" || value === "rejected" || value === "dropped" || value === "unknown";
+  return (
+    value === "committed" || value === "rejected" || value === "dropped" || value === "unknown"
+  );
 }
 
 function isVerificationStatus(value: unknown): value is ProviderVerificationStatus {
@@ -1080,11 +1179,22 @@ function isVerificationStatus(value: unknown): value is ProviderVerificationStat
 }
 
 function isControlAction(value: unknown): value is ProviderControlAction {
-  return value === "cancel" || value === "replay_once" || value === "confirm_applied" || value === "confirm_not_applied" || value === "supersede";
+  return (
+    value === "cancel" ||
+    value === "replay_once" ||
+    value === "confirm_applied" ||
+    value === "confirm_not_applied" ||
+    value === "supersede"
+  );
 }
 
 function isTerminal(status: ProviderOperationStatus): boolean {
-  return status === "succeeded" || status === "failed" || status === "cancelled" || status === "superseded";
+  return (
+    status === "succeeded" ||
+    status === "failed" ||
+    status === "cancelled" ||
+    status === "superseded"
+  );
 }
 
 function unresolved(status: ProviderOperationStatus): boolean {
@@ -1129,9 +1239,7 @@ function providerOperationIDFromKey(key: string): string | null {
   return OPERATION_ID_PATTERN.test(operationID) ? operationID : null;
 }
 
-async function listProviderOperationIDs(
-  storage: ProviderOperationStorage,
-): Promise<string[]> {
+async function listProviderOperationIDs(storage: ProviderOperationStorage): Promise<string[]> {
   const list = (storage as ProviderOperationListStorage).list;
   if (typeof list !== "function") return [];
   const records = await list.call(storage, { prefix: OPERATION_PREFIX });
@@ -1168,7 +1276,7 @@ async function addActiveOperation(
   transaction: ProviderOperationTransaction,
   operationID: string,
 ): Promise<void> {
-  const active = await transaction.get<string[]>(ACTIVE_OPERATION_KEY) ?? [];
+  const active = (await transaction.get<string[]>(ACTIVE_OPERATION_KEY)) ?? [];
   if (active.includes(operationID)) return;
   await transaction.put(ACTIVE_OPERATION_KEY, [...active, operationID]);
 }
@@ -1177,14 +1285,17 @@ async function removeActiveOperation(
   transaction: ProviderOperationTransaction,
   operationID: string,
 ): Promise<void> {
-  const active = await transaction.get<string[]>(ACTIVE_OPERATION_KEY) ?? [];
+  const active = (await transaction.get<string[]>(ACTIVE_OPERATION_KEY)) ?? [];
   await transaction.put(
     ACTIVE_OPERATION_KEY,
     active.filter((candidate) => candidate !== operationID),
   );
 }
 
-async function releaseFence(transaction: ProviderOperationTransaction, operation: ProviderOperationRecord): Promise<void> {
+async function releaseFence(
+  transaction: ProviderOperationTransaction,
+  operation: ProviderOperationRecord,
+): Promise<void> {
   const key = fenceKey(operation.target_identity);
   const fence = await transaction.get<ProviderTargetFence>(key);
   if (fence?.operation_id === operation.operation_id) await transaction.delete(key);
@@ -1207,9 +1318,17 @@ function fenceKey(targetIdentity: string): string {
 }
 
 function lastSuccessKey(operation: ProviderOperationStart): string {
-  return lastSuccessKeyFromParts(operation.target_identity, operation.target_digest, operation.source_fingerprint);
+  return lastSuccessKeyFromParts(
+    operation.target_identity,
+    operation.target_digest,
+    operation.source_fingerprint,
+  );
 }
 
-function lastSuccessKeyFromParts(targetIdentity: string, targetDigest: string, sourceFingerprint: string): string {
+function lastSuccessKeyFromParts(
+  targetIdentity: string,
+  targetDigest: string,
+  sourceFingerprint: string,
+): string {
   return `${LAST_SUCCESS_PREFIX}${targetIdentity}:${targetDigest}:${sourceFingerprint}`;
 }

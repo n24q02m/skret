@@ -481,24 +481,27 @@ jobs:
         with:
           egress-policy: audit
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
-        with:
-          version: 10
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: "24"
-          cache: pnpm
-          cache-dependency-path: docs/pnpm-lock.yaml
+      - uses: denoland/setup-deno@e9d4163cd6ca2c8b600cc40b0faa795fb5aa45eb # v2
+      - run: deno --version
       - name: Install dependencies
         working-directory: docs
-        run: pnpm install --frozen-lockfile
+        run: bun install --frozen-lockfile
+      - name: Stack gates (biome + oxlint + oxfmt)
+        working-directory: docs
+        run: |
+          bun run check
+          bun run lint:ox
       - name: Sync install scripts into docs/public
         run: |
           cp install.sh docs/public/install.sh
           cp install.ps1 docs/public/install.ps1
       - name: Build Astro Starlight site
         working-directory: docs
-        run: pnpm astro build
+        run: bun run build
 
   hub:
     name: Vault hub Worker (TS)
@@ -508,26 +511,29 @@ jobs:
         with:
           egress-policy: audit
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
-        with:
-          version: 10
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: "24"
-          cache: pnpm
-          cache-dependency-path: hub/pnpm-lock.yaml
+      - uses: denoland/setup-deno@e9d4163cd6ca2c8b600cc40b0faa795fb5aa45eb # v2
+      - run: deno --version
       - name: Install
         working-directory: hub
-        run: pnpm install --frozen-lockfile
+        run: bun install --frozen-lockfile
+      - name: Stack gates (biome + oxlint + oxfmt)
+        working-directory: hub
+        run: |
+          bun run check
+          bun run lint:ox
       - name: Test
         working-directory: hub
-        run: pnpm test
+        run: bun run test
       - name: Typecheck
         working-directory: hub
-        run: pnpm typecheck
+        run: bun run typecheck
       - name: Build check
         working-directory: hub
-        run: pnpm dryrun
+        run: bun run dryrun
 
   # ============================================================================
   # Bot PR Governance (merged from bot-governance.yml; runs on PR opened only)

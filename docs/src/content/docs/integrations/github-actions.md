@@ -48,11 +48,7 @@ Scope both SSM and KMS access to the namespace and key used by this repository:
   "Statement": [
     {
       "Effect": "Allow",
-      "Action": [
-        "ssm:GetParameter",
-        "ssm:GetParameters",
-        "ssm:GetParametersByPath"
-      ],
+      "Action": ["ssm:GetParameter", "ssm:GetParameters", "ssm:GetParametersByPath"],
       "Resource": "arn:aws:ssm:us-east-1:123456789012:parameter/myapp/*"
     },
     {

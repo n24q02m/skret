@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { renderDashboard, renderLogin, relativeTime, isStale, summary } from "../src/render";
+import { describe, expect, it } from "vitest";
+import { isStale, relativeTime, renderDashboard, renderLogin, summary } from "../src/render";
 import type { Manifest } from "../src/types";
 
 const FIXED_NOW = Date.parse("2026-07-13T12:00:00Z");
@@ -42,8 +42,18 @@ describe("summary", () => {
       env: "prod",
       generated_at: m.generated_at,
       keys: [
-        { name: "A", fingerprint: "f1", updated_at: m.keys[0].updated_at, targets: { t: { present: true, status: "present" } } },
-        { name: "B", fingerprint: "f2", updated_at: m.keys[0].updated_at, targets: { t: { present: false, status: "unknown" } } },
+        {
+          name: "A",
+          fingerprint: "f1",
+          updated_at: m.keys[0].updated_at,
+          targets: { t: { present: true, status: "present" } },
+        },
+        {
+          name: "B",
+          fingerprint: "f2",
+          updated_at: m.keys[0].updated_at,
+          targets: { t: { present: false, status: "unknown" } },
+        },
       ],
     };
     expect(summary(mixed)).toBe("2 keys — 1 present · 1 unknown");
@@ -58,8 +68,18 @@ describe("summary", () => {
       env: "prod",
       generated_at: m.generated_at,
       keys: [
-        { name: "A", fingerprint: "f1", updated_at: m.keys[0].updated_at, targets: { t: { present: true, status: "missing" } } },
-        { name: "B", fingerprint: "f2", updated_at: m.keys[0].updated_at, targets: { t: { present: true, status: "drift" } } },
+        {
+          name: "A",
+          fingerprint: "f1",
+          updated_at: m.keys[0].updated_at,
+          targets: { t: { present: true, status: "missing" } },
+        },
+        {
+          name: "B",
+          fingerprint: "f2",
+          updated_at: m.keys[0].updated_at,
+          targets: { t: { present: true, status: "drift" } },
+        },
       ],
     };
     expect(summary(legacy)).toBe("2 keys — 2 other");
@@ -70,8 +90,18 @@ describe("summary", () => {
       env: "prod",
       generated_at: m.generated_at,
       keys: [
-        { name: "A", fingerprint: "f1", updated_at: m.keys[0].updated_at, targets: { t: { present: true, status: "present" } } },
-        { name: "B", fingerprint: "f2", updated_at: m.keys[0].updated_at, targets: { t: { present: true, status: "missing" } } },
+        {
+          name: "A",
+          fingerprint: "f1",
+          updated_at: m.keys[0].updated_at,
+          targets: { t: { present: true, status: "present" } },
+        },
+        {
+          name: "B",
+          fingerprint: "f2",
+          updated_at: m.keys[0].updated_at,
+          targets: { t: { present: true, status: "missing" } },
+        },
       ],
     };
     expect(summary(mixed)).toBe("2 keys — 1 present · 1 other");
@@ -150,8 +180,12 @@ describe("relativeTime", () => {
   it("renders minutes/hours/days ago", () => {
     expect(relativeTime(new Date(FIXED_NOW - 30_000).toISOString(), FIXED_NOW)).toBe("just now");
     expect(relativeTime(new Date(FIXED_NOW - 5 * 60_000).toISOString(), FIXED_NOW)).toBe("5m ago");
-    expect(relativeTime(new Date(FIXED_NOW - 3 * 3_600_000).toISOString(), FIXED_NOW)).toBe("3h ago");
-    expect(relativeTime(new Date(FIXED_NOW - 2 * 86_400_000).toISOString(), FIXED_NOW)).toBe("2d ago");
+    expect(relativeTime(new Date(FIXED_NOW - 3 * 3_600_000).toISOString(), FIXED_NOW)).toBe(
+      "3h ago",
+    );
+    expect(relativeTime(new Date(FIXED_NOW - 2 * 86_400_000).toISOString(), FIXED_NOW)).toBe(
+      "2d ago",
+    );
   });
   it("returns 'unknown' for an unparseable timestamp", () => {
     expect(relativeTime("not-a-date", FIXED_NOW)).toBe("unknown");
@@ -160,8 +194,12 @@ describe("relativeTime", () => {
 
 describe("isStale", () => {
   it("is false just under 48h and true just over", () => {
-    expect(isStale(new Date(FIXED_NOW - (48 * 3_600_000 - 1_000)).toISOString(), FIXED_NOW)).toBe(false);
-    expect(isStale(new Date(FIXED_NOW - (48 * 3_600_000 + 1_000)).toISOString(), FIXED_NOW)).toBe(true);
+    expect(isStale(new Date(FIXED_NOW - (48 * 3_600_000 - 1_000)).toISOString(), FIXED_NOW)).toBe(
+      false,
+    );
+    expect(isStale(new Date(FIXED_NOW - (48 * 3_600_000 + 1_000)).toISOString(), FIXED_NOW)).toBe(
+      true,
+    );
   });
   it("is false for an unparseable timestamp (fail safe, not fail stale)", () => {
     expect(isStale("not-a-date", FIXED_NOW)).toBe(false);
@@ -177,10 +215,15 @@ describe("generated_at rendering", () => {
   it("uses a semantic time element with datetime and title attributes", () => {
     const recent: Manifest = { ...m, generated_at: new Date(FIXED_NOW - 5 * 60_000).toISOString() };
     const html = renderDashboard([recent], FIXED_NOW);
-    expect(html).toContain(`<time class="meta" datetime="${recent.generated_at}" title="${recent.generated_at}">`);
+    expect(html).toContain(
+      `<time class="meta" datetime="${recent.generated_at}" title="${recent.generated_at}">`,
+    );
   });
   it("flags a namespace stale after 48h with no new push", () => {
-    const stale: Manifest = { ...m, generated_at: new Date(FIXED_NOW - 49 * 3_600_000).toISOString() };
+    const stale: Manifest = {
+      ...m,
+      generated_at: new Date(FIXED_NOW - 49 * 3_600_000).toISOString(),
+    };
     const html = renderDashboard([stale], FIXED_NOW);
     expect(html).toContain('class="badge stale"');
   });
@@ -208,7 +251,7 @@ describe("renderLogin a11y", () => {
     expect(html).toContain('<label for="password"');
     expect(html).toContain('id="password"');
     expect(html).toContain('autocomplete="current-password"');
-    expect(html).toContain('required');
+    expect(html).toContain("required");
   });
   it("marks the error message with role=alert and adds aria attributes to input", () => {
     const html = renderLogin("wrong password");

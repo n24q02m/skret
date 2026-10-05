@@ -69,17 +69,17 @@ The `New` function discovers `.skret.yaml`, resolves configuration (applying the
 
 ### Core Methods
 
-| Method | Description |
-|--------|-------------|
-| `Get(ctx, key)` | Retrieve a single secret by key |
-| `List(ctx)` | List all secrets under the configured path |
-| `Set(ctx, key, value, meta)` | Create or update a secret |
-| `Delete(ctx, key)` | Remove a secret |
-| `GetHistory(ctx, key)` | Retrieve version history for a key |
-| `Rollback(ctx, key, version)` | Restore a secret to a previous version |
-| `Close()` | Release provider resources |
-| `Config()` | Access the resolved configuration |
-| `Provider()` | Access the underlying `SecretProvider` |
+| Method                        | Description                                |
+| ----------------------------- | ------------------------------------------ |
+| `Get(ctx, key)`               | Retrieve a single secret by key            |
+| `List(ctx)`                   | List all secrets under the configured path |
+| `Set(ctx, key, value, meta)`  | Create or update a secret                  |
+| `Delete(ctx, key)`            | Remove a secret                            |
+| `GetHistory(ctx, key)`        | Retrieve version history for a key         |
+| `Rollback(ctx, key, version)` | Restore a secret to a previous version     |
+| `Close()`                     | Release provider resources                 |
+| `Config()`                    | Access the resolved configuration          |
+| `Provider()`                  | Access the underlying `SecretProvider`     |
 
 ### Error Handling
 

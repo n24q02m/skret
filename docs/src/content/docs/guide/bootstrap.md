@@ -133,7 +133,6 @@ AWS profile to use as the bootstrap (admin) identity.
 skret bootstrap --profile admin
 ```
 
-
 ### `--force`
 
 Provision a new key even if an aws credential is already stored. Without it,

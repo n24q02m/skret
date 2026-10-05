@@ -11,17 +11,17 @@ import {
   PRIVATE_EXECUTOR_PATH,
 } from "../src/private-executor-handler";
 import securityExecutor, {
+  buildSecurityExecutorOptions,
+  createReplayStoreAdapter,
+  handleSecurityExecutorRequest,
   MAX_EXECUTOR_CLIENT_AUTHORITY_HORIZON_MS,
   MAX_EXECUTOR_CLIENT_PUBLIC_KEYS_JSON_LENGTH,
   MAX_METADATA_MIGRATION_BODY_BYTES,
   MAX_METADATA_MIGRATION_SOURCE_SIZE,
   METADATA_ACK_AAD_PREFIX,
   METADATA_MIGRATION_EXECUTOR_ROLE,
-  SecurityExecutorReplay,
-  buildSecurityExecutorOptions,
-  createReplayStoreAdapter,
-  handleSecurityExecutorRequest,
   type SecurityExecutorEnv,
+  SecurityExecutorReplay,
 } from "../src/security-executor";
 
 const NOW = Date.now();
@@ -75,7 +75,10 @@ function canonicalBytes(envelope: Record<string, unknown>): Uint8Array {
 }
 
 async function keyPair(): Promise<{ privateKey: CryptoKey; publicKey: Uint8Array }> {
-  const pair = (await crypto.subtle.generateKey("Ed25519", true, ["sign", "verify"])) as CryptoKeyPair;
+  const pair = (await crypto.subtle.generateKey("Ed25519", true, [
+    "sign",
+    "verify",
+  ])) as CryptoKeyPair;
   const exported = await crypto.subtle.exportKey("raw", pair.publicKey);
   return { privateKey: pair.privateKey, publicKey: new Uint8Array(exported as ArrayBuffer) };
 }
@@ -112,13 +115,17 @@ function defaultManifestFixture(): Promise<DefaultManifestFixture> {
       source_root: "C:\\skret\\state",
       files: [{ path: "state.json", size: 128, sha256: SOURCE_HASH }],
       nonce: "manifest-nonce-001",
-      expires_at: new Date(Math.floor(Date.now() / 1_000) * 1_000 + 5 * 60 * 1_000).toISOString().replace(".000Z", "Z"),
+      expires_at: new Date(Math.floor(Date.now() / 1_000) * 1_000 + 5 * 60 * 1_000)
+        .toISOString()
+        .replace(".000Z", "Z"),
     };
     const canonical = canonicalManifestBytes(document);
     const signature = await crypto.subtle.sign("Ed25519", privateKey, canonical);
     MANIFEST_DIGEST = `sha256:${await sha256Hex(canonical)}`;
     return {
-      bytes: new TextEncoder().encode(JSON.stringify({ ...document, signature: toBase64(new Uint8Array(signature)) })),
+      bytes: new TextEncoder().encode(
+        JSON.stringify({ ...document, signature: toBase64(new Uint8Array(signature)) }),
+      ),
     };
   })();
   return defaultManifestPromise;
@@ -141,7 +148,11 @@ async function migrationBody(overrides: Record<string, unknown> = {}): Promise<U
   );
 }
 
-async function makeEnvelope(privateKey: CryptoKey, body?: Uint8Array, overrides: Record<string, unknown> = {}) {
+async function makeEnvelope(
+  privateKey: CryptoKey,
+  body?: Uint8Array,
+  overrides: Record<string, unknown> = {},
+) {
   body ??= await migrationBody();
   const envelope: Record<string, unknown> = {
     version: 1,
@@ -150,7 +161,9 @@ async function makeEnvelope(privateKey: CryptoKey, body?: Uint8Array, overrides:
     manifest_digest: MANIFEST_DIGEST,
     body_digest: `sha256:${await sha256Hex(body)}`,
     nonce: "nonce-security-executor-001",
-    expires_at: new Date(Math.floor(Date.now() / 1_000) * 1_000 + 5 * 60 * 1_000).toISOString().replace(".000Z", "Z"),
+    expires_at: new Date(Math.floor(Date.now() / 1_000) * 1_000 + 5 * 60 * 1_000)
+      .toISOString()
+      .replace(".000Z", "Z"),
     body: toBase64(body),
     signature: "",
     ...overrides,
@@ -163,9 +176,15 @@ async function makeEnvelope(privateKey: CryptoKey, body?: Uint8Array, overrides:
 function request(body: BodyInit | null, init: RequestInit & { url?: string } = {}): Request {
   const { url = `https://executor.internal${PRIVATE_EXECUTOR_PATH}`, ...requestInit } = init;
   const headers = new Headers(requestInit.headers);
-  if (!headers.has(PRIVATE_EXECUTOR_CALLER_CONTEXT_HEADER)) headers.set(PRIVATE_EXECUTOR_CALLER_CONTEXT_HEADER, CALLER_CONTEXT);
+  if (!headers.has(PRIVATE_EXECUTOR_CALLER_CONTEXT_HEADER))
+    headers.set(PRIVATE_EXECUTOR_CALLER_CONTEXT_HEADER, CALLER_CONTEXT);
   const method = requestInit.method ?? "POST";
-  return new Request(url, { ...requestInit, method, headers, body: method === "GET" || method === "HEAD" ? null : body });
+  return new Request(url, {
+    ...requestInit,
+    method,
+    headers,
+    body: method === "GET" || method === "HEAD" ? null : body,
+  });
 }
 
 function namespaceFor(status: string = "accepted") {
@@ -195,7 +214,11 @@ function namespaceFor(status: string = "accepted") {
     },
   );
   const readResult = vi.fn(async () => storedResult?.slice() ?? null);
-  const watchdog = vi.fn(async () => ({ marked_timeout: [], terminalized: [], next_alarm_at: null }));
+  const watchdog = vi.fn(async () => ({
+    marked_timeout: [],
+    terminalized: [],
+    next_alarm_at: null,
+  }));
   return {
     consume,
     sweep,
@@ -253,7 +276,8 @@ function envFor(
     EXECUTOR_STATE_MANIFEST_PUBLIC_KEY: toBase64(STATE_MANIFEST_PUBLIC_KEY),
     EXECUTOR_RESPONSE_KEY: toBase64(RESPONSE_KEY_BYTES),
     EXECUTOR_REPLAY: namespace as SecurityExecutorEnv["EXECUTOR_REPLAY"],
-    EXECUTOR_OPERATIONS: operationNamespace as unknown as SecurityExecutorEnv["EXECUTOR_OPERATIONS"],
+    EXECUTOR_OPERATIONS:
+      operationNamespace as unknown as SecurityExecutorEnv["EXECUTOR_OPERATIONS"],
     EXECUTOR_IMAGE_DIGEST: IMAGE_DIGEST,
     EXECUTOR_CONFIG_DIGEST: CONFIG_DIGEST,
     ...overrides,
@@ -295,19 +319,23 @@ describe.sequential("security executor Worker", () => {
 
     const options = await buildSecurityExecutorOptions(envFor(publicKey, namespace), NOW);
 
-    expect(options?.roleAuthorities.map((authority) => ({
-      role: authority.role,
-      generation: authority.generation,
-      notAfter: authority.notAfter,
-      capabilityDigest: authority.capabilityDigest,
-      publicKey: toBase64(authority.publicKey),
-    }))).toEqual([{
-      role: ROLE,
-      generation: 1,
-      notAfter: Date.parse(CLIENT_AUTHORITY_NOT_AFTER),
-      capabilityDigest: MANIFEST_DIGEST,
-      publicKey: toBase64(publicKey),
-    }]);
+    expect(
+      options?.roleAuthorities.map((authority) => ({
+        role: authority.role,
+        generation: authority.generation,
+        notAfter: authority.notAfter,
+        capabilityDigest: authority.capabilityDigest,
+        publicKey: toBase64(authority.publicKey),
+      })),
+    ).toEqual([
+      {
+        role: ROLE,
+        generation: 1,
+        notAfter: Date.parse(CLIENT_AUTHORITY_NOT_AFTER),
+        capabilityDigest: MANIFEST_DIGEST,
+        publicKey: toBase64(publicKey),
+      },
+    ]);
   });
 
   it("rechecks role authority expiry after options construction before replay or execution", async () => {
@@ -326,7 +354,8 @@ describe.sequential("security executor Worker", () => {
               not_after: new Date(authorityNotAfter).toISOString(),
             }),
           }),
-          EXECUTOR_OPERATIONS: operation.operationNamespace as unknown as SecurityExecutorEnv["EXECUTOR_OPERATIONS"],
+          EXECUTOR_OPERATIONS:
+            operation.operationNamespace as unknown as SecurityExecutorEnv["EXECUTOR_OPERATIONS"],
         }),
       );
       if (!options) throw new Error("expected valid executor options");
@@ -360,8 +389,10 @@ describe.sequential("security executor Worker", () => {
     const valid = clientAuthority(publicKey);
     const other = clientAuthority(otherPublicKey);
     const duplicateRole = `{"operator":${JSON.stringify(valid)},"operator":${JSON.stringify(other)}}`;
-    const duplicateField = JSON.stringify({ operator: valid })
-      .replace('"generation":1', '"generation":1,"generation":2');
+    const duplicateField = JSON.stringify({ operator: valid }).replace(
+      '"generation":1',
+      '"generation":1,"generation":2',
+    );
     const tooMany = Object.fromEntries(
       Array.from({ length: 17 }, (_, index) => [
         `role-${index}`,
@@ -379,7 +410,9 @@ describe.sequential("security executor Worker", () => {
       JSON.stringify({ operator: { ...valid, unknown: true } }),
       JSON.stringify({ operator: clientAuthority(publicKey, { generation: 0 }) }),
       JSON.stringify({ operator: clientAuthority(publicKey, { generation: 1.5 }) }),
-      JSON.stringify({ operator: clientAuthority(publicKey, { not_after: new Date(NOW).toISOString() }) }),
+      JSON.stringify({
+        operator: clientAuthority(publicKey, { not_after: new Date(NOW).toISOString() }),
+      }),
       JSON.stringify({
         operator: clientAuthority(publicKey, {
           not_after: new Date(NOW + MAX_EXECUTOR_CLIENT_AUTHORITY_HORIZON_MS + 1).toISOString(),
@@ -430,7 +463,10 @@ describe.sequential("security executor Worker", () => {
     const { namespace, consume } = namespaceFor();
     const env = envFor(publicKey, namespace);
 
-    const methodResponse = await handleSecurityExecutorRequest(request(JSON.stringify(envelope), { method: "GET" }), env);
+    const methodResponse = await handleSecurityExecutorRequest(
+      request(JSON.stringify(envelope), { method: "GET" }),
+      env,
+    );
     const pathResponse = await handleSecurityExecutorRequest(
       request(JSON.stringify(envelope), { url: "https://executor.internal/operator/other" }),
       env,
@@ -448,7 +484,9 @@ describe.sequential("security executor Worker", () => {
     const env = envFor(publicKey, namespace);
 
     const response = await handleSecurityExecutorRequest(
-      request(JSON.stringify(envelope), { headers: { [PRIVATE_EXECUTOR_CALLER_CONTEXT_HEADER]: "sha256:BAD" } }),
+      request(JSON.stringify(envelope), {
+        headers: { [PRIVATE_EXECUTOR_CALLER_CONTEXT_HEADER]: "sha256:BAD" },
+      }),
       env,
     );
 
@@ -461,7 +499,8 @@ describe.sequential("security executor Worker", () => {
     const { publicKey, privateKey } = await keyPair();
     const operation = namespaceFor();
     const env = envFor(publicKey, operation.namespace, {
-      EXECUTOR_OPERATIONS: operation.operationNamespace as unknown as SecurityExecutorEnv["EXECUTOR_OPERATIONS"],
+      EXECUTOR_OPERATIONS:
+        operation.operationNamespace as unknown as SecurityExecutorEnv["EXECUTOR_OPERATIONS"],
     });
     const accepted = await makeEnvelope(privateKey);
 
@@ -501,7 +540,9 @@ describe.sequential("security executor Worker", () => {
       nonce: "nonce-invalid-signature",
     });
     tampered.signature = toBase64(new Uint8Array(64));
-    expect((await handleSecurityExecutorRequest(request(JSON.stringify(tampered)), env)).status).toBe(400);
+    expect(
+      (await handleSecurityExecutorRequest(request(JSON.stringify(tampered)), env)).status,
+    ).toBe(400);
     expect(operation.consume).toHaveBeenCalledTimes(1);
   });
 
@@ -516,7 +557,8 @@ describe.sequential("security executor Worker", () => {
     });
     const env = envFor(publicKey, operation.namespace, {
       EXECUTOR_CLIENT_PUBLIC_KEYS: configured,
-      EXECUTOR_OPERATIONS: operation.operationNamespace as unknown as SecurityExecutorEnv["EXECUTOR_OPERATIONS"],
+      EXECUTOR_OPERATIONS:
+        operation.operationNamespace as unknown as SecurityExecutorEnv["EXECUTOR_OPERATIONS"],
     });
 
     const response = await handleSecurityExecutorRequest(request(JSON.stringify(envelope)), env);
@@ -534,12 +576,17 @@ describe.sequential("security executor Worker", () => {
   it("rejects duplicate migration metadata keys before execution", async () => {
     const { publicKey, privateKey } = await keyPair();
     const body = new TextEncoder().encode(
-      new TextDecoder().decode(await migrationBody()).replace('"source_size":128', '"source_size":128,"source_size":256'),
+      new TextDecoder()
+        .decode(await migrationBody())
+        .replace('"source_size":128', '"source_size":128,"source_size":256'),
     );
     const { namespace } = namespaceFor();
     const envelope = await makeEnvelope(privateKey, body, { nonce: "nonce-duplicate-source-size" });
 
-    const response = await handleSecurityExecutorRequest(request(JSON.stringify(envelope)), envFor(publicKey, namespace));
+    const response = await handleSecurityExecutorRequest(
+      request(JSON.stringify(envelope)),
+      envFor(publicKey, namespace),
+    );
 
     expect([400, 502]).toContain(response.status);
     expect(await response.text()).toBe("");
@@ -553,11 +600,15 @@ describe.sequential("security executor Worker", () => {
     await securityExecutor.scheduled(
       {} as ScheduledController,
       envFor(publicKey, replay.namespace, {
-        EXECUTOR_OPERATIONS: operations.operationNamespace as unknown as SecurityExecutorEnv["EXECUTOR_OPERATIONS"],
+        EXECUTOR_OPERATIONS:
+          operations.operationNamespace as unknown as SecurityExecutorEnv["EXECUTOR_OPERATIONS"],
       }),
     );
 
-    expect(replay.sweep).toHaveBeenCalledWith(expect.any(Number), DEFAULT_EXECUTOR_REPLAY_SWEEP_LIMIT);
+    expect(replay.sweep).toHaveBeenCalledWith(
+      expect.any(Number),
+      DEFAULT_EXECUTOR_REPLAY_SWEEP_LIMIT,
+    );
     expect(operations.watchdog).toHaveBeenCalledWith(expect.any(Number));
   });
 
@@ -576,7 +627,9 @@ describe.sequential("security executor Worker", () => {
     ).rejects.toThrow("executor maintenance unavailable");
 
     const malformedNamespace = {
-      getByName: vi.fn(() => ({ sweep: vi.fn(async () => ({ status: "unexpected", secret: "must-not-leak" })) })),
+      getByName: vi.fn(() => ({
+        sweep: vi.fn(async () => ({ status: "unexpected", secret: "must-not-leak" })),
+      })),
     };
     await expect(
       securityExecutor.scheduled({} as ScheduledController, envFor(publicKey, malformedNamespace)),
@@ -591,7 +644,9 @@ describe.sequential("security executor Worker", () => {
       delete: vi.fn(async () => true),
     };
     const storage = {
-      transaction: vi.fn(async (callback: (value: typeof transaction) => Promise<unknown>) => callback(transaction)),
+      transaction: vi.fn(async (callback: (value: typeof transaction) => Promise<unknown>) =>
+        callback(transaction),
+      ),
     };
     const replay = Object.create(SecurityExecutorReplay.prototype) as SecurityExecutorReplay;
     Object.defineProperty(replay, "ctx", { value: { storage } });
@@ -609,7 +664,13 @@ describe.sequential("security executor Worker", () => {
   it("maps invalid or unavailable Durable Object sweeps without leaking details", async () => {
     const invalidReplay = Object.create(SecurityExecutorReplay.prototype) as SecurityExecutorReplay;
     Object.defineProperty(invalidReplay, "ctx", {
-      value: { storage: { transaction: vi.fn(async () => { throw new Error("secret storage detail"); }) } },
+      value: {
+        storage: {
+          transaction: vi.fn(async () => {
+            throw new Error("secret storage detail");
+          }),
+        },
+      },
     });
 
     const invalid = await invalidReplay.sweep(NOW, 0);
@@ -628,7 +689,8 @@ describe.sequential("security executor Worker", () => {
     const response = await securityExecutor.fetch(
       request(JSON.stringify(envelope)),
       envFor(publicKey, operation.namespace, {
-        EXECUTOR_OPERATIONS: operation.operationNamespace as unknown as SecurityExecutorEnv["EXECUTOR_OPERATIONS"],
+        EXECUTOR_OPERATIONS:
+          operation.operationNamespace as unknown as SecurityExecutorEnv["EXECUTOR_OPERATIONS"],
       }),
     );
     const encrypted = new TextDecoder().decode(await response.arrayBuffer());
@@ -656,10 +718,17 @@ describe.sequential("security executor Worker", () => {
     expect(encrypted).not.toContain("C:\\skret\\state\\state.json");
     expect(encrypted).not.toContain(new TextDecoder().decode(body));
 
-    const envelopeResponse = JSON.parse(encrypted) as { version: number; algorithm: string; iv: string; ciphertext: string };
+    const envelopeResponse = JSON.parse(encrypted) as {
+      version: number;
+      algorithm: string;
+      iv: string;
+      ciphertext: string;
+    };
     expect(envelopeResponse.version).toBe(1);
     expect(envelopeResponse.algorithm).toBe("AES-GCM");
-    const key = await crypto.subtle.importKey("raw", RESPONSE_KEY_BYTES, "AES-GCM", false, ["decrypt"]);
+    const key = await crypto.subtle.importKey("raw", RESPONSE_KEY_BYTES, "AES-GCM", false, [
+      "decrypt",
+    ]);
     const aad = new TextEncoder().encode(
       `${METADATA_ACK_AAD_PREFIX}|${AUDIENCE}|${ROLE}|${MANIFEST_DIGEST}|${String(envelope.nonce)}`,
     );
@@ -688,22 +757,32 @@ describe.sequential("security executor Worker", () => {
       EXECUTOR_CLIENT_PUBLIC_KEYS: JSON.stringify({
         [ROLE]: clientAuthority(publicKey, { generation: 1 }),
       }),
-      EXECUTOR_OPERATIONS: firstOperation.operationNamespace as unknown as SecurityExecutorEnv["EXECUTOR_OPERATIONS"],
+      EXECUTOR_OPERATIONS:
+        firstOperation.operationNamespace as unknown as SecurityExecutorEnv["EXECUTOR_OPERATIONS"],
     });
     const renewedEnv = envFor(publicKey, renewedOperation.namespace, {
       EXECUTOR_CLIENT_PUBLIC_KEYS: JSON.stringify({
         [ROLE]: clientAuthority(publicKey, { generation: 2 }),
       }),
-      EXECUTOR_OPERATIONS: renewedOperation.operationNamespace as unknown as SecurityExecutorEnv["EXECUTOR_OPERATIONS"],
+      EXECUTOR_OPERATIONS:
+        renewedOperation.operationNamespace as unknown as SecurityExecutorEnv["EXECUTOR_OPERATIONS"],
     });
 
-    expect((await securityExecutor.fetch(request(JSON.stringify(envelope)), firstEnv)).status).toBe(200);
-    expect((await securityExecutor.fetch(request(JSON.stringify(envelope)), renewedEnv)).status).toBe(200);
+    expect((await securityExecutor.fetch(request(JSON.stringify(envelope)), firstEnv)).status).toBe(
+      200,
+    );
+    expect(
+      (await securityExecutor.fetch(request(JSON.stringify(envelope)), renewedEnv)).status,
+    ).toBe(200);
 
     const firstStart = firstOperation.begin.mock.calls[0]?.[0];
     const renewedStart = renewedOperation.begin.mock.calls[0]?.[0];
-    expect(firstStart?.generation).toBe(`authority-1-manifest-${MANIFEST_DIGEST.slice("sha256:".length)}`);
-    expect(renewedStart?.generation).toBe(`authority-2-manifest-${MANIFEST_DIGEST.slice("sha256:".length)}`);
+    expect(firstStart?.generation).toBe(
+      `authority-1-manifest-${MANIFEST_DIGEST.slice("sha256:".length)}`,
+    );
+    expect(renewedStart?.generation).toBe(
+      `authority-2-manifest-${MANIFEST_DIGEST.slice("sha256:".length)}`,
+    );
     expect(renewedStart?.schedule_digest).not.toBe(firstStart?.schedule_digest);
     expect(renewedStart?.fingerprint).not.toBe(firstStart?.fingerprint);
   });
@@ -715,7 +794,8 @@ describe.sequential("security executor Worker", () => {
     const secondEnvelope = await makeEnvelope(privateKey, body, { nonce: "nonce-second-ack" });
     const operation = namespaceFor();
     const env = envFor(publicKey, operation.namespace, {
-      EXECUTOR_OPERATIONS: operation.operationNamespace as unknown as SecurityExecutorEnv["EXECUTOR_OPERATIONS"],
+      EXECUTOR_OPERATIONS:
+        operation.operationNamespace as unknown as SecurityExecutorEnv["EXECUTOR_OPERATIONS"],
     });
 
     const first = await securityExecutor.fetch(request(JSON.stringify(firstEnvelope)), env);
@@ -725,19 +805,13 @@ describe.sequential("security executor Worker", () => {
     expect(second.status).toBe(200);
     expect(operation.complete).toHaveBeenCalledTimes(1);
     expect(operation.readResult).toHaveBeenCalledTimes(1);
-    const secondResult = JSON.parse(
-      new TextDecoder().decode(await second.arrayBuffer()),
-    ) as {
+    const secondResult = JSON.parse(new TextDecoder().decode(await second.arrayBuffer())) as {
       iv: string;
       ciphertext: string;
     };
-    const key = await crypto.subtle.importKey(
-      "raw",
-      RESPONSE_KEY_BYTES,
-      "AES-GCM",
-      false,
-      ["decrypt"],
-    );
+    const key = await crypto.subtle.importKey("raw", RESPONSE_KEY_BYTES, "AES-GCM", false, [
+      "decrypt",
+    ]);
     const aad = new TextEncoder().encode(
       `${METADATA_ACK_AAD_PREFIX}|${AUDIENCE}|${ROLE}|${MANIFEST_DIGEST}|${String(secondEnvelope.nonce)}`,
     );
@@ -757,7 +831,8 @@ describe.sequential("security executor Worker", () => {
     const worker = { fetch: handleSecurityExecutorRequest };
     const operation = namespaceFor();
     const env = envFor(publicKey, operation.namespace, {
-      EXECUTOR_OPERATIONS: operation.operationNamespace as unknown as SecurityExecutorEnv["EXECUTOR_OPERATIONS"],
+      EXECUTOR_OPERATIONS:
+        operation.operationNamespace as unknown as SecurityExecutorEnv["EXECUTOR_OPERATIONS"],
     });
     const cases = [
       await migrationBody({ extra: true }),
@@ -771,14 +846,18 @@ describe.sequential("security executor Worker", () => {
     ];
 
     for (const [index, body] of cases.entries()) {
-      const envelope = await makeEnvelope(privateKey, body, { nonce: `nonce-${await sha256Hex(body)}` });
+      const envelope = await makeEnvelope(privateKey, body, {
+        nonce: `nonce-${await sha256Hex(body)}`,
+      });
       const response = await worker.fetch(request(JSON.stringify(envelope)), env);
       expect([400, 502], `malformed case ${index}`).toContain(response.status);
     }
 
     const oversized = new Uint8Array(MAX_METADATA_MIGRATION_BODY_BYTES + 1);
     oversized.fill(120);
-    const oversizedEnvelope = await makeEnvelope(privateKey, oversized, { nonce: "nonce-oversized-metadata" });
+    const oversizedEnvelope = await makeEnvelope(privateKey, oversized, {
+      nonce: "nonce-oversized-metadata",
+    });
     expect((await worker.fetch(request(JSON.stringify(oversizedEnvelope)), env)).status).toBe(502);
     expect(operation.begin).not.toHaveBeenCalled();
     expect(operation.complete).not.toHaveBeenCalled();
@@ -789,7 +868,10 @@ describe.sequential("security executor Worker", () => {
     const envelope = await makeEnvelope(privateKey);
     const { namespace, consume } = namespaceFor("rejected");
     const worker = { fetch: handleSecurityExecutorRequest };
-    const response = await worker.fetch(request(JSON.stringify(envelope)), envFor(publicKey, namespace));
+    const response = await worker.fetch(
+      request(JSON.stringify(envelope)),
+      envFor(publicKey, namespace),
+    );
 
     expect(response.status).toBe(409);
     expect(await response.text()).toBe("");
@@ -808,12 +890,18 @@ describe("security executor replay RPC adapter", () => {
   ] as const)("maps DO status %s without leaking values", async (status, errorType) => {
     const { namespace } = namespaceFor(status);
     const adapter = createReplayStoreAdapter(namespace as unknown as ReplayNamespace);
-    await expect(adapter.consume(scope, digest, NOW + 60_000, NOW)).rejects.toBeInstanceOf(errorType);
+    await expect(adapter.consume(scope, digest, NOW + 60_000, NOW)).rejects.toBeInstanceOf(
+      errorType,
+    );
   });
 
   it("maps an unknown RPC result or thrown RPC error to unavailable", async () => {
     const thrown = {
-      getByName: vi.fn(() => ({ consume: vi.fn(async () => { throw new Error("secret replay detail"); }) })),
+      getByName: vi.fn(() => ({
+        consume: vi.fn(async () => {
+          throw new Error("secret replay detail");
+        }),
+      })),
     };
     const unknown = {
       getByName: vi.fn(() => ({ consume: vi.fn(async () => ({ status: "unexpected" })) })),

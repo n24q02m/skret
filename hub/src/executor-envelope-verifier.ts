@@ -1,5 +1,5 @@
 import {
-  DurableExecutorReplayStore,
+  type DurableExecutorReplayStore,
   ExecutorReplayInvalidRequestError,
   ExecutorReplayRejectedError,
   type ExecutorReplayScope,
@@ -10,6 +10,7 @@ const SHA256_DIGEST_PATTERN = new RegExp(`^sha256:[a-f0-9]{${SHA256_HEX_LENGTH}}
 const STANDARD_BASE64_PATTERN = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/u;
 const RFC3339_PATTERN =
   /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,9}))?(Z|([+-])(\d{2}):(\d{2}))$/u;
+// biome-ignore lint/suspicious/noControlCharactersInRegex: matching control characters is the purpose of this input-validation guard
 const CONTROL_CHARACTER_PATTERN = /[\u0000-\u001f\u007f]/u;
 const MAX_SCOPE_FIELD_LENGTH = 256;
 
@@ -231,7 +232,7 @@ async function validateExecutorEnvelope(
 function hasExactEnvelopeFields(value: Record<string, unknown>): boolean {
   const keys = Object.keys(value);
   if (keys.length !== CANONICAL_FIELD_NAMES.length) return false;
-  return CANONICAL_FIELD_NAMES.every((field) => Object.prototype.hasOwnProperty.call(value, field));
+  return CANONICAL_FIELD_NAMES.every((field) => Object.hasOwn(value, field));
 }
 
 function validateScopeField(value: unknown): asserts value is string {
@@ -291,7 +292,7 @@ function parseRFC3339(value: unknown): ParsedExpiry {
   const minute = Number(match[5]);
   const second = Number(match[6]);
   const fraction = match[7] ?? "";
-  const nanoseconds = Number((fraction + "000000000").slice(0, 9));
+  const nanoseconds = Number(`${fraction}000000000`.slice(0, 9));
   const milliseconds = Math.floor(nanoseconds / 1_000_000);
   const date = new Date(0);
   date.setUTCFullYear(year, month - 1, day);
@@ -334,7 +335,10 @@ function canonicalSigningBytes(envelope: ExecutorEnvelope, expiresAt: string): U
     expires_at: expiresAt,
     body: envelope.body,
   };
-  const encoded = JSON.stringify(document).replace(/[<>&\u2028\u2029]/gu, (character) => CANONICAL_HTML_ESCAPES[character]);
+  const encoded = JSON.stringify(document).replace(
+    /[<>&\u2028\u2029]/gu,
+    (character) => CANONICAL_HTML_ESCAPES[character],
+  );
   return new TextEncoder().encode(encoded);
 }
 

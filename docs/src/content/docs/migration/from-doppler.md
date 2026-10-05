@@ -38,10 +38,10 @@ Replace `doppler run --` with `skret run --`:
 
 ## Command Mapping
 
-| Doppler | skret |
-|---------|-------|
-| `doppler secrets get KEY` | `skret get KEY` |
+| Doppler                         | skret                 |
+| ------------------------------- | --------------------- |
+| `doppler secrets get KEY`       | `skret get KEY`       |
 | `doppler secrets set KEY=VALUE` | `skret set KEY VALUE` |
-| `doppler secrets delete KEY` | `skret delete KEY` |
-| `doppler run -- cmd` | `skret run -- cmd` |
-| `doppler secrets download` | `skret env` |
+| `doppler secrets delete KEY`    | `skret delete KEY`    |
+| `doppler run -- cmd`            | `skret run -- cmd`    |
+| `doppler secrets download`      | `skret env`           |

@@ -1,13 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  type ExecutorEnvelope,
+  verifyAndConsumeExecutorEnvelope,
+} from "../src/executor-envelope-verifier";
+import {
   DurableExecutorReplayStore,
   ExecutorReplayRejectedError,
   type ExecutorReplayScope,
 } from "../src/executor-replay-store";
-import {
-  verifyAndConsumeExecutorEnvelope,
-  type ExecutorEnvelope,
-} from "../src/executor-envelope-verifier";
 
 const NOW = Date.parse("2026-08-23T12:00:00.000Z");
 const EXPIRES_AT = "2026-08-23T12:05:00.123Z";
@@ -16,8 +16,6 @@ const ROLE = "operator";
 const NONCE = "nonce-123";
 const MANIFEST_DIGEST = `sha256:${"a".repeat(64)}`;
 const BODY = new TextEncoder().encode('{"operation":"sync"}');
-
-
 
 interface ReplayTransaction {
   get<T>(key: string): Promise<T | undefined>;
@@ -92,7 +90,9 @@ function goJSONString(value: unknown): string {
 }
 
 function canonicalExpiry(value: string): string {
-  const match = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.(\d{1,9}))?(?:Z|[+-]\d{2}:\d{2})$/u.exec(value);
+  const match = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.(\d{1,9}))?(?:Z|[+-]\d{2}:\d{2})$/u.exec(
+    value,
+  );
   if (!match) return value;
   const nanoseconds = Number((match[1] ?? "").padEnd(9, "0"));
   const fraction = String(nanoseconds).padStart(9, "0").replace(/0+$/u, "");
@@ -132,23 +132,17 @@ async function makeEnvelope(
     signature: "",
     ...overrides,
   };
-  const signature = await crypto.subtle.sign(
-    "Ed25519",
-    privateKey,
-    canonicalBytes(envelope),
-  );
+  const signature = await crypto.subtle.sign("Ed25519", privateKey, canonicalBytes(envelope));
   return {
     ...envelope,
     signature: overrides.signature ?? toBase64(new Uint8Array(signature)),
   };
-
 }
 async function keyPair(): Promise<{ privateKey: CryptoKey; publicKey: Uint8Array }> {
-  const pair = (await crypto.subtle.generateKey(
-    "Ed25519",
-    true,
-    ["sign", "verify"],
-  )) as CryptoKeyPair;
+  const pair = (await crypto.subtle.generateKey("Ed25519", true, [
+    "sign",
+    "verify",
+  ])) as CryptoKeyPair;
   const exported = await crypto.subtle.exportKey("raw", pair.publicKey);
   const publicKey = new Uint8Array(exported as ArrayBuffer);
   return { privateKey: pair.privateKey, publicKey };
@@ -191,7 +185,9 @@ describe("verifyAndConsumeExecutorEnvelope", () => {
     });
     const storage = new FakeDurableStorage();
 
-    await expect(verifyAndConsumeExecutorEnvelope(envelope, publicKey, storeFor(storage), NOW)).resolves.toEqual(BODY);
+    await expect(
+      verifyAndConsumeExecutorEnvelope(envelope, publicKey, storeFor(storage), NOW),
+    ).resolves.toEqual(BODY);
     expect(storage.transactionCalls).toBe(1);
   });
 
@@ -201,7 +197,9 @@ describe("verifyAndConsumeExecutorEnvelope", () => {
     const envelope = await makeEnvelope(privateKey, { expires_at: expiresAt });
     const storage = new FakeDurableStorage();
 
-    await expect(verifyAndConsumeExecutorEnvelope(envelope, publicKey, storeFor(storage), NOW)).resolves.toEqual(BODY);
+    await expect(
+      verifyAndConsumeExecutorEnvelope(envelope, publicKey, storeFor(storage), NOW),
+    ).resolves.toEqual(BODY);
     expect([...storage.values.values()]).toContainEqual({
       digest: envelope.body_digest,
       expiresAt: Date.parse(expiresAt),
@@ -209,20 +207,47 @@ describe("verifyAndConsumeExecutorEnvelope", () => {
   });
 
   it.each([
-    ["bad signature", async (envelope: ExecutorEnvelope) => ({ ...envelope, signature: toBase64(new Uint8Array(64)) })],
-    ["short signature", async (envelope: ExecutorEnvelope) => ({ ...envelope, signature: toBase64(new Uint8Array(63)) })],
-    ["changed body", async (envelope: ExecutorEnvelope) => ({ ...envelope, body: toBase64(new TextEncoder().encode("changed")) })],
-    ["changed body digest", async (envelope: ExecutorEnvelope) => ({ ...envelope, body_digest: `sha256:${"b".repeat(64)}` })],
-    ["changed canonical field", async (envelope: ExecutorEnvelope) => ({ ...envelope, role: "different-role" })],
+    [
+      "bad signature",
+      async (envelope: ExecutorEnvelope) => ({
+        ...envelope,
+        signature: toBase64(new Uint8Array(64)),
+      }),
+    ],
+    [
+      "short signature",
+      async (envelope: ExecutorEnvelope) => ({
+        ...envelope,
+        signature: toBase64(new Uint8Array(63)),
+      }),
+    ],
+    [
+      "changed body",
+      async (envelope: ExecutorEnvelope) => ({
+        ...envelope,
+        body: toBase64(new TextEncoder().encode("changed")),
+      }),
+    ],
+    [
+      "changed body digest",
+      async (envelope: ExecutorEnvelope) => ({
+        ...envelope,
+        body_digest: `sha256:${"b".repeat(64)}`,
+      }),
+    ],
+    [
+      "changed canonical field",
+      async (envelope: ExecutorEnvelope) => ({ ...envelope, role: "different-role" }),
+    ],
   ] as const)("rejects %s before replay consume", async (_name, mutate) => {
     const { privateKey, publicKey } = await keyPair();
     const original = await makeEnvelope(privateKey);
     const envelope = await mutate(original);
     const storage = new FakeDurableStorage();
 
-    await expect(verifyAndConsumeExecutorEnvelope(envelope, publicKey, storeFor(storage), NOW)).rejects.toThrow(
-      "executor envelope",
-    );
+    await expect(
+      verifyAndConsumeExecutorEnvelope(envelope, publicKey, storeFor(storage), NOW),
+    ).rejects.toThrow("executor envelope");
     expect(storage.transactionCalls).toBe(0);
   });
 
@@ -234,9 +259,9 @@ describe("verifyAndConsumeExecutorEnvelope", () => {
     const envelope = await makeEnvelope(privateKey, override);
     const storage = new FakeDurableStorage();
 
-    await expect(verifyAndConsumeExecutorEnvelope(envelope, publicKey, storeFor(storage), NOW)).rejects.toThrow(
-      "executor envelope",
-    );
+    await expect(
+      verifyAndConsumeExecutorEnvelope(envelope, publicKey, storeFor(storage), NOW),
+    ).rejects.toThrow("executor envelope");
     expect(storage.transactionCalls).toBe(0);
   });
 
@@ -246,7 +271,12 @@ describe("verifyAndConsumeExecutorEnvelope", () => {
     const storage = new FakeDurableStorage();
 
     await expect(
-      verifyAndConsumeExecutorEnvelope({ ...envelope, extra: "unexpected" }, publicKey, storeFor(storage), NOW),
+      verifyAndConsumeExecutorEnvelope(
+        { ...envelope, extra: "unexpected" },
+        publicKey,
+        storeFor(storage),
+        NOW,
+      ),
     ).rejects.toThrow("invalid executor envelope");
     expect(storage.transactionCalls).toBe(0);
   });
@@ -294,9 +324,9 @@ describe("verifyAndConsumeExecutorEnvelope", () => {
     const storage = new FakeDurableStorage();
     storage.failNextTransactionWith = new Error("storage exploded with private-body-digest");
 
-    await expect(verifyAndConsumeExecutorEnvelope(envelope, publicKey, storeFor(storage), NOW)).rejects.toThrow(
-      "executor envelope replay unavailable",
-    );
+    await expect(
+      verifyAndConsumeExecutorEnvelope(envelope, publicKey, storeFor(storage), NOW),
+    ).rejects.toThrow("executor envelope replay unavailable");
     expect(storage.transactionCalls).toBe(1);
 
     const rejectedStore = {
@@ -307,6 +337,11 @@ describe("verifyAndConsumeExecutorEnvelope", () => {
     await expect(
       verifyAndConsumeExecutorEnvelope(envelope, publicKey, rejectedStore, NOW),
     ).rejects.toThrow("executor envelope replay rejected");
-    expect(rejectedStore.consume).toHaveBeenCalledWith(scopeOf(envelope), envelope.body_digest, Date.parse(EXPIRES_AT), NOW);
+    expect(rejectedStore.consume).toHaveBeenCalledWith(
+      scopeOf(envelope),
+      envelope.body_digest,
+      Date.parse(EXPIRES_AT),
+      NOW,
+    );
   });
 });

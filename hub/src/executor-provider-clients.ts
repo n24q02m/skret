@@ -131,8 +131,6 @@ export interface TargetOperation {
   readonly operation: TargetOperationKind;
 }
 
-
-
 export interface TargetSet {
   readonly targets: readonly CanonicalTargetIdentity[];
   readonly digest: string;
@@ -173,7 +171,8 @@ export function canonicalGitHubTarget(input: GitHubTargetInput): GitHubTargetIde
 }
 
 export function canonicalCloudflareTarget(input: CloudflareTargetInput): CloudflareTargetIdentity {
-  if (input.resourceKind !== "worker" && input.resourceKind !== "pages") throw new InvalidTargetIdentityError();
+  if (input.resourceKind !== "worker" && input.resourceKind !== "pages")
+    throw new InvalidTargetIdentityError();
   const accountId = normalizeCloudflareAccountId(input.accountId);
   const resourceName = normalizeCloudflareName(input.resourceName);
   const secretName = normalizeGitHubSecret(input.secretName);
@@ -194,7 +193,9 @@ export function canonicalCloudflareTarget(input: CloudflareTargetInput): Cloudfl
   });
 }
 
-export async function canonicalTargetSet(targets: readonly CanonicalTargetIdentity[]): Promise<TargetSet> {
+export async function canonicalTargetSet(
+  targets: readonly CanonicalTargetIdentity[],
+): Promise<TargetSet> {
   if (!Array.isArray(targets) || targets.length === 0) throw new InvalidTargetIdentityError();
   const canonicalTargets = targets.map((target) => validateTargetIdentity(target));
   const sorted = [...canonicalTargets].sort((left, right) =>
@@ -206,12 +207,18 @@ export async function canonicalTargetSet(targets: readonly CanonicalTargetIdenti
     seen.add(target.canonical);
   }
   const digestBytes = new Uint8Array(
-    await crypto.subtle.digest("SHA-256", encodeLengthPrefixed(sorted.map((target) => new TextEncoder().encode(target.canonical)))),
+    await crypto.subtle.digest(
+      "SHA-256",
+      encodeLengthPrefixed(sorted.map((target) => new TextEncoder().encode(target.canonical))),
+    ),
   );
   return Object.freeze({ targets: Object.freeze(sorted), digest: `sha256:${toHex(digestBytes)}` });
 }
 
-export function targetCapabilityRow(target: CanonicalTargetIdentity, operation: TargetOperationKind): TargetCapabilityRow {
+export function targetCapabilityRow(
+  target: CanonicalTargetIdentity,
+  operation: TargetOperationKind,
+): TargetCapabilityRow {
   const canonical = validateTargetIdentity(target);
   const capability = canonical.capability;
   if (capability === "blocked") throw new TargetCapabilityBlockedError();
@@ -233,7 +240,11 @@ export function createTargetOperation(input: {
   readonly contextDigest: string;
   readonly operation?: TargetOperationKind;
 }): TargetOperation {
-  if (!SAFE_OPERATION_ID.test(input.operationId) || !SAFE_OPERATION_ID.test(input.generation) || !SHA256_DIGEST.test(input.contextDigest)) {
+  if (
+    !SAFE_OPERATION_ID.test(input.operationId) ||
+    !SAFE_OPERATION_ID.test(input.generation) ||
+    !SHA256_DIGEST.test(input.contextDigest)
+  ) {
     throw new InvalidTargetOperationError();
   }
   const target = validateTargetIdentity(input.target);
@@ -284,8 +295,12 @@ export interface GitHubSecretDeleteRequest {
 
 export interface GitHubTargetTransport {
   getRepositoryPublicKey(request: GitHubPublicKeyRequest): Promise<GitHubPublicKeyResponse>;
-  upsertRepositorySecret(request: GitHubSecretUpsertRequest): Promise<ProviderWriteResponse | null | undefined>;
-  deleteRepositorySecret?(request: GitHubSecretDeleteRequest): Promise<ProviderWriteResponse | null | undefined>;
+  upsertRepositorySecret(
+    request: GitHubSecretUpsertRequest,
+  ): Promise<ProviderWriteResponse | null | undefined>;
+  deleteRepositorySecret?(
+    request: GitHubSecretDeleteRequest,
+  ): Promise<ProviderWriteResponse | null | undefined>;
 }
 
 export interface SealedBox {
@@ -301,8 +316,16 @@ export class GitHubTargetClient {
     this.#transport = transport;
     this.#sealedBox = sealedBox;
   }
-  async upsertSecret(input: { readonly operation: TargetOperation; readonly value: Uint8Array }): Promise<TargetWriteResult> {
-    const operation = validateOperationForProvider(input.operation, "github", "repository-secret", "upsert");
+  async upsertSecret(input: {
+    readonly operation: TargetOperation;
+    readonly value: Uint8Array;
+  }): Promise<TargetWriteResult> {
+    const operation = validateOperationForProvider(
+      input.operation,
+      "github",
+      "repository-secret",
+      "upsert",
+    );
     if (operation.target.provider !== "github") throw new InvalidTargetOperationError();
     const target = operation.target;
     return this.enqueue(async () => {
@@ -314,11 +337,19 @@ export class GitHubTargetClient {
       try {
         let key: GitHubPublicKeyResponse;
         try {
-          key = await this.#transport.getRepositoryPublicKey({ owner: target.owner, repository: target.repository });
+          key = await this.#transport.getRepositoryPublicKey({
+            owner: target.owner,
+            repository: target.repository,
+          });
         } catch {
           throw new InvalidProviderResponseError();
         }
-        if (!(key.publicKey instanceof Uint8Array) || key.publicKey.byteLength !== 32 || typeof key.keyId !== "string" || !SAFE_TARGET_REFERENCE.test(key.keyId)) {
+        if (
+          !(key.publicKey instanceof Uint8Array) ||
+          key.publicKey.byteLength !== 32 ||
+          typeof key.keyId !== "string" ||
+          !SAFE_TARGET_REFERENCE.test(key.keyId)
+        ) {
           throw new InvalidProviderResponseError();
         }
         publicKey = key.publicKey.slice();
@@ -327,7 +358,8 @@ export class GitHubTargetClient {
         } catch {
           throw new InvalidProviderResponseError();
         }
-        if (!(sealedValue instanceof Uint8Array) || sealedValue.byteLength === 0) throw new InvalidProviderResponseError();
+        if (!(sealedValue instanceof Uint8Array) || sealedValue.byteLength === 0)
+          throw new InvalidProviderResponseError();
         wireValue = sealedValue.slice();
         let response: ProviderWriteResponse | null | undefined;
         try {
@@ -358,11 +390,17 @@ export class GitHubTargetClient {
   }
 
   async deleteSecret(input: { readonly operation: TargetOperation }): Promise<TargetWriteResult> {
-    const operation = validateOperationForProvider(input.operation, "github", "repository-secret", "delete");
+    const operation = validateOperationForProvider(
+      input.operation,
+      "github",
+      "repository-secret",
+      "delete",
+    );
     if (operation.target.provider !== "github") throw new InvalidTargetOperationError();
     const target = operation.target;
     return this.enqueue(async () => {
-      if (this.#transport.deleteRepositorySecret === undefined) throw new TargetCapabilityBlockedError();
+      if (this.#transport.deleteRepositorySecret === undefined)
+        throw new TargetCapabilityBlockedError();
       try {
         const response = await this.#transport.deleteRepositorySecret({
           owner: target.owner,
@@ -381,7 +419,6 @@ export class GitHubTargetClient {
       }
     });
   }
-
 
   private enqueue<T>(operation: () => Promise<T>): Promise<T> {
     const previous = this.#queue;
@@ -417,10 +454,18 @@ export interface CloudflareSecretDeleteRequest {
 }
 
 export interface CloudflareTargetTransport {
-  writeWorkerSecret(request: CloudflareSecretWriteRequest): Promise<ProviderWriteResponse | null | undefined>;
-  writePagesSecret(request: CloudflareSecretWriteRequest): Promise<ProviderWriteResponse | null | undefined>;
-  deleteWorkerSecret?(request: CloudflareSecretDeleteRequest): Promise<ProviderWriteResponse | null | undefined>;
-  deletePagesSecret?(request: CloudflareSecretDeleteRequest): Promise<ProviderWriteResponse | null | undefined>;
+  writeWorkerSecret(
+    request: CloudflareSecretWriteRequest,
+  ): Promise<ProviderWriteResponse | null | undefined>;
+  writePagesSecret(
+    request: CloudflareSecretWriteRequest,
+  ): Promise<ProviderWriteResponse | null | undefined>;
+  deleteWorkerSecret?(
+    request: CloudflareSecretDeleteRequest,
+  ): Promise<ProviderWriteResponse | null | undefined>;
+  deletePagesSecret?(
+    request: CloudflareSecretDeleteRequest,
+  ): Promise<ProviderWriteResponse | null | undefined>;
 }
 
 export class CloudflareTargetClient {
@@ -431,8 +476,16 @@ export class CloudflareTargetClient {
     this.#transport = transport;
   }
 
-  async upsertSecret(input: { readonly operation: TargetOperation; readonly value: Uint8Array }): Promise<TargetWriteResult> {
-    const operation = validateOperationForProvider(input.operation, "cloudflare", undefined, "upsert");
+  async upsertSecret(input: {
+    readonly operation: TargetOperation;
+    readonly value: Uint8Array;
+  }): Promise<TargetWriteResult> {
+    const operation = validateOperationForProvider(
+      input.operation,
+      "cloudflare",
+      undefined,
+      "upsert",
+    );
     if (operation.target.provider !== "cloudflare") throw new InvalidTargetOperationError();
     const target = operation.target;
     return this.enqueue(async () => {
@@ -453,9 +506,10 @@ export class CloudflareTargetClient {
         };
         let response: ProviderWriteResponse | null | undefined;
         try {
-          response = target.resourceKind === "worker"
-            ? await this.#transport.writeWorkerSecret(request)
-            : await this.#transport.writePagesSecret(request);
+          response =
+            target.resourceKind === "worker"
+              ? await this.#transport.writeWorkerSecret(request)
+              : await this.#transport.writePagesSecret(request);
         } catch {
           return reconciliationResult(operation);
         }
@@ -469,17 +523,25 @@ export class CloudflareTargetClient {
   }
 
   async deleteSecret(input: { readonly operation: TargetOperation }): Promise<TargetWriteResult> {
-    const operation = validateOperationForProvider(input.operation, "cloudflare", undefined, "delete");
+    const operation = validateOperationForProvider(
+      input.operation,
+      "cloudflare",
+      undefined,
+      "delete",
+    );
     if (operation.target.provider !== "cloudflare") throw new InvalidTargetOperationError();
     const target = operation.target;
     return this.enqueue(async () => {
-      const mutate = target.resourceKind === "worker"
-        ? this.#transport.deleteWorkerSecret === undefined
-          ? null
-          : (request: CloudflareSecretDeleteRequest) => this.#transport.deleteWorkerSecret!(request)
-        : this.#transport.deletePagesSecret === undefined
-          ? null
-          : (request: CloudflareSecretDeleteRequest) => this.#transport.deletePagesSecret!(request);
+      const mutate =
+        target.resourceKind === "worker"
+          ? this.#transport.deleteWorkerSecret === undefined
+            ? null
+            : (request: CloudflareSecretDeleteRequest) =>
+                this.#transport.deleteWorkerSecret?.(request)
+          : this.#transport.deletePagesSecret === undefined
+            ? null
+            : (request: CloudflareSecretDeleteRequest) =>
+                this.#transport.deletePagesSecret?.(request);
       if (mutate === null) throw new TargetCapabilityBlockedError();
       const request: CloudflareSecretDeleteRequest = {
         accountId: target.accountId,
@@ -509,7 +571,6 @@ export class CloudflareTargetClient {
     return previous.then(operation).finally(() => release());
   }
 }
-
 
 function normalizeGitHubName(value: unknown): string {
   if (typeof value !== "string") throw new InvalidTargetIdentityError();
@@ -549,7 +610,12 @@ function normalizeEnvironment(value: unknown): string {
 
 function normalizeCapability(value: unknown): TargetCapability {
   if (value === undefined) return "owner_risk_gate";
-  if (value !== "native_cas" && value !== "enforced_exclusive" && value !== "owner_risk_gate" && value !== "blocked") {
+  if (
+    value !== "native_cas" &&
+    value !== "enforced_exclusive" &&
+    value !== "owner_risk_gate" &&
+    value !== "blocked"
+  ) {
     throw new InvalidTargetCapabilityError();
   }
   return value;
@@ -564,7 +630,12 @@ function validateTargetIdentity(target: CanonicalTargetIdentity): CanonicalTarge
       environment: target.environment,
       capability: target.capability,
     });
-    if (canonical.canonical !== target.canonical || canonical.scope !== target.scope || canonical.resource !== target.resource) throw new InvalidTargetIdentityError();
+    if (
+      canonical.canonical !== target.canonical ||
+      canonical.scope !== target.scope ||
+      canonical.resource !== target.resource
+    )
+      throw new InvalidTargetIdentityError();
     return canonical;
   }
   if (target.provider === "cloudflare") {
@@ -576,7 +647,12 @@ function validateTargetIdentity(target: CanonicalTargetIdentity): CanonicalTarge
       environment: target.environment,
       capability: target.capability,
     });
-    if (canonical.canonical !== target.canonical || canonical.scope !== target.scope || canonical.resource !== target.resource) throw new InvalidTargetIdentityError();
+    if (
+      canonical.canonical !== target.canonical ||
+      canonical.scope !== target.scope ||
+      canonical.resource !== target.resource
+    )
+      throw new InvalidTargetIdentityError();
     return canonical;
   }
   throw new InvalidTargetIdentityError();
@@ -588,18 +664,33 @@ function validateOperationForProvider(
   resource: CanonicalTargetIdentity["resource"] | undefined,
   expectedOperation: TargetOperationKind,
 ): TargetOperation {
-  if (!operation || !SAFE_OPERATION_ID.test(operation.operationId) || !SAFE_OPERATION_ID.test(operation.generation) || !SHA256_DIGEST.test(operation.contextDigest)) {
+  if (
+    !operation ||
+    !SAFE_OPERATION_ID.test(operation.operationId) ||
+    !SAFE_OPERATION_ID.test(operation.generation) ||
+    !SHA256_DIGEST.test(operation.contextDigest)
+  ) {
     throw new InvalidTargetOperationError();
   }
   const target = validateTargetIdentity(operation.target);
-  if (target.provider !== provider || (resource !== undefined && target.resource !== resource) || operation.operation !== expectedOperation || operation.capability.capability !== target.capability || operation.capability.operation !== expectedOperation) {
+  if (
+    target.provider !== provider ||
+    (resource !== undefined && target.resource !== resource) ||
+    operation.operation !== expectedOperation ||
+    operation.capability.capability !== target.capability ||
+    operation.capability.operation !== expectedOperation
+  ) {
     throw new InvalidTargetOperationError();
   }
   if (target.capability === "blocked") throw new TargetCapabilityBlockedError();
   if (target.capability !== "owner_risk_gate") throw new InvalidTargetCapabilityError();
-  return Object.freeze({ ...operation, target, capability: targetCapabilityRow(target, expectedOperation), operation: expectedOperation });
+  return Object.freeze({
+    ...operation,
+    target,
+    capability: targetCapabilityRow(target, expectedOperation),
+    operation: expectedOperation,
+  });
 }
-
 
 function reconciliationResult(operation: TargetOperation): TargetWriteResult {
   return {
@@ -610,7 +701,10 @@ function reconciliationResult(operation: TargetOperation): TargetWriteResult {
   };
 }
 
-function normalizeWriteResponse(response: ProviderWriteResponse | null | undefined, operation: TargetOperation): TargetWriteResult {
+function normalizeWriteResponse(
+  response: ProviderWriteResponse | null | undefined,
+  operation: TargetOperation,
+): TargetWriteResult {
   if (response === null || response === undefined) return reconciliationResult(operation);
   if (
     typeof response !== "object" ||
@@ -624,7 +718,10 @@ function normalizeWriteResponse(response: ProviderWriteResponse | null | undefin
     if (response.providerStateOID !== null) throw new InvalidProviderResponseError();
     return reconciliationResult(operation);
   }
-  if (typeof response.providerStateOID !== "string" || !SAFE_TARGET_REFERENCE.test(response.providerStateOID)) {
+  if (
+    typeof response.providerStateOID !== "string" ||
+    !SAFE_TARGET_REFERENCE.test(response.providerStateOID)
+  ) {
     throw new InvalidProviderResponseError();
   }
   return {

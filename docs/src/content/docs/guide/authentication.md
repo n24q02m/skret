@@ -195,11 +195,7 @@ Use GitHub's OIDC provider to assume an IAM role without long-lived credentials.
   "Statement": [
     {
       "Effect": "Allow",
-      "Action": [
-        "ssm:GetParameter",
-        "ssm:GetParameters",
-        "ssm:GetParametersByPath"
-      ],
+      "Action": ["ssm:GetParameter", "ssm:GetParameters", "ssm:GetParametersByPath"],
       "Resource": "arn:aws:ssm:us-east-1:123456789012:parameter/myapp/prod/*"
     },
     {
@@ -265,7 +261,12 @@ Restrict IAM users/roles to specific environments:
     {
       "Sid": "DevFullAccess",
       "Effect": "Allow",
-      "Action": ["ssm:GetParameter", "ssm:GetParametersByPath", "ssm:PutParameter", "ssm:DeleteParameter"],
+      "Action": [
+        "ssm:GetParameter",
+        "ssm:GetParametersByPath",
+        "ssm:PutParameter",
+        "ssm:DeleteParameter"
+      ],
       "Resource": "arn:aws:ssm:*:*:parameter/myapp/dev/*"
     }
   ]
@@ -309,8 +310,8 @@ Authentication-related settings follow the same precedence as all config:
 
 Importers and syncers use their own credentials:
 
-| Source/Target | Credential | Environment Variable |
-|---|---|---|
-| Doppler | Service token | `DOPPLER_TOKEN` |
-| Infisical | Machine identity or bearer token | `INFISICAL_CLIENT_ID` + `INFISICAL_CLIENT_SECRET` or `INFISICAL_TOKEN` |
-| GitHub Actions | PAT with `repo` scope | `GITHUB_TOKEN` |
+| Source/Target  | Credential                       | Environment Variable                                                   |
+| -------------- | -------------------------------- | ---------------------------------------------------------------------- |
+| Doppler        | Service token                    | `DOPPLER_TOKEN`                                                        |
+| Infisical      | Machine identity or bearer token | `INFISICAL_CLIENT_ID` + `INFISICAL_CLIENT_SECRET` or `INFISICAL_TOKEN` |
+| GitHub Actions | PAT with `repo` scope            | `GITHUB_TOKEN`                                                         |

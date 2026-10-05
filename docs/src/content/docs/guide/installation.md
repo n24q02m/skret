@@ -54,14 +54,14 @@ Skret does not currently advertise a mutable GHCR tag as an installation channel
 
 Download pre-built binaries from [GitHub Releases](https://github.com/n24q02m/skret/releases):
 
-| Platform | Architecture | File |
-|----------|--------------|------|
-| Linux | amd64 | `skret_VERSION_linux_amd64.tar.gz` |
-| Linux | arm64 | `skret_VERSION_linux_arm64.tar.gz` |
-| macOS | amd64 | `skret_VERSION_darwin_amd64.tar.gz` |
-| macOS | arm64 (Apple Silicon) | `skret_VERSION_darwin_arm64.tar.gz` |
-| Windows | amd64 | `skret_VERSION_windows_amd64.zip` |
-| Windows | arm64 | `skret_VERSION_windows_arm64.zip` |
+| Platform | Architecture          | File                                |
+| -------- | --------------------- | ----------------------------------- |
+| Linux    | amd64                 | `skret_VERSION_linux_amd64.tar.gz`  |
+| Linux    | arm64                 | `skret_VERSION_linux_arm64.tar.gz`  |
+| macOS    | amd64                 | `skret_VERSION_darwin_amd64.tar.gz` |
+| macOS    | arm64 (Apple Silicon) | `skret_VERSION_darwin_arm64.tar.gz` |
+| Windows  | amd64                 | `skret_VERSION_windows_amd64.zip`   |
+| Windows  | arm64                 | `skret_VERSION_windows_arm64.zip`   |
 
 Verify `checksums.txt.bundle` with `cosign`, then verify the downloaded archive against `checksums.txt` before extraction. See the [release verification procedure](/contributing/release-process/#verify-a-published-release).
 

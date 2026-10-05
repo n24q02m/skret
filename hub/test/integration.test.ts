@@ -1,5 +1,5 @@
 import { SELF } from "cloudflare:test";
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 
 const manifest = {
   namespace: "/integration/prod",
@@ -36,7 +36,10 @@ describe("dashboard flow", () => {
   it("POST /login with wrong password returns 401 login form", async () => {
     const res = await SELF.fetch("https://hub.test/login", {
       method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded", "CF-Connecting-IP": "198.51.100.11" },
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "CF-Connecting-IP": "198.51.100.11",
+      },
       body: "password=nope",
     });
     expect(res.status).toBe(401);
@@ -55,7 +58,10 @@ describe("dashboard flow", () => {
     // 2. login (redirect + Set-Cookie)
     const loginRes = await SELF.fetch("https://hub.test/login", {
       method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded", "CF-Connecting-IP": "198.51.100.12" },
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "CF-Connecting-IP": "198.51.100.12",
+      },
       body: "password=test-relay-password",
       redirect: "manual",
     });
@@ -73,7 +79,9 @@ describe("dashboard flow", () => {
   });
 
   it("GET / with a garbage cookie falls back to login", async () => {
-    const res = await SELF.fetch("https://hub.test/", { headers: { Cookie: "session=forged.sig" } });
+    const res = await SELF.fetch("https://hub.test/", {
+      headers: { Cookie: "session=forged.sig" },
+    });
     expect(res.status).toBe(200);
     expect(await res.text()).toContain('name="password"');
   });
@@ -81,7 +89,10 @@ describe("dashboard flow", () => {
   it("POST /login with a malformed body returns 400, not 500", async () => {
     const res = await SELF.fetch("https://hub.test/login", {
       method: "POST",
-      headers: { "Content-Type": "multipart/form-data; boundary=x", "CF-Connecting-IP": "198.51.100.13" },
+      headers: {
+        "Content-Type": "multipart/form-data; boundary=x",
+        "CF-Connecting-IP": "198.51.100.13",
+      },
       body: "not-a-valid-multipart-body",
     });
     expect(res.status).toBe(400);
@@ -91,7 +102,10 @@ describe("dashboard flow", () => {
   it("POST /logout clears the session cookie and redirects to /", async () => {
     const loginRes = await SELF.fetch("https://hub.test/login", {
       method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded", "CF-Connecting-IP": "198.51.100.14" },
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "CF-Connecting-IP": "198.51.100.14",
+      },
       body: "password=test-relay-password",
       redirect: "manual",
     });

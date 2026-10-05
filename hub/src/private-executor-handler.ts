@@ -1,8 +1,8 @@
 import {
+  type ExecutorEnvelope,
   ExecutorEnvelopeInvalidError,
   ExecutorEnvelopeReplayRejectedError,
   ExecutorEnvelopeReplayUnavailableError,
-  type ExecutorEnvelope,
   verifyAndConsumeExecutorEnvelope,
 } from "./executor-envelope-verifier";
 import type { DurableExecutorReplayStore } from "./executor-replay-store";
@@ -162,21 +162,26 @@ export async function handlePrivateExecutorEnvelope(
   return new Response(result as BodyInit, { status: 200, headers });
 }
 
-function hasValidDependencies(options: PrivateExecutorHandlerOptions | undefined): options is PrivateExecutorHandlerOptions {
+function hasValidDependencies(
+  options: PrivateExecutorHandlerOptions | undefined,
+): options is PrivateExecutorHandlerOptions {
   return Boolean(
     options &&
-      typeof options === "object" &&
-      isValidScopeField(options.expectedAudience) &&
-      hasValidRoleAuthorities(options.roleAuthorities) &&
-      options.replayStore &&
-      typeof options.replayStore.consume === "function" &&
-      typeof options.execute === "function" &&
-      (options.now === undefined || (Number.isSafeInteger(options.now) && options.now >= 0)),
+    typeof options === "object" &&
+    isValidScopeField(options.expectedAudience) &&
+    hasValidRoleAuthorities(options.roleAuthorities) &&
+    options.replayStore &&
+    typeof options.replayStore.consume === "function" &&
+    typeof options.execute === "function" &&
+    (options.now === undefined || (Number.isSafeInteger(options.now) && options.now >= 0)),
   );
 }
 
-function hasValidRoleAuthorities(value: unknown): value is readonly PrivateExecutorRoleAuthorityBinding[] {
-  if (!Array.isArray(value) || value.length === 0 || value.length > MAX_PRIVATE_EXECUTOR_ROLES) return false;
+function hasValidRoleAuthorities(
+  value: unknown,
+): value is readonly PrivateExecutorRoleAuthorityBinding[] {
+  if (!Array.isArray(value) || value.length === 0 || value.length > MAX_PRIVATE_EXECUTOR_ROLES)
+    return false;
 
   const roles = new Set<string>();
   const publicKeys: Uint8Array[] = [];
@@ -185,11 +190,11 @@ function hasValidRoleAuthorities(value: unknown): value is readonly PrivateExecu
     const fields = Object.keys(candidate);
     if (
       fields.length !== 5 ||
-      !Object.prototype.hasOwnProperty.call(candidate, "role") ||
-      !Object.prototype.hasOwnProperty.call(candidate, "publicKey") ||
-      !Object.prototype.hasOwnProperty.call(candidate, "generation") ||
-      !Object.prototype.hasOwnProperty.call(candidate, "notAfter") ||
-      !Object.prototype.hasOwnProperty.call(candidate, "capabilityDigest") ||
+      !Object.hasOwn(candidate, "role") ||
+      !Object.hasOwn(candidate, "publicKey") ||
+      !Object.hasOwn(candidate, "generation") ||
+      !Object.hasOwn(candidate, "notAfter") ||
+      !Object.hasOwn(candidate, "capabilityDigest") ||
       !isValidScopeField(candidate.role) ||
       !(candidate.publicKey instanceof Uint8Array) ||
       candidate.publicKey.byteLength !== 32 ||
@@ -230,6 +235,7 @@ function isValidScopeField(value: unknown): value is string {
     value.length > 0 &&
     value.length <= 256 &&
     value.trim() === value &&
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: matching control characters is the purpose of this input-validation guard
     !/[\u0000-\u001f\u007f]/u.test(value)
   );
 }

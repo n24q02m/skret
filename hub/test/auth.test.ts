@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { checkPassword, mintSession, verifySession, SESSION_TTL } from "../src/auth";
+import { describe, expect, it } from "vitest";
+import { checkPassword, mintSession, SESSION_TTL, verifySession } from "../src/auth";
 
 const SECRET = "test-relay-password";
 

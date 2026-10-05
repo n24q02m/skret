@@ -11,20 +11,20 @@ Every skret command is non-interactive by default — the exceptions are `skret 
 
 skret returns a distinct exit code per failure class, defined in [`pkg/skret/errors.go`](https://github.com/n24q02m/skret/blob/main/pkg/skret/errors.go):
 
-| Code | Constant | Meaning |
-|------|----------|---------|
-| 0 | `ExitSuccess` | Operation completed successfully |
-| 1 | `ExitGenericError` | Unclassified error |
-| 2 | `ExitConfigError` | `.skret.yaml` missing or invalid |
-| 3 | `ExitProviderError` | Backend provider call failed (e.g. AWS SSM) |
-| 4 | `ExitAuthError` | Authentication failed |
-| 5 | `ExitNotFoundError` | Secret does not exist |
-| 6 | `ExitConflictError` | Key already exists (`import --on-conflict=fail`) |
-| 7 | `ExitNetworkError` | Network/connectivity failure |
-| 8 | `ExitValidationError` | Invalid input — bad flag combination, missing required value, experimental command not enabled |
-| 9 | `ExitDrift` | `skret diff --exit-code` found a difference between the two sides |
-| 10 | `ExitLeakFound` | `skret scan` found a managed secret value in a scanned file (working tree, `--staged`, or `--history`) |
-| 125 | `ExitExecError` | `skret run --` could not exec the command (not found on `$PATH`, or exec failure) |
+| Code | Constant              | Meaning                                                                                                |
+| ---- | --------------------- | ------------------------------------------------------------------------------------------------------ |
+| 0    | `ExitSuccess`         | Operation completed successfully                                                                       |
+| 1    | `ExitGenericError`    | Unclassified error                                                                                     |
+| 2    | `ExitConfigError`     | `.skret.yaml` missing or invalid                                                                       |
+| 3    | `ExitProviderError`   | Backend provider call failed (e.g. AWS SSM)                                                            |
+| 4    | `ExitAuthError`       | Authentication failed                                                                                  |
+| 5    | `ExitNotFoundError`   | Secret does not exist                                                                                  |
+| 6    | `ExitConflictError`   | Key already exists (`import --on-conflict=fail`)                                                       |
+| 7    | `ExitNetworkError`    | Network/connectivity failure                                                                           |
+| 8    | `ExitValidationError` | Invalid input — bad flag combination, missing required value, experimental command not enabled         |
+| 9    | `ExitDrift`           | `skret diff --exit-code` found a difference between the two sides                                      |
+| 10   | `ExitLeakFound`       | `skret scan` found a managed secret value in a scanned file (working tree, `--staged`, or `--history`) |
+| 125  | `ExitExecError`       | `skret run --` could not exec the command (not found on `$PATH`, or exec failure)                      |
 
 Two of these are the ones you'll branch on most in automation:
 
@@ -57,13 +57,13 @@ skret get MISSING_KEY --format json
 }
 ```
 
-`remediation` appears only when the error carries a copy-pasteable fix hint (for example, an auth failure suggesting the exact `skret auth login` command to run) — omitted entirely otherwise, so don't assume the key is always present. A command that already defines its own local `--format` flag (`list`, `env`, `diff`, `scan`, and the write-path commands below) uses that flag's value for its own error rendering too, so `skret delete MISSING --format json` gets the envelope from *that* command's `--format`, not the root one. `get` is the one exception — it has its own `--json` boolean instead of `--format` — but the root `--format` flag still works for it (`skret get MISSING_KEY --format json` above), since `get` has no local flag of that name to shadow it. The root flag exists so every command without an output-format flag of its own can still opt into the envelope.
+`remediation` appears only when the error carries a copy-pasteable fix hint (for example, an auth failure suggesting the exact `skret auth login` command to run) — omitted entirely otherwise, so don't assume the key is always present. A command that already defines its own local `--format` flag (`list`, `env`, `diff`, `scan`, and the write-path commands below) uses that flag's value for its own error rendering too, so `skret delete MISSING --format json` gets the envelope from _that_ command's `--format`, not the root one. `get` is the one exception — it has its own `--json` boolean instead of `--format` — but the root `--format` flag still works for it (`skret get MISSING_KEY --format json` above), since `get` has no local flag of that name to shadow it. The root flag exists so every command without an output-format flag of its own can still opt into the envelope.
 
 ## Non-interactive checklist
 
 - **Exact bytes out**: `skret get KEY --plain`. The default `get` (no `--plain`) appends one trailing newline for terminal readability; `--plain` gives you the value's exact stored bytes with nothing added — use it whenever a script or agent needs the byte-exact value (`skret get TOKEN --plain > token.bin`).
 - **Parseable dump**: `skret env --format=json` (also `yaml`, `export`, or the `dotenv` default) — all four formats round-trip byte-exact; pick `json` when a script needs to parse the whole environment.
-- **Multi-line value in**: `skret set KEY --from-stdin < file.pem` or `skret set KEY --from-file path`. Both read the *entire* stream/file (not just the first line), so a PEM key or multi-line JSON blob survives with every embedded newline intact.
+- **Multi-line value in**: `skret set KEY --from-stdin < file.pem` or `skret set KEY --from-file path`. Both read the _entire_ stream/file (not just the first line), so a PEM key or multi-line JSON blob survives with every embedded newline intact.
 - **A value that starts with `-`**: pass `--` before the key, or it's parsed as a flag: `skret set -- KEY '-----BEGIN PRIVATE KEY-----...'`.
 - **Secrets are byte-exact everywhere except `run`**: `get`, `env`, `template`, and `sync`/`import` preserve every byte, including NUL, CR, and embedded newlines. `skret run`/`skret run --watch` sanitize control bytes on the way into the child process's environment, because an OS process environment can't carry a NUL or embedded newline. Full detail: [Value fidelity](/guide/value-fidelity/).
 - **Multiple config namespaces from one process**: the global `--config <path>` flag loads a specific `.skret.yaml` directly, bypassing directory discovery entirely — useful for a single cron container serving several projects, each declared in its own config file. If the file does not exist the command fails with a config error; it never silently falls back to discovery. See [Configuration](/guide/configuration/).
@@ -87,12 +87,12 @@ skret set API_KEY --from-stdin --format json < new-key.txt
 
 `created` is `true` only when the key did not exist before this write; the secret value is never included in the payload, in any command's JSON output. `--format json` replaces the human status line (`Set KEY`, `Deleted KEY`, `Synced N secrets to TARGET`) rather than printing both — the payload goes to stdout, so `skret set ... --format json | jq .created` works without stderr noise mixed in.
 
-| Command | `--format json` payload |
-|---------|--------------------------|
-| `set` | `{"key", "path", "version", "created"}` |
-| `delete` | `{"key", "path", "deleted"}` |
+| Command                            | `--format json` payload                                                                                                                                |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `set`                              | `{"key", "path", "version", "created"}`                                                                                                                |
+| `delete`                           | `{"key", "path", "deleted"}`                                                                                                                           |
 | `history` (`SKRET_EXPERIMENTAL=1`) | `[{"version", "value", "updated_at", "author"}, ...]` — `value` is masked unless `--verbose` is also passed, the same policy the table already applies |
-| `sync` | `[{"source", "target", "synced"}, ...]`, one entry per target actually written; see [Sync](/guide/sync/#--format-json) |
+| `sync`                             | `[{"source", "target", "synced"}, ...]`, one entry per target actually written; see [Sync](/guide/sync/#--format-json)                                 |
 
 Every one of these composes with the [JSON error envelope](#json-error-envelope) above: `skret delete MISSING --format json` fails with `{"error": ..., "code": 5}` on stderr instead of the success payload on stdout.
 

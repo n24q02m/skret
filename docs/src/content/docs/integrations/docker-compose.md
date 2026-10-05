@@ -81,13 +81,13 @@ down-app:
 
 ## Approach Comparison
 
-| Aspect | `skret run --` | `skret env > .env` |
-|--------|----------------|---------------------|
-| Secrets on disk | No | Yes (temporary) |
-| Auto-updates | Yes (fetched each run) | No (manual regenerate) |
-| Works offline | Only with local provider | Yes, once generated |
-| Docker Compose version | Any | Any |
-| CI/CD friendly | Yes | Yes |
+| Aspect                 | `skret run --`           | `skret env > .env`     |
+| ---------------------- | ------------------------ | ---------------------- |
+| Secrets on disk        | No                       | Yes (temporary)        |
+| Auto-updates           | Yes (fetched each run)   | No (manual regenerate) |
+| Works offline          | Only with local provider | Yes, once generated    |
+| Docker Compose version | Any                      | Any                    |
+| CI/CD friendly         | Yes                      | Yes                    |
 
 ## Multi-Environment
 

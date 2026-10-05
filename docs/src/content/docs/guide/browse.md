@@ -11,12 +11,12 @@ skret browse
 
 ## Keys
 
-| Key | Action |
-|-----|--------|
-| Up / Down | Move the selection |
-| `/` | Filter the list by key name |
-| Enter (or Space) | Reveal or hide the selected value |
-| `q` (or Esc / Ctrl-C) | Quit |
+| Key                   | Action                            |
+| --------------------- | --------------------------------- |
+| Up / Down             | Move the selection                |
+| `/`                   | Filter the list by key name       |
+| Enter (or Space)      | Reveal or hide the selected value |
+| `q` (or Esc / Ctrl-C) | Quit                              |
 
 ## How it works
 

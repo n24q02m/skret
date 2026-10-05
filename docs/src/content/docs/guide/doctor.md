@@ -9,7 +9,7 @@ Read-only health check for your skret setup.
 skret doctor
 ```
 
-Each check reports one `PASS`, `WARN`, or `FAIL` line on stderr, and a summary goes to stdout. Exit code `0` means every check passed (warnings do not fail the run); any failing check exits with the failing check's error class, so scripts can react to *why* doctor failed, not just *that* it failed.
+Each check reports one `PASS`, `WARN`, or `FAIL` line on stderr, and a summary goes to stdout. Exit code `0` means every check passed (warnings do not fail the run); any failing check exits with the failing check's error class, so scripts can react to _why_ doctor failed, not just _that_ it failed.
 
 ## Checks
 
@@ -54,13 +54,13 @@ skret doctor --timeout=3s
 skret doctor || echo "unhealthy, exit code $?"
 ```
 
-| Exit code | Meaning |
-|-----------|---------|
-| 0 | All checks passed (warnings allowed) |
-| 2 | A config check failed |
-| 3 | A local provider check failed (e.g. corrupt secrets file) |
-| 4 | An auth check failed (expired credentials, or an encrypted file whose key material is unavailable) |
-| 7 | A provider was unreachable |
+| Exit code | Meaning                                                                                            |
+| --------- | -------------------------------------------------------------------------------------------------- |
+| 0         | All checks passed (warnings allowed)                                                               |
+| 2         | A config check failed                                                                              |
+| 3         | A local provider check failed (e.g. corrupt secrets file)                                          |
+| 4         | An auth check failed (expired credentials, or an encrypted file whose key material is unavailable) |
+| 7         | A provider was unreachable                                                                         |
 
 ## Scope
 

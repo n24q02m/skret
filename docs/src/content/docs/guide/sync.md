@@ -103,8 +103,8 @@ sync:
   targets:
     - type: gitlab
       project: mygroup/myapp
-      masked: true       # optional; the value must satisfy GitLab masking requirements
-      protected: true    # optional; variable is exposed only to protected branches/tags
+      masked: true # optional; the value must satisfy GitLab masking requirements
+      protected: true # optional; variable is exposed only to protected branches/tags
 ```
 
 ```bash

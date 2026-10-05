@@ -27,10 +27,10 @@ Press Ctrl-C (or send SIGTERM to skret) to stop both skret and the command clean
 
 ## Options
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--watch` | `false` | Restart the command when secrets change |
-| `--watch-interval` | `15s` | How often to check for secret changes |
+| Flag               | Default | Description                             |
+| ------------------ | ------- | --------------------------------------- |
+| `--watch`          | `false` | Restart the command when secrets change |
+| `--watch-interval` | `15s`   | How often to check for secret changes   |
 
 `--watch-interval` accepts any Go duration (for example `30s`, `1m`, `5m`):
 
@@ -40,6 +40,6 @@ skret run --watch --watch-interval 30s -- ./server
 
 ## Notes
 
-- **Secrets only, not liveness.** Watch mode restarts on *secret* changes, not on your command crashing. If the command exits on its own, skret exits with the command's exit code and does not relaunch it.
+- **Secrets only, not liveness.** Watch mode restarts on _secret_ changes, not on your command crashing. If the command exits on its own, skret exits with the command's exit code and does not relaunch it.
 - **`skret run` is unchanged without `--watch`.** Plain `skret run -- <command>` runs once and forwards the exit code, exactly as before.
 - **Values are never printed.** The fingerprint check reads versions, not values, and the restart line never includes secret contents.

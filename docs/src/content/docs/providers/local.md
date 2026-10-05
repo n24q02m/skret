@@ -64,7 +64,13 @@ age -d -i key.txt .secrets.dev.yaml   # prints the normal secrets YAML
 Every mutation on the local provider (`skret set`, `skret rotate`, `skret delete`, and the mutations sync/import issue) appends one JSONL line to an append-only audit log: `.skret-audit.log` next to the secrets file, or the `audit_log` path configured for the environment.
 
 ```json
-{"timestamp":"2026-09-19T09:00:00.123Z","op":"set","key_names":["API_KEY"],"env":"prod","actor":"deploy-bot"}
+{
+  "timestamp": "2026-09-19T09:00:00.123Z",
+  "op": "set",
+  "key_names": ["API_KEY"],
+  "env": "prod",
+  "actor": "deploy-bot"
+}
 ```
 
 - Names only: the trail records key names, operation, environment, and actor (`SKRET_ACTOR` when set, else the OS user). Values are structurally excluded.
@@ -82,11 +88,11 @@ Every mutation on the local provider (`skret set`, `skret rotate`, `skret delete
 
 ## Capabilities
 
-| Capability | Supported |
-|-----------|-----------|
-| Read | ✅ |
-| Write | ✅ |
-| Versioning | ❌ |
-| Tagging | ❌ |
-| Encryption | ✅ (optional, `encrypted: true` + `skret keys init`) |
-| Max value size | 1 MB |
+| Capability     | Supported                                            |
+| -------------- | ---------------------------------------------------- |
+| Read           | ✅                                                   |
+| Write          | ✅                                                   |
+| Versioning     | ❌                                                   |
+| Tagging        | ❌                                                   |
+| Encryption     | ✅ (optional, `encrypted: true` + `skret keys init`) |
+| Max value size | 1 MB                                                 |

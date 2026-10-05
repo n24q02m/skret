@@ -11,16 +11,16 @@ Flags, defaults, and behavior for skret's core commands. For the guided walkthro
 
 These flags are defined on the root `skret` command and apply to every subcommand below, except where a subcommand defines a local flag of the same name (noted per-command):
 
-| Flag | Description |
-|------|-------------|
-| `-e, --env <name>` | Target environment (overrides `default_env` in `.skret.yaml`) |
-| `--provider <aws\|local>` | Override the provider |
-| `--path <prefix>` | Override the secret path prefix |
-| `--region <region>` | Override the cloud region |
-| `--profile <name>` | Override the cloud profile |
-| `--file <path>` | Override the local provider file path |
-| `--config <path>` | Load this `.skret.yaml` directly, bypassing directory discovery (see [Configuration](/guide/configuration/#--config-bypass-discovery)) |
-| `--log-level <debug\|info\|warn\|error>` | Log level; also settable via `SKRET_LOG` (default `info`) |
+| Flag                                     | Description                                                                                                                            |
+| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `-e, --env <name>`                       | Target environment (overrides `default_env` in `.skret.yaml`)                                                                          |
+| `--provider <aws\|local>`                | Override the provider                                                                                                                  |
+| `--path <prefix>`                        | Override the secret path prefix                                                                                                        |
+| `--region <region>`                      | Override the cloud region                                                                                                              |
+| `--profile <name>`                       | Override the cloud profile                                                                                                             |
+| `--file <path>`                          | Override the local provider file path                                                                                                  |
+| `--config <path>`                        | Load this `.skret.yaml` directly, bypassing directory discovery (see [Configuration](/guide/configuration/#--config-bypass-discovery)) |
+| `--log-level <debug\|info\|warn\|error>` | Log level; also settable via `SKRET_LOG` (default `info`)                                                                              |
 
 `skret init` and `skret setup` each define their own local `--provider`, `--path`, `--region`, and `--file` flags for the config file they write. A local flag shadows the global flag of the same name, so on those two commands `--provider`/`--path`/`--region`/`--file` configure the file being created, not an override for a config load — and `skret init` ignores `--config` entirely, since it always writes to the current directory rather than loading a config. `skret import` likewise defines its own local `--file` (the dotenv source to import from), which shadows the global `--file`.
 
@@ -35,13 +35,13 @@ skret init --provider=aws --path=/myapp/prod --region=ap-southeast-1
 skret init --provider=local --file=./.secrets.dev.yaml
 ```
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--provider <aws\|local>` | -- | Provider for the `prod` environment entry |
-| `--path <prefix>` | -- | SSM path prefix for the `prod` entry (aws) |
-| `--region <region>` | -- | Region for the `prod` entry (aws) |
-| `--file <path>` | -- | File path for the `prod` entry (local) |
-| `--force` | `false` | Overwrite an existing `.skret.yaml` |
+| Flag                      | Default | Description                                |
+| ------------------------- | ------- | ------------------------------------------ |
+| `--provider <aws\|local>` | --      | Provider for the `prod` environment entry  |
+| `--path <prefix>`         | --      | SSM path prefix for the `prod` entry (aws) |
+| `--region <region>`       | --      | Region for the `prod` entry (aws)          |
+| `--file <path>`           | --      | File path for the `prod` entry (local)     |
+| `--force`                 | `false` | Overwrite an existing `.skret.yaml`        |
 
 Notes:
 
@@ -59,15 +59,15 @@ Runs `init` (idempotently, as if `--force` were passed) and then authenticates t
 skret setup
 ```
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--provider <aws\|local>` | `aws` | Provider for the `prod` environment entry |
-| `--path <prefix>` | -- | SSM path prefix for the `prod` entry (aws) |
-| `--region <region>` | -- | Region for the `prod` entry (aws) |
-| `--file <path>` | -- | File path for the `prod` entry (local) |
-| `--method <sso\|access-key\|profile>` | -- | Auth method passed to `skret auth login` |
-| `--opt <key=value>` | -- | Auth option, repeatable (e.g. `--opt start_url=...`) |
-| `--yes` | `false` | Confirm running an interactive auth step non-interactively |
+| Flag                                  | Default | Description                                                |
+| ------------------------------------- | ------- | ---------------------------------------------------------- |
+| `--provider <aws\|local>`             | `aws`   | Provider for the `prod` environment entry                  |
+| `--path <prefix>`                     | --      | SSM path prefix for the `prod` entry (aws)                 |
+| `--region <region>`                   | --      | Region for the `prod` entry (aws)                          |
+| `--file <path>`                       | --      | File path for the `prod` entry (local)                     |
+| `--method <sso\|access-key\|profile>` | --      | Auth method passed to `skret auth login`                   |
+| `--opt <key=value>`                   | --      | Auth option, repeatable (e.g. `--opt start_url=...`)       |
+| `--yes`                               | `false` | Confirm running an interactive auth step non-interactively |
 
 Notes:
 
@@ -86,12 +86,12 @@ skret get DATABASE_URL --json
 skret get DATABASE_URL --no-resolve
 ```
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--json` | `false` | Output as a JSON object (`{"key": ..., "value": ...}`, plus `version`/`meta` with `--with-metadata`) |
-| `--with-metadata` | `false` | Include version and metadata in the output |
-| `--plain` | `false` | Print the exact value bytes with no trailing newline |
-| `--no-resolve` | `false` | Print the raw stored value without resolving `${KEY}` references |
+| Flag              | Default | Description                                                                                          |
+| ----------------- | ------- | ---------------------------------------------------------------------------------------------------- |
+| `--json`          | `false` | Output as a JSON object (`{"key": ..., "value": ...}`, plus `version`/`meta` with `--with-metadata`) |
+| `--with-metadata` | `false` | Include version and metadata in the output                                                           |
+| `--plain`         | `false` | Print the exact value bytes with no trailing newline                                                 |
+| `--no-resolve`    | `false` | Print the raw stored value without resolving `${KEY}` references                                     |
 
 Notes:
 
@@ -111,15 +111,15 @@ cat key.pem | skret set TLS_KEY --from-stdin
 skret set TLS_KEY --from-file key.pem
 ```
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| `-s, --from-stdin` | `false` | Read the value from stdin (entire stream, not just the first line) |
-| `-f, --from-file <path>` | -- | Read the value from a file |
-| `-d, --description <text>` | -- | Secret description, stored as metadata |
-| `-t, --tag <key=value>` | -- | Secret tag, repeatable |
-| `--ttl <duration>` | -- | Record expiry metadata (e.g. `720h`, `12h30m`, `30d`). Stored as the `skret-expires-at` resource tag on AWS and as file metadata on the local provider; `skret list --values` surfaces it and warns when a key is expired or expires within 7 days. Omitting the flag leaves any recorded expiry untouched |
-| `--format <table\|json>` | `table` | `json` prints `{"key", "path", "version", "created"}` to stdout instead of the `Set KEY` stderr line — the secret value is never included |
-| `--strict-notify` | `false` | Fail the command (exit 7) if the [mutation webhook](/reference/config-schema/#notify-fields) fails; default is warn on stderr only |
+| Flag                       | Default | Description                                                                                                                                                                                                                                                                                                |
+| -------------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `-s, --from-stdin`         | `false` | Read the value from stdin (entire stream, not just the first line)                                                                                                                                                                                                                                         |
+| `-f, --from-file <path>`   | --      | Read the value from a file                                                                                                                                                                                                                                                                                 |
+| `-d, --description <text>` | --      | Secret description, stored as metadata                                                                                                                                                                                                                                                                     |
+| `-t, --tag <key=value>`    | --      | Secret tag, repeatable                                                                                                                                                                                                                                                                                     |
+| `--ttl <duration>`         | --      | Record expiry metadata (e.g. `720h`, `12h30m`, `30d`). Stored as the `skret-expires-at` resource tag on AWS and as file metadata on the local provider; `skret list --values` surfaces it and warns when a key is expired or expires within 7 days. Omitting the flag leaves any recorded expiry untouched |
+| `--format <table\|json>`   | `table` | `json` prints `{"key", "path", "version", "created"}` to stdout instead of the `Set KEY` stderr line — the secret value is never included                                                                                                                                                                  |
+| `--strict-notify`          | `false` | Fail the command (exit 7) if the [mutation webhook](/reference/config-schema/#notify-fields) fails; default is warn on stderr only                                                                                                                                                                         |
 
 Notes:
 
@@ -141,15 +141,15 @@ skret generate --type password --charset alnum+symbols --format json
 skret generate --type password --set API_KEY
 ```
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--type <password\|uuid\|hex\|base64>` | `password` | Value type |
-| `--length <n>` | `32` | Output length in characters (1–1048576). Ignored for uuid (fixed 36); passing `--length` with uuid is a validation error |
-| `--charset <alnum\|alnum+symbols\|symbols>` | `alnum` | Password alphabet only: alnum is `A-Za-z0-9`; the symbol set is `!@#$%^&*()-_=+[]{};:,.` |
-| `--count <n>` | `1` | Number of values (1–10000) |
-| `--set <KEY>` | -- | Also store the value as secret `KEY` via the configured provider (requires config; count must be 1) |
-| `--plain` | `false` | Print exact value bytes with no trailing newline (count must be 1) |
-| `--format <table\|json>` | `table` | `json` prints `{"value", "type", "length"}` (an array of those objects when `--count` > 1); `key` is added when `--set` stored the value |
+| Flag                                        | Default    | Description                                                                                                                              |
+| ------------------------------------------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `--type <password\|uuid\|hex\|base64>`      | `password` | Value type                                                                                                                               |
+| `--length <n>`                              | `32`       | Output length in characters (1–1048576). Ignored for uuid (fixed 36); passing `--length` with uuid is a validation error                 |
+| `--charset <alnum\|alnum+symbols\|symbols>` | `alnum`    | Password alphabet only: alnum is `A-Za-z0-9`; the symbol set is `!@#$%^&*()-_=+[]{};:,.`                                                 |
+| `--count <n>`                               | `1`        | Number of values (1–10000)                                                                                                               |
+| `--set <KEY>`                               | --         | Also store the value as secret `KEY` via the configured provider (requires config; count must be 1)                                      |
+| `--plain`                                   | `false`    | Print exact value bytes with no trailing newline (count must be 1)                                                                       |
+| `--format <table\|json>`                    | `table`    | `json` prints `{"value", "type", "length"}` (an array of those objects when `--count` > 1); `key` is added when `--set` stored the value |
 
 Notes:
 
@@ -171,20 +171,20 @@ skret rotate API_KEY DB_PASS --yes --format json
 skret rotate API_KEY --show
 ```
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--generate` | `true` | Draw the new value from the generate engine (same `--type`/`--length`/`--charset` rules as `skret generate`) |
-| `--value <text>` | -- | Store this explicit value instead of generating; mutually exclusive with an explicit `--generate` |
-| `--type <password\|uuid\|hex\|base64>` | `password` | Generated value type |
-| `--length <n>` | `32` | Generated length in characters (1–1048576; uuid fixed 36) |
-| `--charset <alnum\|alnum+symbols\|symbols>` | `alnum` | Generated password alphabet |
-| `--ttl <duration>` | -- | Record expiry metadata (e.g. `720h`, `12h30m`, `30d`). Stored as the `skret-expires-at` resource tag on AWS and as file metadata on the local provider. Omitting the flag continues any existing cadence |
-| `--remind <duration>` | -- | Alias of `--ttl` (the spec name of the same expiry reminder; overdue keys are flagged by `skret doctor`). Pass only one of the two |
-| `--yes` | `false` | Skip the confirmation prompt |
-| `--show` | `false` | Print the new value on stdout (one line per key, or the `"value"` field in json) |
-| `--strict-notify` | `false` | Fail the command if the mutation webhook fails (default: warn only) |
-| `--no-sync` | `false` | Skip propagating the rotated values to the configured `sync.targets` |
-| `--format <table\|json>` | `table` | `json` prints `{"key", "path", "rotated", "version"}` per key (plus `"expires_at"` when recorded); one object for a single key, an array for several |
+| Flag                                        | Default    | Description                                                                                                                                                                                              |
+| ------------------------------------------- | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--generate`                                | `true`     | Draw the new value from the generate engine (same `--type`/`--length`/`--charset` rules as `skret generate`)                                                                                             |
+| `--value <text>`                            | --         | Store this explicit value instead of generating; mutually exclusive with an explicit `--generate`                                                                                                        |
+| `--type <password\|uuid\|hex\|base64>`      | `password` | Generated value type                                                                                                                                                                                     |
+| `--length <n>`                              | `32`       | Generated length in characters (1–1048576; uuid fixed 36)                                                                                                                                                |
+| `--charset <alnum\|alnum+symbols\|symbols>` | `alnum`    | Generated password alphabet                                                                                                                                                                              |
+| `--ttl <duration>`                          | --         | Record expiry metadata (e.g. `720h`, `12h30m`, `30d`). Stored as the `skret-expires-at` resource tag on AWS and as file metadata on the local provider. Omitting the flag continues any existing cadence |
+| `--remind <duration>`                       | --         | Alias of `--ttl` (the spec name of the same expiry reminder; overdue keys are flagged by `skret doctor`). Pass only one of the two                                                                       |
+| `--yes`                                     | `false`    | Skip the confirmation prompt                                                                                                                                                                             |
+| `--show`                                    | `false`    | Print the new value on stdout (one line per key, or the `"value"` field in json)                                                                                                                         |
+| `--strict-notify`                           | `false`    | Fail the command if the mutation webhook fails (default: warn only)                                                                                                                                      |
+| `--no-sync`                                 | `false`    | Skip propagating the rotated values to the configured `sync.targets`                                                                                                                                     |
+| `--format <table\|json>`                    | `table`    | `json` prints `{"key", "path", "rotated", "version"}` per key (plus `"expires_at"` when recorded); one object for a single key, an array for several                                                     |
 
 Notes:
 
@@ -204,11 +204,11 @@ skret list
 skret list --values
 ```
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--format <table\|json>` | `table` | Output format |
-| `--values` | `false` | Decrypt and include values (and version) in the output |
-| `--recursive` | `true` | Include keys at any depth under the path, not just the immediate level |
+| Flag                     | Default | Description                                                            |
+| ------------------------ | ------- | ---------------------------------------------------------------------- |
+| `--format <table\|json>` | `table` | Output format                                                          |
+| `--values`               | `false` | Decrypt and include values (and version) in the output                 |
+| `--recursive`            | `true`  | Include keys at any depth under the path, not just the immediate level |
 
 Notes:
 
@@ -225,12 +225,12 @@ Deletes a secret by its key.
 skret delete OLD_TOKEN
 ```
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--confirm` | `false` | Skip the confirmation prompt |
-| `-f, --force` | `false` | Alias for `--confirm` |
-| `--format <table\|json>` | `table` | `json` prints `{"key", "path", "deleted"}` to stdout instead of the `Deleted KEY` stderr line |
-| `--strict-notify` | `false` | Fail the command (exit 7) if the [mutation webhook](/reference/config-schema/#notify-fields) fails; default is warn on stderr only |
+| Flag                     | Default | Description                                                                                                                        |
+| ------------------------ | ------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `--confirm`              | `false` | Skip the confirmation prompt                                                                                                       |
+| `-f, --force`            | `false` | Alias for `--confirm`                                                                                                              |
+| `--format <table\|json>` | `table` | `json` prints `{"key", "path", "deleted"}` to stdout instead of the `Deleted KEY` stderr line                                      |
+| `--strict-notify`        | `false` | Fail the command (exit 7) if the [mutation webhook](/reference/config-schema/#notify-fields) fails; default is warn on stderr only |
 
 Notes:
 
@@ -249,10 +249,10 @@ eval "$(skret env --format=export)"
 skret env --no-resolve
 ```
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--format <dotenv\|json\|yaml\|export>` | `dotenv` | Output format |
-| `--no-resolve` | `false` | Dump raw stored values without resolving `${KEY}` references |
+| Flag                                    | Default  | Description                                                  |
+| --------------------------------------- | -------- | ------------------------------------------------------------ |
+| `--format <dotenv\|json\|yaml\|export>` | `dotenv` | Output format                                                |
+| `--no-resolve`                          | `false`  | Dump raw stored values without resolving `${KEY}` references |
 
 Notes:
 
@@ -272,11 +272,11 @@ skret run -- ./server
 skret run --watch -- make up-prod
 ```
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--watch` | `false` | Restart the command whenever a secret changes |
-| `--watch-interval <duration>` | `15s` | How often `--watch` checks for changes |
-| `--no-resolve` | `false` | Inject raw stored values without resolving `${KEY}` references |
+| Flag                          | Default | Description                                                    |
+| ----------------------------- | ------- | -------------------------------------------------------------- |
+| `--watch`                     | `false` | Restart the command whenever a secret changes                  |
+| `--watch-interval <duration>` | `15s`   | How often `--watch` checks for changes                         |
+| `--no-resolve`                | `false` | Inject raw stored values without resolving `${KEY}` references |
 
 Notes:
 
@@ -296,18 +296,18 @@ skret import --from=doppler --doppler-project=app --doppler-config=prd
 skret import --from=infisical
 ```
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--from <dotenv\|doppler\|infisical>` | `dotenv` | Import source |
-| `--file <path>` | `.env` | Source file path (dotenv only) |
-| `--doppler-project <name>` | -- | Doppler project name |
-| `--doppler-config <name>` | -- | Doppler config name |
-| `--infisical-project-id <id>` | -- | Infisical project ID |
-| `--infisical-env <name>` | -- | Infisical environment |
-| `--infisical-url <url>` | -- | Infisical API base URL (self-hosted) |
-| `--dry-run` | `false` | Preview the keys that would be imported without writing anything |
-| `--on-conflict <overwrite\|skip\|fail>` | `skip` | How to handle a key that already exists at the destination |
-| `--to-path <prefix>` | -- | Prefix imported keys with this path |
+| Flag                                    | Default  | Description                                                      |
+| --------------------------------------- | -------- | ---------------------------------------------------------------- |
+| `--from <dotenv\|doppler\|infisical>`   | `dotenv` | Import source                                                    |
+| `--file <path>`                         | `.env`   | Source file path (dotenv only)                                   |
+| `--doppler-project <name>`              | --       | Doppler project name                                             |
+| `--doppler-config <name>`               | --       | Doppler config name                                              |
+| `--infisical-project-id <id>`           | --       | Infisical project ID                                             |
+| `--infisical-env <name>`                | --       | Infisical environment                                            |
+| `--infisical-url <url>`                 | --       | Infisical API base URL (self-hosted)                             |
+| `--dry-run`                             | `false`  | Preview the keys that would be imported without writing anything |
+| `--on-conflict <overwrite\|skip\|fail>` | `skip`   | How to handle a key that already exists at the destination       |
+| `--to-path <prefix>`                    | --       | Prefix imported keys with this path                              |
 
 Notes:
 
@@ -326,12 +326,12 @@ skret keys init --encrypt-existing
 skret keys init --file=./.secrets.dev.yaml --encrypt-existing --format json
 ```
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--file <path>` | active env's `file` | Local provider file to act on |
-| `--encrypt-existing` | `false` | Convert the file (plaintext or legacy `skret-encrypted-v1` envelope) to the standard age format (atomic write, 0600) and record `encrypted: true` for the active environment in `.skret.yaml` |
-| `--passphrase-stdin` | `false` | Read the passphrase from one stdin line instead of generating/storing a key |
-| `--format <table\|json>` | `table` | `json` prints `{key_source, keyring_stored, file, file_encrypted, already_encrypted, config_updated, kdf, format}` to stdout |
+| Flag                     | Default             | Description                                                                                                                                                                                   |
+| ------------------------ | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--file <path>`          | active env's `file` | Local provider file to act on                                                                                                                                                                 |
+| `--encrypt-existing`     | `false`             | Convert the file (plaintext or legacy `skret-encrypted-v1` envelope) to the standard age format (atomic write, 0600) and record `encrypted: true` for the active environment in `.skret.yaml` |
+| `--passphrase-stdin`     | `false`             | Read the passphrase from one stdin line instead of generating/storing a key                                                                                                                   |
+| `--format <table\|json>` | `table`             | `json` prints `{key_source, keyring_stored, file, file_encrypted, already_encrypted, config_updated, kdf, format}` to stdout                                                                  |
 
 Notes:
 
@@ -352,8 +352,8 @@ skret keys show
 skret keys show --format json
 ```
 
-| Flag | Default | Description |
-|------|---------|-------------|
+| Flag                     | Default | Description                                                                                              |
+| ------------------------ | ------- | -------------------------------------------------------------------------------------------------------- |
 | `--format <table\|json>` | `table` | `json` prints a `{encrypted, format, kdf, encrypted_config, key_available, key_source, warnings}` object |
 
 Notes:
@@ -377,26 +377,32 @@ skret audit --provider aws --since 2026-09-01T00:00:00Z --limit 50
 **Local provider** — renders the append-only JSONL audit trail written next to the secrets file (`.skret-audit.log`, or the `audit_log` path from `.skret.yaml`). Every local `set`/`rotate`/`delete` appends one line:
 
 ```json
-{"timestamp":"2026-09-19T09:00:00.123Z","op":"set","key_names":["API_KEY"],"env":"prod","actor":"deploy-bot"}
+{
+  "timestamp": "2026-09-19T09:00:00.123Z",
+  "op": "set",
+  "key_names": ["API_KEY"],
+  "env": "prod",
+  "actor": "deploy-bot"
+}
 ```
 
 Each line carries timestamp, operation (`set`/`rotate`/`delete`), affected key names, environment, and actor (`SKRET_ACTOR` when set — useful in CI — else the OS user). Secret values are never written to the trail. The log is created with `0600`, and when it reaches 1 MiB it rotates to `.skret-audit.log.1` (single backup) before the next append. Reading the trail never decrypts the secrets file, so `skret audit` works without key material.
 
 **AWS provider** — exports CloudTrail events for SSM Parameter Store operations (`GetParameter`, `GetParameters`, `GetParametersByPath`, `GetParameterHistory`, `PutParameter`, `DeleteParameter`, `DeleteParameters`), newest first. CloudTrail lookup retention is 90 days, so `--since` older than that yields whatever the service still returns. Credentials resolve exactly like the AWS provider itself (stored credential → profile → SDK chain); region comes from the environment config or `--region`. CloudTrail never logs parameter values, and skret renders metadata fields only.
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--since <duration\|RFC3339>` | -- | Only entries newer than this (`24h`, `30d`, or an absolute timestamp). Local filtering is exact; AWS uses it as the CloudTrail lookup window start. |
-| `--key <name>` | -- | Only entries for this exact key/parameter name |
-| `--limit <n>` | `0` (all) | Cap rendered events, keeping the most recent. The AWS sweep additionally bounds itself at 10 LookupEvents pages (500 events) per event name. |
-| `--format <table\|json>` | `table` | `table` prints a `TIME OP ENV KEYS ACTOR` grid (local) / `TIME EVENT PARAMETER USER SOURCE` grid (AWS); `json` prints the entry array on stdout |
+| Flag                          | Default   | Description                                                                                                                                         |
+| ----------------------------- | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--since <duration\|RFC3339>` | --        | Only entries newer than this (`24h`, `30d`, or an absolute timestamp). Local filtering is exact; AWS uses it as the CloudTrail lookup window start. |
+| `--key <name>`                | --        | Only entries for this exact key/parameter name                                                                                                      |
+| `--limit <n>`                 | `0` (all) | Cap rendered events, keeping the most recent. The AWS sweep additionally bounds itself at 10 LookupEvents pages (500 events) per event name.        |
+| `--format <table\|json>`      | `table`   | `table` prints a `TIME OP ENV KEYS ACTOR` grid (local) / `TIME EVENT PARAMETER USER SOURCE` grid (AWS); `json` prints the entry array on stdout     |
 
-| Exit code | Meaning |
-|-----------|---------|
-| 0 | Entries rendered (an empty trail is not an error; a note goes to stderr) |
-| 2 | Config load/resolve failed |
-| 3 | Trail unreadable, or the CloudTrail lookup failed (auth/permission/network) |
-| 8 | Invalid flag value (`--format`, `--limit`, `--since`) or a provider without a skret-managed audit trail |
+| Exit code | Meaning                                                                                                 |
+| --------- | ------------------------------------------------------------------------------------------------------- |
+| 0         | Entries rendered (an empty trail is not an error; a note goes to stderr)                                |
+| 2         | Config load/resolve failed                                                                              |
+| 3         | Trail unreadable, or the CloudTrail lookup failed (auth/permission/network)                             |
+| 8         | Invalid flag value (`--format`, `--limit`, `--since`) or a provider without a skret-managed audit trail |
 
 ## `skret doctor`
 
@@ -410,19 +416,18 @@ skret doctor --format json
 
 Checks: config parse/schema (`config`), per-environment provider reachability (`provider[env]` — a real `sts:GetCallerIdentity` probe for AWS, secrets-file load for `local`), stored-credential state (`auth[aws]` — missing warns, expired fails, expiry within 24h warns), local secrets-file permissions (`permissions[env]`, advisory; always pass on Windows), local at-rest encryption state (`encryption[env]` — encrypted file with key available passes, encrypted without key fails with an auth-class error and a `SKRET_AGE_KEY` remediation, plaintext warns with high-entropy key names), and TTL hygiene (`expiry[env]` — past-expiry and 7-day-window counts for secrets carrying expiry metadata; advisory, emitted only when TTL metadata exists).
 
-| Flag | Default | Description |
-|------|---------|-------------|
+| Flag                     | Default | Description                                                                |
+| ------------------------ | ------- | -------------------------------------------------------------------------- |
 | `--format <table\|json>` | `table` | `json` prints `{checks: [{name, status, detail, remediation?}]}` on stdout |
-| `--timeout <duration>` | `10s` | Reachability probe timeout per provider |
+| `--timeout <duration>`   | `10s`   | Reachability probe timeout per provider                                    |
 
-| Exit code | Meaning |
-|-----------|---------|
-| 0 | All checks passed (warnings allowed) |
-| 2 | Config check failed |
-| 3 | Local provider check failed (e.g. corrupt secrets file) |
-| 4 | Auth check failed (expired credential) |
-| 7 | Provider unreachable |
-
+| Exit code | Meaning                                                 |
+| --------- | ------------------------------------------------------- |
+| 0         | All checks passed (warnings allowed)                    |
+| 2         | Config check failed                                     |
+| 3         | Local provider check failed (e.g. corrupt secrets file) |
+| 4         | Auth check failed (expired credential)                  |
+| 7         | Provider unreachable                                    |
 
 ## `skret llms`
 
@@ -435,30 +440,31 @@ skret llms
 skret llms --format json
 ```
 
-| Flag | Default | Description |
-|------|---------|-------------|
+| Flag                     | Default | Description                                                                                          |
+| ------------------------ | ------- | ---------------------------------------------------------------------------------------------------- |
 | `--format <table\|json>` | `table` | `json` prints a `{version, commands[], providers[], exit_codes{}, env_vars[], config_keys[]}` object |
 
-| Exit code | Meaning |
-|-----------|---------|
-| 0 | Manifest printed |
-| 8 | Invalid flag value (`--format`) or an unexpected positional argument |
+| Exit code | Meaning                                                              |
+| --------- | -------------------------------------------------------------------- |
+| 0         | Manifest printed                                                     |
+| 8         | Invalid flag value (`--format`) or an unexpected positional argument |
+
 ## `skret-mcp` (companion binary)
 
 An MCP (Model Context Protocol) server that exposes the same `.skret.yaml` project to AI agent harnesses (Claude Code, OMP, any stdio MCP client) — newline-delimited JSON-RPC 2.0 on stdin/stdout, diagnostics on stderr. See the [MCP guide](/guide/mcp/) for client wiring and the write-gate policy.
 
 Tools: `skret_list` (key names only), `skret_get` (the single value-returning tool), `skret_env` (accessible environment names), `skret_status`/`skret_doctor` (health, no network calls), plus write tools `skret_set`/`skret_delete`/`skret_rotate` that are rejected unless `mcp.allow_write: true` is set under the optional `mcp:` config block (which also carries the optional `allowed_envs` filter) and each write call additionally carries `confirm: true`. Local-provider reads through MCP are appended to the audit trail as `mcp_read` entries.
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--workdir <dir>` | current directory | Directory to discover `.skret.yaml` from |
-| `--env <name>` | `default_env` | Pin the environment |
-| `--provider <name>` | config | Override the provider |
-| `--path <prefix>` | config | Override the secret path prefix |
-| `--version` | -- | Print version and exit |
+| Flag                | Default           | Description                              |
+| ------------------- | ----------------- | ---------------------------------------- |
+| `--workdir <dir>`   | current directory | Directory to discover `.skret.yaml` from |
+| `--env <name>`      | `default_env`     | Pin the environment                      |
+| `--provider <name>` | config            | Override the provider                    |
+| `--path <prefix>`   | config            | Override the secret path prefix          |
+| `--version`         | --                | Print version and exit                   |
 
-| Exit code | Meaning |
-|-----------|---------|
-| 0 | Clean shutdown (stdin closed or signal) |
-| 1 | Transport/read failure mid-session |
-| 2 | Configuration could not be discovered or loaded (including a startup `--env` outside `mcp.allowed_envs`) |
+| Exit code | Meaning                                                                                                  |
+| --------- | -------------------------------------------------------------------------------------------------------- |
+| 0         | Clean shutdown (stdin closed or signal)                                                                  |
+| 1         | Transport/read failure mid-session                                                                       |
+| 2         | Configuration could not be discovered or loaded (including a startup `--env` outside `mcp.allowed_envs`) |

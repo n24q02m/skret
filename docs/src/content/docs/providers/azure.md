@@ -39,9 +39,9 @@ agree (the name derives `https://<name>.vault.azure.net`):
 environments:
   prod:
     provider: azure
-    vault_name: my-vault          # derives https://my-vault.vault.azure.net
+    vault_name: my-vault # derives https://my-vault.vault.azure.net
     # vault_url: https://my-vault.vault.azure.net/   # alternative (sovereign clouds need this)
-    path: myapp-prod-             # optional name-prefix filter (see below)
+    path: myapp-prod- # optional name-prefix filter (see below)
 ```
 
 For sovereign clouds (Azure Government, China), set `vault_url` explicitly —
@@ -50,16 +50,16 @@ For sovereign clouds (Azure Government, China), set `vault_url` explicitly —
 ## Secret naming
 
 Key Vault secret names accept only **alphanumeric characters and dashes**
-(1–127 chars). skret keys are sanitized deterministically on *both* read and
+(1–127 chars). skret keys are sanitized deterministically on _both_ read and
 write paths, so `skret set DB_URL` stores `DB-URL` and `skret get DB_URL`
 reads it back:
 
-| Rule | Example |
-|------|---------|
+| Rule                             | Example                           |
+| -------------------------------- | --------------------------------- |
 | Disallowed characters become `-` | `app.config.v2` → `app-config-v2` |
-| Consecutive dashes collapse | `a///b` → `a-b` |
-| Leading/trailing dashes trim | `/myapp/KEY` → `myapp-KEY` |
-| Names cap at 127 chars | — |
+| Consecutive dashes collapse      | `a///b` → `a-b`                   |
+| Leading/trailing dashes trim     | `/myapp/KEY` → `myapp-KEY`        |
+| Names cap at 127 chars           | —                                 |
 
 The mapping is deterministic but **not injective**: `db_url` and `db-url`
 both store as `db-url`. Pick one spelling per key in `required:`/`exclude:`
@@ -77,7 +77,7 @@ with 64-bit integers. skret folds the leading hex characters of each version
 ID into that integer space deterministically; `skret history`, `rollback`,
 and version-pinned launches all operate on the folded numbers and resolve
 them back through the vault's version list. Two versions of one secret
-colliding on the folded number is negligible, but the numbers are *skret*
+colliding on the folded number is negligible, but the numbers are _skret_
 identifiers, not Key Vault IDs — use the Azure portal/CLI with the full IDs
 when you need the raw values.
 
@@ -90,11 +90,11 @@ window, 7–90 days); skret never purges.
 
 skret mirrors secret metadata into Key Vault tags:
 
-| skret metadata | Key Vault tag |
-|----------------|---------------|
-| `set --ttl` expiry | `skret-expires-at` (RFC3339) |
-| description | `skret-description` |
-| other tags | passed through, excluding reserved `skret-*` names |
+| skret metadata     | Key Vault tag                                      |
+| ------------------ | -------------------------------------------------- |
+| `set --ttl` expiry | `skret-expires-at` (RFC3339)                       |
+| description        | `skret-description`                                |
+| other tags         | passed through, excluding reserved `skret-*` names |
 
 The expires-at timestamp is authoritative: it wins over a user-supplied tag
 of the same name. All tags ride in the same request as the value, so a write
@@ -124,11 +124,11 @@ SKRET_EXPERIMENTAL=1 skret rollback DB_URL 3
 
 ## Quotas
 
-| Resource | Limit |
-|----------|-------|
-| Secret value size | 25 KB |
+| Resource                                   | Limit                       |
+| ------------------------------------------ | --------------------------- |
+| Secret value size                          | 25 KB                       |
 | Transactions per 10 s per vault (Standard) | 2,000 (reads), 400 (writes) |
-| Secret versions per secret | unlimited |
+| Secret versions per secret                 | unlimited                   |
 
 A value over 25 KB is rejected by the vault and surfaced as a provider error
 (skret exit code **3**) — see [error codes](/reference/error-codes/).

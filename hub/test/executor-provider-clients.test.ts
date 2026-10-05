@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   CloudflareTargetClient,
-  GitHubTargetClient,
+  type CloudflareTargetTransport,
   canonicalCloudflareTarget,
   canonicalGitHubTarget,
   canonicalTargetSet,
   createTargetOperation,
-  type CloudflareTargetTransport,
+  GitHubTargetClient,
   type GitHubTargetTransport,
   type ProviderWriteResponse,
   type SealedBox,
@@ -44,20 +44,29 @@ class FakeGitHubTransport implements GitHubTargetTransport {
   throwWrite = false;
   private pending = false;
 
-  async getRepositoryPublicKey(input: Parameters<GitHubTargetTransport["getRepositoryPublicKey"]>[0]) {
+  async getRepositoryPublicKey(
+    input: Parameters<GitHubTargetTransport["getRepositoryPublicKey"]>[0],
+  ) {
     this.calls.push({ operation: "public-key", input: { ...input } });
     return { keyId: this.keyId, publicKey: this.publicKey.slice() };
   }
 
-  async upsertRepositorySecret(input: Parameters<GitHubTargetTransport["upsertRepositorySecret"]>[0]) {
-    this.calls.push({ operation: "upsert", input: { ...input, sealedValue: input.sealedValue.slice() } });
+  async upsertRepositorySecret(
+    input: Parameters<GitHubTargetTransport["upsertRepositorySecret"]>[0],
+  ) {
+    this.calls.push({
+      operation: "upsert",
+      input: { ...input, sealedValue: input.sealedValue.slice() },
+    });
     if (this.throwWrite) throw new Error("synthetic dropped response");
     if (this.delayFirst && !this.pending) {
       this.pending = true;
       await Promise.resolve();
       await new Promise<void>((resolve) => queueMicrotask(resolve));
     }
-    return this.responseByOperation.has(input.operationId) ? this.responseByOperation.get(input.operationId) : this.response;
+    return this.responseByOperation.has(input.operationId)
+      ? this.responseByOperation.get(input.operationId)
+      : this.response;
   }
 }
 
@@ -134,13 +143,25 @@ describe("canonical executor target clients", () => {
       }),
     ).toThrow("invalid target identity");
 
-    const first = canonicalGitHubTarget({ owner: "fixture", repository: "repo", secretName: "TOKEN" });
-    const second = canonicalGitHubTarget({ owner: "FIXTURE", repository: "REPO", secretName: "token" });
+    const first = canonicalGitHubTarget({
+      owner: "fixture",
+      repository: "repo",
+      secretName: "TOKEN",
+    });
+    const second = canonicalGitHubTarget({
+      owner: "FIXTURE",
+      repository: "REPO",
+      secretName: "token",
+    });
     await expect(canonicalTargetSet([first, second])).rejects.toThrow("target identity collision");
   });
 
   it("requires immutable operation identity and sends one sealed-box GitHub upsert", async () => {
-    const target = canonicalGitHubTarget({ owner: "fixture", repository: "repo", secretName: "TOKEN" });
+    const target = canonicalGitHubTarget({
+      owner: "fixture",
+      repository: "repo",
+      secretName: "TOKEN",
+    });
     const operation = createTargetOperation({
       operationId: "op-github-1",
       generation: "generation-1",
@@ -171,7 +192,11 @@ describe("canonical executor target clients", () => {
   });
 
   it("does not retry an opaque dropped GitHub response and moves to reconciliation", async () => {
-    const target = canonicalGitHubTarget({ owner: "fixture", repository: "repo", secretName: "TOKEN" });
+    const target = canonicalGitHubTarget({
+      owner: "fixture",
+      repository: "repo",
+      secretName: "TOKEN",
+    });
     const operation = createTargetOperation({
       operationId: "op-github-dropped",
       generation: "generation-1",
@@ -192,22 +217,43 @@ describe("canonical executor target clients", () => {
       target,
       contextDigest: CONTEXT_DIGEST,
     });
-    await expect(client.upsertSecret({ operation: thrownOperation, value: VALUE.slice() })).resolves.toMatchObject({
+    await expect(
+      client.upsertSecret({ operation: thrownOperation, value: VALUE.slice() }),
+    ).resolves.toMatchObject({
       status: "needs_reconciliation",
     });
     expect(transport.calls.filter(({ operation: name }) => name === "upsert")).toHaveLength(2);
   });
 
   it("rejects unknown GitHub responses and serializes concurrent writes deterministically", async () => {
-    const target = canonicalGitHubTarget({ owner: "fixture", repository: "repo", secretName: "TOKEN" });
+    const target = canonicalGitHubTarget({
+      owner: "fixture",
+      repository: "repo",
+      secretName: "TOKEN",
+    });
     const transport = new FakeGitHubTransport();
     const client = new GitHubTargetClient(transport, new FakeSealedBox());
-    const first = createTargetOperation({ operationId: "op-1", generation: "g", target, contextDigest: CONTEXT_DIGEST });
-    const second = createTargetOperation({ operationId: "op-2", generation: "g", target, contextDigest: CONTEXT_DIGEST });
+    const first = createTargetOperation({
+      operationId: "op-1",
+      generation: "g",
+      target,
+      contextDigest: CONTEXT_DIGEST,
+    });
+    const second = createTargetOperation({
+      operationId: "op-2",
+      generation: "g",
+      target,
+      contextDigest: CONTEXT_DIGEST,
+    });
     transport.response = { status: "mystery" } as never;
-    await expect(client.upsertSecret({ operation: first, value: VALUE.slice() })).rejects.toThrow("invalid provider response");
+    await expect(client.upsertSecret({ operation: first, value: VALUE.slice() })).rejects.toThrow(
+      "invalid provider response",
+    );
     transport.response = applied(first.operationId, target.canonical);
-    transport.responseByOperation.set(second.operationId, applied(second.operationId, target.canonical));
+    transport.responseByOperation.set(
+      second.operationId,
+      applied(second.operationId, target.canonical),
+    );
     const results = await Promise.all([
       client.upsertSecret({ operation: first, value: VALUE.slice() }),
       client.upsertSecret({ operation: second, value: VALUE.slice() }),
@@ -237,7 +283,6 @@ describe("canonical executor target clients", () => {
     expect(transport.calls).toHaveLength(0);
   });
 
-
   it("writes Cloudflare Worker and Pages targets with one immutable operation each", async () => {
     const transport = new FakeCloudflareTransport();
     const client = new CloudflareTargetClient(transport);
@@ -255,13 +300,30 @@ describe("canonical executor target clients", () => {
       secretName: "TOKEN",
       capability: "owner_risk_gate",
     });
-    const workerOperation = createTargetOperation({ operationId: "op-worker", generation: "g", target: worker, contextDigest: CONTEXT_DIGEST });
-    const pagesOperation = createTargetOperation({ operationId: "op-pages", generation: "g", target: pages, contextDigest: CONTEXT_DIGEST });
+    const workerOperation = createTargetOperation({
+      operationId: "op-worker",
+      generation: "g",
+      target: worker,
+      contextDigest: CONTEXT_DIGEST,
+    });
+    const pagesOperation = createTargetOperation({
+      operationId: "op-pages",
+      generation: "g",
+      target: pages,
+      contextDigest: CONTEXT_DIGEST,
+    });
     transport.response = applied(workerOperation.operationId, worker.canonical);
-    await expect(client.upsertSecret({ operation: workerOperation, value: VALUE.slice() })).resolves.toMatchObject({ status: "applied" });
+    await expect(
+      client.upsertSecret({ operation: workerOperation, value: VALUE.slice() }),
+    ).resolves.toMatchObject({ status: "applied" });
     transport.response = applied(pagesOperation.operationId, pages.canonical);
-    await expect(client.upsertSecret({ operation: pagesOperation, value: VALUE.slice() })).resolves.toMatchObject({ status: "applied" });
-    expect(transport.calls.map(({ operation: name }) => name)).toEqual(["worker-write", "pages-write"]);
+    await expect(
+      client.upsertSecret({ operation: pagesOperation, value: VALUE.slice() }),
+    ).resolves.toMatchObject({ status: "applied" });
+    expect(transport.calls.map(({ operation: name }) => name)).toEqual([
+      "worker-write",
+      "pages-write",
+    ]);
   });
 
   it("maps a dropped Cloudflare response to reconciliation without a second write", async () => {
@@ -272,7 +334,12 @@ describe("canonical executor target clients", () => {
       secretName: "TOKEN",
       capability: "owner_risk_gate",
     });
-    const operation = createTargetOperation({ operationId: "op-cf-dropped", generation: "g", target, contextDigest: CONTEXT_DIGEST });
+    const operation = createTargetOperation({
+      operationId: "op-cf-dropped",
+      generation: "g",
+      target,
+      contextDigest: CONTEXT_DIGEST,
+    });
     const transport = new FakeCloudflareTransport();
     transport.response = null;
     const client = new CloudflareTargetClient(transport);
@@ -286,7 +353,9 @@ describe("canonical executor target clients", () => {
       target,
       contextDigest: CONTEXT_DIGEST,
     });
-    await expect(client.upsertSecret({ operation: thrownOperation, value: VALUE.slice() })).resolves.toMatchObject({
+    await expect(
+      client.upsertSecret({ operation: thrownOperation, value: VALUE.slice() }),
+    ).resolves.toMatchObject({
       status: "needs_reconciliation",
     });
     expect(transport.calls).toHaveLength(2);

@@ -1,6 +1,10 @@
 [tools]
 go = "1.26.5"
 golangci-lint = "latest"
+# Stack standard 2026-08-25 (revised 2026-09-17): TS workspaces (hub/, docs/)
+# run on bun+deno with biome (linter-only) + oxlint + oxfmt.
+bun = "latest"
+deno = "latest"
 
 [tasks.setup]
 description = "Setup development environment"

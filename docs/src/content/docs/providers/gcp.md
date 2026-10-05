@@ -45,9 +45,9 @@ For read-only workflows (`run`, `env`, `get`, `list`) use
 environments:
   prod:
     provider: gcp
-    project: my-gcp-project   # Required. GCP project id (GOOGLE_CLOUD_PROJECT overrides).
-    region: us-east1          # Optional. GCP location for regional secrets; omit for global.
-    kms_key_id: projects/my-gcp-project/locations/global/keyRings/skret/cryptoKeys/main  # Optional CMEK.
+    project: my-gcp-project # Required. GCP project id (GOOGLE_CLOUD_PROJECT overrides).
+    region: us-east1 # Optional. GCP location for regional secrets; omit for global.
+    kms_key_id: projects/my-gcp-project/locations/global/keyRings/skret/cryptoKeys/main # Optional CMEK.
 ```
 
 GCP secret ids are **flat** -- no path hierarchy exists. Keep `path` empty
@@ -75,11 +75,11 @@ skret run -- node server.js
 
 ## Quotas
 
-| Resource | Limit |
-|----------|-------|
-| Secret value size | 64 KiB (skret rejects larger values locally before any API call) |
-| Secret id length | 1-255 chars, `[a-zA-Z0-9_-]` |
-| Labels/annotations per secret | 64 entries, lowercase `[a-z0-9_-]`, <=63 bytes each |
+| Resource                      | Limit                                                            |
+| ----------------------------- | ---------------------------------------------------------------- |
+| Secret value size             | 64 KiB (skret rejects larger values locally before any API call) |
+| Secret id length              | 1-255 chars, `[a-zA-Z0-9_-]`                                     |
+| Labels/annotations per secret | 64 entries, lowercase `[a-z0-9_-]`, <=63 bytes each              |
 
 A value over 64 KiB fails with a provider error (skret exit code **3**) --
 see [error codes](/reference/error-codes/). For larger payloads see the
@@ -89,11 +89,11 @@ see [error codes](/reference/error-codes/). For larger payloads see the
 
 skret mirrors `SecretMeta` into GCP-native metadata:
 
-| skret metadata | GCP target | Notes |
-|----------------|------------|-------|
-| user tags | secret **labels** | Must satisfy GCP label rules (lowercase). |
-| description | annotation `skret-description` | Secret Manager has no description field. |
-| `--ttl` expiry | annotation `skret-expires-at` | RFC3339 timestamp, wins over a user annotation of the same name. |
+| skret metadata | GCP target                     | Notes                                                            |
+| -------------- | ------------------------------ | ---------------------------------------------------------------- |
+| user tags      | secret **labels**              | Must satisfy GCP label rules (lowercase).                        |
+| description    | annotation `skret-description` | Secret Manager has no description field.                         |
+| `--ttl` expiry | annotation `skret-expires-at`  | RFC3339 timestamp, wins over a user annotation of the same name. |
 
 ## Security
 

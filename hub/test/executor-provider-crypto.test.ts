@@ -1,25 +1,26 @@
 import { describe, expect, it } from "vitest";
 import {
+  type AwsParameterMetadata,
   AwsSourceClient,
-  KmsClient,
-  ProviderEnvelopeLifecycle,
-  DurableProviderEnvelopeGenerationStore,
-  SourceMissingError,
+  type AwsSourceTransport,
   canonicalKmsEncryptionContext,
   createEnvelopeContext,
   createProviderEnvelope,
+  DurableProviderEnvelopeGenerationStore,
   decryptProviderEnvelope,
   encodeLengthPrefixed,
-  type AwsParameterMetadata,
-  type AwsSourceTransport,
+  KmsClient,
   type KmsTransport,
   type PersistedProviderEnvelope,
   type PreparedProviderGeneration,
   type ProviderEnvelopeGenerationStore,
+  ProviderEnvelopeLifecycle,
   type ProviderEnvelopeStorage,
   type ProviderEnvelopeTransaction,
   type SourceIdentity,
+  SourceMissingError,
 } from "../src/executor-provider-crypto";
+
 const SOURCE: SourceIdentity = {
   partition: "aws",
   account: "123456789012",
@@ -69,7 +70,11 @@ class FakeKmsTransport implements KmsTransport {
 
   async decrypt(request: Parameters<KmsTransport["decrypt"]>[0]) {
     this.calls.push({ operation: "Decrypt", context: request.encryptionContext });
-    if (this.disabled || this.wrongContext || request.encryptedDataKey.some((byte, index) => byte !== ENCRYPTED_DATA_KEY[index])) {
+    if (
+      this.disabled ||
+      this.wrongContext ||
+      request.encryptedDataKey.some((byte, index) => byte !== ENCRYPTED_DATA_KEY[index])
+    ) {
       throw new Error("synthetic KMS rejected context");
     }
     return { plaintextDataKey: DATA_KEY.slice() };
@@ -85,7 +90,9 @@ class FakeAwsTransport implements AwsSourceTransport {
   throwAfterUnlabelCommit = false;
   labelReadbackOverride: number | null | undefined;
 
-  async describeParameterVersion(request: Parameters<AwsSourceTransport["describeParameterVersion"]>[0]) {
+  async describeParameterVersion(
+    request: Parameters<AwsSourceTransport["describeParameterVersion"]>[0],
+  ) {
     this.calls.push(`Describe:${request.parameterName}:${request.version}`);
     if (!this.currentMetadata.exists) return null;
     return structuredClone(this.currentMetadata);
@@ -104,10 +111,14 @@ class FakeAwsTransport implements AwsSourceTransport {
 
   async readParameterLabel(request: Parameters<AwsSourceTransport["readParameterLabel"]>[0]) {
     this.calls.push(`ReadLabel:${request.parameterName}:${request.label}`);
-    return this.labelReadbackOverride === undefined ? this.labelReadback : this.labelReadbackOverride;
+    return this.labelReadbackOverride === undefined
+      ? this.labelReadback
+      : this.labelReadbackOverride;
   }
 
-  async unlabelParameterVersion(request: Parameters<AwsSourceTransport["unlabelParameterVersion"]>[0]) {
+  async unlabelParameterVersion(
+    request: Parameters<AwsSourceTransport["unlabelParameterVersion"]>[0],
+  ) {
     this.calls.push(`Unlabel:${request.parameterName}:${request.version}:${request.label}`);
     this.labelReadback = null;
     if (this.throwAfterUnlabelCommit) throw new Error("synthetic dropped unlabel response");
@@ -146,12 +157,13 @@ class FakeEnvelopeStorage implements ProviderEnvelopeStorage {
 
   transaction<T>(closure: (transaction: ProviderEnvelopeTransaction) => Promise<T>): Promise<T> {
     const result = this.tail.then(() => closure(this));
-    this.tail = result.then(() => undefined, () => undefined);
+    this.tail = result.then(
+      () => undefined,
+      () => undefined,
+    );
     return result;
   }
 }
-
-
 
 async function expectInvalidEnvelope(
   envelope: PersistedProviderEnvelope,
@@ -170,19 +182,9 @@ async function expectInvalidEnvelope(
 
 describe("executor provider envelope crypto", () => {
   it("encodes MAC fields in fixed order with unsigned big-endian lengths", () => {
-    expect(Array.from(encodeLengthPrefixed([new Uint8Array([0x61]), new Uint8Array([0x62, 0x63])]))).toEqual([
-      0,
-      0,
-      0,
-      1,
-      0x61,
-      0,
-      0,
-      0,
-      2,
-      0x62,
-      0x63,
-    ]);
+    expect(
+      Array.from(encodeLengthPrefixed([new Uint8Array([0x61]), new Uint8Array([0x62, 0x63])])),
+    ).toEqual([0, 0, 0, 1, 0x61, 0, 0, 0, 2, 0x62, 0x63]);
   });
 
   it("produces deterministic ciphertext, context digest, and MAC for a fixed vector", async () => {
@@ -219,7 +221,10 @@ describe("executor provider envelope crypto", () => {
       kms,
     });
 
-    await expectInvalidEnvelope({ ...envelope, ciphertext: `${envelope.ciphertext.slice(0, -1)}A` }, kms);
+    await expectInvalidEnvelope(
+      { ...envelope, ciphertext: `${envelope.ciphertext.slice(0, -1)}A` },
+      kms,
+    );
     await expectInvalidEnvelope({ ...envelope, mac: `${envelope.mac.slice(0, -1)}A` }, kms);
     await expectInvalidEnvelope(
       envelope,
@@ -268,19 +273,24 @@ describe("executor provider envelope crypto", () => {
     expect(transport.calls[1]?.operation).toBe("Decrypt");
 
     transport.wrongContext = true;
-    await expect(decryptProviderEnvelope({ envelope, context: CONTEXT, keyReference: "fixture-kms-key", kms }))
-      .rejects.toThrow("KMS operation failed");
+    await expect(
+      decryptProviderEnvelope({ envelope, context: CONTEXT, keyReference: "fixture-kms-key", kms }),
+    ).rejects.toThrow("KMS operation failed");
     transport.wrongContext = false;
     transport.disabled = true;
-    await expect(decryptProviderEnvelope({ envelope, context: CONTEXT, keyReference: "fixture-kms-key", kms }))
-      .rejects.toThrow("KMS operation failed");
+    await expect(
+      decryptProviderEnvelope({ envelope, context: CONTEXT, keyReference: "fixture-kms-key", kms }),
+    ).rejects.toThrow("KMS operation failed");
   });
   it("persists envelope generations create-only and rejects corrupt durable state", async () => {
     const storage = new FakeEnvelopeStorage();
     const store = new DurableProviderEnvelopeGenerationStore(storage);
     const targetIdentity = "github|fixture/repo|production|TOKEN";
     const targetDigestBytes = new Uint8Array(
-      await crypto.subtle.digest("SHA-256", encodeLengthPrefixed([new TextEncoder().encode(targetIdentity)])),
+      await crypto.subtle.digest(
+        "SHA-256",
+        encodeLengthPrefixed([new TextEncoder().encode(targetIdentity)]),
+      ),
     );
     const context = createEnvelopeContext({
       ...CONTEXT,
@@ -307,16 +317,18 @@ describe("executor provider envelope crypto", () => {
     await store.put(prepared);
     await store.put(structuredClone(prepared));
     expect(await store.get(prepared.operationId)).toEqual(prepared);
-    await expect(store.put({ ...prepared, sourceDigest: `sha256:${"b".repeat(64)}` }))
-      .rejects.toThrow("provider envelope generation conflict");
+    await expect(
+      store.put({ ...prepared, sourceDigest: `sha256:${"b".repeat(64)}` }),
+    ).rejects.toThrow("provider envelope generation conflict");
 
     const key = [...storage.values.keys()][0]!;
     storage.values.set(key, { operationId: prepared.operationId });
-    await expect(store.get(prepared.operationId)).rejects.toThrow("invalid provider envelope generation state");
+    await expect(store.get(prepared.operationId)).rejects.toThrow(
+      "invalid provider envelope generation state",
+    );
     await store.delete(prepared.operationId);
     await expect(store.get(prepared.operationId)).resolves.toBeUndefined();
   });
-
 });
 
 describe("AWS source client and lifecycle", () => {
@@ -331,7 +343,9 @@ describe("AWS source client and lifecycle", () => {
     });
 
     const before = transport.calls.length;
-    await expect(client.readExact({ ...SOURCE, version: 0 })).rejects.toThrow("provider source boundary");
+    await expect(client.readExact({ ...SOURCE, version: 0 })).rejects.toThrow(
+      "provider source boundary",
+    );
     expect(transport.calls).toHaveLength(before);
   });
 
@@ -349,10 +363,14 @@ describe("AWS source client and lifecycle", () => {
     });
     await expect(client.preflight(SOURCE)).resolves.toMatchObject({ version: SOURCE.version });
 
-    transport.currentMetadata = metadata({ labels: Array.from({ length: 10 }, (_, i) => ({ label: `l-${i}`, version: 1 })) });
+    transport.currentMetadata = metadata({
+      labels: Array.from({ length: 10 }, (_, i) => ({ label: `l-${i}`, version: 1 })),
+    });
     await expect(client.preflight(SOURCE)).rejects.toThrow("provider label boundary");
 
-    transport.currentMetadata = metadata({ labels: [{ label: SOURCE.lifecycleLabel, version: 2 }] });
+    transport.currentMetadata = metadata({
+      labels: [{ label: SOURCE.lifecycleLabel, version: 2 }],
+    });
     await expect(client.preflight(SOURCE)).rejects.toThrow("provider label drift");
   });
 
@@ -429,7 +447,12 @@ describe("AWS source client and lifecycle", () => {
     expect(events.indexOf("label-readback")).toBeLessThan(events.indexOf("kms-generate"));
     await expect(restarted.getRetained(prepared.operationId)).resolves.toBeDefined();
 
-    for (const killPoint of ["after-final-acknowledgement", "during-canary", "after-canary", "during-cleanup"] as const) {
+    for (const killPoint of [
+      "after-final-acknowledgement",
+      "during-canary",
+      "after-canary",
+      "during-cleanup",
+    ] as const) {
       const result = await restarted.cleanup({
         operationId: prepared.operationId,
         acknowledgements: [{ targetIdentity: "github|fixture/repo|SECRET", acknowledged: true }],
@@ -459,7 +482,11 @@ describe("AWS source client and lifecycle", () => {
     const aws = new FakeAwsTransport();
     const kmsTransport = new FakeKmsTransport();
     const kms = new KmsClient(kmsTransport);
-    const lifecycle = new ProviderEnvelopeLifecycle(new AwsSourceClient(aws), kms, new FakeGenerationStore());
+    const lifecycle = new ProviderEnvelopeLifecycle(
+      new AwsSourceClient(aws),
+      kms,
+      new FakeGenerationStore(),
+    );
     const prepared = await lifecycle.prepare({
       operationId: CONTEXT.operationId,
       generation: CONTEXT.generation,
@@ -478,7 +505,10 @@ describe("AWS source client and lifecycle", () => {
     if (recovered.status === "recovered") expect(recovered.value).toEqual(FIXTURE_VALUE);
 
     const invalid = await lifecycle.recover({
-      prepared: { ...prepared, envelope: { ...prepared.envelope, mac: `${prepared.envelope.mac.slice(0, -1)}A` } },
+      prepared: {
+        ...prepared,
+        envelope: { ...prepared.envelope, mac: `${prepared.envelope.mac.slice(0, -1)}A` },
+      },
     });
     expect(invalid.status).toBe("source_unrecoverable");
     kmsTransport.disabled = true;

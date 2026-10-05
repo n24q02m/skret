@@ -18,25 +18,30 @@ hero:
       variant: minimal
 ---
 
-import { Card, CardGrid } from '@astrojs/starlight/components';
+import { Card, CardGrid } from "@astrojs/starlight/components";
 
 ## Why skret?
 
 <CardGrid stagger>
   <Card title="Multi-provider" icon="seti:folder">
-    First-class AWS SSM Parameter Store, Azure Key Vault, GCP Secret Manager, and OCI Vault plus a local YAML provider today. Switch backends without changing how your team works.
+    First-class AWS SSM Parameter Store, Azure Key Vault, GCP Secret Manager, and OCI Vault plus a
+    local YAML provider today. Switch backends without changing how your team works.
   </Card>
   <Card title="Zero lock-in" icon="random">
-    Secrets live in your own cloud account under IAM policies you already manage. No SaaS control plane, no new billing line.
+    Secrets live in your own cloud account under IAM policies you already manage. No SaaS control
+    plane, no new billing line.
   </Card>
   <Card title="Import & sync" icon="bars">
-    Migrate existing config from Doppler, Infisical, or dotenv files. Sync outward to GitHub Actions repository secrets with one command.
+    Migrate existing config from Doppler, Infisical, or dotenv files. Sync outward to GitHub Actions
+    repository secrets with one command.
   </Card>
   <Card title="Env injection" icon="rocket">
-    `skret run -- your-command` hydrates process env vars at launch — no wrapper scripts, no hard-coded keys, no secret files on disk.
+    `skret run -- your-command` hydrates process env vars at launch — no wrapper scripts, no
+    hard-coded keys, no secret files on disk.
   </Card>
   <Card title="Agent-ready" icon="approve-check-circle">
-    Documented exit codes, byte-exact secret reads, and an `llms.txt` map built for LLM and agent discovery. See the [agent guide](/guide/agents/).
+    Documented exit codes, byte-exact secret reads, and an `llms.txt` map built for LLM and agent
+    discovery. See the [agent guide](/guide/agents/).
   </Card>
 </CardGrid>
 
@@ -44,24 +49,16 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
 
 <CardGrid>
   <Card title="macOS / Linux (one-shot)" icon="laptop">
-    ```sh
-    curl -fsSL https://skret.n24q02m.com/install.sh | sh
-    ```
+    ```sh curl -fsSL https://skret.n24q02m.com/install.sh | sh ```
   </Card>
   <Card title="Windows (one-shot)" icon="laptop">
-    ```powershell
-    iwr -useb https://skret.n24q02m.com/install.ps1 | iex
-    ```
+    ```powershell iwr -useb https://skret.n24q02m.com/install.ps1 | iex ```
   </Card>
   <Card title="Homebrew" icon="seti:cpp">
-    ```sh
-    brew install n24q02m/tap/skret
-    ```
+    ```sh brew install n24q02m/tap/skret ```
   </Card>
   <Card title="Go developers" icon="seti:go">
-    ```sh
-    go install github.com/n24q02m/skret/cmd/skret@latest
-    ```
+    ```sh go install github.com/n24q02m/skret/cmd/skret@latest ```
   </Card>
 </CardGrid>
 

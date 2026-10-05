@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   DurableExecutorOperationStore,
-  SecurityExecutorOperations,
   ExecutorOperationInvalidRequestError,
-  executorOperationFingerprint,
+  type ExecutorOperationRecord,
   type ExecutorOperationStorage,
   type ExecutorOperationTransaction,
-  type ExecutorOperationRecord,
+  executorOperationFingerprint,
+  SecurityExecutorOperations,
 } from "../src/executor-operation-store";
 
 const NOW = 1_700_000_000_000;
@@ -18,7 +18,10 @@ async function digestBytes(bytes: Uint8Array): Promise<string> {
   return `sha256:${hex}`;
 }
 
-function fakeStorage(): ExecutorOperationStorage & { values: Map<string, unknown>; alarms: number[] } {
+function fakeStorage(): ExecutorOperationStorage & {
+  values: Map<string, unknown>;
+  alarms: number[];
+} {
   const values = new Map<string, unknown>();
   const alarms: number[] = [];
   let tail = Promise.resolve();
@@ -34,7 +37,9 @@ function fakeStorage(): ExecutorOperationStorage & { values: Map<string, unknown
     async delete(key: string): Promise<boolean> {
       return values.delete(key);
     },
-    async transaction<T>(closure: (transaction: ExecutorOperationTransaction) => Promise<T>): Promise<T> {
+    async transaction<T>(
+      closure: (transaction: ExecutorOperationTransaction) => Promise<T>,
+    ): Promise<T> {
       const previous = tail;
       let release!: () => void;
       tail = new Promise<void>((resolve) => {
@@ -126,17 +131,18 @@ describe("executor operation store", () => {
 
     await store.complete("op-1", "invocation-1", "succeeded", DIGEST("f"), NOW + 2);
 
-    await expect(storage.get<ExecutorOperationRecord>("private:executor-operation:op-2")).resolves.toMatchObject({
+    await expect(
+      storage.get<ExecutorOperationRecord>("private:executor-operation:op-2"),
+    ).resolves.toMatchObject({
       status: "active",
       started_at: NOW + 2,
       active_invocation_id: null,
     });
-    await expect(storage.get<string[]>("private:executor-operation:active")).resolves.toEqual(["op-2"]);
+    await expect(storage.get<string[]>("private:executor-operation:active")).resolves.toEqual([
+      "op-2",
+    ]);
 
-    const resumed = await store.begin(
-      startRequest("op-2", DIGEST("e"), "invocation-2"),
-      NOW + 3,
-    );
+    const resumed = await store.begin(startRequest("op-2", DIGEST("e"), "invocation-2"), NOW + 3);
     expect(resumed).toMatchObject({
       status: "started",
       operation: { active_invocation_id: "invocation-2" },
@@ -164,10 +170,7 @@ describe("executor operation store", () => {
     const storage = fakeStorage();
     const store = new DurableExecutorOperationStore(storage);
     const first = await store.begin({ ...startRequest("op-1"), exclusive: false }, NOW);
-    const second = await store.begin(
-      { ...startRequest("op-2"), exclusive: false },
-      NOW + 1,
-    );
+    const second = await store.begin({ ...startRequest("op-2"), exclusive: false }, NOW + 1);
 
     expect(first.status).toBe("started");
     expect(second.status).toBe("started");
@@ -194,7 +197,9 @@ describe("executor operation store", () => {
     await expect(
       store.complete("op-1", "invocation-2", "succeeded", DIGEST("f"), NOW + 1),
     ).rejects.toThrow("executor invocation mismatch");
-    await expect(storage.get<ExecutorOperationRecord>("private:executor-operation:op-1")).resolves.toMatchObject({
+    await expect(
+      storage.get<ExecutorOperationRecord>("private:executor-operation:op-1"),
+    ).resolves.toMatchObject({
       status: "active",
       active_invocation_id: "invocation-1",
     });
@@ -211,7 +216,9 @@ describe("executor operation store", () => {
       await expect(store.begin(startRequest("op-1"), NOW)).resolves.toMatchObject({
         status: "started",
       });
-      await expect(storage.get<ExecutorOperationRecord>("private:executor-operation:op-1")).resolves.toMatchObject({
+      await expect(
+        storage.get<ExecutorOperationRecord>("private:executor-operation:op-1"),
+      ).resolves.toMatchObject({
         status: "active",
       });
     } finally {
@@ -223,11 +230,7 @@ describe("executor operation store", () => {
     const storage = fakeStorage();
     const store = new DurableExecutorOperationStore(storage);
     await store.begin(startRequest("op-1"), NOW);
-    const timedOut = await store.recordInvocationTimeout(
-      "op-1",
-      "invocation-1",
-      NOW + 60_000,
-    );
+    const timedOut = await store.recordInvocationTimeout("op-1", "invocation-1", NOW + 60_000);
     const finished = await store.complete(
       "op-1",
       "invocation-1",
@@ -251,19 +254,9 @@ describe("executor operation store", () => {
     );
     const resultDigest = await digestBytes(result);
     await store.begin(startRequest("op-1"), NOW);
-    await store.complete(
-      "op-1",
-      "invocation-1",
-      "succeeded",
-      resultDigest,
-      NOW + 1,
-      result,
-    );
+    await store.complete("op-1", "invocation-1", "succeeded", resultDigest, NOW + 1, result);
 
-    const retry = await store.begin(
-      startRequest("op-1", DIGEST("a"), "invocation-2"),
-      NOW + 2,
-    );
+    const retry = await store.begin(startRequest("op-1", DIGEST("a"), "invocation-2"), NOW + 2);
     expect(retry).toMatchObject({
       status: "existing",
       operation: { status: "succeeded" },
@@ -287,7 +280,9 @@ describe("executor operation store", () => {
     expect(stillPending.terminalized).toEqual([]);
     expect(activeAfterPending).toEqual(["op-1"]);
     expect(reconciled.terminalized).toEqual(["op-1"]);
-    await expect(storage.get<ExecutorOperationRecord>("private:executor-operation:op-1")).resolves.toMatchObject({
+    await expect(
+      storage.get<ExecutorOperationRecord>("private:executor-operation:op-1"),
+    ).resolves.toMatchObject({
       status: "needs_reconciliation",
       alert: "watchdog_deadline",
       active_invocation_id: null,
@@ -344,9 +339,9 @@ describe("executor operation store", () => {
   it("rejects malformed deadlines and digests before durable writes", async () => {
     const storage = fakeStorage();
     const store = new DurableExecutorOperationStore(storage);
-    await expect(store.begin({ ...startRequest("op-1"), deadline_at: NOW }, NOW)).rejects.toBeInstanceOf(
-      ExecutorOperationInvalidRequestError,
-    );
+    await expect(
+      store.begin({ ...startRequest("op-1"), deadline_at: NOW }, NOW),
+    ).rejects.toBeInstanceOf(ExecutorOperationInvalidRequestError);
     expect(storage.values.size).toBe(0);
   });
 });

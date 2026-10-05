@@ -1,6 +1,6 @@
 import { getContainer } from "@cloudflare/containers";
-import type { Env } from "./types";
 import { handleRequest, serverError } from "./router";
+import type { Env } from "./types";
 
 // Durable Object classes must be re-exported from the Worker entry so the
 // runtime can construct their bindings: SyncContainer for SYNC, LoginGate for

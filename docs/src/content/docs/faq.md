@@ -19,16 +19,17 @@ Different category. [SOPS](https://github.com/getsops/sops) encrypts files in pl
 
 AWS SSM Parameter Store Standard tier:
 
-| Resource | Free Tier | Typical Usage (20 repos) |
-|----------|-----------|--------------------------|
-| Parameters | 10,000 per region | ~200-500 |
-| API operations | Unlimited | ~1,000/day |
-| KMS decryptions | 20,000/month (AWS-managed key) | ~5,000/month |
-| Storage | Included | Included |
+| Resource        | Free Tier                      | Typical Usage (20 repos) |
+| --------------- | ------------------------------ | ------------------------ |
+| Parameters      | 10,000 per region              | ~200-500                 |
+| API operations  | Unlimited                      | ~1,000/day               |
+| KMS decryptions | 20,000/month (AWS-managed key) | ~5,000/month             |
+| Storage         | Included                       | Included                 |
 
 **Total: $0/month** for most individual developers and small teams.
 
 Compare:
+
 - Doppler: Free for 3 users, then $8/user/month (source: <https://www.doppler.com/pricing>, as of 2026-07)
 - Infisical: Free (self-hosted), but requires a server (~$10-30/month compute)
 - HashiCorp Vault: Free (self-hosted), significant ops overhead
@@ -43,6 +44,7 @@ scoop install skret
 ```
 
 Platform differences:
+
 - `skret run --` uses a child process (not `syscall.Exec`) on Windows, forwarding the exit code
 - File permissions use best-effort ACLs instead of Unix `chmod`
 - Shell completions support PowerShell in addition to bash/zsh/fish
