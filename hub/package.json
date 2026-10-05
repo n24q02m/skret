@@ -19,10 +19,10 @@
     "@cloudflare/vitest-pool-workers": "^0.22.0",
     "@cloudflare/workers-types": "^4.20260702.1",
     "oxfmt": "^0.71.0",
-    "oxlint": "^1.86.0",
+    "oxlint": "^1.87.0",
     "typescript": "^5.9.3",
-    "vitest": "^4.1.10",
-    "wrangler": "^4.120.0"
+    "vitest": "^4.1.11",
+    "wrangler": "^4.147.0"
   },
   "trustedDependencies": [
     "esbuild",
@@ -33,6 +33,11 @@
     "sharp": "^0.35.4",
     "wrangler": "^4.120.0",
     "ws": "^8.21.0",
-    "undici": "^7.30.0"
+    "undici": "^7.30.0",
+    "siginfo": ">=2.0.0",
+    "estree-walker": ">=3.0.0",
+    "blake3-wasm": ">=2.0.0",
+    "@jridgewell/trace-mapping": ">=0.3.0",
+    "@jridgewell/resolve-uri": ">=3.1.0"
   }
 }
