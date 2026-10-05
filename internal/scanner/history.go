@@ -125,10 +125,16 @@ func historyCommits(dir string, maxCount int, since string) ([]string, error) {
 		return nil, fmt.Errorf("git rev-list: %w", err)
 	}
 	var out []string
-	for _, line := range strings.Split(string(raw), "\n") {
+	remaining := string(raw)
+	for {
+		line, rest, found := strings.Cut(remaining, "\n")
 		if line = strings.TrimSpace(line); line != "" {
 			out = append(out, line)
 		}
+		if !found {
+			break
+		}
+		remaining = rest
 	}
 	return out, nil
 }
