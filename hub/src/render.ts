@@ -88,8 +88,9 @@ const STYLE = `
   .summary{padding:.4rem 1rem;font-size:.8rem;color:#5a5a5a;border-top:1px solid #eee}
   .tablewrap{overflow-x:auto}
   table{width:100%;border-collapse:collapse;font-size:.85rem}
-  th,td{text-align:left;padding:.4rem 1rem;border-top:1px solid #eee}
-  td.keyname{word-break:break-all}
+  th,td{text-align:left;padding:.4rem 1rem;border-top:1px solid #eee;font-weight:normal}
+  thead th{font-weight:bold}
+  .keyname{word-break:break-all}
   .fp{color:#5a5a5a}
   .badge{display:inline-block;padding:.1rem .5rem;border-radius:4px;font-size:.75rem;margin-right:.3rem}
   .present{background:#d7f5dd;color:#0a6b2e}
@@ -146,7 +147,7 @@ function renderNamespace(m: Manifest, now: number): string {
                 `<span class="badge ${statusClass(t.status)}">${esc(name)}: ${esc(t.status)}</span>`,
             )
             .join("");
-          return `<tr><td class="keyname">${esc(k.name)}</td><td class="fp">${esc(k.fingerprint)}</td><td>${badges}</td></tr>`;
+          return `<tr><th scope="row" class="keyname">${esc(k.name)}</th><td class="fp">${esc(k.fingerprint)}</td><td>${badges || '<span class="fp">unlinked</span>'}</td></tr>`;
         })
         .join("")
     : EMPTY_ROW;

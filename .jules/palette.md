@@ -60,3 +60,6 @@
 ## 2026-10-01 - [Contextual ARIA Labels for Repeated UI Regions]
 **Learning:** When a UI contains multiple regions or elements of the same type (e.g., multiple scrollable tables), each element's `aria-label` must incorporate contextual data (like its corresponding namespace or environment) to uniquely identify it. Using identical, generic labels across multiple elements degrades the experience for screen reader users.
 **Action:** Always dynamically generate `aria-label` attributes to include specific identifiers for iterative UI elements.
+## 2026-10-05 - [Accessible Table Rows and Empty States]
+**Learning:** Using `<th scope="row">` instead of `<td>` for the primary identifier in data tables significantly improves screen reader navigation. Additionally, when a table cell representing a list of items is empty, displaying a placeholder text (like "unlinked") rather than leaving it blank clarifies the state for all users.
+**Action:** Always scope the first meaningful column of a data table as a row header (`<th scope="row">`). When a list cell has zero items, render a clear, un-styled placeholder text instead of an empty cell.
