@@ -14,6 +14,20 @@ repos:
         entry: python scripts/repo-bootstrap/verify_readme_sync.py --repo-root=.
         language: system
         pass_filenames: false
+      # Stack standard 2026-08-25 (rev 2026-09-17): TS workspaces gate through
+      # the same three linters locally that CI enforces per push/PR.
+      - id: hub-stack-gates
+        name: hub stack gates (biome + oxlint + oxfmt)
+        entry: bash -c 'cd hub && bun run check && bun run lint:ox'
+        language: system
+        files: ^hub/.*\.(ts|js|mjs|json|jsonc)$
+        pass_filenames: false
+      - id: docs-stack-gates
+        name: docs stack gates (biome + oxlint + oxfmt)
+        entry: bash -c 'cd docs && bun run check && bun run lint:ox'
+        language: system
+        files: ^docs/.*\.(ts|js|mjs|json|jsonc|md|mdx)$
+        pass_filenames: false
       - id: enforce-commit
         name: Enforce feat and fix commit prefixes
         entry: bash scripts/enforce-commit.sh
