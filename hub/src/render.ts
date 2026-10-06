@@ -150,7 +150,9 @@ function renderNamespace(m: Manifest, now: number): string {
         })
         .join("")
     : EMPTY_ROW;
-  const staleBadge = isStale(m.generated_at, now) ? `<span class="badge stale" title="Manifest is older than 48h">stale</span>` : "";
+  const staleBadge = isStale(m.generated_at, now)
+    ? `<span class="badge stale" title="Manifest is older than 48h">stale</span>`
+    : "";
   return (
     `<section class="ns"><h2>${esc(m.namespace)} &middot; ${esc(m.env)}` +
     ` <time class="meta" datetime="${esc(m.generated_at)}" title="${esc(m.generated_at)}">synced ${esc(relativeTime(m.generated_at, now))}</time>${staleBadge}</h2>` +
