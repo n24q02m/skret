@@ -150,7 +150,7 @@ function renderNamespace(m: Manifest, now: number): string {
         })
         .join("")
     : EMPTY_ROW;
-  const staleBadge = isStale(m.generated_at, now) ? `<span class="badge stale">stale</span>` : "";
+  const staleBadge = isStale(m.generated_at, now) ? `<span class="badge stale" title="Manifest is older than 48h">stale</span>` : "";
   return (
     `<section class="ns"><h2>${esc(m.namespace)} &middot; ${esc(m.env)}` +
     ` <time class="meta" datetime="${esc(m.generated_at)}" title="${esc(m.generated_at)}">synced ${esc(relativeTime(m.generated_at, now))}</time>${staleBadge}</h2>` +
@@ -168,7 +168,7 @@ export function renderDashboard(manifests: Manifest[], now: number = Date.now())
     ? sorted.map((mf) => renderNamespace(mf, now)).join("\n")
     : `<div class="empty"><p><strong>No manifests yet.</strong></p><p>Run <code>skret hub push</code> from your CLI to sync secrets.</p></div>`;
   const logout = `<form method="POST" action="/logout"><button type="submit" aria-label="Logout of vault dashboard">Logout</button></form>`;
-  return page(`<h1>skret vault dashboard</h1>${body}${logout}`);
+  return page(`<h1>skret vault dashboard</h1>${body}${logout}`, "skret vault dashboard");
 }
 
 export function renderLogin(error?: string): string {
