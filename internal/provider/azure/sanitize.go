@@ -19,14 +19,15 @@ const maxNameLen = 127
 // "db-url" (documented provider behavior).
 func sanitizeKey(key string) (string, error) {
 	needsChange := false
-	if len(key) > maxNameLen {
+	switch {
+	case len(key) > maxNameLen:
 		needsChange = true
-	} else if len(key) > 0 && (key[0] == '-' || key[len(key)-1] == '-') {
+	case key != "" && (key[0] == '-' || key[len(key)-1] == '-'):
 		needsChange = true
-	} else {
+	default:
 		for i := 0; i < len(key); i++ {
 			c := key[i]
-			if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-') {
+			if (c < 'a' || c > 'z') && (c < 'A' || c > 'Z') && (c < '0' || c > '9') && c != '-' {
 				needsChange = true
 				break
 			}
