@@ -21,6 +21,9 @@ func TestSanitizeKey(t *testing.T) {
 		{name: "collapse runs", in: "a///b___c", want: "a-b-c"},
 		{name: "trims dashes", in: "--key--", want: "key"},
 		{name: "caps at 127", in: repeat('x', 200), want: repeat('x', 127)},
+		{name: "empty string", in: "", want: ""},
+		{name: "all dashes", in: "---", want: ""},
+		{name: "all other invalid", in: "///", want: ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

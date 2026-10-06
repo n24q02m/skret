@@ -18,20 +18,53 @@ const maxNameLen = 127
 // deterministic but not injective: "db_url" and "db-url" both store as
 // "db-url" (documented provider behavior).
 func sanitizeKey(key string) (string, error) {
-	var b strings.Builder
-	b.Grow(len(key))
-	for _, r := range key {
-		switch {
-		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '-':
-			b.WriteRune(r)
-		default:
-			b.WriteByte('-')
+	needsChange := false
+	switch {
+	case len(key) > maxNameLen:
+		needsChange = true
+	case key != "" && (key[0] == '-' || key[len(key)-1] == '-'):
+		needsChange = true
+	default:
+		for i := 0; i < len(key); i++ {
+			c := key[i]
+			if (c < 'a' || c > 'z') && (c < 'A' || c > 'Z') && (c < '0' || c > '9') && c != '-' {
+				needsChange = true
+				break
+			}
+			if c == '-' && i > 0 && key[i-1] == '-' {
+				needsChange = true
+				break
+			}
 		}
 	}
-	name := b.String()
-	for strings.Contains(name, "--") {
-		name = strings.ReplaceAll(name, "--", "-")
+
+	if !needsChange {
+		if key == "" {
+			return "", fmt.Errorf("key sanitizes to an empty Azure Key Vault name (allowed: alphanumeric and dash)")
+		}
+		return key, nil
 	}
+
+	var b strings.Builder
+	b.Grow(len(key))
+	lastDash := false
+	for _, r := range key {
+		var isDash bool
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+			b.WriteRune(r)
+			lastDash = false
+			continue
+		default:
+			isDash = true
+		}
+		if isDash && !lastDash {
+			b.WriteByte('-')
+			lastDash = true
+		}
+	}
+
+	name := b.String()
 	name = strings.Trim(name, "-")
 	// Every surviving rune is ASCII, so byte slicing cannot split a rune.
 	if len(name) > maxNameLen {
