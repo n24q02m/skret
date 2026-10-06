@@ -154,6 +154,9 @@ describe("renderDashboard", () => {
     const html = renderDashboard([m], FIXED_NOW);
     expect(html).toContain('class="tablewrap"');
     expect(html).toContain('aria-label="Secrets table for /klprism/prod prod"');
+    expect(html).toContain('<th scope="col">Key</th>');
+    expect(html).toContain('<th scope="col">Fingerprint</th>');
+    expect(html).toContain('<th scope="col">Targets</th>');
     expect(html).toContain('class="keyname"');
   });
   describe("namespace with no keys", () => {
