@@ -91,3 +91,6 @@
 ## 2026-10-01 - Zero-allocation fast-path for string transformations
 **Learning:** Functions that unconditionally transform strings using `strings.Builder` allocate memory on every call, even if the input requires no changes.
 **Action:** When a transformation's happy path is to return the string unmodified (like environment variable names that are already uppercase), add a fast-path scan to check if mutations are needed first. Returning the original string directly drops allocations to zero.
+## 2026-10-07 - Manual Parser Over Regexp
+**Learning:** Using regex `ReplaceAllStringFunc` is convenient but involves heavy allocations and overhead, especially if the string lacks patterns entirely.
+**Action:** Write manual byte scan loops where possible. Add fast-path checks (e.g. `strings.IndexByte`) to completely skip allocations for clean data paths.
