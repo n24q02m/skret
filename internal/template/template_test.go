@@ -49,3 +49,21 @@ func TestRender_AdjacentRefs(t *testing.T) {
 	assert.Equal(t, "12", out)
 	assert.Empty(t, missing)
 }
+
+func TestRender_UnclosedBrace(t *testing.T) {
+	out, missing := Render("a ${UNCLOSED", map[string]string{})
+	assert.Equal(t, "a ${UNCLOSED", out)
+	assert.Empty(t, missing)
+}
+
+func TestRender_EmptyKey(t *testing.T) {
+	out, missing := Render("a ${} b", map[string]string{})
+	assert.Equal(t, "a ${} b", out)
+	assert.Empty(t, missing)
+}
+
+func TestRender_NumberValid(t *testing.T) {
+	out, missing := Render("a ${K1}", map[string]string{"K1": "v1"})
+	assert.Equal(t, "a v1", out)
+	assert.Empty(t, missing)
+}
