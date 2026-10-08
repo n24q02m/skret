@@ -60,3 +60,7 @@
 ## 2026-10-01 - [Contextual ARIA Labels for Repeated UI Regions]
 **Learning:** When a UI contains multiple regions or elements of the same type (e.g., multiple scrollable tables), each element's `aria-label` must incorporate contextual data (like its corresponding namespace or environment) to uniquely identify it. Using identical, generic labels across multiple elements degrades the experience for screen reader users.
 **Action:** Always dynamically generate `aria-label` attributes to include specific identifiers for iterative UI elements.
+
+## 2026-10-08 - [Table Row Headers for Accessibility]
+**Learning:** Adding `scope="row"` to the primary column (the identifying key) in data tables changes the generic `<td>` element to a semantic `<th>` element. This explicitly associates row data with its identifying key for screen reader users traversing the table horizontally.
+**Action:** Always use `<th scope="row">` for the primary identifying column in data tables, overriding default `<th>` styling (e.g., `font-weight`) if necessary to maintain visual consistency.

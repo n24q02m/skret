@@ -157,7 +157,7 @@ describe("renderDashboard", () => {
     expect(html).toContain('<th scope="col">Key</th>');
     expect(html).toContain('<th scope="col">Fingerprint</th>');
     expect(html).toContain('<th scope="col">Targets</th>');
-    expect(html).toContain('class="keyname"');
+    expect(html).toContain('<th scope="row" class="keyname">');
   });
   describe("namespace with no keys", () => {
     const noKeys: Manifest = { ...m, keys: [] };
