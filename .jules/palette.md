@@ -60,3 +60,7 @@
 ## 2026-10-01 - [Contextual ARIA Labels for Repeated UI Regions]
 **Learning:** When a UI contains multiple regions or elements of the same type (e.g., multiple scrollable tables), each element's `aria-label` must incorporate contextual data (like its corresponding namespace or environment) to uniquely identify it. Using identical, generic labels across multiple elements degrades the experience for screen reader users.
 **Action:** Always dynamically generate `aria-label` attributes to include specific identifiers for iterative UI elements.
+
+## 2026-10-09 - [Visual Affordances for Title Tooltips]
+**Learning:** Native HTML `title` attributes provide helpful contextual information on hover, but without a visual affordance (like `cursor: help`), users often don't realize the tooltip exists. For elements conveying system states (like "stale" badges or relative timestamps), this hidden context reduces usability.
+**Action:** Always pair informational `title` attributes on non-interactive elements (like status badges or timestamps) with a `cursor: help` CSS rule to explicitly signal to sighted users that more context is available on hover.

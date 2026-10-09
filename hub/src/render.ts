@@ -97,6 +97,7 @@ const STYLE = `
   .unknown{background:#e8e8e8;color:#4a4a4a}
   .other{background:#e8e8e8;color:#4a4a4a}
   .stale{background:#fde2c8;color:#9a4a0a}
+  .badge[title], .meta[title]{cursor:help}
   .empty{color:#5a5a5a;padding:2rem;text-align:center}
   form{display:flex;gap:.5rem;margin-top:1rem;align-items:center}
   input,button{padding:.5rem;font-size:1rem}
@@ -150,7 +151,7 @@ function renderNamespace(m: Manifest, now: number): string {
         })
         .join("")
     : EMPTY_ROW;
-  const staleBadge = isStale(m.generated_at, now) ? `<span class="badge stale">stale</span>` : "";
+  const staleBadge = isStale(m.generated_at, now) ? `<span class="badge stale" title="Manifest has not been refreshed in over 48 hours">stale</span>` : "";
   return (
     `<section class="ns"><h2>${esc(m.namespace)} &middot; ${esc(m.env)}` +
     ` <time class="meta" datetime="${esc(m.generated_at)}" title="${esc(m.generated_at)}">synced ${esc(relativeTime(m.generated_at, now))}</time>${staleBadge}</h2>` +
