@@ -6,6 +6,7 @@ package template
 import (
 	"regexp"
 	"sort"
+	"strings"
 )
 
 // tokenRe matches either a $$ escape sequence or a ${KEY} reference where KEY
@@ -19,6 +20,10 @@ var tokenRe = regexp.MustCompile(`\$\$|\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
 // $${KEY} renders as the literal ${KEY} (never substituted). Text that is not a
 // valid ${KEY} reference is passed through unchanged.
 func Render(content string, secrets map[string]string) (string, []string) {
+	if !strings.Contains(content, "$") {
+		return content, nil
+	}
+
 	missingSet := map[string]bool{}
 	out := tokenRe.ReplaceAllStringFunc(content, func(match string) string {
 		if match == "$$" {
