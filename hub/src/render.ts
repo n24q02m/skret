@@ -145,12 +145,12 @@ function renderNamespace(m: Manifest, now: number): string {
               ([name, t]) =>
                 `<span class="badge ${statusClass(t.status)}">${esc(name)}: ${esc(t.status)}</span>`,
             )
-            .join("");
+            .join(" ");
           return `<tr><td class="keyname">${esc(k.name)}</td><td class="fp">${esc(k.fingerprint)}</td><td>${badges}</td></tr>`;
         })
         .join("")
     : EMPTY_ROW;
-  const staleBadge = isStale(m.generated_at, now) ? `<span class="badge stale">stale</span>` : "";
+  const staleBadge = isStale(m.generated_at, now) ? ` <span class="badge stale" title="Manifest has not been updated in over 48 hours">stale</span>` : "";
   return (
     `<section class="ns"><h2>${esc(m.namespace)} &middot; ${esc(m.env)}` +
     ` <time class="meta" datetime="${esc(m.generated_at)}" title="${esc(m.generated_at)}">synced ${esc(relativeTime(m.generated_at, now))}</time>${staleBadge}</h2>` +

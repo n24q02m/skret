@@ -60,3 +60,6 @@
 ## 2026-10-01 - [Contextual ARIA Labels for Repeated UI Regions]
 **Learning:** When a UI contains multiple regions or elements of the same type (e.g., multiple scrollable tables), each element's `aria-label` must incorporate contextual data (like its corresponding namespace or environment) to uniquely identify it. Using identical, generic labels across multiple elements degrades the experience for screen reader users.
 **Action:** Always dynamically generate `aria-label` attributes to include specific identifiers for iterative UI elements.
+## 2026-10-10 - [Tooltip Explanations for Contextual UI Badges]
+**Learning:** Displaying contextual UI badges like "stale" without explanations can cause user confusion as to why the badge appears. Adding a standard `title` attribute provides an accessible, native tooltip that clarifies the meaning.
+**Action:** Always provide a `title` attribute on informational badges or indicators that depend on implicit logic (like time thresholds) to explain their presence to users.
