@@ -28,6 +28,9 @@ func pathToken(path string) string {
 	if trimmed == "" {
 		return ""
 	}
+	if strings.IndexByte(trimmed, '/') == -1 {
+		return trimmed
+	}
 	return strings.ReplaceAll(trimmed, "/", "-")
 }
 

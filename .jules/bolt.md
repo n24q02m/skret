@@ -91,3 +91,7 @@
 ## 2026-10-01 - Zero-allocation fast-path for string transformations
 **Learning:** Functions that unconditionally transform strings using `strings.Builder` allocate memory on every call, even if the input requires no changes.
 **Action:** When a transformation's happy path is to return the string unmodified (like environment variable names that are already uppercase), add a fast-path scan to check if mutations are needed first. Returning the original string directly drops allocations to zero.
+
+## 2026-10-10 - Strings ReplaceAll execution time fast-path
+**Learning:** Functions that unconditionally transform strings using `strings.ReplaceAll` inside string concatenations have execution time overhead on every call, even if the input requires no changes (e.g. `pathToken`).
+**Action:** When escaping or replacing strings that rarely contain the target character, add a fast-path scan (e.g. `strings.IndexByte`) to check if mutations are needed first. Returning the string directly avoids `strings.ReplaceAll` execution time overhead for the common case, dropping execution time from ~24 ns/op to ~10 ns/op.
