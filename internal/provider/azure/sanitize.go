@@ -18,6 +18,31 @@ const maxNameLen = 127
 // deterministic but not injective: "db_url" and "db-url" both store as
 // "db-url" (documented provider behavior).
 func sanitizeKey(key string) (string, error) {
+	// Fast path check: if string is already purely alphanumeric with single dashes
+	// and doesn't start/end with dashes.
+	needsSanitize := false
+	wasDash := false
+	for i := 0; i < len(key); i++ {
+		c := key[i]
+		if c == '-' {
+			if i == 0 || i == len(key)-1 || wasDash {
+				needsSanitize = true
+				break
+			}
+			wasDash = true
+			continue
+		}
+		wasDash = false
+		if (c < 'a' || c > 'z') && (c < 'A' || c > 'Z') && (c < '0' || c > '9') {
+			needsSanitize = true
+			break
+		}
+	}
+
+	if !needsSanitize && len(key) <= maxNameLen && key != "" {
+		return key, nil
+	}
+
 	var b strings.Builder
 	b.Grow(len(key))
 	for _, r := range key {
