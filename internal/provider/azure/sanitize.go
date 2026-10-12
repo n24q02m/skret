@@ -33,13 +33,13 @@ func sanitizeKey(key string) (string, error) {
 			continue
 		}
 		wasDash = false
-		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')) {
+		if (c < 'a' || c > 'z') && (c < 'A' || c > 'Z') && (c < '0' || c > '9') {
 			needsSanitize = true
 			break
 		}
 	}
 
-	if !needsSanitize && len(key) <= maxNameLen && len(key) > 0 {
+	if !needsSanitize && len(key) <= maxNameLen && key != "" {
 		return key, nil
 	}
 
