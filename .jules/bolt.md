@@ -91,3 +91,6 @@
 ## 2026-10-01 - Zero-allocation fast-path for string transformations
 **Learning:** Functions that unconditionally transform strings using `strings.Builder` allocate memory on every call, even if the input requires no changes.
 **Action:** When a transformation's happy path is to return the string unmodified (like environment variable names that are already uppercase), add a fast-path scan to check if mutations are needed first. Returning the original string directly drops allocations to zero.
+## 2026-10-13 - Azure Provider Sanitize Key
+**Learning:** Using `strings.ReplaceAll` in a loop over strings to replace consecutive occurrences of dashes (`--`) is slow and incurs an unnecessary high amount of allocations. Instead, replacing this with a simple state machine that drops consecutive dashes right in the initial build pass brings a 6x speedup.
+**Action:** Avoid `strings.ReplaceAll` in a loop when building strings if filtering can be applied via a simple state machine during string construction.

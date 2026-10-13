@@ -20,18 +20,20 @@ const maxNameLen = 127
 func sanitizeKey(key string) (string, error) {
 	var b strings.Builder
 	b.Grow(len(key))
+	lastWasDash := false
 	for _, r := range key {
 		switch {
-		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '-':
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
 			b.WriteRune(r)
+			lastWasDash = false
 		default:
-			b.WriteByte('-')
+			if !lastWasDash {
+				b.WriteByte('-')
+				lastWasDash = true
+			}
 		}
 	}
 	name := b.String()
-	for strings.Contains(name, "--") {
-		name = strings.ReplaceAll(name, "--", "-")
-	}
 	name = strings.Trim(name, "-")
 	// Every surviving rune is ASCII, so byte slicing cannot split a rune.
 	if len(name) > maxNameLen {
