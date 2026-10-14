@@ -60,3 +60,6 @@
 ## 2026-10-01 - [Contextual ARIA Labels for Repeated UI Regions]
 **Learning:** When a UI contains multiple regions or elements of the same type (e.g., multiple scrollable tables), each element's `aria-label` must incorporate contextual data (like its corresponding namespace or environment) to uniquely identify it. Using identical, generic labels across multiple elements degrades the experience for screen reader users.
 **Action:** Always dynamically generate `aria-label` attributes to include specific identifiers for iterative UI elements.
+## 2026-10-14 - [Visible Labels]
+**Learning:** Relying solely on placeholders for input fields degrades the UX, as the text disappears when users start typing. Providing visually persistent labels instead of hiding them behind `sr-only` utility classes improves usability and cognitive accessibility.
+**Action:** Always provide visually persistent labels for form inputs instead of hiding them with `sr-only` classes.
