@@ -75,3 +75,31 @@ func BenchmarkDetectEnvNameCollisions_EmptySecrets(b *testing.B) {
 		_ = exec.DetectEnvNameCollisions(nil, "", exclude)
 	}
 }
+
+func BenchmarkBuildEnv_WithSanitization(b *testing.B) {
+	count := 100
+	secrets := make([]*provider.Secret, count)
+	for i := 0; i < count; i++ {
+		secrets[i] = &provider.Secret{Key: fmt.Sprintf("VAR_%d", i), Value: "value_with_no_weird_chars"}
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_ = exec.BuildEnv(secrets, nil, "", nil)
+	}
+}
+
+func BenchmarkBuildEnv_WithSanitizationDirty(b *testing.B) {
+	count := 100
+	secrets := make([]*provider.Secret, count)
+	for i := 0; i < count; i++ {
+		secrets[i] = &provider.Secret{Key: fmt.Sprintf("VAR_%d", i), Value: "value\nwith\rnewline"}
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_ = exec.BuildEnv(secrets, nil, "", nil)
+	}
+}
