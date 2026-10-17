@@ -2,6 +2,8 @@ package secretlaunch
 
 import (
 	"context"
+	"crypto/ed25519"
+	cryptorand "crypto/rand"
 	"io"
 	"strings"
 	"testing"
@@ -185,5 +187,20 @@ func TestAuthorityDigestAndAcceptRenewalRejectInvalidManifests(t *testing.T) {
 	now := time.Unix(broken.IssuedAt+60, 0)
 	if err := AcceptRenewal(broken, renewedWindow(fixtureManifest()), now); err == nil {
 		t.Fatal("renewal of an invalid current manifest accepted")
+	}
+}
+
+func TestRenewManifestRejectsUnrepresentableWindow(t *testing.T) {
+	if _, err := RenewManifest(fixtureManifest(), time.Time{}, time.Minute); err == nil {
+		t.Fatal("renewal at the zero time accepted")
+	}
+}
+
+func TestSignManifestRejectsManifestOutsideItsWindow(t *testing.T) {
+	_, private, _ := ed25519.GenerateKey(cryptorand.Reader)
+	manifest := fixtureManifest()
+	late := time.Unix(manifest.ExpiresAt+1, 0)
+	if _, err := SignManifest(manifest, "fixture-key", private, late); errorCode(err) != ErrExpired {
+		t.Fatalf("expired manifest signed: %v", err)
 	}
 }

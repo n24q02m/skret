@@ -148,3 +148,20 @@ func TestReadSigningKeyFileRejectsOversizedFileAndDirectory(t *testing.T) {
 		t.Fatalf("directory accepted: %v", err)
 	}
 }
+
+func TestReadSigningKeyFileReportsUnreadableFile(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permission bits are not meaningful on Windows")
+	}
+	path := writeKeyFile(t, []byte("synthetic"), 0o600)
+	if err := os.Chmod(path, 0); err != nil {
+		t.Fatal(err)
+	}
+	if f, err := os.Open(path); err == nil {
+		_ = f.Close()
+		t.Skip("running with privileges that bypass file modes")
+	}
+	if _, err := ReadSigningKeyFile(path); err == nil {
+		t.Fatal("unreadable key file accepted")
+	}
+}
