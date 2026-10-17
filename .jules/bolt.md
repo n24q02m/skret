@@ -91,3 +91,6 @@
 ## 2026-10-01 - Zero-allocation fast-path for string transformations
 **Learning:** Functions that unconditionally transform strings using `strings.Builder` allocate memory on every call, even if the input requires no changes.
 **Action:** When a transformation's happy path is to return the string unmodified (like environment variable names that are already uppercase), add a fast-path scan to check if mutations are needed first. Returning the original string directly drops allocations to zero.
+## 2026-10-17 - Optimize string checks with strings.IndexByte
+**Learning:** For checking a small set of specific characters in performance-critical code paths, `strings.ContainsAny` introduces unnecessary setup overhead by dynamically building an `asciiSet` lookup table.
+**Action:** Replace `strings.ContainsAny` with chained `strings.IndexByte` calls to leverage vectorized assembly instructions without setup cost, significantly reducing execution time.
