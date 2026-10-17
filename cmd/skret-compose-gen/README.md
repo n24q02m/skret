@@ -29,6 +29,8 @@ to it. Install the template where neither the signer nor the supervisor can
 write (for example a root-owned read-only file or directory) and give `--out`
 the path the supervisor reads with `--manifest`.
 
+Containers read the renewed manifest through a read-only mount of a directory that holds only that file (the signer's `--out` directory). Give the supervisor `--manifest <dir>/manifest.json --manifest-container-dir <container-dir>`, and pass `--manifest-path <container-dir>/manifest.json` here so the helper reads the mounted file. The supervisor refuses to start if the directory contains anything else (key, trust document, model), and refuses to create a container whose helper `--manifest` differs from the mounted path.
+
 ## Usage
 
 ```sh

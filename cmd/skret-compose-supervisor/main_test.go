@@ -384,3 +384,37 @@ func TestManifestReloaderRejectsLiveManifestsWithoutAValidSignature(t *testing.T
 		t.Fatalf("control: the untouched manifest must still load: %v", err)
 	}
 }
+
+func TestManifestMountFromFlagUsesTheManifestDirectory(t *testing.T) {
+	dir := t.TempDir()
+	manifest := filepath.Join(dir, "manifest.json")
+	if err := os.WriteFile(manifest, []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if mount, err := manifestMount(manifest, ""); mount != nil || err != nil {
+		t.Fatalf("no flag must mean no mount, got %+v, %v", mount, err)
+	}
+	mount, err := manifestMount(manifest, "/run/skret/manifest")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mount.HostDir != dir || mount.FileName != "manifest.json" || mount.ContainerDir != "/run/skret/manifest" {
+		t.Fatalf("mount = %+v", mount)
+	}
+}
+
+func TestManifestMountFromFlagRejectsDirectoriesHoldingOtherFiles(t *testing.T) {
+	dir := t.TempDir()
+	manifest := filepath.Join(dir, "manifest.json")
+	for _, name := range []string{"manifest.json", "signing.key"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := manifestMount(manifest, "/run/skret/manifest"); err == nil {
+		t.Fatal("directory holding a signing key was accepted for mounting")
+	}
+	if _, err := manifestMount(filepath.Join(t.TempDir(), "manifest.json"), "relative"); err == nil {
+		t.Fatal("relative container directory accepted")
+	}
+}
