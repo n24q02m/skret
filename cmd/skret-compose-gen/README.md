@@ -21,6 +21,14 @@ the same launch authority with a fresh window, refuses templates older than
 model, and atomically replaces the file the supervisor re-reads every tick.
 The signing key must then be readable by that signer (mode 0600 or stricter).
 
+Keep the template apart from the output. `--max-age` (at most 168h) is measured
+from the template's own `issued_at`, and every run sets a new `issued_at` in
+the output, so a template that is also the output would never age out. The
+signer refuses `--out` when it is the template, a symlink to it or a hard link
+to it. Install the template where neither the signer nor the supervisor can
+write (for example a root-owned read-only file or directory) and give `--out`
+the path the supervisor reads with `--manifest`.
+
 ## Usage
 
 ```sh

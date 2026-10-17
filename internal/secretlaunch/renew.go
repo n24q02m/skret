@@ -8,6 +8,11 @@ import (
 	"time"
 )
 
+// MaxRenewalAge caps how old a signing template may be when it is renewed
+// (one week). It bounds how long a stolen or forgotten signing key stays able
+// to extend one launch, whatever --max-age an operator configures.
+const MaxRenewalAge = 168 * time.Hour
+
 // AuthorityBytes returns the canonical manifest bytes with the validity window
 // removed. Everything that identifies one launch (generation, nonce, services,
 // artifact digests) stays, so the bytes are identical across renewals of the
@@ -78,9 +83,14 @@ func AcceptRenewal(current, candidate Manifest, now time.Time) error {
 
 // RenewSignedManifest verifies a previously signed template against the trust
 // policy (ignoring the template's own validity window), refuses to renew a
-// template older than maxAge, and returns the same launch authority signed
-// again with a fresh window. The private key must belong to the template's
-// trusted key ID.
+// template older than maxAge (itself capped at MaxRenewalAge), and returns the
+// same launch authority signed again with a fresh window. The private key must
+// belong to the template's trusted key ID.
+//
+// The age is measured from the template's own issued_at and each renewal sets a
+// new issued_at. A template that is itself the output of earlier renewals
+// therefore never ages out, so callers must keep the template in a place that
+// nothing re-signs.
 func RenewSignedManifest(
 	template []byte,
 	policy TrustPolicy,
@@ -88,7 +98,7 @@ func RenewSignedManifest(
 	now time.Time,
 	ttl, maxAge time.Duration,
 ) ([]byte, error) {
-	if maxAge <= 0 || len(private) != ed25519.PrivateKeySize {
+	if maxAge <= 0 || maxAge > MaxRenewalAge || len(private) != ed25519.PrivateKeySize {
 		return nil, fail(ErrInvalidInput)
 	}
 	signed, err := ParseSignedManifest(template)

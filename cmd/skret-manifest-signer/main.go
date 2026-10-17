@@ -7,9 +7,11 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"time"
 
@@ -31,7 +33,8 @@ func run(args []string, diagnostics io.Writer, now func() time.Time) int {
 	modelPath := flags.String("model", "", "metadata-only rendered model path")
 	outPath := flags.String("out", "", "output manifest path (atomically replaced)")
 	ttl := flags.Duration("ttl", defaultTTL, "validity window of the renewed manifest")
-	maxAge := flags.Duration("max-age", 0, "refuse to renew a template signed longer ago than this")
+	maxAge := flags.Duration("max-age", 0,
+		"refuse to renew a template signed longer ago than this (at most "+secretlaunch.MaxRenewalAge.String()+")")
 	if err := flags.Parse(args); err != nil {
 		fmt.Fprintln(diagnostics, "manifest signer: invalid arguments")
 		return 2
@@ -39,6 +42,10 @@ func run(args []string, diagnostics io.Writer, now func() time.Time) int {
 	if *templatePath == "" || *trustPath == "" || *keyPath == "" || *modelPath == "" || *outPath == "" ||
 		*maxAge <= 0 || flags.NArg() != 0 {
 		fmt.Fprintln(diagnostics, "manifest signer: template, trust, key, model, out, and max-age are required")
+		return 2
+	}
+	if *maxAge > secretlaunch.MaxRenewalAge {
+		fmt.Fprintf(diagnostics, "manifest signer: max-age may not exceed %s\n", secretlaunch.MaxRenewalAge)
 		return 2
 	}
 	if err := renew(*templatePath, *trustPath, *keyPath, *modelPath, *outPath, *ttl, *maxAge, now(), diagnostics); err != nil {
@@ -54,6 +61,9 @@ func renew(
 	now time.Time,
 	diagnostics io.Writer,
 ) error {
+	if err := refuseSelfRenewal(templatePath, outPath); err != nil {
+		return err
+	}
 	private, err := secretlaunch.ReadSigningKeyFile(keyPath)
 	if err != nil {
 		return fmt.Errorf("manifest signer: signing key %q: %w", keyPath, err)
@@ -105,5 +115,29 @@ func renew(
 	}
 	fmt.Fprintf(diagnostics, "manifest signer: renewed runtime=%s generation=%d key=%s expires=%s\n",
 		manifest.RuntimeID, manifest.Generation, parsed.KeyID, time.Unix(manifest.ExpiresAt, 0).UTC().Format(time.RFC3339))
+	return nil
+}
+
+// refuseSelfRenewal rejects an output that is the template itself or an alias
+// of it (same path, symlink, hard link). --max-age is measured from the
+// template's issued_at; every signing run sets issued_at to now, so a signer
+// that renews its own output would reset the clock each time and never stop.
+// A first run has no output yet, which cannot alias anything.
+func refuseSelfRenewal(templatePath, outPath string) error {
+	template, err := os.Stat(templatePath)
+	if err != nil {
+		return fmt.Errorf("manifest signer: template %q: %w", templatePath, err)
+	}
+	out, err := os.Stat(outPath)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("manifest signer: out %q: %w", outPath, err)
+	}
+	if os.SameFile(template, out) {
+		return fmt.Errorf("manifest signer: --out %q is the same file as --template %q; "+
+			"the template must be a separate file that nothing re-signs", outPath, templatePath)
+	}
 	return nil
 }

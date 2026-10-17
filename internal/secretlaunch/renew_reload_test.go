@@ -200,9 +200,11 @@ func TestRenewSignedManifest(t *testing.T) {
 	if _, err := RenewSignedManifest(template, policy, private, later, 10*time.Minute, time.Hour); err != nil {
 		t.Fatalf("expired template within max age: %v", err)
 	}
-	// A renewed manifest is itself a valid template for the next renewal.
-	if _, err := RenewSignedManifest(out, policy, private, later, 10*time.Minute, time.Hour); err != nil {
-		t.Fatalf("renewal of renewal: %v", err)
+	// The age limit is measured from the template's own issued_at, so a template
+	// that something re-signs never ages. The renewed output must therefore not
+	// be fed back as the next template; the signer command enforces that.
+	if _, err := RenewSignedManifest(template, policy, private, now.Add(2*time.Hour), 10*time.Minute, time.Hour); errorCode(err) != ErrExpired {
+		t.Fatalf("the original template must age out: %v", err)
 	}
 
 	_, stranger, _ := ed25519.GenerateKey(cryptorand.Reader)
@@ -221,6 +223,10 @@ func TestRenewSignedManifest(t *testing.T) {
 			_, e := RenewSignedManifest(template, policy, private, now.Add(2*time.Hour), time.Minute, time.Hour)
 			return e
 		}, ErrExpired},
+		"max age over the cap": {func() error {
+			_, e := RenewSignedManifest(template, policy, private, now, time.Minute, MaxRenewalAge+time.Second)
+			return e
+		}, ErrInvalidInput},
 		"zero max age": {func() error {
 			_, e := RenewSignedManifest(template, policy, private, now, time.Minute, 0)
 			return e

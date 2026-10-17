@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -15,22 +16,42 @@ const maxSigningKeyFileBytes = 4096
 
 // ReadSigningKeyFile loads an Ed25519 private key (64-byte key or 32-byte
 // seed; hex, base64, or raw) from a regular file that is not a symlink. On
-// POSIX systems the file must not be accessible to group or others. Errors
-// never include file contents.
+// POSIX systems the file must not be accessible to group or others. The checks
+// run on the open file, which is also the one that is read, so the path cannot
+// be swapped in between. Errors never include file contents.
 func ReadSigningKeyFile(path string) (ed25519.PrivateKey, error) {
-	info, err := os.Lstat(path)
-	if err != nil || !info.Mode().IsRegular() {
+	before, err := os.Lstat(path)
+	if err != nil || !before.Mode().IsRegular() || before.Size() > maxSigningKeyFileBytes {
 		return nil, fail(ErrInvalidInput)
 	}
-	if runtime.GOOS != "windows" && info.Mode().Perm()&0o077 != 0 {
-		return nil, fail(ErrInvalidInput)
-	}
-	data, err := ReadRegularFile(path, maxSigningKeyFileBytes)
+	file, err := os.Open(path)
 	if err != nil {
+		return nil, fail(ErrInvalidInput)
+	}
+	defer file.Close()
+	if err := checkSigningKeyHandle(file, before); err != nil {
 		return nil, err
 	}
+	data, err := io.ReadAll(io.LimitReader(file, maxSigningKeyFileBytes+1))
 	defer Zeroize(data)
+	if err != nil || len(data) > maxSigningKeyFileBytes {
+		return nil, fail(ErrInvalidInput)
+	}
 	return parseSigningKey(data)
+}
+
+// checkSigningKeyHandle accepts an open key file only if it is the regular file
+// the path resolved to (before) and, on POSIX systems, is private to its owner.
+// Permissions are read from the handle itself, never from an earlier lookup.
+func checkSigningKeyHandle(file *os.File, before os.FileInfo) error {
+	opened, err := file.Stat()
+	if err != nil || !opened.Mode().IsRegular() || !os.SameFile(before, opened) {
+		return fail(ErrInvalidInput)
+	}
+	if runtime.GOOS != "windows" && opened.Mode().Perm()&0o077 != 0 {
+		return fail(ErrInvalidInput)
+	}
+	return nil
 }
 
 func parseSigningKey(data []byte) (ed25519.PrivateKey, error) {
@@ -86,5 +107,24 @@ func WriteFileAtomic(path string, data []byte, perm os.FileMode) (err error) {
 	if err = os.Rename(name, path); err != nil {
 		return fmt.Errorf("replace %q: %w", path, err)
 	}
+	syncDirectoryAfterRename(filepath.Dir(path))
 	return nil
+}
+
+// syncDirectoryAfterRename is a variable only so tests can observe the call.
+var syncDirectoryAfterRename = syncDirectory
+
+// syncDirectory flushes a directory entry so a completed rename survives power
+// loss. It is best effort: not every platform or filesystem supports fsync on
+// a directory (Windows does not), and the rename has already succeeded.
+func syncDirectory(dir string) {
+	if runtime.GOOS == "windows" {
+		return
+	}
+	directory, err := os.Open(dir)
+	if err != nil {
+		return
+	}
+	_ = directory.Sync()
+	_ = directory.Close()
 }

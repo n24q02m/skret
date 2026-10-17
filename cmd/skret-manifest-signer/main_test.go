@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -260,5 +261,102 @@ func TestSignerFailsWithoutTouchingExistingOutput(t *testing.T) {
 				t.Fatalf("existing output was modified: %q", got)
 			}
 		})
+	}
+}
+
+// A signer pointed at its own output would measure --max-age from the issued_at
+// it wrote last time, so every run would reset the clock and renewal would
+// never stop. The template must therefore never be the output file, nor any
+// alias of it.
+func TestSignerRefusesToRenewItsOwnOutput(t *testing.T) {
+	cases := map[string]func(t *testing.T, f *signerFixture) []string{
+		"same path": func(t *testing.T, f *signerFixture) []string {
+			writeFile(t, f.out, f.signedRaw, 0o644)
+			return f.args("--template", f.out)
+		},
+		"output is a symlink to the template": func(t *testing.T, f *signerFixture) []string {
+			if err := os.Symlink(f.template, f.out); err != nil {
+				t.Skipf("symlinks unavailable: %v", err)
+			}
+			return f.args()
+		},
+		"output is a hard link to the template": func(t *testing.T, f *signerFixture) []string {
+			if err := os.Link(f.template, f.out); err != nil {
+				t.Skipf("hard links unavailable: %v", err)
+			}
+			return f.args()
+		},
+		"same file through a different spelling": func(t *testing.T, f *signerFixture) []string {
+			writeFile(t, f.out, f.signedRaw, 0o644)
+			return f.args("--template", filepath.Join(filepath.Dir(f.out), ".", "manifest.json"))
+		},
+	}
+	for name, setup := range cases {
+		t.Run(name, func(t *testing.T) {
+			f := newSignerFixture(t)
+			args := setup(t, f)
+			before, err := os.ReadFile(f.out)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var diagnostics bytes.Buffer
+			now := f.issuedAt.Add(5 * time.Minute)
+			if code := run(args, &diagnostics, func() time.Time { return now }); code != 1 {
+				t.Fatalf("code = %d, want 1; diagnostics = %s", code, diagnostics.String())
+			}
+			after, err := os.ReadFile(f.out)
+			if err != nil || !bytes.Equal(before, after) {
+				t.Fatalf("output was rewritten: %v", err)
+			}
+			if got, _ := os.ReadFile(f.template); !bytes.Equal(got, f.signedRaw) {
+				t.Fatal("template was rewritten")
+			}
+		})
+	}
+}
+
+// Renewal must stay bounded by the age of the template however many times the
+// signer runs and however fresh its output looks.
+func TestSignerMaxAgeBoundsRepeatedRenewals(t *testing.T) {
+	f := newSignerFixture(t)
+	args := f.args("--max-age", "1h")
+	for _, elapsed := range []time.Duration{5 * time.Minute, 25 * time.Minute, 55 * time.Minute} {
+		now := f.issuedAt.Add(elapsed)
+		if code := run(args, &bytes.Buffer{}, func() time.Time { return now }); code != 0 {
+			t.Fatalf("renewal at +%s rejected: %d", elapsed, code)
+		}
+	}
+	late := f.issuedAt.Add(4 * time.Hour)
+	if code := run(args, &bytes.Buffer{}, func() time.Time { return late }); code != 1 {
+		t.Fatalf("renewal at +4h with --max-age 1h = %d, want 1", code)
+	}
+}
+
+func TestSignerRejectsMaxAgeOverCap(t *testing.T) {
+	f := newSignerFixture(t)
+	over := (secretlaunch.MaxRenewalAge + time.Hour).String()
+	if code := run(f.args("--max-age", over), &bytes.Buffer{}, func() time.Time { return f.issuedAt }); code != 2 {
+		t.Fatalf("--max-age %s = %d, want 2", over, code)
+	}
+}
+
+func TestSignerRejectsBroadSigningKeyPermissions(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permission bits are not meaningful on Windows")
+	}
+	f := newSignerFixture(t)
+	writeFile(t, f.out, []byte("previous"), 0o644)
+	if err := os.Chmod(f.key, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var diagnostics bytes.Buffer
+	if code := run(f.args(), &diagnostics, func() time.Time { return f.issuedAt.Add(time.Minute) }); code != 1 {
+		t.Fatalf("world-readable key accepted: code = %d, diagnostics = %s", code, diagnostics.String())
+	}
+	if got, _ := os.ReadFile(f.out); string(got) != "previous" {
+		t.Fatalf("output was modified: %q", got)
+	}
+	if strings.Contains(diagnostics.String(), f.keyHex) {
+		t.Fatal("diagnostics leak key material")
 	}
 }

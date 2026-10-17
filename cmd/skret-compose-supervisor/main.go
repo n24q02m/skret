@@ -225,8 +225,9 @@ func runContext(
 		runtime = secretlaunch.NewDockerRuntime(*dockerBinary, commandRunner{}, attachRunner{}, *invokeDocker)
 	}
 	supervisor := secretlaunch.NewSupervisor(runtime, provider)
-	supervisor.Reload = manifestReloader(*manifestPath, policy, *runtimeID, timeNow)
-	supervisor.OnReloadError = reloadReporter(diagnostics)
+	monitor := newReloadMonitor(diagnostics, timeNow, manifest)
+	supervisor.Reload = monitor.Wrap(manifestReloader(*manifestPath, policy, *runtimeID, timeNow))
+	supervisor.OnReloadError = monitor.Report
 	defer func() { _ = supervisor.Close() }()
 	if err := supervisor.Run(ctx, model, manifest); err != nil {
 		fmt.Fprintln(diagnostics, err)
@@ -261,19 +262,63 @@ func manifestReloader(
 	}
 }
 
-// reloadReporter prints a rejected reload to diagnostics, once per distinct
-// failure, so a stalled signer is visible without flooding the journal every
-// reconcile tick. Launch errors carry codes only, never values.
-func reloadReporter(diagnostics io.Writer) func(error) {
-	var last string
-	return func(err error) {
-		message := err.Error()
-		if message == last {
-			return
+// reloadMonitor keeps a stalled signer visible without flooding the journal.
+// It prints a rejected reload once per distinct failure (a success makes the
+// same failure news again) and warns once per validity window when less than a
+// third of the window is left and no renewal has arrived. It is only used from
+// the supervisor's single reconcile loop. Launch errors carry codes, never
+// values.
+type reloadMonitor struct {
+	diagnostics io.Writer
+	now         func() time.Time
+	current     secretlaunch.Manifest // the window the supervisor is running on
+	last        string
+	warnedFor   int64 // ExpiresAt a warning was already printed for
+}
+
+func newReloadMonitor(diagnostics io.Writer, now func() time.Time, current secretlaunch.Manifest) *reloadMonitor {
+	return &reloadMonitor{diagnostics: diagnostics, now: now, current: current}
+}
+
+// Wrap decorates reload: successful candidates the supervisor would accept
+// advance the tracked window, and the expiry warning is evaluated after every
+// attempt, including failed ones.
+func (m *reloadMonitor) Wrap(
+	reload func(context.Context) (secretlaunch.Manifest, error),
+) func(context.Context) (secretlaunch.Manifest, error) {
+	return func(ctx context.Context) (secretlaunch.Manifest, error) {
+		candidate, err := reload(ctx)
+		now := m.now()
+		if err == nil {
+			m.last = ""
+			if secretlaunch.AcceptRenewal(m.current, candidate, now) == nil {
+				m.current = candidate
+			}
 		}
-		last = message
-		fmt.Fprintf(diagnostics, "compose supervisor: manifest reload rejected: %s\n", message)
+		m.warnIfExpiring(now)
+		return candidate, err
 	}
+}
+
+// Report prints a rejected reload, once per distinct failure.
+func (m *reloadMonitor) Report(err error) {
+	message := err.Error()
+	if message == m.last {
+		return
+	}
+	m.last = message
+	fmt.Fprintf(m.diagnostics, "compose supervisor: manifest reload rejected: %s\n", message)
+}
+
+func (m *reloadMonitor) warnIfExpiring(now time.Time) {
+	window := m.current.ExpiresAt - m.current.IssuedAt
+	remaining := m.current.ExpiresAt - now.Unix()
+	if window <= 0 || remaining >= window/3 || m.warnedFor == m.current.ExpiresAt {
+		return
+	}
+	m.warnedFor = m.current.ExpiresAt
+	fmt.Fprintf(m.diagnostics, "compose supervisor: manifest expires at %s (in %ds) and no renewed manifest has been loaded\n",
+		time.Unix(m.current.ExpiresAt, 0).UTC().Format(time.RFC3339), remaining)
 }
 
 func secretlaunchError(code secretlaunch.ErrorCode) error {

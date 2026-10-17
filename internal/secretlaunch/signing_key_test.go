@@ -165,3 +165,98 @@ func TestReadSigningKeyFileReportsUnreadableFile(t *testing.T) {
 		t.Fatal("unreadable key file accepted")
 	}
 }
+
+// The permission check must look at the file that is actually open, not at what
+// the path pointed to a moment earlier: a path swapped between the Lstat and
+// the open would otherwise carry an unchecked file into the key parser.
+func TestCheckSigningKeyHandleJudgesTheOpenFile(t *testing.T) {
+	_, private, _ := ed25519.GenerateKey(cryptorand.Reader)
+	good := writeKeyFile(t, []byte(hex.EncodeToString(private)), 0o600)
+	other := writeKeyFile(t, []byte(hex.EncodeToString(private)), 0o600)
+
+	goodInfo, err := os.Lstat(good)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handle, err := os.Open(other)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer handle.Close()
+	if err := checkSigningKeyHandle(handle, goodInfo); errorCode(err) != ErrInvalidInput {
+		t.Fatalf("a handle for a different file than the one inspected was accepted: %v", err)
+	}
+	otherInfo, _ := os.Lstat(other)
+	if err := checkSigningKeyHandle(handle, otherInfo); err != nil {
+		t.Fatalf("matching handle rejected: %v", err)
+	}
+
+	directory, err := os.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer directory.Close()
+	dirInfo, _ := directory.Stat()
+	if err := checkSigningKeyHandle(directory, dirInfo); errorCode(err) != ErrInvalidInput {
+		t.Fatalf("directory handle accepted: %v", err)
+	}
+}
+
+func TestCheckSigningKeyHandleRejectsBroadPermissionsOnTheOpenFile(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permission bits are not meaningful on Windows")
+	}
+	_, private, _ := ed25519.GenerateKey(cryptorand.Reader)
+	path := writeKeyFile(t, []byte(hex.EncodeToString(private)), 0o600)
+	// The path was inspected while it was still private ...
+	inspected, err := os.Lstat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// ... and became world-readable before the handle was examined.
+	if err := os.Chmod(path, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	handle, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer handle.Close()
+	if err := checkSigningKeyHandle(handle, inspected); errorCode(err) != ErrInvalidInput {
+		t.Fatalf("broad permissions on the open file were not caught: %v", err)
+	}
+}
+
+func TestWriteFileAtomicSyncsTheDirectoryAfterTheRename(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "manifest.json")
+	var syncedDir string
+	var contentWhenSynced []byte
+	original := syncDirectoryAfterRename
+	syncDirectoryAfterRename = func(directory string) {
+		syncedDir = directory
+		contentWhenSynced, _ = os.ReadFile(path)
+	}
+	defer func() { syncDirectoryAfterRename = original }()
+
+	if err := WriteFileAtomic(path, []byte("renewed"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if syncedDir != dir || string(contentWhenSynced) != "renewed" {
+		t.Fatalf("directory sync dir=%q content-at-sync=%q: want the parent directory after the rename", syncedDir, contentWhenSynced)
+	}
+
+	// A failed write must not claim durability it does not have.
+	syncedDir = ""
+	if err := WriteFileAtomic(filepath.Join(dir, "absent", "x"), []byte("x"), 0o644); err == nil {
+		t.Fatal("write into a missing directory succeeded")
+	}
+	if syncedDir != "" {
+		t.Fatalf("directory synced after a failed write: %q", syncedDir)
+	}
+}
+
+func TestSyncDirectoryIsBestEffort(t *testing.T) {
+	syncDirectory(t.TempDir())                        // existing directory: no panic
+	syncDirectory(filepath.Join(t.TempDir(), "gone")) // missing directory: ignored
+}
