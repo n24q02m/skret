@@ -139,3 +139,12 @@ func TestWriteFileAtomicKeepsOldFileWhenTargetIsDirectory(t *testing.T) {
 		t.Fatalf("temporary file left behind: %v", entries)
 	}
 }
+
+func TestReadSigningKeyFileRejectsOversizedFileAndDirectory(t *testing.T) {
+	if _, err := ReadSigningKeyFile(writeKeyFile(t, bytes.Repeat([]byte{'a'}, maxSigningKeyFileBytes+1), 0o600)); err == nil {
+		t.Fatal("oversized key file accepted")
+	}
+	if _, err := ReadSigningKeyFile(t.TempDir()); errorCode(err) != ErrInvalidInput {
+		t.Fatalf("directory accepted: %v", err)
+	}
+}

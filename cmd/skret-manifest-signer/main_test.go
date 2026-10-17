@@ -227,6 +227,16 @@ func TestSignerFailsWithoutTouchingExistingOutput(t *testing.T) {
 			writeFile(t, f.model, []byte("{"), 0o644)
 			return f.args()
 		}, 1},
+		"missing template file": {func(t *testing.T, f *signerFixture) []string {
+			return append(f.args(), "--template", filepath.Join(f.dir, "nope.json"))
+		}, 1},
+		"garbage trust document": {func(t *testing.T, f *signerFixture) []string {
+			writeFile(t, f.trust, []byte("{"), 0o644)
+			return f.args()
+		}, 1},
+		"missing model file": {func(t *testing.T, f *signerFixture) []string {
+			return append(f.args(), "--model", filepath.Join(f.dir, "nope.json"))
+		}, 1},
 		"missing trust": {func(t *testing.T, f *signerFixture) []string {
 			return append(f.args(), "--trust", filepath.Join(f.dir, "nope.json"))
 		}, 1},

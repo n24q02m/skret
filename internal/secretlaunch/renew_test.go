@@ -175,3 +175,15 @@ func TestAcceptRenewal(t *testing.T) {
 		t.Fatal("invalid candidate accepted")
 	}
 }
+
+func TestAuthorityDigestAndAcceptRenewalRejectInvalidManifests(t *testing.T) {
+	broken := fixtureManifest()
+	broken.Version = "v0"
+	if _, err := broken.AuthorityDigest(); err == nil {
+		t.Fatal("invalid manifest produced an authority digest")
+	}
+	now := time.Unix(broken.IssuedAt+60, 0)
+	if err := AcceptRenewal(broken, renewedWindow(fixtureManifest()), now); err == nil {
+		t.Fatal("renewal of an invalid current manifest accepted")
+	}
+}
