@@ -324,11 +324,20 @@ func ValidateTrustPolicy(policy TrustPolicy) error {
 }
 
 func VerifyManifest(manifest Manifest, signature []byte, keyID string, policy TrustPolicy, now time.Time) error {
-	canonical, err := manifest.canonicalBytesUnchecked()
-	if err != nil {
+	if _, err := manifest.canonicalBytesUnchecked(); err != nil {
 		return err
 	}
 	if err := manifest.ValidateAt(now); err != nil {
+		return err
+	}
+	return verifyManifestTrust(manifest, signature, keyID, policy)
+}
+
+// verifyManifestTrust checks the signature and the trust policy but not the
+// validity window. Callers that need a live manifest must use VerifyManifest.
+func verifyManifestTrust(manifest Manifest, signature []byte, keyID string, policy TrustPolicy) error {
+	canonical, err := manifest.canonicalBytesUnchecked()
+	if err != nil {
 		return err
 	}
 	if err := ValidateTrustPolicy(policy); err != nil {

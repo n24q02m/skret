@@ -55,7 +55,7 @@ func TestSendEnvelopeSendsImmediateHeartbeatWithLongHealthInterval(t *testing.T)
 	if len(writes) != 3 {
 		t.Fatalf("writes=%d, want handshake, secret, immediate heartbeat", len(writes))
 	}
-	canonical, err := manifest.canonicalBytesUnchecked()
+	canonical, err := manifest.AuthorityBytes()
 	if err != nil {
 		t.Fatal(err)
 	}

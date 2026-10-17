@@ -32,7 +32,7 @@ func NewHelperAt(signed []byte, policy TrustPolicy, starter ChildStarter, now ti
 	if err != nil {
 		return nil, err
 	}
-	canonical, err := manifest.canonicalBytesUnchecked()
+	canonical, err := manifest.AuthorityBytes()
 	if err != nil {
 		return nil, err
 	}
