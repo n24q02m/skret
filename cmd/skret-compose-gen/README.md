@@ -13,6 +13,14 @@ All three are written as byte-exact canonical JSON so the supervisor's
 `DisallowUnknownFields` + re-encode equality checks pass. The tool never
 contacts Docker, a provider, or a VM — it is an offline signer.
 
+A manifest is valid for at most 15 minutes. To keep a long-running supervisor
+alive, run `skret-manifest-signer` (a separate oneshot, for example a systemd
+timer) with `--template` pointing at the manifest produced here. It re-signs
+the same launch authority with a fresh window, refuses templates older than
+`--max-age`, verifies the result against the trust document and the rendered
+model, and atomically replaces the file the supervisor re-reads every tick.
+The signing key must then be readable by that signer (mode 0600 or stricter).
+
 ## Usage
 
 ```sh

@@ -19,6 +19,14 @@ type Supervisor struct {
 	WaitDaemon        func(context.Context) error
 	ReconcileInterval time.Duration
 
+	// Reload, when set, is called before every reconcile tick after the first
+	// and returns the latest signed manifest from its source. A candidate is
+	// adopted only through AcceptRenewal: same launch authority, live window,
+	// never earlier expiry. Anything else is passed to OnReloadError and the
+	// current manifest stays in force until it expires (fail closed).
+	Reload        func(context.Context) (Manifest, error)
+	OnReloadError func(error)
+
 	mu       sync.Mutex
 	sessions map[string]*trackedStream
 }
@@ -292,6 +300,7 @@ func (s *Supervisor) Run(ctx context.Context, model RenderedModel, manifest Mani
 				ticker.Stop()
 				return nil
 			case <-ticker.C:
+				manifest = s.refreshManifest(ctx, manifest)
 				if err := s.reconcileWithRecovery(ctx, model, manifest); err != nil {
 					ticker.Stop()
 					if ctx.Err() != nil {
@@ -302,6 +311,25 @@ func (s *Supervisor) Run(ctx context.Context, model RenderedModel, manifest Mani
 			}
 		}
 	}
+}
+
+// refreshManifest returns the manifest to reconcile against: the reloaded one
+// when it is an acceptable renewal of current, otherwise current itself.
+func (s *Supervisor) refreshManifest(ctx context.Context, current Manifest) Manifest {
+	if s.Reload == nil {
+		return current
+	}
+	candidate, err := s.Reload(ctx)
+	if err == nil {
+		err = AcceptRenewal(current, candidate, s.now())
+	}
+	if err != nil {
+		if s.OnReloadError != nil {
+			s.OnReloadError(err)
+		}
+		return current
+	}
+	return candidate
 }
 
 func (s *Supervisor) reconcileWithRecovery(
@@ -526,7 +554,7 @@ func SendEnvelope(
 	if !ok || !serviceAuthoritiesEqual(expected, service) {
 		return fail(ErrBinding)
 	}
-	canonical, err := manifest.canonicalBytesUnchecked()
+	canonical, err := manifest.AuthorityBytes()
 	if err != nil {
 		return err
 	}

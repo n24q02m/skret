@@ -780,7 +780,7 @@ func TestCoverageSendEnvelopeBindingWritesAndHeartbeat(t *testing.T) {
 		cancel()
 		t.Fatalf("envelope writes=%d", len(writes))
 	}
-	canonical, _ := manifest.canonicalBytesUnchecked()
+	canonical, _ := manifest.AuthorityBytes()
 	key, err := peer.Derive(writes[0][4:], canonical)
 	if err != nil {
 		cancel()
@@ -831,7 +831,7 @@ func TestCoverageSendEnvelopeBindingWritesAndHeartbeat(t *testing.T) {
 
 func newCoverageEnvelopeStream(t *testing.T, manifest Manifest, service ServiceAuthority, values SecretSet) (*coverageDuplex, *Handshake) {
 	t.Helper()
-	canonical, err := manifest.canonicalBytesUnchecked()
+	canonical, err := manifest.AuthorityBytes()
 	if err != nil {
 		t.Fatal(err)
 	}

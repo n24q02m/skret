@@ -225,12 +225,55 @@ func runContext(
 		runtime = secretlaunch.NewDockerRuntime(*dockerBinary, commandRunner{}, attachRunner{}, *invokeDocker)
 	}
 	supervisor := secretlaunch.NewSupervisor(runtime, provider)
+	supervisor.Reload = manifestReloader(*manifestPath, policy, *runtimeID, timeNow)
+	supervisor.OnReloadError = reloadReporter(diagnostics)
 	defer func() { _ = supervisor.Close() }()
 	if err := supervisor.Run(ctx, model, manifest); err != nil {
 		fmt.Fprintln(diagnostics, err)
 		return 1
 	}
 	return 0
+}
+
+// manifestReloader re-reads and fully verifies the manifest file each time it
+// is called, so an out-of-process signer can renew the validity window. The
+// supervisor itself decides whether the result is an acceptable renewal.
+func manifestReloader(
+	path string,
+	policy secretlaunch.TrustPolicy,
+	runtimeID string,
+	now func() time.Time,
+) func(context.Context) (secretlaunch.Manifest, error) {
+	return func(context.Context) (secretlaunch.Manifest, error) {
+		signed, err := secretlaunch.ReadRegularFile(path, secretlaunch.MaxSignedManifestBytes)
+		if err != nil {
+			return secretlaunch.Manifest{}, err
+		}
+		defer secretlaunch.Zeroize(signed)
+		manifest, err := secretlaunch.VerifySignedManifest(signed, policy, now())
+		if err != nil {
+			return secretlaunch.Manifest{}, err
+		}
+		if manifest.RuntimeID != runtimeID {
+			return secretlaunch.Manifest{}, secretlaunchError(secretlaunch.ErrBinding)
+		}
+		return manifest, nil
+	}
+}
+
+// reloadReporter prints a rejected reload to diagnostics, once per distinct
+// failure, so a stalled signer is visible without flooding the journal every
+// reconcile tick. Launch errors carry codes only, never values.
+func reloadReporter(diagnostics io.Writer) func(error) {
+	var last string
+	return func(err error) {
+		message := err.Error()
+		if message == last {
+			return
+		}
+		last = message
+		fmt.Fprintf(diagnostics, "compose supervisor: manifest reload rejected: %s\n", message)
+	}
 }
 
 func secretlaunchError(code secretlaunch.ErrorCode) error {

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/ed25519"
 	cryptorand "crypto/rand"
 	"crypto/sha256"
@@ -146,5 +147,65 @@ func TestBoundedBufferRejectsUnboundedCommandOutput(t *testing.T) {
 	}
 	if got := buffer.String(); got != "abcd" {
 		t.Fatalf("bounded output = %q", got)
+	}
+}
+
+func loadFixturePolicy(t *testing.T, trustPath string) secretlaunch.TrustPolicy {
+	t.Helper()
+	trustBytes, err := os.ReadFile(trustPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy, err := secretlaunch.LoadTrustDocument(trustBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return policy
+}
+
+func TestManifestReloaderReturnsFreshVerifiedManifest(t *testing.T) {
+	manifestPath, trustPath, _ := writeSupervisorFixtureFiles(t)
+	policy := loadFixturePolicy(t, trustPath)
+	reload := manifestReloader(manifestPath, policy, "docker-run", time.Now)
+	manifest, err := reload(context.Background())
+	if err != nil || manifest.RuntimeID != "docker-run" || manifest.Generation != 1 {
+		t.Fatalf("reload = %+v, %v", manifest, err)
+	}
+}
+
+func TestManifestReloaderRejectsUnusableFiles(t *testing.T) {
+	manifestPath, trustPath, _ := writeSupervisorFixtureFiles(t)
+	policy := loadFixturePolicy(t, trustPath)
+
+	if _, err := manifestReloader(manifestPath, policy, "other-runtime", time.Now)(context.Background()); err == nil {
+		t.Fatal("manifest for another runtime accepted")
+	}
+	late := func() time.Time { return time.Now().Add(time.Hour) }
+	if _, err := manifestReloader(manifestPath, policy, "docker-run", late)(context.Background()); err == nil {
+		t.Fatal("expired manifest accepted")
+	}
+	if _, err := manifestReloader(filepath.Join(t.TempDir(), "missing.json"), policy, "docker-run", time.Now)(context.Background()); err == nil {
+		t.Fatal("missing manifest accepted")
+	}
+	if err := os.WriteFile(manifestPath, []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manifestReloader(manifestPath, policy, "docker-run", time.Now)(context.Background()); err == nil {
+		t.Fatal("garbage manifest accepted")
+	}
+}
+
+func TestReloadReporterPrintsEachDistinctFailureOnce(t *testing.T) {
+	var out bytes.Buffer
+	report := reloadReporter(&out)
+	first := &secretlaunch.LaunchError{Code: secretlaunch.ErrExpired}
+	second := &secretlaunch.LaunchError{Code: secretlaunch.ErrBinding}
+	for _, err := range []error{first, first, first, second, second, first} {
+		report(err)
+	}
+	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+	if len(lines) != 3 || !strings.Contains(lines[0], string(secretlaunch.ErrExpired)) ||
+		!strings.Contains(lines[1], string(secretlaunch.ErrBinding)) || !strings.Contains(lines[2], string(secretlaunch.ErrExpired)) {
+		t.Fatalf("reporter output = %q", out.String())
 	}
 }
