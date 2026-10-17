@@ -360,3 +360,22 @@ func TestSignerRejectsBroadSigningKeyPermissions(t *testing.T) {
 		t.Fatal("diagnostics leak key material")
 	}
 }
+
+func TestSignerOutputDirectoryIsDeliverableAsReadOnlyMount(t *testing.T) {
+	f := newSignerFixture(t)
+	now := f.issuedAt.Add(time.Minute)
+	if code := run(f.args(), &bytes.Buffer{}, func() time.Time { return now }); code != 0 {
+		t.Fatalf("code = %d", code)
+	}
+	deliver := secretlaunch.ManifestMount{
+		HostDir: filepath.Dir(f.out), ContainerDir: "/run/skret/manifest", FileName: filepath.Base(f.out),
+	}
+	if err := deliver.Validate(); err != nil {
+		t.Fatalf("signer output directory is not mountable: %v", err)
+	}
+	keyDirectory := deliver
+	keyDirectory.HostDir = f.dir
+	if err := keyDirectory.Validate(); err == nil {
+		t.Fatal("directory holding the key and trust files was accepted for mounting")
+	}
+}

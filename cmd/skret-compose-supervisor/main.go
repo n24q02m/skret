@@ -135,6 +135,7 @@ func runContext(
 	region := flags.String("region", "", "provider region")
 	profile := flags.String("profile", "", "provider profile")
 	kmsKeyID := flags.String("kms-key-id", "", "provider KMS key identifier")
+	manifestContainerDir := flags.String("manifest-container-dir", "", "mount the directory of --manifest read-only at this container path")
 	if err := flags.Parse(args); err != nil {
 		fmt.Fprintln(diagnostics, "compose supervisor: invalid arguments")
 		return 2
@@ -222,7 +223,13 @@ func runContext(
 			fmt.Fprintln(diagnostics, secretlaunchError(secretlaunch.ErrRuntime))
 			return 1
 		}
-		runtime = secretlaunch.NewDockerRuntime(*dockerBinary, commandRunner{}, attachRunner{}, *invokeDocker)
+		docker := secretlaunch.NewDockerRuntime(*dockerBinary, commandRunner{}, attachRunner{}, *invokeDocker)
+		docker.ManifestMount, err = manifestMount(*manifestPath, *manifestContainerDir)
+		if err != nil {
+			fmt.Fprintln(diagnostics, err)
+			return 1
+		}
+		runtime = docker
 	}
 	supervisor := secretlaunch.NewSupervisor(runtime, provider)
 	monitor := newReloadMonitor(diagnostics, timeNow, manifest)
@@ -234,6 +241,29 @@ func runContext(
 		return 1
 	}
 	return 0
+}
+
+// manifestMount builds the read-only delivery mount for the directory that
+// holds the manifest file. An empty containerDir keeps the manifest inside the
+// wrapper image (no mount). The directory is checked now so a misconfiguration
+// fails at startup rather than at the first container creation.
+func manifestMount(manifestPath, containerDir string) (*secretlaunch.ManifestMount, error) {
+	if containerDir == "" {
+		return nil, nil
+	}
+	absolute, err := filepath.Abs(manifestPath)
+	if err != nil {
+		return nil, secretlaunchError(secretlaunch.ErrRuntime)
+	}
+	mount := &secretlaunch.ManifestMount{
+		HostDir:      filepath.Dir(absolute),
+		ContainerDir: containerDir,
+		FileName:     filepath.Base(absolute),
+	}
+	if err := mount.Validate(); err != nil {
+		return nil, err
+	}
+	return mount, nil
 }
 
 // manifestReloader re-reads and fully verifies the manifest file each time it
