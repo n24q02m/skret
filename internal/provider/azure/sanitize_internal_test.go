@@ -65,3 +65,21 @@ func TestVersionNumber(t *testing.T) {
 	assert.Greater(t, fallback, int64(0))
 	assert.Equal(t, fallback, versionNumber("short"))
 }
+
+func BenchmarkSanitizeKey_Clean(b *testing.B) {
+	key := "my-clean-key-123"
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		sanitizeKey(key)
+	}
+}
+
+func BenchmarkSanitizeKey_Dirty(b *testing.B) {
+	key := "my_dirty_key.123--foo"
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		sanitizeKey(key)
+	}
+}

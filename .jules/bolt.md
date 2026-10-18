@@ -91,3 +91,7 @@
 ## 2026-10-01 - Zero-allocation fast-path for string transformations
 **Learning:** Functions that unconditionally transform strings using `strings.Builder` allocate memory on every call, even if the input requires no changes.
 **Action:** When a transformation's happy path is to return the string unmodified (like environment variable names that are already uppercase), add a fast-path scan to check if mutations are needed first. Returning the original string directly drops allocations to zero.
+
+## 2026-10-18 - Zero-allocation fast-path for string builder sanitization
+**Learning:** Functions that sanitize strings using `strings.Builder` allocate memory on every call, even if the input requires no changes (e.g. an already-clean Azure key like "DATABASE-URL").
+**Action:** When a transformation's happy path is to return the string unmodified, add a fast-path scan to check if mutations are needed first. Returning the original string directly drops allocations to zero.
