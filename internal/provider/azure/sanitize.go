@@ -21,14 +21,14 @@ func sanitizeKey(key string) (string, error) {
 	needsChange := false
 	for i := 0; i < len(key); i++ {
 		c := key[i]
-		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-') {
+		if (c < 'a' || c > 'z') && (c < 'A' || c > 'Z') && (c < '0' || c > '9') && c != '-' {
 			needsChange = true
 			break
 		}
 	}
 
 	if !needsChange {
-		if strings.Contains(key, "--") || strings.HasPrefix(key, "-") || strings.HasSuffix(key, "-") || len(key) > maxNameLen || len(key) == 0 {
+		if strings.Contains(key, "--") || strings.HasPrefix(key, "-") || strings.HasSuffix(key, "-") || len(key) > maxNameLen || key == "" {
 			needsChange = true
 		}
 	}
