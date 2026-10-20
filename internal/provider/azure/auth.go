@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
-	"regexp"
 	"strings"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
@@ -16,9 +15,25 @@ import (
 // explicitly.
 const defaultVaultSuffix = "vault.azure.net"
 
-// vaultNameRE is Azure's vault-name rule: 3-24 characters, alphanumeric
-// with dashes, starting and ending with an alphanumeric.
-var vaultNameRE = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9-]{1,22}[a-zA-Z0-9]$`)
+// validateVaultName checks Azure's vault-name rule: 3-24 characters,
+// alphanumeric with dashes, starting and ending with an alphanumeric.
+// Manual byte scan used instead of regex for performance.
+func validateVaultName(name string) bool {
+	if len(name) < 3 || len(name) > 24 {
+		return false
+	}
+	for i := 0; i < len(name); i++ {
+		c := name[i]
+		if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') {
+			continue
+		}
+		if c == '-' && i > 0 && i < len(name)-1 {
+			continue
+		}
+		return false
+	}
+	return true
+}
 
 // newDefaultClient builds an azsecrets client on the DefaultAzureCredential
 // chain: AZURE_TENANT_ID/AZURE_CLIENT_ID/AZURE_CLIENT_SECRET environment
@@ -46,7 +61,7 @@ func ResolveVaultURL(vaultURL, vaultName string) (string, error) {
 	name := strings.ToLower(strings.TrimSpace(vaultName))
 	rawURL := strings.TrimSpace(vaultURL)
 
-	if name != "" && !vaultNameRE.MatchString(name) {
+	if name != "" && !validateVaultName(name) {
 		return "", fmt.Errorf("azure: vault_name %q: must be 3-24 alphanumeric or dash characters", vaultName)
 	}
 
