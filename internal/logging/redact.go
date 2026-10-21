@@ -71,10 +71,48 @@ func (h *RedactingHandler) WithGroup(name string) slog.Handler {
 	return &RedactingHandler{inner: h.inner.WithGroup(name)}
 }
 
+func containsCaseInsensitiveFast(s, substr string) bool {
+	n := len(substr)
+	if n == 0 {
+		return true
+	}
+	if len(s) < n {
+		return false
+	}
+
+	firstLower := substr[0]
+	firstUpper := firstLower
+	if firstLower >= 'a' && firstLower <= 'z' {
+		firstUpper = firstLower - ('a' - 'A')
+	}
+
+	for i := 0; i <= len(s)-n; i++ {
+		c0 := s[i]
+		if c0 != firstLower && c0 != firstUpper {
+			continue
+		}
+
+		match := true
+		for j := 1; j < n; j++ {
+			c := s[i+j]
+			if c >= 'A' && c <= 'Z' {
+				c += 'a' - 'A'
+			}
+			if c != substr[j] {
+				match = false
+				break
+			}
+		}
+		if match {
+			return true
+		}
+	}
+	return false
+}
+
 func isSensitiveKey(key string) bool {
-	key = strings.ToLower(key)
 	for _, part := range sensitiveKeyParts {
-		if strings.Contains(key, part) {
+		if containsCaseInsensitiveFast(key, part) {
 			return true
 		}
 	}
