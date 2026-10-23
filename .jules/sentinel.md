@@ -55,3 +55,7 @@ Added `ReadTimeout` and `WriteTimeout` to `http.Server` in `internal/auth/infisi
 **Vulnerability:** The `timingSafeEqualStr` function implemented a length check that exited early before performing a constant-time comparison on user-provided secrets. This creates a length oracle timing attack vulnerability where attackers can deduce the length of secrets.
 **Learning:** Checking string lengths and exiting early avoids throwing exceptions in `timingSafeEqual` but exposes the secret's length via timing differences.
 **Prevention:** Always hash both inputs (e.g., using SHA-256) before performing a constant-time comparison when dealing with potentially variable-length secrets. This ensures the comparison operates in constant time regardless of the original inputs' lengths.
+## 2026-10-23 - Fix Length Oracle Timing Attack in Session Verification
+**Vulnerability:** The verifySession function implemented a length check that exited early before performing a constant-time comparison on the session cookie signature. This creates a length oracle timing attack vulnerability where attackers can deduce the length of signatures or tokens.
+**Learning:** Checking signature lengths and exiting early exposes the secret's length via timing differences, bypassing the benefits of a timing-safe equality check.
+**Prevention:** Always hash both inputs (e.g., using SHA-256) before performing a constant-time comparison when dealing with potentially variable-length user input. This ensures the comparison operates in constant time regardless of the original inputs' lengths.
