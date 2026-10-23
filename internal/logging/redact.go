@@ -93,15 +93,16 @@ func containsFold(s, substr string) bool {
 		idx2 := strings.IndexByte(s[i:], firstUpper)
 
 		var idx int
-		if idx1 == -1 && idx2 == -1 {
+		switch {
+		case idx1 == -1 && idx2 == -1:
 			return false
-		} else if idx1 == -1 {
+		case idx1 == -1:
 			idx = idx2
-		} else if idx2 == -1 {
+		case idx2 == -1:
 			idx = idx1
-		} else if idx1 < idx2 {
+		case idx1 < idx2:
 			idx = idx1
-		} else {
+		default:
 			idx = idx2
 		}
 
