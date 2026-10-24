@@ -72,11 +72,61 @@ func (h *RedactingHandler) WithGroup(name string) slog.Handler {
 }
 
 func isSensitiveKey(key string) bool {
-	key = strings.ToLower(key)
 	for _, part := range sensitiveKeyParts {
-		if strings.Contains(key, part) {
+		if containsCaseInsensitive(key, part) {
 			return true
 		}
+	}
+	return false
+}
+
+func containsCaseInsensitive(s, substr string) bool {
+	n := len(substr)
+	if n == 0 {
+		return true
+	}
+	c0 := substr[0]
+	c0Upper := c0
+	if c0 >= 'a' && c0 <= 'z' {
+		c0Upper = c0 - 32
+	}
+
+	for i := 0; i <= len(s)-n; {
+		idxLower := strings.IndexByte(s[i:], c0)
+		idxUpper := -1
+		if c0 != c0Upper {
+			idxUpper = strings.IndexByte(s[i:], c0Upper)
+		}
+
+		idx := idxLower
+		if idxUpper != -1 && (idx == -1 || idxUpper < idx) {
+			idx = idxUpper
+		}
+
+		if idx == -1 {
+			return false
+		}
+
+		i += idx
+		if i > len(s)-n {
+			return false
+		}
+
+		match := true
+		for j := 1; j < n; j++ {
+			c := s[i+j]
+			if c >= 'A' && c <= 'Z' {
+				c += 32
+			}
+			if c != substr[j] {
+				match = false
+				break
+			}
+		}
+		if match {
+			return true
+		}
+		i++
 	}
 	return false
 }
