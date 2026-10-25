@@ -92,6 +92,6 @@
 **Learning:** Functions that unconditionally transform strings using `strings.Builder` allocate memory on every call, even if the input requires no changes.
 **Action:** When a transformation's happy path is to return the string unmodified (like environment variable names that are already uppercase), add a fast-path scan to check if mutations are needed first. Returning the original string directly drops allocations to zero.
 
-## 2026-10-22 - Optimize case-insensitive substring matching
-**Learning:** Calling `strings.ToLower` before `strings.Contains` for case-insensitive matching causes unnecessary memory allocations on hot paths like structured logging attribute checks.
-**Action:** Replace this pattern with a custom, zero-allocation byte-scanning loop that performs in-place case-insensitive matching when checking against known ASCII substrings.
+## 2026-10-22 - Optimization Rejected: Case-Insensitive Matching Regression
+**Learning:** A proposed zero-allocation optimization for case-insensitive string matching (replacing `strings.ToLower`) was rejected because it only handled ASCII characters, causing a security regression. Specifically, Unicode characters that lowercase to ASCII (like U+212A KELVIN SIGN to 'k') would bypass redaction checks. Micro-optimizations on security paths must preserve identical behavior for all inputs, not just common ones.
+**Action:** Do not attempt to replace Go's built-in case-folding functions (`strings.ToLower`, `strings.EqualFold`) with ASCII-only byte-scanning loops, especially on security or validation paths, as they fail to handle Unicode case-folding edge cases.

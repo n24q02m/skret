@@ -345,8 +345,6 @@ jobs:
       - name: PSScriptAnalyzer install.ps1
         shell: pwsh
         run: |
-          Install-PackageProvider -Name NuGet -Force -Scope CurrentUser
-          Set-PSRepository PSGallery -InstallationPolicy Trusted
           Install-Module -Name PSScriptAnalyzer -Force -Scope CurrentUser
           Invoke-ScriptAnalyzer -Path install.ps1 -Severity Warning -EnableExit
 
