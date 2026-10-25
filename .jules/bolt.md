@@ -95,3 +95,7 @@
 ## 2026-10-24 - Zero-allocation case-insensitive string matching
 **Learning:** Using `strings.ToLower` before `strings.Contains` causes unnecessary memory allocations on hot paths.
 **Action:** To eliminate allocations when checking against known ASCII substrings, replace this pattern with a custom, zero-allocation byte-scanning loop (using `strings.IndexByte`) that performs in-place case-insensitive matching.
+
+## 2026-10-25 - strings.ToLower Unicode edge cases in security paths
+**Learning:** Replacing `strings.ToLower` with a custom ASCII-only case-insensitive byte-scanning loop can introduce security regressions. Unicode characters like U+212A (KELVIN SIGN) lowercase to "k". If a redaction key is "to\u212Aen", an ASCII-only loop will miss it, but `strings.ToLower` correctly identifies it as "token". Furthermore, manual loops can sometimes be slower in wall time than standard library functions.
+**Action:** Do not replace `strings.ToLower` with custom ASCII byte-scanning in security-critical paths (like redaction) where exact Unicode behavior is required. Always measure wall time in addition to allocations.
