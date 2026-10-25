@@ -91,3 +91,7 @@
 ## 2026-10-01 - Zero-allocation fast-path for string transformations
 **Learning:** Functions that unconditionally transform strings using `strings.Builder` allocate memory on every call, even if the input requires no changes.
 **Action:** When a transformation's happy path is to return the string unmodified (like environment variable names that are already uppercase), add a fast-path scan to check if mutations are needed first. Returning the original string directly drops allocations to zero.
+
+## 2026-10-31 - Avoid micro-optimizations on network-bound code paths (e.g., sanitizeKey)
+**Learning:** `sanitizeKey` in the Azure provider runs exactly once per HTTPS request to Azure Key Vault. Although rewriting its string sanitization loop (from `strings.ReplaceAll` passes to a single-pass `strings.Builder` with a fast-path) yields a measurable micro-benchmark improvement (saving ~66ns and a few allocations per key), this path is heavily network-bound. The HTTPS round trip dominates the execution time by orders of magnitude.
+**Action:** Do not micro-optimize cold paths or string handling routines that immediately precede expensive network I/O unless they process massive batches of data in a tight loop. The minimal CPU/GC savings do not justify the rewrite complexity or the risk of regressions. Close such optimizations without merging.
