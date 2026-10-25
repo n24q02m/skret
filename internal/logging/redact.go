@@ -71,70 +71,10 @@ func (h *RedactingHandler) WithGroup(name string) slog.Handler {
 	return &RedactingHandler{inner: h.inner.WithGroup(name)}
 }
 
-// containsFold checks if s contains substr case-insensitively, avoiding allocations.
-// substr is assumed to be lowercase ASCII.
-func containsFold(s, substr string) bool {
-	n := len(substr)
-	if n == 0 {
-		return true
-	}
-	if len(s) < n {
-		return false
-	}
-
-	firstLower := substr[0]
-	firstUpper := firstLower
-	if firstLower >= 'a' && firstLower <= 'z' {
-		firstUpper = firstLower - 'a' + 'A'
-	}
-
-	for i := 0; i <= len(s)-n; {
-		idx1 := strings.IndexByte(s[i:], firstLower)
-		idx2 := strings.IndexByte(s[i:], firstUpper)
-
-		var idx int
-		switch {
-		case idx1 == -1 && idx2 == -1:
-			return false
-		case idx1 == -1:
-			idx = idx2
-		case idx2 == -1:
-			idx = idx1
-		case idx1 < idx2:
-			idx = idx1
-		default:
-			idx = idx2
-		}
-
-		i += idx
-
-		if i > len(s)-n {
-			return false
-		}
-
-		match := true
-		for j := 1; j < n; j++ {
-			c := s[i+j]
-			if c >= 'A' && c <= 'Z' {
-				c += 'a' - 'A'
-			}
-			if c != substr[j] {
-				match = false
-				break
-			}
-		}
-		if match {
-			return true
-		}
-
-		i++
-	}
-	return false
-}
-
 func isSensitiveKey(key string) bool {
+	key = strings.ToLower(key)
 	for _, part := range sensitiveKeyParts {
-		if containsFold(key, part) {
+		if strings.Contains(key, part) {
 			return true
 		}
 	}
