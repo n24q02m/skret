@@ -80,7 +80,7 @@
 ## 2026-08-04 - Skip Map Initialization on Empty Secrets in DetectEnvNameCollisions (scope: that one function; done)
 **Learning:** When `DetectEnvNameCollisions` is called with an empty list of secrets, the function would still unnecessarily allocate a map for `excludeSet` and check constraints before realizing there were no secrets to process. The early return there is measured (~73 ns/op to ~3 ns/op) and is the terminal state for that function.
 **Action:** Treat this as specific to `DetectEnvNameCollisions`, not as a pattern to spread. PR #655 generalised it to `filterExcluded`, `SyncState.FilterUnchanged` and `SyncState.Update` and was closed on 2026-08-09, because in those three the saving is not there: `LoadSyncState` always hands back a non-nil `Hashes` map (state.go:82 and state.go:91-93), so `Update`'s map init is already unreachable in production, and `make([]T, 0, 0)` does not heap-allocate, so `FilterUnchanged`'s guard saves nothing while changing its return from an empty slice to nil. Before adding an empty-input guard anywhere else, show that the skipped work is a real allocation on a hot path and attach a `Benchmark*`, per the fast-path rule above.
-## $(date +%Y-%m-%d) - Strings Split vs Cut Loop (scope: validation vs allocation)
+## 2026-10-25 - Strings Split vs Cut Loop (scope: validation vs allocation)
 **Learning:** Replacing `strings.Split` with a manual `strings.Cut` loop is an excellent optimization for avoiding slice allocation when you only need to iterate over and validate path segments (e.g., `validStateManifestPath`). However, using a `strings.Cut` loop to manually `append` elements back into a slice (e.g., in `windowsStateManifestPathComponents`) is a pessimization. Go's native `strings.Split` is highly optimized to pre-calculate capacity and allocate the slice exactly once; manual `append` loops trigger multiple unnecessary internal array reallocations.
 **Action:** Only replace `strings.Split` with `strings.Cut` loops if the resulting slice is no longer needed. If the function must ultimately return a slice of the segments, stick to `strings.Split` as it's the most efficient and readable way to achieve it.
 
@@ -91,3 +91,11 @@
 ## 2026-10-01 - Zero-allocation fast-path for string transformations
 **Learning:** Functions that unconditionally transform strings using `strings.Builder` allocate memory on every call, even if the input requires no changes.
 **Action:** When a transformation's happy path is to return the string unmodified (like environment variable names that are already uppercase), add a fast-path scan to check if mutations are needed first. Returning the original string directly drops allocations to zero.
+
+## 2026-10-25 - Abandoned: Zero-allocation Case-Insensitive Match for Security
+**Learning:** An optimization that replaces \`strings.ToLower\` with a custom ASCII case-insensitive byte scanning loop to save allocations is incorrect for security contexts. A differential test proved this regresses behavior by failing to correctly match non-ASCII characters that map to ASCII when folded (e.g. U+212A KELVIN SIGN lowercases to 'k'). In a security path like log redaction, missing a sensitive key because it used a unicode homoglyph is a fatal vulnerability.
+**Action:** Do not micro-optimize string case transformations on security or validation paths using ASCII-only assumptions. The correctness and full unicode case-folding provided by \`strings.ToLower\` is strictly required. A sub-microsecond gain does not justify any divergence here.
+
+## 2026-10-25 - Regex replacement on hot paths without fast-path checks
+**Learning:** Using \`regexp.ReplaceAllString\` inside a hot loop (like log redaction) on every input string allocates memory and adds severe latency (~4100ns per check) even when the pattern is entirely absent.
+**Action:** Always wrap expensive regular expression calls with a cheap, custom byte-scanning fast-path check (e.g., verifying a minimum consecutive character constraint) to skip the regex engine entirely when the data is clean.

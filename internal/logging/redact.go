@@ -19,7 +19,26 @@ var secretPatterns = []pattern{
 	{regexp.MustCompile(`dp\.st\.[a-zA-Z0-9]+`), "[REDACTED]", "dp.st."},
 	{regexp.MustCompile(`ghp_[a-zA-Z0-9]{36,}`), "[REDACTED]", "ghp_"},
 	{regexp.MustCompile(`AKIA[A-Z0-9]{16}`), "[REDACTED]", "AKIA"},
-	{regexp.MustCompile(`(?i)[a-z0-9+/]{40,}={0,2}`), "[REDACTED]", ""}, // Base64-like
+	{regexp.MustCompile(`(?i)[a-z0-9+/]{40,}={0,2}`), "[REDACTED]", "base64"}, // Base64-like
+}
+
+func containsBase64Like(s string) bool {
+	if len(s) < 40 {
+		return false
+	}
+	consecutive := 0
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '+' || c == '/' {
+			consecutive++
+			if consecutive >= 40 {
+				return true
+			}
+		} else {
+			consecutive = 0
+		}
+	}
+	return false
 }
 
 var sensitiveKeyParts = []string{
@@ -105,8 +124,14 @@ func redactString(val string) string {
 		return val
 	}
 	for _, p := range secretPatterns {
-		if p.fast != "" && !strings.Contains(val, p.fast) {
-			continue
+		if p.fast != "" {
+			if p.fast == "base64" {
+				if !containsBase64Like(val) {
+					continue
+				}
+			} else if !strings.Contains(val, p.fast) {
+				continue
+			}
 		}
 		val = p.re.ReplaceAllString(val, p.repl)
 	}
