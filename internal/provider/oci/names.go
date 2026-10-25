@@ -28,6 +28,9 @@ func pathToken(path string) string {
 	if trimmed == "" {
 		return ""
 	}
+	if strings.IndexByte(trimmed, '/') == -1 {
+		return trimmed
+	}
 	return strings.ReplaceAll(trimmed, "/", "-")
 }
 
@@ -55,7 +58,9 @@ func secretNameFor(path, key string) (string, error) {
 			return "", fmt.Errorf("oci: key %q is outside the configured path %q", key, path)
 		}
 	}
-	leaf = strings.ReplaceAll(leaf, "/", "-")
+	if strings.IndexByte(leaf, '/') != -1 {
+		leaf = strings.ReplaceAll(leaf, "/", "-")
+	}
 	name := leaf
 	if token != "" {
 		name = token + "_" + leaf
