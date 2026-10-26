@@ -447,7 +447,7 @@ jobs:
           printf 'git_bundle_digest=%s\n' "$git_bundle_digest" >> "$GITHUB_OUTPUT"
 
       - name: Upload CLI artifacts
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: cli
           path: |
@@ -458,7 +458,7 @@ jobs:
           if-no-files-found: error
           retention-days: 7
       - name: Upload archive artifacts
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: archives
           path: |
@@ -467,7 +467,7 @@ jobs:
           if-no-files-found: error
           retention-days: 7
       - name: Upload checksum artifacts
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: checksums
           path: |
@@ -485,56 +485,56 @@ jobs:
           if-no-files-found: error
           retention-days: 7
       - name: Upload SBOM artifacts
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: sbom
           path: dist/*.sbom.json
           if-no-files-found: error
           retention-days: 7
       - name: Upload CLI OCI artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: cli-oci
           path: dist/skret-cli.oci.tar
           if-no-files-found: error
           retention-days: 7
       - name: Upload sync OCI artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: sync-oci
           path: dist/skret-sync.oci.tar
           if-no-files-found: error
           retention-days: 7
       - name: Upload ordinary Hub artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: hub
           path: dist/hub.bundle.tar
           if-no-files-found: error
           retention-days: 7
       - name: Upload security executor artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: security-executor
           path: dist/security-executor.bundle.tar
           if-no-files-found: error
           retention-days: 7
       - name: Upload docs artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: docs
           path: dist/docs.bundle.tar
           if-no-files-found: error
           retention-days: 7
       - name: Upload release journal
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-journal
           path: ${{ runner.temp }}/release-journal.jsonl
           if-no-files-found: error
           retention-days: 7
       - name: Upload prepared release Git bundle
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-git
           path: |
@@ -895,7 +895,7 @@ jobs:
           mkdir -p docs/public
           cp demo.gif docs/public/demo.gif
       - name: Upload demo.gif artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: demo-gif
           path: |
@@ -940,7 +940,7 @@ jobs:
           results_file: results.sarif
           results_format: sarif
           publish_results: true
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: SARIF file
           path: results.sarif
