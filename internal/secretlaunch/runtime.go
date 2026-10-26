@@ -73,6 +73,9 @@ type DockerRuntime struct {
 	Runner         CommandRunner
 	AttachRunner   AttachRunner
 	ExplicitInvoke bool
+	// ManifestMount, when set, delivers the renewed manifest to every created
+	// container. Nil keeps the manifest inside the wrapper image.
+	ManifestMount *ManifestMount
 }
 
 func NewDockerRuntime(binary string, runner CommandRunner, attach AttachRunner, explicitlyInvoked bool) *DockerRuntime {
@@ -166,6 +169,15 @@ func (d *DockerRuntime) Create(ctx context.Context, spec ServiceSpec, labels map
 		return Container{}, err
 	}
 	args := []string{"create", "--name", spec.Name, "--restart", "no", "--interactive", "--attach", "stdin"}
+	if d != nil && d.ManifestMount != nil {
+		if err := d.ManifestMount.Validate(); err != nil {
+			return Container{}, err
+		}
+		if err := d.ManifestMount.checkArgv(spec.Argv); err != nil {
+			return Container{}, err
+		}
+		args = append(args, d.ManifestMount.dockerArgs()...)
+	}
 	if spec.User != "" {
 		args = append(args, "--user", spec.User)
 	}
