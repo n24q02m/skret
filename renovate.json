@@ -16,12 +16,15 @@
   "commitMessageTopic": "{{depName}}",
   "semanticCommitType": "fix",
   "semanticCommitScope": "deps",
-  "golang": {
-    "postUpdateOptions": [
-      "gomodTidy"
-    ]
-  },
   "packageRules": [
+    {
+      "matchCategories": [
+        "golang"
+      ],
+      "postUpdateOptions": [
+        "gomodTidy"
+      ]
+    },
     {
       "description": "Hold every update for 7 days so a malicious or yanked release is caught before it lands",
       "matchPackageNames": [
@@ -39,11 +42,7 @@
     },
     {
       "description": "Automerge low-risk dependency updates (patch, digest, pin) once the 7-day release-age hold and all required checks pass",
-      "matchUpdateTypes": [
-        "patch",
-        "digest",
-        "pin"
-      ],
+      "matchUpdateTypes": ["patch", "digest", "pin"],
       "automerge": true,
       "automergeType": "pr",
       "platformAutomerge": true
