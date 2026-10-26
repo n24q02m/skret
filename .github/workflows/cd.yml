@@ -62,7 +62,7 @@ jobs:
           esac
       - id: probe
         name: Probe whether a release is due (no push)
-        uses: n24q02m/better-semantic-release@a994102ce3aa588fe3038e79707ae7ae3971b336 # v1.7.0 G1
+        uses: n24q02m/better-semantic-release@0e57c64481cb78492ad1ff8025b0cd368dbb695f # v1.13.0
         with:
           github_token: ${{ github.token }}
           config_file: semantic-release.toml
@@ -115,7 +115,7 @@ jobs:
       # remain impossible in the prepare job.
       - id: release
         name: Prepare local release commit and tag
-        uses: n24q02m/better-semantic-release@a994102ce3aa588fe3038e79707ae7ae3971b336 # v1.7.0 G1
+        uses: n24q02m/better-semantic-release@0e57c64481cb78492ad1ff8025b0cd368dbb695f # v1.13.0
         with:
           github_token: ${{ github.token }}
           config_file: semantic-release.toml
@@ -160,7 +160,7 @@ jobs:
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version-file: go.mod
-      - uses: anchore/sbom-action/download-syft@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
+      - uses: anchore/sbom-action/download-syft@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
         with:
           syft-version: v1.51.0
       - uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0
@@ -744,7 +744,7 @@ jobs:
           PY
       - id: publisher
         name: Publish exact release assets through signed G1 publisher
-        uses: n24q02m/better-semantic-release/publish-action@a994102ce3aa588fe3038e79707ae7ae3971b336 # v1.7.0 G1
+        uses: n24q02m/better-semantic-release/publish-action@0e57c64481cb78492ad1ff8025b0cd368dbb695f # v1.13.0
         with:
           manifest: release-manifest.json
           token: ${{ steps.app-token.outputs.token }}
@@ -945,6 +945,6 @@ jobs:
           name: SARIF file
           path: results.sarif
           retention-days: 5
-      - uses: github/codeql-action/upload-sarif@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4.38.0
+      - uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
         with:
           sarif_file: results.sarif
