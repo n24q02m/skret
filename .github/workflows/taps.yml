@@ -1,0 +1,94 @@
+name: Update taps
+
+# The release publisher does not push to the package-manager taps, so the Homebrew
+# cask and the Scoop manifest are rewritten here from the release's own
+# checksums.txt. Run it once after a STABLE release is published:
+#   gh workflow run taps.yml --repo n24q02m/skret -f tag=vX.Y.Z
+# Prereleases are refused: both taps are the stable channel.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Published stable release tag, for example v1.36.0"
+        required: true
+        type: string
+      dry_run:
+        description: "Print the tap diffs and stop before pushing"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: skret-update-taps
+  cancel-in-progress: false
+
+jobs:
+  update:
+    name: Update homebrew-tap and scoop-bucket
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      TAG: ${{ inputs.tag }}
+      DRY_RUN: ${{ inputs.dry_run }}
+    steps:
+      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - name: Require a published stable release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          release="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${TAG}")"
+          test "$(jq -r .draft <<<"$release")" = "false"
+          test "$(jq -r .prerelease <<<"$release")" = "false"
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern checksums.txt --dir .
+      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        id: app-token
+        with:
+          app-id: ${{ vars.CI_APP_ID }}
+          private-key: ${{ secrets.CI_APP_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: |
+            homebrew-tap
+            scoop-bucket
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          repository: ${{ github.repository_owner }}/homebrew-tap
+          path: homebrew-tap
+          token: ${{ steps.app-token.outputs.token }}
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          repository: ${{ github.repository_owner }}/scoop-bucket
+          path: scoop-bucket
+          token: ${{ steps.app-token.outputs.token }}
+      - name: Rewrite cask and manifest from checksums.txt
+        run: |
+          python scripts/update_taps.py --tag "$TAG" --checksums checksums.txt \
+            --cask homebrew-tap/Casks/skret.rb \
+            --scoop scoop-bucket/bucket/skret.json
+      - name: Commit and push changed taps
+        run: |
+          set -euo pipefail
+          for tap in homebrew-tap scoop-bucket; do
+            if git -C "$tap" diff --quiet; then
+              echo "$tap already at ${TAG}"
+              continue
+            fi
+            git -C "$tap" --no-pager diff --stat
+            if [ "$DRY_RUN" = "true" ]; then
+              git -C "$tap" --no-pager diff
+              continue
+            fi
+            git -C "$tap" config user.name "github-actions[bot]"
+            git -C "$tap" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git -C "$tap" commit --all --message "fix: bump skret to ${TAG#v}"
+            git -C "$tap" push origin HEAD:main
+          done
