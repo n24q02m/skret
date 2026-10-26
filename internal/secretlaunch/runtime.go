@@ -416,7 +416,9 @@ func secretLikeName(value string) bool {
 }
 
 func OwnershipLabels(manifest Manifest) map[string]string {
-	digest, err := manifest.Digest()
+	// The window-free digest keeps ownership labels stable across renewals of
+	// the same launch authority.
+	digest, err := manifest.AuthorityDigest()
 	if err != nil {
 		return map[string]string{}
 	}
