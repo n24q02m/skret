@@ -25,7 +25,7 @@ require (
 	github.com/googleapis/gax-go/v2 v2.23.0
 	github.com/oracle/oci-go-sdk/v65 v65.125.0
 	github.com/spf13/cobra v1.10.2
-	github.com/spf13/pflag v1.0.9
+	github.com/spf13/pflag v1.0.10
 	github.com/stretchr/testify v1.12.1
 	github.com/zalando/go-keyring v0.2.8
 	golang.org/x/crypto v0.55.0
