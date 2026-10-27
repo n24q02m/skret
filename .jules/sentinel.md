@@ -55,3 +55,8 @@ Added `ReadTimeout` and `WriteTimeout` to `http.Server` in `internal/auth/infisi
 **Vulnerability:** The `timingSafeEqualStr` function implemented a length check that exited early before performing a constant-time comparison on user-provided secrets. This creates a length oracle timing attack vulnerability where attackers can deduce the length of secrets.
 **Learning:** Checking string lengths and exiting early avoids throwing exceptions in `timingSafeEqual` but exposes the secret's length via timing differences.
 **Prevention:** Always hash both inputs (e.g., using SHA-256) before performing a constant-time comparison when dealing with potentially variable-length secrets. This ensures the comparison operates in constant time regardless of the original inputs' lengths.
+
+## 2026-10-27 - Fix Length Oracle Timing Attack in verifySession
+**Vulnerability:** The `verifySession` function in `hub/src/auth.ts` returned early if the lengths of the `got` and `expected` signatures didn't match before calling `crypto.subtle.timingSafeEqual`. This created a length oracle timing attack vulnerability where an attacker could deduce the exact length of the expected signature by observing response times.
+**Learning:** Early length checks, while preventing exceptions in `crypto.subtle.timingSafeEqual` (which strictly requires equal-length buffers in WebCrypto), expose the length of the secret through timing differences.
+**Prevention:** Always normalize the lengths of both inputs before performing a constant-time comparison. For instance, hashing both inputs using SHA-256 (via `crypto.subtle.digest`) guarantees both resulting buffers are exactly 32 bytes, allowing a safe, exception-free, and perfectly constant-time comparison without leaking length information.
