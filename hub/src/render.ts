@@ -180,7 +180,7 @@ export function renderLogin(error?: string): string {
   return page(
     `<h1>skret vault</h1>${msg}` +
       `<form method="POST" action="/login">` +
-      `<label for="password" class="sr-only">Relay password</label>` +
+      `<label for="password">Relay password</label>` +
       `<input type="password" id="password" name="password" placeholder="relay password" autocomplete="current-password" autofocus required${aria}>` +
       `<button type="submit">Enter</button></form>`,
     title,
