@@ -4,6 +4,118 @@ All notable changes to this project will be documented in this file.
 
 <!-- version list -->
 
+## v1.37.0-beta.1 (2026-10-27)
+
+### Bug Fixes
+
+- Bump alpine 3.24 digest and its arm64 CI rewrite
+  ([#915](https://github.com/n24q02m/skret/pull/915),
+  [`8c77dca`](https://github.com/n24q02m/skret/commit/8c77dca94d96ad8fd7493ee30f376ca28f84279e))
+
+- Bump better-semantic-release pin to v1.13.0 ([#914](https://github.com/n24q02m/skret/pull/914),
+  [`f508296`](https://github.com/n24q02m/skret/commit/f5082965f07b7c5505c0b52d327f17d92871d9b3))
+
+- Cover manifest renewal error paths in tests ([#894](https://github.com/n24q02m/skret/pull/894),
+  [`96eb573`](https://github.com/n24q02m/skret/commit/96eb573a0f6bc0e8c35fd5159f278f7f8c19142a))
+
+- Cover renewal window, signing and unreadable key paths
+  ([#894](https://github.com/n24q02m/skret/pull/894),
+  [`96eb573`](https://github.com/n24q02m/skret/commit/96eb573a0f6bc0e8c35fd5159f278f7f8c19142a))
+
+- Pin dashboard table scope=col invariant in render test
+  ([#869](https://github.com/n24q02m/skret/pull/869),
+  [`7ea1f1e`](https://github.com/n24q02m/skret/commit/7ea1f1e4d8b12a7c166492d79d2c8fce7d09899e))
+
+- Stop manifest renewal outliving --max-age and harden the signer
+  ([#894](https://github.com/n24q02m/skret/pull/894),
+  [`96eb573`](https://github.com/n24q02m/skret/commit/96eb573a0f6bc0e8c35fd5159f278f7f8c19142a))
+
+- **ci**: Resolve setup-deno action to existing v2.0.5 commit sha
+  ([#865](https://github.com/n24q02m/skret/pull/865),
+  [`b1d0dd0`](https://github.com/n24q02m/skret/commit/b1d0dd047dac065e071b68ed52fb2c184275ad04))
+
+- **ci**: Skip stack gate hooks when workspace deps are not installed
+  ([#866](https://github.com/n24q02m/skret/pull/866),
+  [`4879216`](https://github.com/n24q02m/skret/commit/48792166707301ccac0f9df7b86e8bed06f4ef1c))
+
+- **deps**: Align lockfile astro specifier with package.json
+  ([#864](https://github.com/n24q02m/skret/pull/864),
+  [`c4d7a45`](https://github.com/n24q02m/skret/commit/c4d7a45c091a09178a160cc1544c213e87e9e913))
+
+- **deps**: Bump devalue to >=5.9.3 for security advisories
+  ([#863](https://github.com/n24q02m/skret/pull/863),
+  [`33fe184`](https://github.com/n24q02m/skret/commit/33fe1848271b916f860b117471629a0053ba0b1e))
+
+- **deps**: Bump http-cache-semantics to 4.3.0 outside vulnerable range
+  ([#864](https://github.com/n24q02m/skret/pull/864),
+  [`c4d7a45`](https://github.com/n24q02m/skret/commit/c4d7a45c091a09178a160cc1544c213e87e9e913))
+
+- **deps**: Migrate config renovate.json ([#922](https://github.com/n24q02m/skret/pull/922),
+  [`3f69eac`](https://github.com/n24q02m/skret/commit/3f69eacb33dd3d436929f3565328b32e983fe091))
+
+- **deps**: Update actions/upload-artifact action to v7.0.2
+  ([#917](https://github.com/n24q02m/skret/pull/917),
+  [`bd2dec2`](https://github.com/n24q02m/skret/commit/bd2dec2e01e0668e75f52461b54bc8ddc56a8558))
+
+- **deps**: Update anchore/sbom-action action to v0.24.3
+  ([#881](https://github.com/n24q02m/skret/pull/881),
+  [`8cc7d9f`](https://github.com/n24q02m/skret/commit/8cc7d9fc703b2cdcf10a659fad1eb801b9451228))
+
+- **deps**: Update aws-sdk-go-v2 monorepo ([#884](https://github.com/n24q02m/skret/pull/884),
+  [`fa1a3f4`](https://github.com/n24q02m/skret/commit/fa1a3f4d3ef7b5cc67697eaf946085aae4d65e74))
+
+- **deps**: Update azure-sdk-for-go monorepo ([#918](https://github.com/n24q02m/skret/pull/918),
+  [`72bed9a`](https://github.com/n24q02m/skret/commit/72bed9a3980867080f01b57ba7f12e35d87360a4))
+
+- **deps**: Update github/codeql-action action to v4.39.0
+  ([#885](https://github.com/n24q02m/skret/pull/885),
+  [`e3e05de`](https://github.com/n24q02m/skret/commit/e3e05de432608cf33497f40272a523b4a8685e06))
+
+- **deps**: Update module github.com/spf13/pflag to v1.0.10
+  ([#920](https://github.com/n24q02m/skret/pull/920),
+  [`0d53edf`](https://github.com/n24q02m/skret/commit/0d53edfa97f3e0cf3205115bf3b40707ebd36b1a))
+
+- **deps**: Update module google.golang.org/protobuf to v1.36.12
+  ([#921](https://github.com/n24q02m/skret/pull/921),
+  [`d601d2b`](https://github.com/n24q02m/skret/commit/d601d2b4b2acba96cd64cb0d83f47d0c19949682))
+
+### Features
+
+- Deliver the renewed manifest to containers through a read-only mount
+  ([#895](https://github.com/n24q02m/skret/pull/895),
+  [`f9d7810`](https://github.com/n24q02m/skret/commit/f9d781084fa4a7389a4adca55a6a6b77f7823044))
+
+- Regenerate demo.gif ([#862](https://github.com/n24q02m/skret/pull/862),
+  [`bccc021`](https://github.com/n24q02m/skret/commit/bccc0216748ad776e5c9a0a731c6bcee63da989b))
+
+- Renew secret-launch manifest validity without recreating containers
+  ([#894](https://github.com/n24q02m/skret/pull/894),
+  [`96eb573`](https://github.com/n24q02m/skret/commit/96eb573a0f6bc0e8c35fd5159f278f7f8c19142a))
+
+- Update homebrew and scoop taps from release checksums
+  ([#919](https://github.com/n24q02m/skret/pull/919),
+  [`01c475d`](https://github.com/n24q02m/skret/commit/01c475da19affea505d31b1207cf2a3ccc51d524))
+
+- 🎨 Palette: Add tooltip explaining stale badge ([#871](https://github.com/n24q02m/skret/pull/871),
+  [`3429d1e`](https://github.com/n24q02m/skret/commit/3429d1ee1d5d3993e3664547b8a67db8b6344776))
+
+- **stack**: Add per-workspace pre-commit stack gates
+  ([#866](https://github.com/n24q02m/skret/pull/866),
+  [`4879216`](https://github.com/n24q02m/skret/commit/48792166707301ccac0f9df7b86e8bed06f4ef1c))
+
+- **stack**: Add per-workspace pre-commit stack gates and drop dead spread fallback
+  ([#866](https://github.com/n24q02m/skret/pull/866),
+  [`4879216`](https://github.com/n24q02m/skret/commit/48792166707301ccac0f9df7b86e8bed06f4ef1c))
+
+- **stack**: Migrate hub and docs to bun with oxc-biome tooling
+  ([#865](https://github.com/n24q02m/skret/pull/865),
+  [`b1d0dd0`](https://github.com/n24q02m/skret/commit/b1d0dd047dac065e071b68ed52fb2c184275ad04))
+
+- **stack**: Provision TS workspaces in mise setup and silence oxlint control-regex noise
+  ([#865](https://github.com/n24q02m/skret/pull/865),
+  [`b1d0dd0`](https://github.com/n24q02m/skret/commit/b1d0dd047dac065e071b68ed52fb2c184275ad04))
+
+
 ## v1.36.0 (2026-10-05)
 
 ### Features
