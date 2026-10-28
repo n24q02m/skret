@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 <!-- version list -->
 
+## v1.37.0 (2026-10-28)
+
+
 ## v1.37.0-beta.1 (2026-10-27)
 
 ### Bug Fixes
