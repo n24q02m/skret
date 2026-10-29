@@ -55,7 +55,9 @@ func BuildEnv(secrets []*provider.Secret, existing []string, pathPrefix string, 
 		// 2. Replace newlines/carriage returns with spaces to prevent environment entry corruption
 		//    and potential injection in tools that parse 'env' output line-by-line.
 		val := s.Value
-		if strings.ContainsAny(val, "\x00\n\r") {
+		// PERF: strings.ContainsAny dynamically builds an asciiSet lookup table, introducing setup overhead.
+		// For a small number of bytes, chained strings.IndexByte is significantly faster due to vectorized instructions.
+		if strings.IndexByte(val, '\x00') >= 0 || strings.IndexByte(val, '\n') >= 0 || strings.IndexByte(val, '\r') >= 0 {
 			// One pass over the value, so the three substitutions below cost a
 			// single allocation rather than one per chained strings.ReplaceAll.
 			var b strings.Builder
