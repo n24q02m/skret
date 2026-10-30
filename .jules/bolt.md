@@ -91,3 +91,7 @@
 ## 2026-10-01 - Zero-allocation fast-path for string transformations
 **Learning:** Functions that unconditionally transform strings using `strings.Builder` allocate memory on every call, even if the input requires no changes.
 **Action:** When a transformation's happy path is to return the string unmodified (like environment variable names that are already uppercase), add a fast-path scan to check if mutations are needed first. Returning the original string directly drops allocations to zero.
+
+## 2025-02-28 - Case-insensitive match fast path
+**Learning:** In Go, `strings.ContainsAny` dynamically builds an `asciiSet` lookup table, introducing setup overhead which is suboptimal for a hot path or when checking for just a few specific bytes.
+**Action:** Replace `strings.ContainsAny` with chained `strings.IndexByte` calls for a small number of specific bytes, which is significantly faster because it leverages vectorized assembly instructions without setup cost.
