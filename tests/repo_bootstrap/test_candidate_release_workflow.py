@@ -7,7 +7,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CD_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "cd.yml"
-G1_SHA = "0e57c64481cb78492ad1ff8025b0cd368dbb695f"
+G1_SHA = "0cc137a9f9254fb4163d727c20026cb81a5a6880"
 
 
 class CandidateReleaseWorkflowTests(unittest.TestCase):
