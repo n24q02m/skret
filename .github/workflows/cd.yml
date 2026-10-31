@@ -62,7 +62,7 @@ jobs:
           esac
       - id: probe
         name: Probe whether a release is due (no push)
-        uses: n24q02m/better-semantic-release@0e57c64481cb78492ad1ff8025b0cd368dbb695f # v1.13.0
+        uses: n24q02m/better-semantic-release@0cc137a9f9254fb4163d727c20026cb81a5a6880 # v1.13.1
         with:
           github_token: ${{ github.token }}
           config_file: semantic-release.toml
@@ -115,7 +115,7 @@ jobs:
       # remain impossible in the prepare job.
       - id: release
         name: Prepare local release commit and tag
-        uses: n24q02m/better-semantic-release@0e57c64481cb78492ad1ff8025b0cd368dbb695f # v1.13.0
+        uses: n24q02m/better-semantic-release@0cc137a9f9254fb4163d727c20026cb81a5a6880 # v1.13.1
         with:
           github_token: ${{ github.token }}
           config_file: semantic-release.toml
@@ -744,7 +744,7 @@ jobs:
           PY
       - id: publisher
         name: Publish exact release assets through signed G1 publisher
-        uses: n24q02m/better-semantic-release/publish-action@0e57c64481cb78492ad1ff8025b0cd368dbb695f # v1.13.0
+        uses: n24q02m/better-semantic-release/publish-action@0cc137a9f9254fb4163d727c20026cb81a5a6880 # v1.13.1
         with:
           manifest: release-manifest.json
           token: ${{ steps.app-token.outputs.token }}
