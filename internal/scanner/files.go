@@ -29,9 +29,13 @@ func gitLines(dir string, args ...string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	parts := strings.Split(strings.TrimRight(string(raw), "\x00"), "\x00")
-	out := make([]string, 0, len(parts))
-	for _, p := range parts {
+	// bolt: Replace strings.Split with a strings.Cut loop to avoid allocating
+	// an intermediate slice of parts, while pre-allocating the result slice capacity.
+	s := strings.TrimRight(string(raw), "\x00")
+	out := make([]string, 0, strings.Count(s, "\x00")+1)
+	for s != "" {
+		p, rest, _ := strings.Cut(s, "\x00")
+		s = rest
 		if p == "" {
 			continue
 		}

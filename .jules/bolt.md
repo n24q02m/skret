@@ -91,3 +91,7 @@
 ## 2026-10-01 - Zero-allocation fast-path for string transformations
 **Learning:** Functions that unconditionally transform strings using `strings.Builder` allocate memory on every call, even if the input requires no changes.
 **Action:** When a transformation's happy path is to return the string unmodified (like environment variable names that are already uppercase), add a fast-path scan to check if mutations are needed first. Returning the original string directly drops allocations to zero.
+
+## 2026-11-10 - Strings Cut Loop over Strings Split with strings.Count pre-allocation
+**Learning:** Using `strings.Split` to iterate over delimited strings (like git command outputs) incurs slice allocation overhead. We can replace it with a `strings.Cut` loop. However, replacing it with a `strings.Cut` loop without pre-allocating the resulting slice capacity causes a pessimization due to dynamic array resizing overhead during `append`.
+**Action:** When replacing `strings.Split` with a `strings.Cut` loop that constructs a new slice, always pre-allocate the capacity of the resulting slice using `strings.Count(s, delim)` to achieve a true zero-allocation (or rather, minimum-allocation) performance win.
