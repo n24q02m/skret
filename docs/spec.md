@@ -19,7 +19,7 @@ Every claim in this document is enforced by code, not prose:
   every run.
 - `cmd/skret/main.go` — the single process exit path.
 - `internal/cli/errjson.go` — the JSON error envelope.
-- `tests/agent-e2e` + `.github/workflows/agent-e2e.yml` — an always-on CI
+- `tests/agent-e2e` + `.github/workflows/ci.yml` (`agent-e2e` job) — an always-on CI
   harness that drives the built binary the way an unattended agent would and
   fails on any deviation from this contract.
 
