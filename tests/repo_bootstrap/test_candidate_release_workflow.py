@@ -44,6 +44,23 @@ class CandidateReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("\n  publish:", workflow)
         self.assertIn("\n  installer-smoke:", workflow)
 
+    def test_workflow_dir_holds_only_ci_and_cd(self) -> None:
+        names = sorted(path.name for path in CD_WORKFLOW.parent.glob("*.y*ml"))
+        self.assertEqual(names, ["cd.yml", "ci.yml"])
+
+    def test_update_taps_is_isolated_from_the_release_lane(self) -> None:
+        workflow = self.workflow()
+        self.assertRegex(
+            workflow, r"options:\n\s+- beta\n\s+- stable\n\s+- update-taps"
+        )
+        taps = workflow.split("\n  taps:\n", 1)[1]
+        self.assertIn(
+            "inputs.release_type == 'update-taps'", taps.split("steps:", 1)[0]
+        )
+        for lane in ("triage", "render", "analysis"):
+            head = workflow.split(f"\n  {lane}:\n", 1)[1].split("steps:", 1)[0]
+            self.assertIn("inputs.release_type != 'update-taps'", head)
+
     def test_prepare_is_credential_free_and_builds_without_publication(self) -> None:
         prepare, publish = self.workflow().split("\n  publish:", 1)
         self.assertIn("contents: read", prepare)

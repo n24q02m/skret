@@ -9,20 +9,31 @@ on:
   workflow_dispatch:
     inputs:
       release_type:
-        description: "Candidate channel"
+        description: "Candidate channel, or update-taps to refresh the package-manager taps"
         required: true
         type: choice
         options:
           - beta
           - stable
+          - update-taps
+      tag:
+        description: "update-taps only: published stable release tag, for example v1.36.0"
+        required: false
+        type: string
+      dry_run:
+        description: "update-taps only: print the tap diffs and stop before pushing"
+        required: false
+        type: boolean
 
 env:
   # Release lane: dispatch-only (release_type=beta|stable); push never releases.
+  # release_type=update-taps skips the release lane and runs the taps job only.
   RELEASE_TYPE: ${{ inputs.release_type }}
 
 permissions:
   contents: read
 
+# ci-policy: allow concurrency reason: release lane must never cancel a running prepare/publish; a cancelled publish would leave a half-advanced tag and release.
 concurrency:
   group: skret-release-prepare
   cancel-in-progress: false
@@ -30,9 +41,10 @@ concurrency:
 jobs:
   triage:
     # Release lane only runs on dispatch (this workflow has no other trigger).
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' && inputs.release_type != 'update-taps'
     name: Resolve channel and release demand
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
     outputs:
@@ -87,6 +99,7 @@ jobs:
     needs: [triage]
     if: needs.triage.outputs.proceed == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     permissions:
       contents: read
     outputs:
@@ -452,7 +465,7 @@ jobs:
             dist/skret-secret-helper_*/skret-secret-helper
             dist/skret-compose-supervisor_*/skret-compose-supervisor
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 5
       - name: Upload archive artifacts
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -461,7 +474,7 @@ jobs:
             dist/*.tar.gz
             dist/*.zip
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 5
       - name: Upload checksum artifacts
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -479,56 +492,56 @@ jobs:
             dist/artifact-manifest.sha256
             dist/deployment-manifest.sha256
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 5
       - name: Upload SBOM artifacts
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: sbom
           path: dist/*.sbom.json
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 5
       - name: Upload CLI OCI artifact
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: cli-oci
           path: dist/skret-cli.oci.tar
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 5
       - name: Upload sync OCI artifact
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: sync-oci
           path: dist/skret-sync.oci.tar
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 5
       - name: Upload ordinary Hub artifact
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: hub
           path: dist/hub.bundle.tar
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 5
       - name: Upload security executor artifact
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: security-executor
           path: dist/security-executor.bundle.tar
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 5
       - name: Upload docs artifact
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: docs
           path: dist/docs.bundle.tar
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 5
       - name: Upload release journal
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-journal
           path: ${{ runner.temp }}/release-journal.jsonl
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 5
       - name: Upload prepared release Git bundle
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -537,7 +550,7 @@ jobs:
             dist/release.git.bundle
             dist/release-git.json
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 5
 
   publish:
     name: Publish candidate release
@@ -549,6 +562,7 @@ jobs:
     needs: [triage, prepare]
     if: always() && needs.prepare.result == 'success'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     environment:
       name: ${{ inputs.release_type == 'beta' && 'beta-publish' || 'stable-publish' }}
     permissions:
@@ -806,6 +820,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest, ubuntu-24.04-arm]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
@@ -847,8 +862,9 @@ jobs:
   # ============================================================================
   render:
     name: Demo GIF render
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' && inputs.release_type != 'update-taps'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: write
       pull-requests: write
@@ -897,7 +913,7 @@ jobs:
           path: |
             demo.gif
             docs/public/demo.gif
-          retention-days: 30
+          retention-days: 5
       - name: Open PR with updated demo.gif
         uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
         with:
@@ -918,7 +934,9 @@ jobs:
   # ============================================================================
   analysis:
     name: Scorecard analysis
+    if: inputs.release_type != 'update-taps'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       security-events: write
       id-token: write
@@ -944,3 +962,81 @@ jobs:
       - uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
         with:
           sarif_file: results.sarif
+
+  # ============================================================================
+  # Package-manager taps (merged from taps.yml; dispatch only)
+  # The release publisher does not push to the package-manager taps, so the
+  # Homebrew cask and the Scoop manifest are rewritten here from the release's
+  # own checksums.txt. Run it once after a STABLE release is published:
+  #   gh workflow run cd.yml --repo n24q02m/skret -f release_type=update-taps -f tag=vX.Y.Z
+  # Prereleases are refused: both taps are the stable channel.
+  # ============================================================================
+  taps:
+    name: Update homebrew-tap and scoop-bucket
+    if: github.event_name == 'workflow_dispatch' && inputs.release_type == 'update-taps'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      TAG: ${{ inputs.tag }}
+      DRY_RUN: ${{ inputs.dry_run }}
+    permissions:
+      contents: read
+    steps:
+      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - name: Require a published stable release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test -n "$TAG" || { echo "tag input is required for update-taps" >&2; exit 1; }
+          release="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${TAG}")"
+          test "$(jq -r .draft <<<"$release")" = "false"
+          test "$(jq -r .prerelease <<<"$release")" = "false"
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern checksums.txt --dir .
+      - uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        id: app-token
+        with:
+          app-id: ${{ vars.CI_APP_ID }}
+          private-key: ${{ secrets.CI_APP_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: |
+            homebrew-tap
+            scoop-bucket
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          repository: ${{ github.repository_owner }}/homebrew-tap
+          path: homebrew-tap
+          token: ${{ steps.app-token.outputs.token }}
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          repository: ${{ github.repository_owner }}/scoop-bucket
+          path: scoop-bucket
+          token: ${{ steps.app-token.outputs.token }}
+      - name: Rewrite cask and manifest from checksums.txt
+        run: |
+          python scripts/update_taps.py --tag "$TAG" --checksums checksums.txt \
+            --cask homebrew-tap/Casks/skret.rb \
+            --scoop scoop-bucket/bucket/skret.json
+      - name: Commit and push changed taps
+        run: |
+          set -euo pipefail
+          for tap in homebrew-tap scoop-bucket; do
+            if git -C "$tap" diff --quiet; then
+              echo "$tap already at ${TAG}"
+              continue
+            fi
+            git -C "$tap" --no-pager diff --stat
+            if [ "$DRY_RUN" = "true" ]; then
+              git -C "$tap" --no-pager diff
+              continue
+            fi
+            git -C "$tap" config user.name "github-actions[bot]"
+            git -C "$tap" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git -C "$tap" commit --all --message "fix: bump skret to ${TAG#v}"
+            git -C "$tap" push origin HEAD:main
+          done
