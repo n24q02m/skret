@@ -6,9 +6,6 @@ name: CD
 # publication to the signed BSR G1 publisher. No deploy job exists here.
 
 on:
-  branch_protection_rule:
-  schedule:
-    - cron: "0 3 * * 1"
   workflow_dispatch:
     inputs:
       release_type:
@@ -32,8 +29,7 @@ concurrency:
 
 jobs:
   triage:
-    # Release lane only runs on dispatch; schedule and
-    # branch_protection_rule events (folded in from scorecard.yml) skip it.
+    # Release lane only runs on dispatch (this workflow has no other trigger).
     if: github.event_name == 'workflow_dispatch'
     name: Resolve channel and release demand
     runs-on: ubuntu-latest
@@ -918,7 +914,7 @@ jobs:
             docs/public/demo.gif
 
   # ============================================================================
-  # OpenSSF Scorecard (merged from scorecard.yml)
+  # OpenSSF Scorecard (merged from scorecard.yml; manual dispatch only)
   # ============================================================================
   analysis:
     name: Scorecard analysis

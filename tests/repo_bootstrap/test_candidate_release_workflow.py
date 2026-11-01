@@ -28,7 +28,9 @@ class CandidateReleaseWorkflowTests(unittest.TestCase):
         self.assertRegex(release_type, r"options:\n\s+- beta\n\s+- stable")
         self.assertNotIn("default:", release_type)
         # Release lane only runs on dispatch; schedule and
-        # branch_protection_rule events skip it (folded in from scorecard.yml).
+        # branch_protection_rule triggers are not allowed (CI policy D5-D8).
+        self.assertNotIn("schedule:", trigger_block)
+        self.assertNotIn("branch_protection_rule:", trigger_block)
         self.assertIn("if: github.event_name == 'workflow_dispatch'", workflow)
         self.assertNotIn("event_name == 'push'", workflow)
         self.assertIn(
