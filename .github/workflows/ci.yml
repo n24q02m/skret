@@ -6,9 +6,6 @@ on:
   pull_request:
     branches: [main]
     types: [opened, synchronize, reopened, edited, ready_for_review]
-  branch_protection_rule:
-  schedule:
-    - cron: "0 3 * * 1"
   workflow_dispatch:
 
 env:
