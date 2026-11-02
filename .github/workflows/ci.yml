@@ -203,11 +203,11 @@ jobs:
           go build -trimpath \
             -ldflags="-s -w -X github.com/n24q02m/skret/internal/version.Version=ci-${GITHUB_SHA::7}" \
             -o context/linux/arm64/skret ./cmd/skret
-      # The repo Dockerfiles pin single-arch (amd64) base digests for the
-      # amd64 release lane. This job rewrites them to the equivalent
-      # linux/arm64 manifest digests (resolved from the same tags) so every
+      # The CLI Dockerfile pins a single-arch (amd64) base manifest digest for
+      # the amd64 release lane. This job rewrites it to the equivalent
+      # linux/arm64 manifest digest (resolved from the same tag) so every
       # RUN step executes natively on the arm64 runner. CI-ephemeral only;
-      # the checked-in Dockerfiles are untouched on disk in git.
+      # the checked-in Dockerfile is untouched on disk in git.
       - name: Build CLI OCI archive (native arm64)
         run: |
           set -euo pipefail
@@ -227,8 +227,10 @@ jobs:
           cp Dockerfile.sync context/Dockerfile.sync
           mkdir -p context/deploy
           cp deploy/sync-entrypoint.sh context/deploy/sync-entrypoint.sh
-          sed -i 's|alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6|alpine:3.24@sha256:260479a1cfaf304c4c20da7f8405d3ce313513dcd534bb743257bdd2fe0f3e2d|' context/Dockerfile.sync
-          grep -q 'sha256:260479a1cfaf304c4c20da7f8405d3ce313513dcd534bb743257bdd2fe0f3e2d' context/Dockerfile.sync
+          # Dockerfile.sync pins the multi-arch index digest, so
+          # --platform linux/arm64 selects the arm64 child natively and no
+          # rewrite is needed (a hard-coded rewrite broke on every Renovate
+          # digest bump).
           docker buildx build \
             --platform linux/arm64 \
             --file context/Dockerfile.sync context \
