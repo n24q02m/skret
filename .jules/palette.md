@@ -63,3 +63,7 @@
 ## 2026-10-06 - [Contextual Titles for Status Badges]
 **Learning:** Using vague status badges (like "stale") without context can confuse users. Adding native `title` attributes to badges provides helpful tooltips on hover and additional context for screen readers without cluttering the UI.
 **Action:** Always add descriptive `title` attributes to status badges that use jargon or ambiguous terms to explain their exact meaning.
+
+## 2026-11-02 - [Visible Labels vs Placeholders]
+**Learning:** Relying solely on placeholders for input fields degrades the UX because the text disappears when users start typing, leaving them without context. Hiding labels with utility classes like `sr-only` exacerbates this issue for sighted users.
+**Action:** Always provide visually persistent labels for form inputs instead of hiding them behind screen-reader-only classes, and avoid relying exclusively on placeholders for critical input context.
