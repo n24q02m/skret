@@ -10,8 +10,8 @@ require (
 	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.15.0
 	github.com/Azure/azure-sdk-for-go/sdk/security/keyvault/azsecrets v1.5.0
 	github.com/aws/aws-sdk-go-v2 v1.47.4
-	github.com/aws/aws-sdk-go-v2/config v1.33.10
-	github.com/aws/aws-sdk-go-v2/credentials v1.20.10
+	github.com/aws/aws-sdk-go-v2/config v1.33.11
+	github.com/aws/aws-sdk-go-v2/credentials v1.20.11
 	github.com/aws/aws-sdk-go-v2/service/cloudtrail v1.65.6
 	github.com/aws/aws-sdk-go-v2/service/iam v1.64.5
 	github.com/aws/aws-sdk-go-v2/service/ssm v1.81.0
@@ -54,7 +54,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/internal/v4a v1.5.7 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.22 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.14.7 // indirect
-	github.com/aws/aws-sdk-go-v2/service/signin v1.10.5 // indirect
+	github.com/aws/aws-sdk-go-v2/service/signin v1.11.0 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/charmbracelet/colorprofile v0.4.1 // indirect
