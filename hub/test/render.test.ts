@@ -255,6 +255,8 @@ describe("renderLogin a11y", () => {
     expect(html).toContain('id="password"');
     expect(html).toContain('autocomplete="current-password"');
     expect(html).toContain("required");
+    expect(html).toContain('aria-hidden="true"');
+    expect(html).toContain('title="Required"');
   });
   it("marks the error message with role=alert and adds aria attributes to input", () => {
     const html = renderLogin("wrong password");
