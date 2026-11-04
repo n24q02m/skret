@@ -114,17 +114,18 @@ func (g *GitLabSyncer) Sync(ctx context.Context, secrets []*provider.Secret) err
 }
 
 func (g *GitLabSyncer) variablesURL(parts ...string) (*url.URL, error) {
-	u, err := url.Parse(g.baseURL)
+	baseStr := strings.TrimRight(g.baseURL, "/")
+	rawURL := baseStr + "/api/v4/projects/" + url.PathEscape(g.projectID)
+	u, err := url.Parse(rawURL)
 	if err != nil {
 		return nil, fmt.Errorf("gitlab: parse base url: %w", err)
 	}
-	segments := append([]string{"api", "v4", "projects", url.PathEscape(g.projectID)}, parts...)
-	u = u.JoinPath(segments...)
+	u = u.JoinPath(parts...)
 	return u, nil
 }
 
 func (g *GitLabSyncer) putVariable(ctx context.Context, name, value string) error {
-	u, err := g.variablesURL("variables", url.PathEscape(name))
+	u, err := g.variablesURL("variables", name)
 	if err != nil {
 		return err
 	}
