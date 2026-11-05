@@ -39,7 +39,7 @@ func (m ManifestMount) ContainerPath() string {
 func (m ManifestMount) Validate() error {
 	if !filepath.IsAbs(m.HostDir) || !mountSafe(m.HostDir) ||
 		!path.IsAbs(m.ContainerDir) || m.ContainerDir == "/" || path.Clean(m.ContainerDir) != m.ContainerDir || !mountSafe(m.ContainerDir) ||
-		m.FileName == "" || m.FileName == "." || m.FileName == ".." || strings.ContainsAny(m.FileName, `/\`) || !mountSafe(m.FileName) {
+		m.FileName == "" || m.FileName == "." || m.FileName == ".." || strings.IndexByte(m.FileName, '/') >= 0 || strings.IndexByte(m.FileName, '\\') >= 0 || !mountSafe(m.FileName) {
 		return fail(ErrRuntime)
 	}
 	info, err := os.Lstat(m.HostDir)
