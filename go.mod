@@ -5,7 +5,7 @@ go 1.26
 require (
 	cloud.google.com/go/secretmanager v1.21.0
 	filippo.io/age v1.2.1
-	filippo.io/edwards25519 v1.1.1
+	filippo.io/edwards25519 v1.2.0
 	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.23.3
 	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.15.0
 	github.com/Azure/azure-sdk-for-go/sdk/security/keyvault/azsecrets v1.5.0
