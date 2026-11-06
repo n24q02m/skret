@@ -67,3 +67,7 @@
 ## 2026-11-02 - [Visible Labels vs Placeholders]
 **Learning:** Relying solely on placeholders for input fields degrades the UX because the text disappears when users start typing, leaving them without context. Hiding labels with utility classes like `sr-only` exacerbates this issue for sighted users.
 **Action:** Always provide visually persistent labels for form inputs instead of hiding them behind screen-reader-only classes, and avoid relying exclusively on placeholders for critical input context.
+
+## 2026-11-06 - [Visual Required Indicators]
+**Learning:** While native `required` attributes inform screen readers, sighted users need visual context prior to form submission. Adding a visual required indicator inside labels for mandatory fields, using `aria-hidden="true"`, prevents redundant screen reader announcements alongside the native `required` state.
+**Action:** Always include a visual required indicator (e.g., `<span aria-hidden="true" title="Required">*\</span>`) inside labels for mandatory form fields.
