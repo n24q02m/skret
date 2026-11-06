@@ -72,10 +72,15 @@ func (h *RedactingHandler) WithGroup(name string) slog.Handler {
 }
 
 func isSensitiveKey(key string) bool {
-	key = strings.ToLower(key)
 	for _, part := range sensitiveKeyParts {
-		if strings.Contains(key, part) {
-			return true
+		n := len(part)
+		if n > len(key) {
+			continue
+		}
+		for i := 0; i <= len(key)-n; i++ {
+			if strings.EqualFold(key[i:i+n], part) {
+				return true
+			}
 		}
 	}
 	return false
