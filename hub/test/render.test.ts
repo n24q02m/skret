@@ -252,6 +252,7 @@ describe("renderLogin a11y", () => {
   it("has a label associated with the password input via id/for and requires input", () => {
     const html = renderLogin();
     expect(html).toContain('<label for="password"');
+    expect(html).toContain('<span aria-hidden="true" title="Required">*</span>');
     expect(html).toContain('id="password"');
     expect(html).toContain('autocomplete="current-password"');
     expect(html).toContain("required");
