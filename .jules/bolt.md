@@ -91,3 +91,7 @@
 ## 2026-10-01 - Zero-allocation fast-path for string transformations
 **Learning:** Functions that unconditionally transform strings using `strings.Builder` allocate memory on every call, even if the input requires no changes.
 **Action:** When a transformation's happy path is to return the string unmodified (like environment variable names that are already uppercase), add a fast-path scan to check if mutations are needed first. Returning the original string directly drops allocations to zero.
+
+## 2026-11-07 - Avoid strings.ToLower for case-insensitive substrings
+**Learning:** Checking for substrings case-insensitively using `strings.ToLower(key)` and `strings.Contains(key, part)` inside a hot path (e.g., logging every attribute) incurs an unconditional string allocation for `strings.ToLower`.
+**Action:** Replace `strings.ToLower` and `strings.Contains` with a sliding window loop comparing slices of the string using `strings.EqualFold(key[i:i+n], part)`. This eliminates the allocation on the hot path while maintaining correct case-insensitive checking.

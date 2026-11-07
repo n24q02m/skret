@@ -72,10 +72,15 @@ func (h *RedactingHandler) WithGroup(name string) slog.Handler {
 }
 
 func isSensitiveKey(key string) bool {
-	key = strings.ToLower(key)
+	// bolt: Replace strings.ToLower and strings.Contains with a sliding window
+	// and strings.EqualFold to eliminate an unnecessary memory allocation on the
+	// hot path of the logging pipeline.
 	for _, part := range sensitiveKeyParts {
-		if strings.Contains(key, part) {
-			return true
+		n := len(part)
+		for i := 0; i <= len(key)-n; i++ {
+			if strings.EqualFold(key[i:i+n], part) {
+				return true
+			}
 		}
 	}
 	return false
