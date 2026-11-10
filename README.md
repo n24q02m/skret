@@ -102,8 +102,8 @@ If you only need a single-cloud injector and you don't care about migration or C
 
 | Platform | One-shot script | Package manager |
 |----------|-----------------|-----------------|
-| **macOS / Linux** | `curl -fsSL https://skret.n24q02m.com/install.sh \| sh` | `brew install n24q02m/tap/skret` |
-| **Windows** | `iwr -useb https://skret.n24q02m.com/install.ps1 \| iex` | `scoop bucket add n24q02m https://github.com/n24q02m/scoop-bucket && scoop install skret` |
+| **macOS / Linux** | `curl -fsSL https://github.com/n24q02m/skret/releases/latest/download/install.sh \| sh` | `brew install n24q02m/tap/skret` |
+| **Windows** | `iwr -useb https://github.com/n24q02m/skret/releases/latest/download/install.ps1 \| iex` | `scoop bucket add n24q02m https://github.com/n24q02m/scoop-bucket && scoop install skret` |
 | **Go developers** | `go install github.com/n24q02m/skret/cmd/skret@latest` | — |
 | **Direct binary** | Download from [Releases](https://github.com/n24q02m/skret/releases/latest) | — |
 
@@ -115,7 +115,7 @@ Verify the install and check the version:
 skret --version
 ```
 
-The one-shot installers require SHA256 verification and a non-empty Sigstore bundle verified by `cosign` before extraction. They then enforce the `SAFE-ARCHIVE-V1` allowlist and resource bounds, extract into an owner-only staging directory, atomically replace the target, and roll back to the byte-identical prior binary if activation or `skret --version` fails. Set `SKRET_INSECURE_SKIP_VERIFY=1` only for an explicit signature-verification bypass; checksum, archive, path, and rollback checks remain enforced. Source both scripts at [skret.n24q02m.com/install.sh](https://skret.n24q02m.com/install.sh) and [skret.n24q02m.com/install.ps1](https://skret.n24q02m.com/install.ps1) before piping to a shell if you prefer.
+The one-shot installers require SHA256 verification and a non-empty Sigstore bundle verified by `cosign` before extraction. They then enforce the `SAFE-ARCHIVE-V1` allowlist and resource bounds, extract into an owner-only staging directory, atomically replace the target, and roll back to the byte-identical prior binary if activation or `skret --version` fails. Set `SKRET_INSECURE_SKIP_VERIFY=1` only for an explicit signature-verification bypass; checksum, archive, path, and rollback checks remain enforced. Both installers and their `install.sh.sha256` / `install.ps1.sha256` sidecars are assets of every release, so you can read the exact bytes before piping them to a shell: [install.sh](https://github.com/n24q02m/skret/releases/latest/download/install.sh) and [install.ps1](https://github.com/n24q02m/skret/releases/latest/download/install.ps1).
 
 ## GitHub Action
 

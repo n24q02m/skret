@@ -1,8 +1,8 @@
 #!/bin/sh
 # skret one-shot installer.
 # Usage:
-#   curl -fsSL https://skret.n24q02m.com/install.sh | sh
-#   curl -fsSL https://skret.n24q02m.com/install.sh | sh -s -- --version=v1.0.0 --user
+#   curl -fsSL https://github.com/n24q02m/skret/releases/latest/download/install.sh | sh
+#   curl -fsSL https://github.com/n24q02m/skret/releases/latest/download/install.sh | sh -s -- --version=v1.0.0 --user
 # Flags:
 #   --version=<tag>   install a specific release tag (default: latest)
 #   --prefix=<path>   install target dir (default: /usr/local/bin or ~/.local/bin)
