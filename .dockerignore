@@ -41,7 +41,6 @@ patch_aws_interface.ps1
 !README.md
 
 # Agent / review tool artifacts
-.jules/
 .code-review-graph/
 .claude-plugin/
 
