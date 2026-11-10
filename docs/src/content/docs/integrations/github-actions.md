@@ -97,7 +97,8 @@ jobs:
 
       - name: Install verified Skret release
         run: |
-          curl -fsSL https://skret.n24q02m.com/install.sh | sh -s -- --user --no-completion
+          curl -fsSL https://github.com/n24q02m/skret/releases/latest/download/install.sh \
+            | sh -s -- --user --no-completion
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Run tests with secrets

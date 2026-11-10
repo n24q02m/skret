@@ -1,7 +1,7 @@
 # skret one-shot installer for Windows (PowerShell 5+).
 # Usage:
-#   iwr -useb https://skret.n24q02m.com/install.ps1 | iex
-#   iwr -useb https://skret.n24q02m.com/install.ps1 | iex; & install -Version v1.0.0
+#   iwr -useb https://github.com/n24q02m/skret/releases/latest/download/install.ps1 | iex
+#   iwr -useb https://github.com/n24q02m/skret/releases/latest/download/install.ps1 | iex; & install -Version v1.0.0
 # Flags:
 #   -Version <tag>   install a specific release tag (default: latest)
 #   -Prefix <path>   install target dir (default: $env:LOCALAPPDATA\Programs\skret)

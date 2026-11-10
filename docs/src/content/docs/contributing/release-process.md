@@ -118,6 +118,11 @@ signs with `artifacts: checksum`. So verification is two steps: check the signat
 per-archive `.cert` / `.sig` files to download; the one signature artifact is
 `checksums.txt.bundle`.
 
+Every release also carries the one-shot installers themselves — `install.sh`, `install.ps1` —
+together with `install.sh.sha256` and `install.ps1.sha256`. Those sidecars are plain
+`sha256sum --check` files that cover the scripts only; archive integrity still comes from the
+signed `checksums.txt` above.
+
 ```bash
 # Check the latest release
 gh release view --repo n24q02m/skret

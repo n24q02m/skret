@@ -356,6 +356,26 @@ jobs:
           syft "dir:$RUNNER_TEMP/security-executor-bundle" -o "spdx-json=dist/security-executor.sbom.json"
           syft "dir:docs/dist" -o "spdx-json=dist/docs.sbom.json"
 
+      - name: Stage installer scripts as release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The documented install path is a release asset, not a website build:
+          # `curl -fsSL .../releases/latest/download/install.sh | sh` has to work on
+          # a clean runner even when the docs site is down. Each script ships next
+          # to a `sha256sum -c`-compatible sidecar, and both names are in the
+          # publish lane's create-once allowlist, so every release carries them.
+          # Nothing here touches checksums.txt: the installers keep verifying the
+          # archive against that goreleaser-produced, cosign-signed file.
+          for script in install.sh install.ps1; do
+            test -f "$script"
+            cp "$script" "dist/$script"
+            chmod 0755 "dist/$script"
+            ( cd dist && sha256sum --text "$script" > "$script.sha256" )
+            test -s "dist/$script"
+            test -s "dist/$script.sha256"
+          done
+
       - name: Generate artifact manifest
         shell: bash
         env:
@@ -491,6 +511,19 @@ jobs:
             dist/artifact-manifest.json
             dist/artifact-manifest.sha256
             dist/deployment-manifest.sha256
+          if-no-files-found: error
+          retention-days: 5
+      - name: Upload installer artifacts
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          # The publish lane only sees what these steps upload. Without this one
+          # the create-once manifest fails closed on the missing installer names.
+          name: installers
+          path: |
+            dist/install.sh
+            dist/install.sh.sha256
+            dist/install.ps1
+            dist/install.ps1.sha256
           if-no-files-found: error
           retention-days: 5
       - name: Upload SBOM artifacts
@@ -680,6 +713,10 @@ jobs:
               "docs.sbom.json",
               "hub.bundle.tar",
               "hub.sbom.json",
+              "install.ps1",
+              "install.ps1.sha256",
+              "install.sh",
+              "install.sh.sha256",
               "metadata.json",
               "release-journal.jsonl",
               "security-executor.bundle.tar",
@@ -701,6 +738,21 @@ jobs:
               raise SystemExit(f"release assets missing: {missing}")
           if any(name in {"release.git.bundle", "release-git.json"} for name in asset_names):
               raise SystemExit("internal release Git handoff entered release asset set")
+          # A sidecar that does not describe the script beside it would publish a
+          # broken integrity check under a name users are told to trust. Fail
+          # closed before the create-once upload instead of shipping the pair.
+          for script in ("install.ps1", "install.sh"):
+              fields = (
+                  (dist / f"{script}.sha256").read_text(encoding="utf-8").split()
+              )
+              expected = hashlib.sha256((dist / script).read_bytes()).hexdigest()
+              # GNU sha256sum marks binary mode with `*name`; accept both
+              # spellings, but the digest and the file name must both bind to
+              # the script this sidecar is published beside.
+              if len(fields) != 2 or fields[0] != expected or fields[1].lstrip("*") != script:
+                  raise SystemExit(
+                      f"{script}.sha256 does not describe the published {script}"
+                  )
 
           asset_set = []
           for name in asset_names:
@@ -803,6 +855,8 @@ jobs:
           subject-path: |
             dist/*.tar.gz
             dist/*.zip
+            dist/install.sh
+            dist/install.ps1
             dist/skret-cli.oci.tar
             dist/skret-sync.oci.tar
             dist/hub.bundle.tar
@@ -830,28 +884,62 @@ jobs:
         run: |
           cosign version --json |
             python scripts/repo-bootstrap/verify_cosign_version.py v3.0.6
-      - name: Install exact candidate (Unix)
+      - name: Install published installer asset (Unix)
         if: runner.os != 'Windows'
         env:
           CANDIDATE_TAG: ${{ needs.publish.outputs.tag }}
           EXPECTED_VERSION: ${{ needs.prepare.outputs.version }}
         run: |
           set -euo pipefail
-          ./install.sh --user --quiet --version="$CANDIDATE_TAG"
+          # Install from the asset the docs advertise, not from the checkout: this
+          # is the only leg that fails when a release ships without install.sh.
+          base="https://github.com/$GITHUB_REPOSITORY/releases/download/$CANDIDATE_TAG"
+          curl -fsSL "$base/install.sh" -o "$RUNNER_TEMP/install.sh"
+          curl -fsSL "$base/install.sh.sha256" -o "$RUNNER_TEMP/install.sh.sha256"
+          # `sha256sum --check` is not on macOS and `shasum` is not on every
+          # Debian image, so compare the one row the way install.sh itself does.
+          expected="$(awk 'NR == 1 { print $1 }' "$RUNNER_TEMP/install.sh.sha256")"
+          if command -v sha256sum >/dev/null 2>&1; then
+            actual="$(sha256sum "$RUNNER_TEMP/install.sh" | awk '{ print $1 }')"
+          else
+            actual="$(shasum -a 256 "$RUNNER_TEMP/install.sh" | awk '{ print $1 }')"
+          fi
+          test -n "$expected"
+          test "$expected" = "$actual" || {
+            echo "install.sh does not match its published sha256 sidecar" >&2
+            exit 1
+          }
+          sh "$RUNNER_TEMP/install.sh" --user --quiet --version="$CANDIDATE_TAG"
           out="$("$HOME/.local/bin/skret" --version)"
           echo "$out"
           case "$out" in
             *"$EXPECTED_VERSION"*) ;;
             *) echo "version mismatch: $out" >&2; exit 1 ;;
           esac
-      - name: Install exact candidate (Windows)
+      - name: Install published installer asset (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         env:
           CANDIDATE_TAG: ${{ needs.publish.outputs.tag }}
           EXPECTED_VERSION: ${{ needs.prepare.outputs.version }}
         run: |
-          & pwsh -NoProfile -File .\install.ps1 -Version $env:CANDIDATE_TAG -Quiet
+          $base = "https://github.com/$env:GITHUB_REPOSITORY/releases/download/$env:CANDIDATE_TAG"
+          $dir = Join-Path $env:RUNNER_TEMP "installer-assets"
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          $script = Join-Path $dir "install.ps1"
+          $sidecar = Join-Path $dir "install.ps1.sha256"
+          Invoke-WebRequest "$base/install.ps1" -OutFile $script -UseBasicParsing
+          Invoke-WebRequest "$base/install.ps1.sha256" -OutFile $sidecar -UseBasicParsing
+          $row = @((Get-Content -LiteralPath $sidecar) -split '\s+' | Where-Object { $_ })
+          if ($row.Count -ne 2 -or $row[1] -ne 'install.ps1') {
+            throw "malformed install.ps1.sha256: $($row -join ' ')"
+          }
+          $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $script).Hash.ToLowerInvariant()
+          if ($actual -ne $row[0].ToLowerInvariant()) {
+            throw "install.ps1 does not match its published sha256 sidecar"
+          }
+          & pwsh -NoProfile -File $script -Version $env:CANDIDATE_TAG -Quiet
+          if ($LASTEXITCODE -ne 0) { throw "install.ps1 exited $LASTEXITCODE" }
           $exe = "$env:LOCALAPPDATA\Programs\skret\skret.exe"
           $out = & $exe --version
           Write-Output $out

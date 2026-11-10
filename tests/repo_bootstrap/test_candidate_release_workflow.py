@@ -152,7 +152,7 @@ class CandidateReleaseWorkflowTests(unittest.TestCase):
         installer_smoke = workflow.split("\n  installer-smoke:", 1)[1]
         self.assertLess(
             installer_smoke.index(verifier),
-            installer_smoke.index("Install exact candidate (Unix)"),
+            installer_smoke.index("Install published installer asset (Unix)"),
         )
 
 

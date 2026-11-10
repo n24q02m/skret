@@ -7,19 +7,46 @@ sidebar:
 
 ## Verified One-shot Installer
 
-The installers verify the exact checksum row and Sigstore bundle with `cosign`, validate the bounded `SAFE-ARCHIVE-V1` tree, atomically replace the binary, and roll back if the installed binary cannot report its version.
+The installers are assets of every release, so the install path never depends on the documentation
+site being up. The installers verify the exact checksum row and Sigstore bundle with `cosign`,
+validate the bounded `SAFE-ARCHIVE-V1` tree, atomically replace the binary, and roll back if the
+installed binary cannot report its version.
 
 ```bash
 # macOS or Linux; cosign must already be on PATH
-curl -fsSL https://skret.n24q02m.com/install.sh | sh
+curl -fsSL https://github.com/n24q02m/skret/releases/latest/download/install.sh | sh
 ```
 
 ```powershell
 # Windows; cosign must already be on PATH
-iwr -useb https://skret.n24q02m.com/install.ps1 | iex
+iwr -useb https://github.com/n24q02m/skret/releases/latest/download/install.ps1 | iex
+```
+
+`releases/latest/download` resolves the newest stable release; a prerelease is never served there.
+To install a specific release, swap `latest` for the tag:
+
+```bash
+curl -fsSL https://github.com/n24q02m/skret/releases/download/vVERSION/install.sh \
+  | sh -s -- --version=vVERSION --user
+```
+
+Both scripts ship with a `sha256sum`-compatible sidecar (`install.sh.sha256`,
+`install.ps1.sha256`) in the same release. If you download the script before running it, check it
+first and read it — the script's own archive download is still verified against the cosign-signed
+`checksums.txt` and `checksums.txt.bundle`, so the sidecar adds integrity for the script itself, not
+a replacement for that check:
+
+```bash
+gh release download vVERSION --repo n24q02m/skret -p install.sh -p install.sh.sha256
+sha256sum --check install.sh.sha256
+# macOS ships shasum instead of sha256sum:
+# shasum -a 256 -c install.sh.sha256
 ```
 
 `SKRET_INSECURE_SKIP_VERIFY=1` is an explicit signature-verification bypass. It does not bypass checksums, archive/path validation, atomic replacement, or the version smoke.
+
+Prefer a package manager? Homebrew and Scoop below install the same release through their own
+channel.
 
 ## Package Managers
 
