@@ -103,16 +103,20 @@ func faultBlockChmod(t *testing.T, path string) {
 // WRITE_DAC despite a deny ACE.
 func faultRequireNoWriteDAC(t *testing.T, path string) {
 	t.Helper()
-	faultRequireEffective(t, "opening "+path+" for WRITE_DAC", func() error {
-		name, err := windows.UTF16PtrFromString(path)
+	// Probe through the same SetNamedSecurityInfo path the code under test
+	// uses: an elevated runner can rewrite the DACL there even when a plain
+	// CreateFile(WRITE_DAC) is refused. Re-applying the current DACL leaves
+	// the injected deny entry in place when the write is refused.
+	faultRequireEffective(t, "rewriting the DACL of "+path, func() error {
+		sd, err := windows.GetNamedSecurityInfo(path, windows.SE_FILE_OBJECT, windows.DACL_SECURITY_INFORMATION)
 		if err != nil {
 			return err
 		}
-		h, err := windows.CreateFile(name, windows.WRITE_DAC, windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE|windows.FILE_SHARE_DELETE, nil, windows.OPEN_EXISTING, windows.FILE_ATTRIBUTE_NORMAL, 0)
+		dacl, _, err := sd.DACL()
 		if err != nil {
 			return err
 		}
-		return windows.CloseHandle(h)
+		return windows.SetNamedSecurityInfo(path, windows.SE_FILE_OBJECT, windows.DACL_SECURITY_INFORMATION, nil, nil, dacl, nil)
 	})
 }
 
