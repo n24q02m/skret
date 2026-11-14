@@ -15,6 +15,7 @@ import (
 	"github.com/n24q02m/skret/internal/notify"
 	"github.com/n24q02m/skret/internal/provider"
 	"github.com/n24q02m/skret/internal/syncer"
+	"github.com/n24q02m/skret/internal/syncsource"
 	"github.com/n24q02m/skret/pkg/skret"
 	"github.com/spf13/cobra"
 )
@@ -152,17 +153,30 @@ func (o *syncOptions) run(cmd *cobra.Command) error {
 	defer p.Close()
 	warnIfPathMangled(cmd, resolved)
 
+	// Resolve every target's source set before writing to any target, so a
+	// bad declaration on a later target cannot leave earlier targets half
+	// synced. Each provider path is listed once per run.
 	ctx := context.Background()
-	secrets, err := p.List(ctx, resolved.Path)
-	if err != nil {
-		return skret.NewError(skret.ExitProviderError, "sync: list secrets failed", err)
-	}
-	secrets = filterExcluded(secrets, resolved.Path, resolved.Exclude)
-	if o.prune && len(secrets) == 0 {
-		return skret.NewError(skret.ExitConfigError, fmt.Sprintf("sync: --prune with no secrets under %q", resolved.Path), syncer.ErrPruneEmptySource)
+	collector := syncsource.NewCollector(p, resolved.Path, resolved.Exclude)
+	sets := make([]*syncsource.Set, len(targets))
+	allEmpty := true
+	for i := range targets {
+		set, err := collector.Collect(ctx, targets[i].Sources)
+		if err != nil {
+			return sourceSetError(err)
+		}
+		// One empty source is enough to refuse: its absence from the union
+		// would read as "delete everything that source used to provide".
+		if o.prune && len(set.Empty) > 0 {
+			return skret.NewError(skret.ExitConfigError, fmt.Sprintf("sync: --prune with no secrets under %s", quoteJoin(set.Empty)), syncer.ErrPruneEmptySource)
+		}
+		if len(set.Secrets) > 0 {
+			allEmpty = false
+		}
+		sets[i] = set
 	}
 
-	if len(secrets) == 0 {
+	if allEmpty {
 		cmd.PrintErrln("No secrets found to sync. Use 'skret set' to add a secret.")
 	}
 
@@ -170,6 +184,7 @@ func (o *syncOptions) run(cmd *cobra.Command) error {
 	for i, s := range syncers {
 		if err := func() error {
 			tc := targets[i]
+			secrets := sets[i].Secrets
 			toSync := secrets
 			if err := syncer.ValidateDestinationMapping(s.Name(), toSync); err != nil {
 				return skret.NewError(skret.ExitConfigError, fmt.Sprintf("sync: %s", s.Name()), err)
@@ -281,7 +296,7 @@ func (o *syncOptions) run(cmd *cobra.Command) error {
 					return skret.NewError(skret.ExitGenericError, "sync: begin operation", err)
 				}
 				state.OperationMethod = mutationMethod(s, tc)
-				state.SourceIdentity = resolved.Provider + ":" + resolved.Path
+				state.SourceIdentity = resolved.Provider + ":" + sets[i].Identity()
 				state.SourceDigest = syncer.SourceDigest(toSync)
 				if err := saveSyncState(state); err != nil {
 					return skret.NewError(skret.ExitGenericError, "sync: save state failed", err)
@@ -368,7 +383,7 @@ func (o *syncOptions) run(cmd *cobra.Command) error {
 
 			switch {
 			case o.format == "json":
-				result := SyncResult{Source: resolved.Path, Target: s.Name(), Synced: len(toSync), Pruned: pruned}
+				result := SyncResult{Source: sets[i].Identity(), Target: s.Name(), Synced: len(toSync), Pruned: pruned}
 				if o.rotate {
 					result.Intent = syncer.OperationIntentRotate
 				}
@@ -485,29 +500,23 @@ func syncPerKeyOperation(
 	return nil
 }
 
-// filterExcluded drops secrets whose resolved env-var name is in the
-// top-level .skret.yaml exclude list, so `sync` never pushes an excluded
-// secret to an external target. Mirrors exec.BuildEnv's matching semantics
-// exactly (uppercased exclude entries matched against the final
-// KeyToEnvName output) so exclude behaves consistently across run/env/sync.
-func filterExcluded(secrets []*provider.Secret, pathPrefix string, exclude []string) []*provider.Secret {
-	if len(exclude) == 0 {
-		return secrets
+// sourceSetError maps a source resolution failure to its exit code: a
+// provider listing failure is a provider error, anything else is a
+// declaration the operator has to fix.
+func sourceSetError(err error) error {
+	if errors.Is(err, syncsource.ErrList) {
+		return skret.NewError(skret.ExitProviderError, "sync: list secrets failed", err)
 	}
+	return skret.NewError(skret.ExitConfigError, "sync: resolve sources", err)
+}
 
-	excludeSet := make(map[string]bool, len(exclude))
-	for _, e := range exclude {
-		excludeSet[strings.ToUpper(e)] = true
+// quoteJoin renders paths as a comma-separated list of quoted strings.
+func quoteJoin(paths []string) string {
+	quoted := make([]string, len(paths))
+	for i, p := range paths {
+		quoted[i] = strconv.Quote(p)
 	}
-
-	out := make([]*provider.Secret, 0, len(secrets))
-	for _, s := range secrets {
-		if excludeSet[KeyToEnvName(s.Key, pathPrefix)] {
-			continue
-		}
-		out = append(out, s)
-	}
-	return out
+	return strings.Join(quoted, ", ")
 }
 
 // loadSyncConfig returns the .skret.yaml sync block, honoring --config, or
@@ -609,7 +618,14 @@ func targetFromConfig(t config.SyncTarget) syncer.TargetConfig {
 		"name":      t.Name,
 		"namespace": t.Namespace,
 	}
-	return syncer.TargetConfig{Type: t.Type, Fields: fields, Token: tokenForType(t.Type), NoOverwrite: t.NoOverwrite}
+	var sources []syncer.SourceSpec
+	if t.Sources != nil {
+		sources = make([]syncer.SourceSpec, len(t.Sources))
+		for i, src := range t.Sources {
+			sources[i] = syncer.SourceSpec{Path: src.Path, Keys: src.Keys, Exclude: src.Exclude}
+		}
+	}
+	return syncer.TargetConfig{Type: t.Type, Fields: fields, Token: tokenForType(t.Type), NoOverwrite: t.NoOverwrite, Sources: sources}
 }
 
 // targetFromFlags builds TargetConfigs for a --to type that has no
