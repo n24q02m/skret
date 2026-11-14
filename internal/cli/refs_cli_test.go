@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"os"
+	osexec "os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -151,30 +152,58 @@ func TestEnvCmd_MissingReferenceFailsWholeDump(t *testing.T) {
 	assert.Contains(t, err.Error(), "${GONE}")
 }
 
-func TestRunCmd_InjectsResolvedValues(t *testing.T) {
+// runRefRunInChild drives `skret run ... -- <test binary>` from a re-exec of
+// the test binary rather than inline. On Unix `run` replaces the process image
+// via syscall.Exec, so running it inline swaps the whole test binary for the
+// launched command: every test ordered after it silently never runs and the
+// binary exits without printing its PASS and `coverage:` lines. Only the child
+// gets replaced here; the launched command (this binary again, see the
+// SKRET_RUN_ENV_DUMP branch in TestMain) writes the env var named envName to
+// the returned dump file, which the parent then asserts on.
+//
+// The dump target travels as SKRET_TEST_REFRUN_DUMP and is only promoted to
+// SKRET_RUN_ENV_DUMP inside the child test: setting SKRET_RUN_ENV_DUMP on the
+// child itself would trip that TestMain branch before the test ever ran.
+func runRefRunInChild(t *testing.T, testName, envName string, args ...string) string {
+	t.Helper()
+	if os.Getenv("SKRET_TEST_REFRUN_CHILD") == "1" {
+		t.Setenv("SKRET_RUN_ENV_DUMP", os.Getenv("SKRET_TEST_REFRUN_DUMP"))
+		t.Setenv("SKRET_RUN_ENV_NAME", envName)
+		// Only reached on Windows, where `run` returns after the child exits.
+		_, err := runRefCmd(t, os.Getenv("SKRET_TEST_REFRUN_DIR"), append(args, "--", os.Args[0])...)
+		require.NoError(t, err)
+		return ""
+	}
+
 	dir := writeRefScopeConfig(t)
 	dump := filepath.Join(dir, "envdump.txt")
-	t.Setenv("SKRET_RUN_ENV_DUMP", dump)
-	t.Setenv("SKRET_RUN_ENV_NAME", "DB_URL")
-
-	_, err := runRefCmd(t, dir, "run", "--", os.Args[0])
-	require.NoError(t, err)
+	child := osexec.CommandContext(t.Context(), os.Args[0], "-test.run=^"+testName+"$", "-test.count=1")
+	child.Env = append(os.Environ(),
+		"SKRET_TEST_REFRUN_CHILD=1",
+		"SKRET_TEST_REFRUN_DIR="+dir,
+		"SKRET_TEST_REFRUN_DUMP="+dump,
+	)
+	out, err := child.CombinedOutput()
+	require.NoError(t, err, "run subprocess failed: %s", out)
 	data, rerr := os.ReadFile(dump)
-	require.NoError(t, rerr)
-	assert.Equal(t, "postgres://admin:p@ss w0rd@db:5432", string(data))
+	require.NoError(t, rerr, "launched command never wrote its env dump; child output: %s", out)
+	return string(data)
+}
+
+func TestRunCmd_InjectsResolvedValues(t *testing.T) {
+	got := runRefRunInChild(t, "TestRunCmd_InjectsResolvedValues", "DB_URL", "run")
+	if os.Getenv("SKRET_TEST_REFRUN_CHILD") == "1" {
+		return
+	}
+	assert.Equal(t, "postgres://admin:p@ss w0rd@db:5432", got)
 }
 
 func TestRunCmd_NoResolveInjectsRawStoredValue(t *testing.T) {
-	dir := writeRefScopeConfig(t)
-	dump := filepath.Join(dir, "envdump.txt")
-	t.Setenv("SKRET_RUN_ENV_DUMP", dump)
-	t.Setenv("SKRET_RUN_ENV_NAME", "DB_URL")
-
-	_, err := runRefCmd(t, dir, "run", "--no-resolve", "--", os.Args[0])
-	require.NoError(t, err)
-	data, rerr := os.ReadFile(dump)
-	require.NoError(t, rerr)
-	assert.Equal(t, "postgres://${DB_USER}:${DB_PASS}@db:5432", string(data))
+	got := runRefRunInChild(t, "TestRunCmd_NoResolveInjectsRawStoredValue", "DB_URL", "run", "--no-resolve")
+	if os.Getenv("SKRET_TEST_REFRUN_CHILD") == "1" {
+		return
+	}
+	assert.Equal(t, "postgres://${DB_USER}:${DB_PASS}@db:5432", got)
 }
 
 func TestRunCmd_CycleFailsBeforeLaunch(t *testing.T) {
