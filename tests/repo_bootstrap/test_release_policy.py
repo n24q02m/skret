@@ -105,9 +105,18 @@ class ReleasePolicyTests(unittest.TestCase):
     def test_publish_config_refuses_destructive_replacement(self) -> None:
         source = PUBLISH_CONFIG.read_text(encoding="utf-8")
         self.assertNotIn("replace_existing_artifacts:", source)
-        self.assertIn("homebrew_casks:", source)
-        self.assertIn("scoops:", source)
         self.assertIn("signs:", source)
+
+    def test_publish_config_has_no_tap_publish_path(self) -> None:
+        # cd.yml's taps job (release_type=update-taps) is the only writer of
+        # homebrew-tap and scoop-bucket, with the CI app token. A GoReleaser
+        # tap block would be a second, PAT-backed writer nobody runs.
+        source = PUBLISH_CONFIG.read_text(encoding="utf-8")
+        keys = set(top_level_keys(source))
+
+        for forbidden in ("homebrew_casks", "scoops", "brews"):
+            self.assertNotIn(forbidden, keys)
+        self.assertNotIn("TAP_GITHUB_TOKEN", source)
 
     def test_installer_smoke_pins_and_verifies_cosign_before_install(self) -> None:
         source = CI_WORKFLOW.read_text(encoding="utf-8")

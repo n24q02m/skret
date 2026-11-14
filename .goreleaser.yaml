@@ -101,74 +101,6 @@ archives:
 checksum:
   name_template: "checksums.txt"
 
-homebrew_casks:
-  - repository:
-      owner: n24q02m
-      name: homebrew-tap
-      branch: main
-      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
-    ids:
-      - cli
-    directory: Casks
-    homepage: "https://skret.n24q02m.com"
-    description: "Cloud-provider secret manager CLI with Doppler/Infisical-grade DX"
-    license: "Apache-2.0"
-    binaries:
-      - skret
-    # The formula ran generate_completions_from_executable(bin/"skret",
-    # "completion"); the cask spelling is this structured field. Without it a
-    # brew install silently loses tab completion, which the formula shipped.
-    generate_completions_from_executable:
-      args: [completion]
-      shell_parameter_format: cobra
-      # Three shells, not four: PowerShell completions cannot be generated here
-      # at all, because the two sides disagree on the name and neither accepts
-      # the other's spelling.
-      #
-      #   Homebrew  SUPPORTED_SHELLS = [:bash, :zsh, :fish, :pwsh]
-      #             (Library/Homebrew/cask/artifact/generated_completion.rb)
-      #   skret     "completion: unknown shell %q (available: bash, zsh, fish,
-      #             powershell)" (internal/cli/root.go)
-      #
-      # Naming "powershell" to satisfy skret made brew reject the whole cask --
-      # `brew install n24q02m/tap/skret` failed with "Cask 'skret' definition is
-      # invalid: 'generate_completions_from_executable' does not support
-      # shell(s): powershell". Naming "pwsh" to satisfy brew would instead make
-      # the generator run `skret completion pwsh`, which exits 8. PowerShell
-      # users get completions from the scoop manifest or by running
-      # `skret completion powershell` themselves.
-      shells: [bash, zsh, fish]
-    commit_author:
-      name: goreleaser-bot
-      email: bot@goreleaser.com
-    commit_msg_template: "feat: bump skret to {{ .Tag }}"
-    # homebrew-tap is the channel `brew install skret` reads, so a prerelease
-    # build must never overwrite the cask there: someone installing during a
-    # beta window would silently get the beta. release.prerelease: auto keeps
-    # prerelease tags out of GitHub's "Latest" slot; skip_upload: auto applies
-    # the same policy one layer down, skipping this bump on a prerelease tag.
-    skip_upload: "auto"
-
-scoops:
-  - repository:
-      owner: n24q02m
-      name: scoop-bucket
-      branch: main
-      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
-    ids:
-      - cli
-    directory: bucket
-    description: "Cloud-provider secret manager CLI with Doppler/Infisical-grade DX"
-    license: Apache-2.0
-    commit_author:
-      name: goreleaser-bot
-      email: bot@goreleaser.com
-    commit_msg_template: "feat: bump skret to {{ .Tag }}"
-    # Same reasoning as the brews entry above: scoop-bucket is the stable
-    # channel for `scoop install skret`, so a prerelease must not overwrite the
-    # manifest there.
-    skip_upload: "auto"
-
 # dockers_v2 replaces the deprecated dockers/docker_manifests pair; it becomes
 # plain `dockers` in GoReleaser v3. It always goes through docker buildx, which
 # is why cd.yml now sets up qemu and a buildx builder before this runs.
@@ -184,8 +116,8 @@ dockers_v2:
     tags:
       - "{{ .Version }}"
       # A prerelease must not take :latest -- the same line release.prerelease
-      # holds on the GitHub release and skip_upload holds on the tap and the
-      # bucket. The old dockers block had no such guard and pushed :latest on
+      # holds on the GitHub release and cd.yml's taps job holds on the tap and
+      # the bucket. The old dockers block had no such guard and pushed :latest on
       # every tag, so a beta silently moved the tag that a bare `docker run
       # ghcr.io/n24q02m/skret` and every unpinned FROM resolve to. An empty tag
       # is dropped, so a stable release still gets it.
