@@ -92,7 +92,7 @@ skret set API_KEY --from-stdin --format json < new-key.txt
 | `set`                              | `{"key", "path", "version", "created"}`                                                                                                                |
 | `delete`                           | `{"key", "path", "deleted"}`                                                                                                                           |
 | `history` (`SKRET_EXPERIMENTAL=1`) | `[{"version", "value", "updated_at", "author"}, ...]` — `value` is masked unless `--verbose` is also passed, the same policy the table already applies |
-| `sync`                             | `[{"source", "target", "synced"}, ...]`, one entry per target actually written; see [Sync](/guide/sync/#--format-json)                                 |
+| `sync`                             | `[{"source", "target", "synced", "pruned"?}, ...]`, one entry per target actually written; see [Sync](/guide/sync/#--format-json)                      |
 
 Every one of these composes with the [JSON error envelope](#json-error-envelope) above: `skret delete MISSING --format json` fails with `{"error": ..., "code": 5}` on stderr instead of the success payload on stdout.
 
