@@ -198,11 +198,34 @@ per-key API upsert, so names can be enumerated and skipped). `dotenv`,
 output atomically, so "only new keys" would drop every existing entry. A
 `cloudflare` pages target rejects it too.
 
+### `sources`: more than one path per target
+
+A target can declare `sources` to receive the union of several provider
+paths instead of the environment path. Use `keys` to send only the names CI
+needs, so runtime-only secrets in the same path stay off the target:
+
+```yaml
+sync:
+  targets:
+    - type: github
+      repo: myorg/mytool
+      sources:
+        - keys: [DEPLOY_KEY] # the environment path
+        - path: /shared/ci
+          keys: [RELEASE_TOKEN]
+```
+
+Each path is listed once per run. A declared key missing from its path, or
+the same destination name coming from two sources, fails with exit code 2
+before any target request.
+
 ### `--prune`
 
 Off by default. `skret sync --prune` deletes, after a target's write has
 succeeded, every secret on that target whose name no source key produces.
-The source set is every key the run listed after `exclude` -- not the
+The source set is every key the run listed after `exclude` -- or, for a
+target that declares `sources`, the union of those sources after their
+`keys`/`exclude` filters -- not the
 smaller write set left by `--skip-unchanged` or no-overwrite -- mapped
 through the same last-path-segment name the write uses, compared
 case-insensitively. An excluded key therefore counts as absent from the
@@ -223,7 +246,11 @@ Guards:
 
 - An empty source set is refused with exit code 2 before any target
   request: an empty listing is more likely a wrong path or environment than a
-  request to wipe the target. A provider read error exits non-zero as usual.
+  request to wipe the target. With `sources`, one empty source is enough to
+  refuse, even when the union is not empty. A provider read error exits
+  with code 3.
+- Every target's source set is resolved before the first write, so an
+  invalid declaration on a later target leaves every target untouched.
 - Every target in the run must support prune, checked before any write.
   Only `github` does today; any other target fails the run with exit code 2.
 - Each delete is one request, never replayed; the first failure stops the

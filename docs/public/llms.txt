@@ -19,7 +19,7 @@
 
 ## Command guides
 
-- [Sync](https://skret.n24q02m.com/guide/sync/): Push secrets to GitHub Actions, Cloudflare Worker/Pages, or a dotenv file; `--dry-run` to preview with no writes, `--no-overwrite` (or per-target `no_overwrite`) to only fill missing keys, `--skip-unchanged` for drift-aware CI syncs, `--prune` (github) to delete target secrets no source key produces (refuses an empty source).
+- [Sync](https://skret.n24q02m.com/guide/sync/): Push secrets to GitHub Actions, Cloudflare Worker/Pages, or a dotenv file; `--dry-run` to preview with no writes, `--no-overwrite` (or per-target `no_overwrite`) to only fill missing keys, `--skip-unchanged` for drift-aware CI syncs, `--prune` (github) to delete target secrets no source key produces (refuses an empty source); per-target `sources` (path + `keys`/`exclude`) to sync and prune against the union of several paths.
 - [Scan](https://skret.n24q02m.com/guide/scan/): Leak-guard — find managed secret values committed into tracked files; exits 10 on a match, wire into pre-commit or CI.
 - [Diff](https://skret.n24q02m.com/guide/diff/): Compare two secret sets without printing values; `--exit-code` turns it into a CI drift gate.
 - [Template](https://skret.n24q02m.com/guide/template/): Render `${KEY}` placeholders in a file from secret values.

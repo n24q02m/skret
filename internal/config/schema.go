@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"net/url"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -97,6 +98,21 @@ type SyncTarget struct {
 	// The github factory already consumes Fields["base_url"] (github.go:231);
 	// this exposes it from yaml.
 	BaseURL string `yaml:"base_url,omitempty"`
+	// Sources, when set, replaces the environment path as this target's
+	// source set: the target receives the union of every source, and
+	// --prune compares the target against that union. Without Sources the
+	// target syncs the environment path exactly as before.
+	Sources []SyncSource `yaml:"sources,omitempty"`
+}
+
+// SyncSource is one provider path feeding a sync target. Path defaults to
+// the environment path. Keys keeps only the listed env-var names (each must
+// exist); Exclude drops the listed names. A source sets at most one of the
+// two. The top-level exclude list applies to every source as well.
+type SyncSource struct {
+	Path    string   `yaml:"path,omitempty"`
+	Keys    []string `yaml:"keys,omitempty"`
+	Exclude []string `yaml:"exclude,omitempty"`
 }
 
 // NotifyEvent* name the mutation events skret can report to webhooks. They
@@ -325,6 +341,49 @@ func (s *SyncTarget) validate() error {
 		// file optional (defaults to .env at build time)
 	default:
 		return fmt.Errorf("config: unknown sync target type %q", s.Type)
+	}
+	return validateSyncSources(s.Type, s.Sources)
+}
+
+// validateSyncSources rejects source lists whose meaning is ambiguous. Two
+// sources resolving to the same path would read the same keys twice, so the
+// comparison ignores a trailing slash and treats an empty path as the
+// environment path.
+func validateSyncSources(typ string, sources []SyncSource) error {
+	if sources == nil {
+		return nil
+	}
+	if len(sources) == 0 {
+		return fmt.Errorf("config: %s sync target: sources is empty; omit it to sync the environment path", typ)
+	}
+	seen := make(map[string]bool, len(sources))
+	for i := range sources {
+		src := &sources[i]
+		if len(src.Keys) > 0 && len(src.Exclude) > 0 {
+			return fmt.Errorf("config: %s sync target: source %d sets both keys and exclude", typ, i)
+		}
+		for _, k := range src.Keys {
+			if strings.TrimSpace(k) == "" {
+				return fmt.Errorf("config: %s sync target: source %d has an empty key", typ, i)
+			}
+		}
+		for _, e := range src.Exclude {
+			if strings.TrimSpace(e) == "" {
+				return fmt.Errorf("config: %s sync target: source %d has an empty exclude entry", typ, i)
+			}
+		}
+		path := src.Path
+		for len(path) > 1 && strings.HasSuffix(path, "/") {
+			path = path[:len(path)-1]
+		}
+		if seen[path] {
+			label := src.Path
+			if label == "" {
+				label = "(environment path)"
+			}
+			return fmt.Errorf("config: %s sync target: duplicate source path %q", typ, label)
+		}
+		seen[path] = true
 	}
 	return nil
 }

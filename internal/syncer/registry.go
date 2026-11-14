@@ -15,6 +15,17 @@ type TargetConfig struct {
 	Fields      map[string]string // repo / worker / pages / account / file
 	Token       string            // resolved from env; never logged
 	NoOverwrite bool              // only write keys absent at the target
+	// Sources, when non-nil, replaces the environment path as this
+	// target's source set (see internal/syncsource).
+	Sources []SourceSpec
+}
+
+// SourceSpec is one declared source of a sync target: a provider path
+// (empty = the environment path) filtered by Keys or Exclude.
+type SourceSpec struct {
+	Path    string
+	Keys    []string
+	Exclude []string
 }
 
 // CanonicalTargetIdentity returns the provider-semantic identity used to

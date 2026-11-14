@@ -574,26 +574,6 @@ sync:
 	assert.NotContains(t, string(data), "skip_me")
 }
 
-func TestFilterExcluded(t *testing.T) {
-	secrets := []*provider.Secret{
-		{Key: "DB_URL", Value: "postgres://localhost"},
-		{Key: "api-key", Value: "secret"},
-		{Key: "DEBUG_TOKEN", Value: "tok"},
-	}
-
-	out := filterExcluded(secrets, "", []string{"debug_token"})
-
-	require.Len(t, out, 2)
-	assert.Equal(t, "DB_URL", out[0].Key)
-	assert.Equal(t, "api-key", out[1].Key)
-}
-
-func TestFilterExcluded_NoExclude_ReturnsSameSlice(t *testing.T) {
-	secrets := []*provider.Secret{{Key: "K", Value: "V"}}
-	out := filterExcluded(secrets, "", nil)
-	assert.Equal(t, secrets, out)
-}
-
 func TestLoadSyncConfig_LoadError(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.MkdirAll(dir+"/.git", 0o755))

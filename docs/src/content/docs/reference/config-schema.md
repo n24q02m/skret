@@ -54,6 +54,12 @@ sync: # Optional. Declared targets for `skret sync` / `skret hub push`.
     - type: github # "github" | "cloudflare" | "dotenv" | "gitlab" | "terraform" | "k8s" (alias "k8s-manifest")
       repo: myorg/myapp # Required for github. owner/repo.
       no_overwrite: true # Optional. Only write keys absent at this target; never overwrites.
+    - type: github
+      repo: myorg/mytool
+      sources: # Optional. Replaces the environment path for this target.
+        - exclude: [RUNTIME_ONLY] # path omitted = the environment path
+        - path: /shared/ci
+          keys: [RELEASE_TOKEN] # only these names; each must exist
     - type: cloudflare
       worker: my-worker # One of worker/pages required for cloudflare.
       account: ${CLOUDFLARE_ACCOUNT_ID} # Required for cloudflare. Supports ${VAR} expansion.
@@ -149,6 +155,23 @@ mcp: # Optional. Policy for the skret-mcp server (see guide/mcp).
 | `namespace`    | string | No                      | `k8s`                        | `metadata.namespace` of the generated Secret. Omitted when unset.                                                                                                                               |
 | `no_overwrite` | bool   | No                      | All                          | Only write keys absent at this target; existing keys are never overwritten. Rotation = delete the key at the target, the next sync repopulates it from the provider.                            |
 | `base_url`     | string | No                      | `github`, `gitlab`           | Override the target API endpoint (GitHub Enterprise, self-managed GitLab). Optional.                                                                                                            |
+| `sources`      | list   | No                      | All                          | Provider paths feeding this target. The target receives their union instead of the environment path, and `--prune` compares against that union. See below.                                    |
+
+#### Sync Source Fields (`sync.targets[].sources[]`)
+
+| Field     | Type   | Required | Description                                                                                       |
+| --------- | ------ | -------- | ------------------------------------------------------------------------------------------------- |
+| `path`    | string | No       | Provider path to list. Omitted means the environment path. A trailing slash is ignored.            |
+| `keys`    | list   | No       | Keep only these env-var names (case-insensitive). Every listed name must exist, or sync fails.     |
+| `exclude` | list   | No       | Drop these env-var names (case-insensitive). A source sets at most one of `keys` and `exclude`.    |
+
+Names are matched the way `skret run` names variables (the key relative to
+the source path). The top-level `exclude` list applies to every source.
+Validation rejects an empty `sources` list, a source with both `keys` and
+`exclude`, blank entries, and two sources on the same path. At sync time two
+sources producing the same destination name fail with exit code 2, listing
+every such name. Without `sources` a target syncs the environment path
+exactly as before.
 
 Exactly one of `worker`/`pages` must be set per `cloudflare` target — setting both, or neither, fails validation. `GITHUB_TOKEN`, `CLOUDFLARE_API_TOKEN`, and `GITLAB_TOKEN` are read from the environment at sync time and are never stored in `.skret.yaml`.
 
