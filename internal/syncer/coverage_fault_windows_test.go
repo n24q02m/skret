@@ -3,6 +3,7 @@
 package syncer
 
 import (
+	"os"
 	"os/exec"
 	"path/filepath"
 	"testing"
@@ -14,6 +15,17 @@ import (
 // everyoneSID is the well-known Everyone group; a deny ACE for it applies to
 // the test process even when it owns the object.
 const everyoneSID = "*S-1-1-0"
+
+// faultRequireEffective skips the test when the injected fault does not hold
+// for this process. An elevated token (the hosted Windows runner) can bypass
+// deny ACEs and read locks, so a fault that the probe can still get through
+// would only test the runner's privileges, not the code under test.
+func faultRequireEffective(t *testing.T, fault string, probe func() error) {
+	t.Helper()
+	if probe() == nil {
+		t.Skipf("fault injection ineffective for this process: %s still succeeds", fault)
+	}
+}
 
 func faultOpenHandle(t *testing.T, path string, share uint32) {
 	t.Helper()
@@ -36,6 +48,24 @@ func faultBlockRemoval(t *testing.T, path string) {
 func faultBlockCreate(t *testing.T, dir string) {
 	t.Helper()
 	faultIcacls(t, dir, everyoneSID+":(WD,AD)")
+	faultRequireEffective(t, "creating a file in "+dir, func() error {
+		probe := filepath.Join(dir, ".fault-probe")
+		f, err := os.OpenFile(probe, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+		if err != nil {
+			return err
+		}
+		_ = f.Close()
+		_ = os.Remove(probe)
+		return nil
+	})
+	faultRequireEffective(t, "creating a directory in "+dir, func() error {
+		probe := filepath.Join(dir, ".fault-probe-dir")
+		if err := os.Mkdir(probe, 0o700); err != nil {
+			return err
+		}
+		_ = os.Remove(probe)
+		return nil
+	})
 }
 
 // faultBlockRead keeps path visible to Lstat but makes reading it fail with a
@@ -43,6 +73,10 @@ func faultBlockCreate(t *testing.T, dir string) {
 func faultBlockRead(t *testing.T, path string) {
 	t.Helper()
 	faultOpenHandle(t, path, 0)
+	faultRequireEffective(t, "reading "+path, func() error {
+		_, err := os.ReadFile(path)
+		return err
+	})
 }
 
 // faultLstatErrorPath returns a path under dir whose Lstat fails with an
@@ -56,6 +90,30 @@ func faultLstatErrorPath(t *testing.T, dir string) string {
 func faultBlockChmod(t *testing.T, path string) {
 	t.Helper()
 	faultIcacls(t, path, everyoneSID+":(WA)")
+	faultRequireEffective(t, "chmod of "+path, func() error {
+		info, err := os.Stat(path)
+		if err != nil {
+			return err
+		}
+		return os.Chmod(path, info.Mode().Perm()) // same mode: no state change if it succeeds
+	})
+}
+
+// faultRequireNoWriteDAC skips when this process can still open path for
+// WRITE_DAC despite a deny ACE.
+func faultRequireNoWriteDAC(t *testing.T, path string) {
+	t.Helper()
+	faultRequireEffective(t, "opening "+path+" for WRITE_DAC", func() error {
+		name, err := windows.UTF16PtrFromString(path)
+		if err != nil {
+			return err
+		}
+		h, err := windows.CreateFile(name, windows.WRITE_DAC, windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE|windows.FILE_SHARE_DELETE, nil, windows.OPEN_EXISTING, windows.FILE_ATTRIBUTE_NORMAL, 0)
+		if err != nil {
+			return err
+		}
+		return windows.CloseHandle(h)
+	})
 }
 
 func faultIcacls(t *testing.T, path, ace string) {

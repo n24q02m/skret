@@ -64,6 +64,7 @@ func TestHardenMigrationFilePermissionsWindows_ReportsSecurityFailures(t *testin
 		require.NoError(t, os.WriteFile(path, []byte("state"), 0o600))
 		out, err := exec.Command("icacls", path, "/deny", ownerRightsSID+":(WDAC)").CombinedOutput()
 		require.NoError(t, err, string(out))
+		faultRequireNoWriteDAC(t, path)
 
 		err = secureMigrationFile(path)
 		require.Error(t, err)
