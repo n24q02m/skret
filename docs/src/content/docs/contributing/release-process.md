@@ -10,7 +10,7 @@ skret uses [Python Semantic Release](https://python-semantic-release.readthedocs
 1. **Version bump** -- PSR analyzes commit messages (`feat:` / `fix:`) to determine the next version
 2. **Tag creation** -- PSR creates a git tag (`v0.1.0`) and updates `CHANGELOG.md`
 3. **Binary build** -- GoReleaser builds binaries for all 6 platforms and publishes to GitHub Releases
-4. **Package updates** -- Homebrew tap and Scoop bucket are updated automatically
+4. **Package updates** -- after a stable release is published, one `release_type=update-taps` dispatch of `cd.yml` rewrites the Homebrew cask and the Scoop manifest from that release's `checksums.txt`
 
 ## Triggering a Release
 
@@ -66,10 +66,13 @@ workflow_dispatch (cd.yml: "release" job)
     -> GoReleaser: build 6 binaries, create GitHub Release
     -> Docker: push ghcr.io/n24q02m/skret:<version> as one linux/amd64 +
        linux/arm64 manifest; :latest moves only on a stable release
-    -> Homebrew: update tap formula
-    -> Scoop: update bucket manifest
     -> Cosign: sign artifacts (keyless, GitHub OIDC)
     -> Syft: generate SBOM
+
+workflow_dispatch (cd.yml: release_type=update-taps, tag=vX.Y.Z, stable only)
+  -> "taps" job: rewrite Casks/skret.rb in homebrew-tap and bucket/skret.json
+     in scoop-bucket from the release's checksums.txt, push with the CI app
+     token (dry_run=true prints the diffs and stops before pushing)
 
 (a raw `git tag vX.Y.Z && git push --tags` also triggers cd.yml's
 "goreleaser" job directly, without the "release" job -- recovery path,
