@@ -379,6 +379,63 @@ func TestResolve_GCPPathRejected(t *testing.T) {
 	assert.ErrorContains(t, err, "path must be empty for gcp provider")
 }
 
+func TestResolve_OCIMissingCompartmentID(t *testing.T) {
+	cfg := &config.Config{
+		Version:    "1",
+		DefaultEnv: "prod",
+		Environments: map[string]config.Environment{
+			"prod": {Provider: "oci", VaultID: "ocid1.vault.oc1..v"},
+		},
+	}
+	_, err := config.Resolve(cfg, config.ResolveOpts{})
+	require.Error(t, err)
+	assert.Equal(t, `config: environment "prod": compartment_id is required for oci provider`, err.Error())
+}
+
+func TestResolve_OCIMissingVaultID(t *testing.T) {
+	cfg := &config.Config{
+		Version:    "1",
+		DefaultEnv: "prod",
+		Environments: map[string]config.Environment{
+			"prod": {Provider: "oci", CompartmentID: "ocid1.compartment.oc1..c"},
+		},
+	}
+	_, err := config.Resolve(cfg, config.ResolveOpts{})
+	require.Error(t, err)
+	assert.Equal(t, `config: environment "prod": vault_id is required for oci provider`, err.Error())
+}
+
+// TestResolve_OCIFieldsFlowThrough proves a complete oci environment passes
+// the scoped provider check and its OCIDs reach the resolved config; key_id
+// stays optional (updates reuse the secret's existing key).
+func TestResolve_OCIFieldsFlowThrough(t *testing.T) {
+	t.Setenv("SKRET_ENV", "")
+	t.Setenv("SKRET_PROVIDER", "")
+	cfg := &config.Config{
+		Version:    "1",
+		DefaultEnv: "prod",
+		Environments: map[string]config.Environment{
+			"prod": {
+				Provider:      "oci",
+				CompartmentID: "ocid1.compartment.oc1..c",
+				VaultID:       "ocid1.vault.oc1..v",
+				KeyID:         "ocid1.key.oc1..k",
+			},
+			"dev": {Provider: "oci", CompartmentID: "ocid1.compartment.oc1..c", VaultID: "ocid1.vault.oc1..v"},
+		},
+	}
+	resolved, err := config.Resolve(cfg, config.ResolveOpts{})
+	require.NoError(t, err)
+	assert.Equal(t, "oci", resolved.Provider)
+	assert.Equal(t, "ocid1.compartment.oc1..c", resolved.CompartmentID)
+	assert.Equal(t, "ocid1.vault.oc1..v", resolved.VaultID)
+	assert.Equal(t, "ocid1.key.oc1..k", resolved.KeyID)
+
+	resolved, err = config.Resolve(cfg, config.ResolveOpts{Env: "dev"})
+	require.NoError(t, err)
+	assert.Empty(t, resolved.KeyID)
+}
+
 func TestAnchorToDir(t *testing.T) {
 	dir := t.TempDir()
 	other := t.TempDir()
