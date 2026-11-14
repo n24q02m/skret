@@ -4,6 +4,131 @@ All notable changes to this project will be documented in this file.
 
 <!-- version list -->
 
+## v1.38.0-beta.1 (2026-11-14)
+
+### Bug Fixes
+
+- Bump better-semantic-release pin to v1.13.1
+  ([`12d493a`](https://github.com/n24q02m/skret/commit/12d493af813dd0bd68e4f099dc0790853c3d0b51))
+
+- Move .jules ledgers to docs/engineering-lessons.md
+  ([#974](https://github.com/n24q02m/skret/pull/974),
+  [`6202b46`](https://github.com/n24q02m/skret/commit/6202b4658ea9e5bbf310dcdf9995b45e7bc14744))
+
+- Publish installer scripts as release assets ([#973](https://github.com/n24q02m/skret/pull/973),
+  [`b014e0c`](https://github.com/n24q02m/skret/commit/b014e0c5c70cbf05b6135f70550af80751fc07e8))
+
+- Remove the bot pull request rate-limit job ([#972](https://github.com/n24q02m/skret/pull/972),
+  [`244a284`](https://github.com/n24q02m/skret/commit/244a2840ebe536a36900b4a513b7d713a260ac99))
+
+- Update G1_SHA to match v1.13.1 bsr pin in release workflow test
+  ([`8fc37d9`](https://github.com/n24q02m/skret/commit/8fc37d9ad09b8f12bc39e4c32ed05169b3199b15))
+
+- **ci**: Bring workflows to CI policy (two files, timeouts, concurrency, retention)
+  ([#945](https://github.com/n24q02m/skret/pull/945),
+  [`e5ad0cc`](https://github.com/n24q02m/skret/commit/e5ad0cc60aa3a16995479b4a00fce8d02f963ba9))
+
+- **ci**: Drop schedule and branch_protection_rule triggers from cd.yml and ci.yml
+  ([#944](https://github.com/n24q02m/skret/pull/944),
+  [`48edb72`](https://github.com/n24q02m/skret/commit/48edb725f4a8b6f3b7a181ecd2f2d740b78c5388))
+
+- **ci**: Stop rewriting the sync base digest in the ARM64 parity job
+  ([#949](https://github.com/n24q02m/skret/pull/949),
+  [`468989b`](https://github.com/n24q02m/skret/commit/468989bd6702f779e2aaf6533ad9597f4a506614))
+
+- **deps**: Update @cloudflare/vitest-pool-workers to ^0.23.0
+  ([#923](https://github.com/n24q02m/skret/pull/923),
+  [`7355237`](https://github.com/n24q02m/skret/commit/7355237a51a9c9c0596a23071f4c199b7e58badb))
+
+- **deps**: Update actions/create-github-app-token action to v3.3.0
+  ([#924](https://github.com/n24q02m/skret/pull/924),
+  [`7c5f2b0`](https://github.com/n24q02m/skret/commit/7c5f2b07bff1738571057c246e5aead74eb6bcd7))
+
+- **deps**: Update alpine:3.24 Docker digest to be26560
+  ([#947](https://github.com/n24q02m/skret/pull/947),
+  [`f62fa45`](https://github.com/n24q02m/skret/commit/f62fa459d880458f5ebae96cba9d82f70e60c8e3))
+
+- **deps**: Update amannn/action-semantic-pull-request action to v6.1.2
+  ([#979](https://github.com/n24q02m/skret/pull/979),
+  [`503dcc9`](https://github.com/n24q02m/skret/commit/503dcc9acfb80fe7af00213e48870d279f15edc1))
+
+- **deps**: Update aws-sdk-go-v2 monorepo ([#980](https://github.com/n24q02m/skret/pull/980),
+  [`13b260e`](https://github.com/n24q02m/skret/commit/13b260e8021e8e0c7a8d7cdfdc8253466502d439))
+
+- **deps**: Update aws-sdk-go-v2 monorepo ([#977](https://github.com/n24q02m/skret/pull/977),
+  [`4f65726`](https://github.com/n24q02m/skret/commit/4f657264f3b0c28cf67347d472c0371916a92ce9))
+
+- **deps**: Update aws-sdk-go-v2 monorepo ([#959](https://github.com/n24q02m/skret/pull/959),
+  [`f841751`](https://github.com/n24q02m/skret/commit/f841751f80f7048e84c6e8f3f67d5a2b6808d55d))
+
+- **deps**: Update aws-sdk-go-v2 monorepo ([#953](https://github.com/n24q02m/skret/pull/953),
+  [`0800072`](https://github.com/n24q02m/skret/commit/0800072d16df76e4910212951f82bc049d6069ae))
+
+- **deps**: Update aws-sdk-go-v2 monorepo ([#938](https://github.com/n24q02m/skret/pull/938),
+  [`9ef92e3`](https://github.com/n24q02m/skret/commit/9ef92e308915608a33962a488583e0000131511e))
+
+- **deps**: Update aws-sdk-go-v2 monorepo ([#927](https://github.com/n24q02m/skret/pull/927),
+  [`9d28ada`](https://github.com/n24q02m/skret/commit/9d28ada6af0e7ca124a707dd70fb07a5c2489757))
+
+- **deps**: Update azure-sdk-for-go monorepo ([#976](https://github.com/n24q02m/skret/pull/976),
+  [`82c74c3`](https://github.com/n24q02m/skret/commit/82c74c36ae7917d332a19b57f78b205985ac3211))
+
+- **deps**: Update docker/setup-buildx-action action to v4.4.1
+  ([#939](https://github.com/n24q02m/skret/pull/939),
+  [`498fabe`](https://github.com/n24q02m/skret/commit/498fabe048d64ae292a67c6f9ddf1e48d69bd8e7))
+
+- **deps**: Update docker/setup-qemu-action action to v4.4.0
+  ([#948](https://github.com/n24q02m/skret/pull/948),
+  [`3c74cbd`](https://github.com/n24q02m/skret/commit/3c74cbd8d8ea369535593df8c4308b438a701a18))
+
+- **deps**: Update github/codeql-action action to v4.39.1
+  ([#933](https://github.com/n24q02m/skret/pull/933),
+  [`b697ed9`](https://github.com/n24q02m/skret/commit/b697ed9c14fc3eac42b908671075a1962ba9239d))
+
+- **deps**: Update github/codeql-action action to v4.39.2
+  ([#975](https://github.com/n24q02m/skret/pull/975),
+  [`9badfe1`](https://github.com/n24q02m/skret/commit/9badfe1ad77c673e4ef9c2baedc38495e0cb2527))
+
+- **deps**: Update github/codeql-action action to v4.39.3
+  ([#978](https://github.com/n24q02m/skret/pull/978),
+  [`72650ff`](https://github.com/n24q02m/skret/commit/72650ff14f39b9879c9d07ce43147f4dead2b857))
+
+- **deps**: Update go to v1.27.3 ([#950](https://github.com/n24q02m/skret/pull/950),
+  [`81dc2d3`](https://github.com/n24q02m/skret/commit/81dc2d308a5e4b3720346f97bc0a863b390ca921))
+
+- **deps**: Update goreleaser/goreleaser to v2.19.0
+  ([#951](https://github.com/n24q02m/skret/pull/951),
+  [`d7679c5`](https://github.com/n24q02m/skret/commit/d7679c51912497d8b76a3751a3b7561b6e1b04fd))
+
+- **deps**: Update goreleaser/goreleaser-action action to v7.3.0
+  ([#954](https://github.com/n24q02m/skret/pull/954),
+  [`85aebae`](https://github.com/n24q02m/skret/commit/85aebae7d465f0f160873a3c24818f41cf54e270))
+
+- **deps**: Update module cloud.google.com/go/secretmanager to v1.23.1
+  ([#955](https://github.com/n24q02m/skret/pull/955),
+  [`ab7f51f`](https://github.com/n24q02m/skret/commit/ab7f51f1823cdb709bd94c3685cfebbea805a6b4))
+
+- **deps**: Update module filippo.io/age to v1.3.2
+  ([#956](https://github.com/n24q02m/skret/pull/956),
+  [`e42c567`](https://github.com/n24q02m/skret/commit/e42c5674be6f984894fd3c16ddb203cbb78fe360))
+
+- **deps**: Update module filippo.io/edwards25519 to v1.2.0
+  ([#964](https://github.com/n24q02m/skret/pull/964),
+  [`a114935`](https://github.com/n24q02m/skret/commit/a1149351df6be7fe7ef48d75a7fe4ed1ca0ac1ba))
+
+- **deps**: Update module github.com/aws/smithy-go to v1.28.8
+  ([#960](https://github.com/n24q02m/skret/pull/960),
+  [`7bc69b9`](https://github.com/n24q02m/skret/commit/7bc69b954fbb584208284e9161611b008d112964))
+
+### Features
+
+- Regenerate demo.gif ([#928](https://github.com/n24q02m/skret/pull/928),
+  [`0a5a249`](https://github.com/n24q02m/skret/commit/0a5a249611184e8749c1296bb5b75cbe06c17aae))
+
+- 🎨 Palette: [Make login password label visible] ([#952](https://github.com/n24q02m/skret/pull/952),
+  [`edac53a`](https://github.com/n24q02m/skret/commit/edac53ab7c8e9ec782b5a31fcf104f2eca4d88ca))
+
+
 ## v1.37.0 (2026-10-28)
 
 
