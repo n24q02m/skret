@@ -30,7 +30,10 @@ type GitHubSyncer struct {
 	httpClient *http.Client
 }
 
-var _ PerKeySyncer = (*GitHubSyncer)(nil)
+var (
+	_ PerKeySyncer = (*GitHubSyncer)(nil)
+	_ Pruner       = (*GitHubSyncer)(nil)
+)
 
 // NewGitHub creates a GitHub Actions secrets syncer.
 func NewGitHub(owner, repo, token, baseURL string) Syncer {
@@ -208,7 +211,21 @@ func SecretName(key string) string {
 // ExistingKeys returns the names of the Actions secrets already present on
 // the repository (names only -- values are write-only), paginated at 100.
 func (g *GitHubSyncer) ExistingKeys(ctx context.Context) ([]string, error) {
-	var names []string
+	stored, err := g.ExistingSecrets(ctx)
+	if err != nil {
+		return nil, err
+	}
+	names := make([]string, 0, len(stored))
+	for _, s := range stored {
+		names = append(names, s.Name)
+	}
+	return names, nil
+}
+
+// ExistingSecrets returns every Actions secret on the repository with the
+// metadata GitHub exposes (name, updated_at), paginated at 100.
+func (g *GitHubSyncer) ExistingSecrets(ctx context.Context) ([]TargetSecret, error) {
+	var out []TargetSecret
 	for page := 1; ; page++ {
 		u, err := url.Parse(g.baseURL)
 		if err != nil {
@@ -235,7 +252,8 @@ func (g *GitHubSyncer) ExistingKeys(ctx context.Context) ([]string, error) {
 		var body struct {
 			TotalCount int `json:"total_count"`
 			Secrets    []struct {
-				Name string `json:"name"`
+				Name      string `json:"name"`
+				UpdatedAt string `json:"updated_at"`
 			} `json:"secrets"`
 		}
 		if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
@@ -244,12 +262,39 @@ func (g *GitHubSyncer) ExistingKeys(ctx context.Context) ([]string, error) {
 		}
 		resp.Body.Close()
 		for _, s := range body.Secrets {
-			names = append(names, s.Name)
+			out = append(out, TargetSecret{Name: s.Name, UpdatedAt: s.UpdatedAt})
 		}
 		if page*100 >= body.TotalCount {
-			return names, nil
+			return out, nil
 		}
 	}
+}
+
+// DeleteSecret removes one Actions secret by name. Like every provider
+// mutation it is a single attempt; a secret that is already gone (404) counts
+// as deleted.
+func (g *GitHubSyncer) DeleteSecret(ctx context.Context, name string) error {
+	u, err := url.Parse(g.baseURL)
+	if err != nil {
+		return fmt.Errorf("github: parse base url: %w", err)
+	}
+	u = u.JoinPath("repos", g.owner, g.repo, "actions", "secrets", name)
+	reqURL := u.String()
+
+	resp, err := doMutation(ctx, g.httpClient, func() (*http.Request, error) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodDelete, reqURL, http.NoBody)
+		if err != nil {
+			return nil, fmt.Errorf("github: create request: %w", err)
+		}
+		req.Header.Set("Authorization", "Bearer "+g.token)
+		req.Header.Set("Accept", "application/vnd.github+json")
+		return req, nil
+	}, http.StatusNoContent, http.StatusNotFound)
+	if err != nil {
+		return fmt.Errorf("github: delete %q: %w", name, err)
+	}
+	resp.Body.Close()
+	return nil
 }
 
 // sealSecret encrypts a secret using NaCl sealed box (curve25519 + xsalsa20-poly1305).

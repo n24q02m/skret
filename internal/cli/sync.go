@@ -28,8 +28,11 @@ type syncOptions struct {
 	noOverwrite   bool
 	rotate        bool
 	dryRun        bool
-	format        string
-	strictNotify  bool
+	// prune deletes, after a successful write, every target secret whose
+	// name no source key produces. Off by default.
+	prune        bool
+	format       string
+	strictNotify bool
 	// declaredOnly restricts targets to the sync.targets declared in
 	// .skret.yaml: the legacy "no target configured → dotenv" default does
 	// not fire. `skret rotate` propagation runs in this mode so a config
@@ -57,6 +60,7 @@ type SyncResult struct {
 	Source string `json:"source"`
 	Target string `json:"target"`
 	Synced int    `json:"synced"`
+	Pruned int    `json:"pruned,omitempty"`
 	Intent string `json:"intent,omitempty"`
 }
 
@@ -78,7 +82,9 @@ absent at the target, so existing values are never overwritten. Use --rotate
 for an explicit controlled overwrite of selected source keys; --rotate
 overrides a target's no_overwrite setting but cannot combine with
 --no-overwrite. --dry-run prints what each target would write and exits
-without writing anything or saving sync state.`,
+without writing anything or saving sync state. --prune (github only) deletes,
+after the write, every target secret whose name no source key produces;
+with --dry-run it only lists them. --prune refuses an empty source set.`,
 		Example: `  skret sync
   skret sync --to=github,cloudflare
   skret sync --to=github --github-repo=owner/repo --skip-unchanged
@@ -86,6 +92,7 @@ without writing anything or saving sync state.`,
   skret sync --target=k8s --file=secret.yaml
   skret sync --no-overwrite
   skret sync --rotate
+  skret sync --to=github --dry-run --prune
   skret sync --config deploy/sync/knowledgeprism.skret.yaml --dry-run`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return o.run(cmd)
@@ -100,6 +107,7 @@ without writing anything or saving sync state.`,
 	cmd.Flags().BoolVar(&o.noOverwrite, "no-overwrite", false, "only write secrets absent at the target; never overwrite an existing one (forces no_overwrite for every target)")
 	cmd.Flags().BoolVar(&o.rotate, "rotate", false, "explicitly overwrite selected target values and record rotation state (conflicts with --no-overwrite)")
 	cmd.Flags().BoolVar(&o.dryRun, "dry-run", false, "print what each target would write and exit; issues no write request and saves no state")
+	cmd.Flags().BoolVar(&o.prune, "prune", false, "after writing, delete target secrets whose name no source key produces (github only; refuses an empty source; with --dry-run only lists them)")
 	cmd.Flags().StringVar(&o.format, "format", "table", "output format (table, json)")
 	cmd.Flags().BoolVar(&o.strictNotify, "strict-notify", false, "fail the command if the mutation webhook fails (default: warn only)")
 
@@ -129,6 +137,13 @@ func (o *syncOptions) run(cmd *cobra.Command) error {
 	if err := syncer.ValidateTargetIdentities(targets); err != nil {
 		return skret.NewError(skret.ExitConfigError, "sync: validate targets", err)
 	}
+	if o.prune {
+		for _, s := range syncers {
+			if !syncer.CanPrune(s) {
+				return skret.NewError(skret.ExitConfigError, fmt.Sprintf("sync: --prune: target %q cannot delete secrets", s.Name()), nil)
+			}
+		}
+	}
 
 	resolved, p, err := loadProvider(o.global)
 	if err != nil {
@@ -143,6 +158,9 @@ func (o *syncOptions) run(cmd *cobra.Command) error {
 		return skret.NewError(skret.ExitProviderError, "sync: list secrets failed", err)
 	}
 	secrets = filterExcluded(secrets, resolved.Path, resolved.Exclude)
+	if o.prune && len(secrets) == 0 {
+		return skret.NewError(skret.ExitConfigError, fmt.Sprintf("sync: --prune with no secrets under %q", resolved.Path), syncer.ErrPruneEmptySource)
+	}
 
 	if len(secrets) == 0 {
 		cmd.PrintErrln("No secrets found to sync. Use 'skret set' to add a secret.")
@@ -205,6 +223,18 @@ func (o *syncOptions) run(cmd *cobra.Command) error {
 					cmd.PrintErrf("[dry-run] %s: would write 0 secret(s)\n", s.Name())
 				} else {
 					cmd.PrintErrf("[dry-run] %s: would write %d secret(s): %s\n", s.Name(), len(names), strings.Join(names, ", "))
+				}
+				if o.prune {
+					orphans, perr := syncer.Orphans(ctx, s, secrets)
+					if perr != nil {
+						return skret.NewError(skret.ExitNetworkError, fmt.Sprintf("sync: prune %s", s.Name()), perr)
+					}
+					if len(orphans) == 0 {
+						cmd.PrintErrf("[dry-run] %s: would delete 0 secret(s)\n", s.Name())
+					}
+					for _, ts := range orphans {
+						cmd.PrintErrf("[dry-run] %s: would delete: %s (%s)\n", s.Name(), ts.Name, ts.UpdatedAt)
+					}
 				}
 				return nil
 			}
@@ -310,9 +340,35 @@ func (o *syncOptions) run(cmd *cobra.Command) error {
 				}
 			}
 
+			// Prune only after this target's write is durable, against the
+			// whole source set (not the write set, which skip-unchanged and
+			// no-overwrite shrink).
+			pruned := 0
+			if o.prune {
+				orphans, perr := syncer.Orphans(ctx, s, secrets)
+				if perr != nil {
+					return skret.NewError(skret.ExitNetworkError, fmt.Sprintf("sync: prune failed for %s", s.Name()), perr)
+				}
+				pruned, perr = syncer.Prune(ctx, s, orphans)
+				if perr != nil {
+					return skret.NewError(skret.ExitNetworkError, fmt.Sprintf("sync: prune failed for %s after %d of %d delete(s)", s.Name(), pruned, len(orphans)), perr)
+				}
+				if o.format != "json" {
+					names := make([]string, 0, len(orphans))
+					for _, ts := range orphans {
+						names = append(names, ts.Name)
+					}
+					if len(names) == 0 {
+						cmd.PrintErrf("Pruned 0 secret(s) from %s\n", s.Name())
+					} else {
+						cmd.PrintErrf("Pruned %d secret(s) from %s: %s\n", pruned, s.Name(), strings.Join(names, ", "))
+					}
+				}
+			}
+
 			switch {
 			case o.format == "json":
-				result := SyncResult{Source: resolved.Path, Target: s.Name(), Synced: len(toSync)}
+				result := SyncResult{Source: resolved.Path, Target: s.Name(), Synced: len(toSync), Pruned: pruned}
 				if o.rotate {
 					result.Intent = syncer.OperationIntentRotate
 				}

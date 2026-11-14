@@ -198,6 +198,40 @@ per-key API upsert, so names can be enumerated and skipped). `dotenv`,
 output atomically, so "only new keys" would drop every existing entry. A
 `cloudflare` pages target rejects it too.
 
+### `--prune`
+
+Off by default. `skret sync --prune` deletes, after a target's write has
+succeeded, every secret on that target whose name no source key produces.
+The source set is every key the run listed after `exclude` -- not the
+smaller write set left by `--skip-unchanged` or no-overwrite -- mapped
+through the same last-path-segment name the write uses, compared
+case-insensitively. An excluded key therefore counts as absent from the
+source and is pruned.
+
+```bash
+skret sync --to=github --dry-run --prune
+```
+
+With `--dry-run` it only lists, one line per secret, using the metadata
+GitHub returns (never a value):
+
+```text
+[dry-run] github: would delete: OLD_TOKEN (2026-07-17T01:02:03Z)
+```
+
+Guards:
+
+- An empty source set is refused with exit code 2 before any target
+  request: an empty listing is more likely a wrong path or environment than a
+  request to wipe the target. A provider read error exits non-zero as usual.
+- Every target in the run must support prune, checked before any write.
+  Only `github` does today; any other target fails the run with exit code 2.
+- Each delete is one request, never replayed; the first failure stops the
+  run with exit code 7 and names how many deletes landed. A secret already
+  gone (404) counts as deleted.
+
+Prune deletions are not reported to the `notify` webhook.
+
 ## `--format json`
 
 ```bash
@@ -214,6 +248,7 @@ skret sync --to=dotenv --format json
 ]
 ```
 
+With `--prune`, the object also includes `"pruned": N` when N > 0.
 With `--rotate`, the object also includes `"intent": "rotate"`; this records
 intent only and never includes secret values:
 
