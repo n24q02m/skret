@@ -3,6 +3,7 @@ package cli
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -67,6 +68,22 @@ func newPruneTarget(t *testing.T, listed map[string]string, deleteStatus int) (*
 	return pt, srv
 }
 
+// withGithubPruneTarget declares the github target o/r whose source set is
+// the environment path, spelled out as `sources: [{}]` because --prune
+// refuses a declared target that leaves its sources implicit.
+func withGithubPruneTarget(t *testing.T, dir, baseURL string, noOverwrite bool) {
+	t.Helper()
+	appendSyncTarget(t, dir, fmt.Sprintf(`sync:
+  targets:
+    - type: github
+      repo: o/r
+      base_url: %s
+      no_overwrite: %v
+      sources:
+        - {}
+`, baseURL, noOverwrite))
+}
+
 func isolateSyncHome(t *testing.T) {
 	t.Helper()
 	home := t.TempDir()
@@ -97,7 +114,7 @@ func TestSyncPrune_DryRunListsOrphansAndWritesNothing(t *testing.T) {
 		"A_STALE": "2026-07-27T00:00:00Z",
 	}, http.StatusNoContent)
 	dir := setupSyncRepoWithSecrets(t, map[string]string{"ALPHA": "1", "BETA": "2"})
-	withGithubTarget(t, dir, "o/r", srv.URL, false)
+	withGithubPruneTarget(t, dir, srv.URL, false)
 	t.Setenv("GITHUB_TOKEN", "tok")
 
 	out := runSyncCmd(t, dir, []string{"--dry-run", "--prune"})
@@ -115,7 +132,7 @@ func TestSyncPrune_DryRunNoOrphans(t *testing.T) {
 	isolateSyncHome(t)
 	_, srv := newPruneTarget(t, map[string]string{"ALPHA": "2026-01-01T00:00:00Z"}, http.StatusNoContent)
 	dir := setupSyncRepoWithSecrets(t, map[string]string{"ALPHA": "1"})
-	withGithubTarget(t, dir, "o/r", srv.URL, false)
+	withGithubPruneTarget(t, dir, srv.URL, false)
 	t.Setenv("GITHUB_TOKEN", "tok")
 
 	out := runSyncCmd(t, dir, []string{"--dry-run", "--prune"})
@@ -129,7 +146,7 @@ func TestSyncPrune_DeletesOnlyOrphansAfterWriting(t *testing.T) {
 		"ORPHAN": "2026-07-17T00:00:00Z",
 	}, http.StatusNoContent)
 	dir := setupSyncRepoWithSecrets(t, map[string]string{"ALPHA": "1", "BETA": "2"})
-	withGithubTarget(t, dir, "o/r", srv.URL, false)
+	withGithubPruneTarget(t, dir, srv.URL, false)
 	t.Setenv("GITHUB_TOKEN", "tok")
 
 	out := runSyncCmd(t, dir, []string{"--prune"})
@@ -148,7 +165,7 @@ func TestSyncPrune_SourceIsTheWholeSetNotTheWriteSet(t *testing.T) {
 		"ORPHAN": "2026-07-17T00:00:00Z",
 	}, http.StatusNoContent)
 	dir := setupSyncRepoWithSecrets(t, map[string]string{"ALPHA": "1", "BETA": "2"})
-	withGithubTarget(t, dir, "o/r", srv.URL, true)
+	withGithubPruneTarget(t, dir, srv.URL, true)
 	t.Setenv("GITHUB_TOKEN", "tok")
 
 	runSyncCmd(t, dir, []string{"--prune"})
@@ -160,7 +177,7 @@ func TestSyncPrune_RefusesEmptySource(t *testing.T) {
 	isolateSyncHome(t)
 	pt, srv := newPruneTarget(t, map[string]string{"ORPHAN": "2026-07-17T00:00:00Z"}, http.StatusNoContent)
 	dir := setupSyncRepoWithSecrets(t, map[string]string{})
-	withGithubTarget(t, dir, "o/r", srv.URL, false)
+	withGithubPruneTarget(t, dir, srv.URL, false)
 	t.Setenv("GITHUB_TOKEN", "tok")
 
 	for _, args := range [][]string{{"--prune"}, {"--prune", "--dry-run"}} {
@@ -193,7 +210,7 @@ func TestSyncPrune_DeleteFailureExitsNetworkError(t *testing.T) {
 	isolateSyncHome(t)
 	pt, srv := newPruneTarget(t, map[string]string{"ORPHAN": "2026-07-17T00:00:00Z"}, http.StatusForbidden)
 	dir := setupSyncRepoWithSecrets(t, map[string]string{"ALPHA": "1"})
-	withGithubTarget(t, dir, "o/r", srv.URL, false)
+	withGithubPruneTarget(t, dir, srv.URL, false)
 	t.Setenv("GITHUB_TOKEN", "tok")
 
 	err := runSyncCmdErr(t, dir, []string{"--prune"})
@@ -221,7 +238,7 @@ func TestSyncPrune_ListFailureExitsBeforeDelete(t *testing.T) {
 	}))
 	defer srv.Close()
 	dir := setupSyncRepoWithSecrets(t, map[string]string{"ALPHA": "1"})
-	withGithubTarget(t, dir, "o/r", srv.URL, false)
+	withGithubPruneTarget(t, dir, srv.URL, false)
 	t.Setenv("GITHUB_TOKEN", "tok")
 
 	err := runSyncCmdErr(t, dir, []string{"--prune", "--dry-run"})
@@ -234,7 +251,7 @@ func TestSyncPrune_JSONReportsPrunedCount(t *testing.T) {
 	isolateSyncHome(t)
 	_, srv := newPruneTarget(t, map[string]string{"ORPHAN": "2026-07-17T00:00:00Z"}, http.StatusNoContent)
 	dir := setupSyncRepoWithSecrets(t, map[string]string{"ALPHA": "1"})
-	withGithubTarget(t, dir, "o/r", srv.URL, false)
+	withGithubPruneTarget(t, dir, srv.URL, false)
 	t.Setenv("GITHUB_TOKEN", "tok")
 
 	out := runSyncCmd(t, dir, []string{"--prune", "--format", "json"})
@@ -251,7 +268,7 @@ func TestSyncPrune_NothingToPrune(t *testing.T) {
 	isolateSyncHome(t)
 	pt, srv := newPruneTarget(t, map[string]string{"ALPHA": "2026-01-01T00:00:00Z"}, http.StatusNoContent)
 	dir := setupSyncRepoWithSecrets(t, map[string]string{"ALPHA": "1"})
-	withGithubTarget(t, dir, "o/r", srv.URL, false)
+	withGithubPruneTarget(t, dir, srv.URL, false)
 	t.Setenv("GITHUB_TOKEN", "tok")
 
 	out := runSyncCmd(t, dir, []string{"--prune"})
@@ -281,7 +298,7 @@ func TestSyncPrune_ListFailureAfterWriteExitsNetworkError(t *testing.T) {
 	}))
 	defer srv.Close()
 	dir := setupSyncRepoWithSecrets(t, map[string]string{"ALPHA": "1"})
-	withGithubTarget(t, dir, "o/r", srv.URL, false)
+	withGithubPruneTarget(t, dir, srv.URL, false)
 	t.Setenv("GITHUB_TOKEN", "tok")
 
 	err := runSyncCmdErr(t, dir, []string{"--prune"})

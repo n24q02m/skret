@@ -260,7 +260,7 @@ var llmsConfigKeyTable = []llmsNamed{
 	{"repo", "sync target: GitHub repository (sync.targets[].repo)"},
 	{"required", "secret key names that must exist"},
 	{"secret", "notify: HMAC-SHA256 signing key for the X-Skret-Signature header (notify.secret)"},
-	{"sources", "sync target: provider paths whose union replaces the environment path for this target and for --prune (sync.targets[].sources[])"},
+	{"sources", "sync target: provider paths whose union replaces the environment path for this target and for --prune, which requires it on a declared target (sync.targets[].sources[])"},
 	{"sync", "reusable sync destinations plus the optional hub endpoint"},
 	{"targets", "sync: list of sync destination definitions (sync.targets[])"},
 	{"type", "sync target: github, cloudflare, dotenv, gitlab, terraform, k8s (sync.targets[].type)"},

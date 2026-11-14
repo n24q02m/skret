@@ -249,6 +249,13 @@ Guards:
   request to wipe the target. With `sources`, one empty source is enough to
   refuse, even when the union is not empty. A provider read error exits
   with code 3.
+- A target declared under `sync.targets` must list `sources` before
+  `--prune` runs against it. Without them its source set is the whole
+  environment path, and every secret the target gets from anywhere else
+  would be deleted as an orphan. `sources: [{}]` names the environment path
+  explicitly. The run fails with exit code 2 before any provider or target
+  request. A target built from `--to`/`--github-repo` has no declaration and
+  keeps comparing against the environment path.
 - Every target's source set is resolved before the first write, so an
   invalid declaration on a later target leaves every target untouched.
 - Every target in the run must support prune, checked before any write.
