@@ -155,15 +155,15 @@ mcp: # Optional. Policy for the skret-mcp server (see guide/mcp).
 | `namespace`    | string | No                      | `k8s`                        | `metadata.namespace` of the generated Secret. Omitted when unset.                                                                                                                               |
 | `no_overwrite` | bool   | No                      | All                          | Only write keys absent at this target; existing keys are never overwritten. Rotation = delete the key at the target, the next sync repopulates it from the provider.                            |
 | `base_url`     | string | No                      | `github`, `gitlab`           | Override the target API endpoint (GitHub Enterprise, self-managed GitLab). Optional.                                                                                                            |
-| `sources`      | list   | No                      | All                          | Provider paths feeding this target. The target receives their union instead of the environment path, and `--prune` compares against that union. See below.                                    |
+| `sources`      | list   | No                      | All                          | Provider paths feeding this target. The target receives their union instead of the environment path, and `--prune` compares against that union. See below.                                      |
 
 #### Sync Source Fields (`sync.targets[].sources[]`)
 
-| Field     | Type   | Required | Description                                                                                       |
-| --------- | ------ | -------- | ------------------------------------------------------------------------------------------------- |
-| `path`    | string | No       | Provider path to list. Omitted means the environment path. A trailing slash is ignored.            |
-| `keys`    | list   | No       | Keep only these env-var names (case-insensitive). Every listed name must exist, or sync fails.     |
-| `exclude` | list   | No       | Drop these env-var names (case-insensitive). A source sets at most one of `keys` and `exclude`.    |
+| Field     | Type   | Required | Description                                                                                     |
+| --------- | ------ | -------- | ----------------------------------------------------------------------------------------------- |
+| `path`    | string | No       | Provider path to list. Omitted means the environment path. A trailing slash is ignored.         |
+| `keys`    | list   | No       | Keep only these env-var names (case-insensitive). Every listed name must exist, or sync fails.  |
+| `exclude` | list   | No       | Drop these env-var names (case-insensitive). A source sets at most one of `keys` and `exclude`. |
 
 Names are matched the way `skret run` names variables (the key relative to
 the source path). The top-level `exclude` list applies to every source.
