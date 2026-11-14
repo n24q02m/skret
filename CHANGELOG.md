@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 <!-- version list -->
 
+## v1.38.0 (2026-11-14)
+
+
 ## v1.38.0-beta.1 (2026-11-14)
 
 ### Bug Fixes
