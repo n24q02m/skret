@@ -106,27 +106,39 @@ jobs:
       # The 90% above is an average over ./internal/..., and an average hides a
       # single rotten package behind the healthy ones: internal/cli is large
       # enough that a small package could fall to 50% without moving the
-      # aggregate off 90. This floor is per package, deliberately set below
-      # today's worst (89.1%, internal/provider/local) so it catches a package
-      # sliding rather than bikeshedding the packages that already pass.
+      # aggregate off 90. This floor is per package: 85 by default, deliberately
+      # below today's worst so it catches a package sliding; 95 for the sync
+      # path (cli, config, syncer, syncsource), which carries --prune and the
+      # declared multi-source union. An `ok` line with no coverage figure fails
+      # too: it means the test binary never reported (internal/cli once lost its
+      # figure to a test that exec'd over itself), and a package nobody measured
+      # must not pass as one that met its floor.
       - name: Check per-package coverage floor
         if: matrix.os == 'ubuntu-latest'
         shell: bash
         run: |
-          below=$(awk -v floor=85 '
-            /coverage:/ {
+          below=$(awk '
+            BEGIN {
+              floor["github.com/n24q02m/skret/internal/cli"] = 95
+              floor["github.com/n24q02m/skret/internal/config"] = 95
+              floor["github.com/n24q02m/skret/internal/syncer"] = 95
+              floor["github.com/n24q02m/skret/internal/syncsource"] = 95
+            }
+            $1 == "ok" {
               c = ""
               for (i = 1; i <= NF; i++) if ($i == "coverage:") c = $(i + 1)
+              if (c == "") { printf "  %s  no coverage figure reported\n", $2; next }
               if (c !~ /%$/) next          # "[no statements]" -- nothing to measure
               sub(/%$/, "", c)
-              if (c + 0 < floor) printf "  %s  %s%%\n", $2, c
+              f = ($2 in floor) ? floor[$2] : 85
+              if (c + 0 < f) printf "  %s  %s%% (floor %s%%)\n", $2, c, f
             }' internal-test.txt)
           if [ -n "$below" ]; then
-            echo "These packages are below the 85% per-package floor:"
+            echo "These packages are below their per-package coverage floor:"
             echo "$below"
             exit 1
           fi
-          echo "Every internal package is at or above the 85% floor."
+          echo "Every internal package is at or above its coverage floor."
       - name: Check pkg/skret coverage threshold
         if: matrix.os == 'ubuntu-latest'
         shell: bash

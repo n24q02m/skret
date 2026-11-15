@@ -112,6 +112,22 @@ func TestNotifyConfig_Validation_Rejections(t *testing.T) {
 `,
 			want: "must be a URL or a list of URLs",
 		},
+		{
+			name: "list entry is not a string",
+			raw: `notify:
+  webhook_url:
+    - https://hooks.example.com/a
+    - nested: map
+`,
+			want: "notify.webhook_url list:",
+		},
+		{
+			name: "scalar that cannot decode as a string",
+			raw: `notify:
+  webhook_url: !!binary "%%% not base64 %%%"
+`,
+			want: "notify.webhook_url: yaml: !!binary value contains invalid base64 data",
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

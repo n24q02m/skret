@@ -3,6 +3,7 @@ package config_test
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/n24q02m/skret/internal/config"
@@ -191,4 +192,46 @@ environments:
 	cfg, err := config.Load(cfgPath)
 	require.NoError(t, err)
 	assert.Equal(t, "local", cfg.Environments["dev"].Provider)
+}
+
+// TestDiscover_StopsAtFilesystemRoot covers the walk's terminal case: from
+// the filesystem root there is no parent to climb to, so Discover must
+// report ErrConfigNotFound instead of looping.
+func TestDiscover_StopsAtFilesystemRoot(t *testing.T) {
+	wd, err := os.Getwd()
+	require.NoError(t, err)
+	root := filepath.VolumeName(wd) + string(filepath.Separator)
+	for _, name := range []string{config.ConfigFileName, ".git"} {
+		if _, err := os.Stat(filepath.Join(root, name)); err == nil {
+			t.Skipf("filesystem root %s contains %s; the root-stop branch is unreachable here", root, name)
+		}
+	}
+
+	found, err := config.Discover(root)
+	assert.ErrorIs(t, err, config.ErrConfigNotFound)
+	assert.Empty(t, found)
+}
+
+// TestDiscover_UnresolvablePath covers the filepath.Abs failure: Discover
+// must wrap it as a "resolve path" error rather than walking a bogus path.
+// Windows rejects a NUL byte in the path; on POSIX a relative path cannot be
+// made absolute once the working directory has been deleted.
+func TestDiscover_UnresolvablePath(t *testing.T) {
+	start := "bad\x00dir"
+	if runtime.GOOS != "windows" {
+		gone := filepath.Join(t.TempDir(), "gone")
+		require.NoError(t, os.Mkdir(gone, 0o755))
+		t.Chdir(gone)
+		require.NoError(t, os.Remove(gone))
+		if _, err := os.Getwd(); err == nil {
+			t.Skip("this platform still resolves a removed working directory (darwin)")
+		}
+		start = "."
+	}
+
+	found, err := config.Discover(start)
+	require.Error(t, err)
+	assert.Empty(t, found)
+	assert.Contains(t, err.Error(), "config: resolve path:")
+	assert.NotErrorIs(t, err, config.ErrConfigNotFound)
 }

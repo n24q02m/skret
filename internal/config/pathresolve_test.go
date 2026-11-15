@@ -18,6 +18,8 @@ func TestResolvePath(t *testing.T) {
 		{"bare root passthrough", `C:myapp`, `C:myapp`, true},
 		{"bare root two segments", `C:myapp/dev`, `C:myapp/dev`, true},
 		{"bare root missing delimiter", `C:\myapp\dev`, "/myapp/dev", true},
+		{"dotted segment breaks the tail so a lone match is not recovered", `C:\Users\x\my.app\dev`, `C:\Users\x\my.app\dev`, true},
+		{"capitalized-inside segment stops the scan above the tail", `C:/Program Files/Git/myApp/myapp/dev`, "/myapp/dev", true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -26,5 +28,29 @@ func TestResolvePath(t *testing.T) {
 				t.Fatalf("ResolvePath(%q) = (%q,%v), want (%q,%v)", c.raw, got, mangled, c.wantPath, c.wantMangled)
 			}
 		})
+	}
+}
+
+func TestIsSSMPathSegment(t *testing.T) {
+	cases := []struct {
+		seg  string
+		want bool
+	}{
+		{"myapp", true},
+		{"my-app_2", true},
+		{"a", true},
+		{"", false},
+		{"Users", false},
+		{"2.54.0", false},
+		{"_app", false},
+		{"myApp", false},
+		{"my.app", false},
+		{"my app", false},
+		{"c:", false},
+	}
+	for _, c := range cases {
+		if got := isSSMPathSegment(c.seg); got != c.want {
+			t.Errorf("isSSMPathSegment(%q) = %v, want %v", c.seg, got, c.want)
+		}
 	}
 }
