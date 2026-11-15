@@ -62,7 +62,7 @@ func TestHardenMigrationFilePermissionsWindows_ReportsSecurityFailures(t *testin
 	t.Run("owner cannot rewrite the DACL", func(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "state.json")
 		require.NoError(t, os.WriteFile(path, []byte("state"), 0o600))
-		out, err := exec.Command("icacls", path, "/deny", ownerRightsSID+":(WDAC)").CombinedOutput()
+		out, err := exec.CommandContext(t.Context(), "icacls", path, "/deny", ownerRightsSID+":(WDAC)").CombinedOutput()
 		require.NoError(t, err, string(out))
 		faultRequireNoWriteDAC(t, path)
 
