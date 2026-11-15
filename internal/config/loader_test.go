@@ -223,6 +223,9 @@ func TestDiscover_UnresolvablePath(t *testing.T) {
 		require.NoError(t, os.Mkdir(gone, 0o755))
 		t.Chdir(gone)
 		require.NoError(t, os.Remove(gone))
+		if _, err := os.Getwd(); err == nil {
+			t.Skip("this platform still resolves a removed working directory (darwin)")
+		}
 		start = "."
 	}
 

@@ -428,9 +428,13 @@ func TestStateManifest_FieldValidatorsRejectBoundaryValues(t *testing.T) {
 }
 
 func TestStateManifest_UnsafeAncestorsRejectMissingAndLinkedRoots(t *testing.T) {
-	base := t.TempDir()
+	// The temp dir itself may sit under a symlinked ancestor (darwin's /var
+	// -> /private/var), which the check rightly rejects; start from its real
+	// path so only the link created below is unsafe.
+	base, err := filepath.EvalSymlinks(t.TempDir())
+	require.NoError(t, err)
 
-	err := rejectStateManifestUnsafeAncestors(filepath.Join(base, "missing"))
+	err = rejectStateManifestUnsafeAncestors(filepath.Join(base, "missing"))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid source root")
 

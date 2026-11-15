@@ -430,6 +430,9 @@ func TestCovCInit_GetwdFailure(t *testing.T) {
 	t.Cleanup(func() { _ = os.Chdir(orig) })
 	t.Setenv("PWD", "")
 	require.NoError(t, os.Remove(gone))
+	if _, err := os.Getwd(); err == nil {
+		t.Skip("this platform still resolves a removed working directory (darwin)")
+	}
 
 	cmd := NewRootCmd()
 	cmd.SetOut(&bytes.Buffer{})
