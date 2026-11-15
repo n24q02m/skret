@@ -1,8 +1,10 @@
 package cli
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -61,4 +63,34 @@ func TestSyncPrune_FlagTargetNeedsNoSources(t *testing.T) {
 	require.Len(t, targets, 1)
 	assert.Equal(t, "o/r", targets[0].Fields["repo"])
 	assert.Nil(t, targets[0].Sources)
+}
+
+// The provisioning run: no-overwrite with every source name already on the
+// target writes nothing, still prunes the orphan, and reports synced 0.
+func TestSyncPrune_NoOverwriteWithEverythingPresentStillPrunes(t *testing.T) {
+	isolateSyncHome(t)
+	pt, srv := newPruneTarget(t, map[string]string{
+		"ALPHA":  "2026-01-01T00:00:00Z",
+		"ORPHAN": "2026-07-17T00:00:00Z",
+	}, http.StatusNoContent)
+	dir := setupSyncRepoWithSecrets(t, map[string]string{"ALPHA": "1"})
+	withGithubPruneTarget(t, dir, srv.URL, true)
+	t.Setenv("GITHUB_TOKEN", "tok")
+
+	out := runSyncCmd(t, dir, []string{"--prune", "--dry-run"})
+	assert.Contains(t, out, "Skipped 1 existing secret(s) for github (no-overwrite)")
+	assert.Contains(t, out, "[dry-run] github: would write 0 secret(s)")
+	assert.Contains(t, out, "[dry-run] github: would delete: ORPHAN (2026-07-17T00:00:00Z)")
+	assert.Empty(t, pt.deletes)
+
+	out = runSyncCmd(t, dir, []string{"--prune", "--format", "json"})
+	start := strings.Index(out, "[")
+	require.GreaterOrEqual(t, start, 0, out)
+	var results []SyncResult
+	require.NoError(t, json.Unmarshal([]byte(out[start:]), &results))
+	require.Len(t, results, 1)
+	assert.Equal(t, 0, results[0].Synced)
+	assert.Equal(t, 1, results[0].Pruned)
+	assert.Empty(t, pt.puts, "no-overwrite never rewrites a present name")
+	assert.Equal(t, []string{"ORPHAN"}, pt.deletes)
 }
