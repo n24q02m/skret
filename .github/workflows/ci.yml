@@ -66,6 +66,16 @@ jobs:
       - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
           version: latest
+      # The step above lints the linux build only, so *_windows.go and
+      # *_darwin.go files (and their tests) were never linted. Lint those
+      # builds too, with the binary the action just installed.
+      - name: Lint the windows and darwin builds
+        shell: bash
+        run: |
+          for goos in windows darwin; do
+            echo "golangci-lint GOOS=$goos"
+            GOOS=$goos golangci-lint run ./...
+          done
 
   test:
     needs: lint
