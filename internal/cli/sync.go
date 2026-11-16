@@ -139,9 +139,15 @@ func (o *syncOptions) run(cmd *cobra.Command) error {
 		return skret.NewError(skret.ExitConfigError, "sync: validate targets", err)
 	}
 	if o.prune {
-		for _, s := range syncers {
+		for i, s := range syncers {
 			if !syncer.CanPrune(s) {
 				return skret.NewError(skret.ExitConfigError, fmt.Sprintf("sync: --prune: target %q cannot delete secrets", s.Name()), nil)
+			}
+			// A declared target without sources syncs the whole environment
+			// path, so any secret it needs from another path would read as an
+			// orphan. Require the declaration to spell its source set out.
+			if targets[i].Declared && len(targets[i].Sources) == 0 {
+				return skret.NewError(skret.ExitConfigError, fmt.Sprintf("sync: --prune: %s target %q is declared without sources; list them under sources (an entry `{}` is the environment path)", s.Name(), targets[i].Fields["repo"]), syncer.ErrPruneImplicitSources)
 			}
 		}
 	}
@@ -625,7 +631,7 @@ func targetFromConfig(t config.SyncTarget) syncer.TargetConfig {
 			sources[i] = syncer.SourceSpec{Path: src.Path, Keys: src.Keys, Exclude: src.Exclude}
 		}
 	}
-	return syncer.TargetConfig{Type: t.Type, Fields: fields, Token: tokenForType(t.Type), NoOverwrite: t.NoOverwrite, Sources: sources}
+	return syncer.TargetConfig{Type: t.Type, Fields: fields, Token: tokenForType(t.Type), NoOverwrite: t.NoOverwrite, Sources: sources, Declared: true}
 }
 
 // targetFromFlags builds TargetConfigs for a --to type that has no

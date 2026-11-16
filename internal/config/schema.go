@@ -101,7 +101,8 @@ type SyncTarget struct {
 	// Sources, when set, replaces the environment path as this target's
 	// source set: the target receives the union of every source, and
 	// --prune compares the target against that union. Without Sources the
-	// target syncs the environment path exactly as before.
+	// target syncs the environment path exactly as before, and --prune
+	// refuses it so a prune baseline is never left implicit.
 	Sources []SyncSource `yaml:"sources,omitempty"`
 }
 

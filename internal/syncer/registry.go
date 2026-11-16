@@ -18,6 +18,10 @@ type TargetConfig struct {
 	// Sources, when non-nil, replaces the environment path as this
 	// target's source set (see internal/syncsource).
 	Sources []SourceSpec
+	// Declared is set when the target comes from a sync.targets entry rather
+	// than from --to flags. --prune requires a declared target to name its
+	// Sources instead of inheriting the whole environment path.
+	Declared bool
 }
 
 // SourceSpec is one declared source of a sync target: a provider path

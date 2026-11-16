@@ -5,7 +5,8 @@
 // every source: each source is one provider path, filtered by an allow list
 // (keys) or a deny list (exclude), plus the top-level exclude list. The same
 // union is what `--prune` compares the target against, so a name kept on
-// purpose has to be declared, not merely present somewhere.
+// purpose has to be declared, not merely present somewhere. `--prune`
+// refuses a declared target without sources (see internal/cli).
 package syncsource
 
 import (

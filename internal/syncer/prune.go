@@ -16,6 +16,13 @@ import (
 // wipe the target, so prune refuses instead of deleting everything.
 var ErrPruneEmptySource = errors.New("prune: refusing to prune against an empty source set")
 
+// ErrPruneImplicitSources is returned when prune is asked to reconcile a
+// target declared in .skret.yaml that has no sources. Such a target syncs
+// the whole environment path, so every secret the target needs from
+// elsewhere would read as an orphan; the declaration must name its source
+// set before prune may delete against it.
+var ErrPruneImplicitSources = errors.New("prune: refusing to prune a declared target without explicit sources")
+
 // TargetSecret is the metadata a target returns for one stored secret. It
 // never carries a value: GitHub Actions secrets are write-only.
 type TargetSecret struct {
