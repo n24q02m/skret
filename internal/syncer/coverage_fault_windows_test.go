@@ -3,6 +3,7 @@
 package syncer
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -122,9 +123,10 @@ func faultRequireNoWriteDAC(t *testing.T, path string) {
 
 func faultIcacls(t *testing.T, path, ace string) {
 	t.Helper()
-	out, err := exec.Command("icacls", path, "/deny", ace).CombinedOutput()
+	out, err := exec.CommandContext(t.Context(), "icacls", path, "/deny", ace).CombinedOutput()
 	require.NoError(t, err, string(out))
-	t.Cleanup(func() { _ = exec.Command("icacls", path, "/remove:d", everyoneSID).Run() })
+	// t.Context is already canceled when cleanups run.
+	t.Cleanup(func() { _ = exec.CommandContext(context.Background(), "icacls", path, "/remove:d", everyoneSID).Run() })
 }
 
 // faultDirLink creates link as a directory junction pointing at target.
