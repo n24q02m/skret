@@ -87,7 +87,24 @@ if (-not $Version) {
         $latest = Invoke-RestMethod "https://api.github.com/repos/$Repo/releases/latest"
         $Version = $latest.tag_name
     } catch {
-        Die "could not detect latest version: $($_.Exception.Message)"
+        # The API answers 403 once an IP spends GitHub's anonymous rate limit, which
+        # shared CI runners and NATed networks do. The releases/latest redirect names
+        # the same tag and is not API rate limited.
+        $apiError = $_.Exception.Message
+        Log "GitHub API lookup failed ($apiError); resolving the releases/latest redirect"
+        try {
+            $resp = Invoke-WebRequest "https://github.com/$Repo/releases/latest" -Method Head -UseBasicParsing
+            # Windows PowerShell 5.1 reports the post-redirect URI as
+            # BaseResponse.ResponseUri; PowerShell 7 as BaseResponse.RequestMessage.RequestUri.
+            $finalUri = $resp.BaseResponse.ResponseUri
+            if (-not $finalUri) { $finalUri = $resp.BaseResponse.RequestMessage.RequestUri }
+            if ("$finalUri" -match '/releases/tag/([^/?#]+)') { $Version = $Matches[1] }
+        } catch {
+            Die "could not detect latest version: $apiError; redirect lookup: $($_.Exception.Message)"
+        }
+        if (-not $Version) {
+            Die "could not detect latest version: $apiError; redirect landed on '$finalUri'"
+        }
     }
 }
 
