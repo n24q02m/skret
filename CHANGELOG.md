@@ -4,6 +4,115 @@ All notable changes to this project will be documented in this file.
 
 <!-- version list -->
 
+## v1.39.0-beta.1 (2026-11-16)
+
+### Bug Fixes
+
+- Check the cosign installer pin by shape so action bumps pass
+  ([#994](https://github.com/n24q02m/skret/pull/994),
+  [`8c1a682`](https://github.com/n24q02m/skret/commit/8c1a682e91da9a38230fe8291455f6fae834b8c1))
+
+- Cover config discovery, mcp, oci and webhook decode branches in tests
+  ([#987](https://github.com/n24q02m/skret/pull/987),
+  [`dcb2092`](https://github.com/n24q02m/skret/commit/dcb2092e467b385b624554672c70304cd4baccf9))
+
+- Cover remaining cli command branches to lift package coverage above 95%
+  ([#987](https://github.com/n24q02m/skret/pull/987),
+  [`dcb2092`](https://github.com/n24q02m/skret/commit/dcb2092e467b385b624554672c70304cd4baccf9))
+
+- Cover syncer provider, manifest scan and filesystem error paths
+  ([#987](https://github.com/n24q02m/skret/pull/987),
+  [`dcb2092`](https://github.com/n24q02m/skret/commit/dcb2092e467b385b624554672c70304cd4baccf9))
+
+- Cover syncer state and migration failure paths with fault-injection tests
+  ([#987](https://github.com/n24q02m/skret/pull/987),
+  [`dcb2092`](https://github.com/n24q02m/skret/commit/dcb2092e467b385b624554672c70304cd4baccf9))
+
+- Drop the unused GoReleaser tap publish blocks ([#984](https://github.com/n24q02m/skret/pull/984),
+  [`dd9b790`](https://github.com/n24q02m/skret/commit/dd9b790796236eb1dc73ac27d3a5bc7dadcc450d))
+
+- Format config schema sources table ([#986](https://github.com/n24q02m/skret/pull/986),
+  [`0610520`](https://github.com/n24q02m/skret/commit/0610520af0a731aad205f28a3aeab5360c2c94ef))
+
+- Give the windows fault-injection icacls calls a context
+  ([#988](https://github.com/n24q02m/skret/pull/988),
+  [`d4b9e94`](https://github.com/n24q02m/skret/commit/d4b9e9416e26a139c47eb7e526b621d59b36b7e0))
+
+- Hold the sync-path packages to a 95% coverage floor and fail unmeasured packages
+  ([#987](https://github.com/n24q02m/skret/pull/987),
+  [`dcb2092`](https://github.com/n24q02m/skret/commit/dcb2092e467b385b624554672c70304cd4baccf9))
+
+- Keep cli run-injection tests from replacing the test binary on unix
+  ([#987](https://github.com/n24q02m/skret/pull/987),
+  [`dcb2092`](https://github.com/n24q02m/skret/commit/dcb2092e467b385b624554672c70304cd4baccf9))
+
+- Keep the new coverage tests correct on darwin ([#987](https://github.com/n24q02m/skret/pull/987),
+  [`dcb2092`](https://github.com/n24q02m/skret/commit/dcb2092e467b385b624554672c70304cd4baccf9))
+
+- Let renovate merge only after every check is green
+  ([#982](https://github.com/n24q02m/skret/pull/982),
+  [`34cbd14`](https://github.com/n24q02m/skret/commit/34cbd14fc0ac7101bd96a8c18ccc81989b1a1b9a))
+
+- Lint the windows and darwin builds in CI ([#988](https://github.com/n24q02m/skret/pull/988),
+  [`d4b9e94`](https://github.com/n24q02m/skret/commit/d4b9e9416e26a139c47eb7e526b621d59b36b7e0))
+
+- Probe the windows DACL fault through SetNamedSecurityInfo
+  ([#987](https://github.com/n24q02m/skret/pull/987),
+  [`dcb2092`](https://github.com/n24q02m/skret/commit/dcb2092e467b385b624554672c70304cd4baccf9))
+
+- Raise sync-path coverage to 95% and fail packages that report no coverage
+  ([#987](https://github.com/n24q02m/skret/pull/987),
+  [`dcb2092`](https://github.com/n24q02m/skret/commit/dcb2092e467b385b624554672c70304cd4baccf9))
+
+- Skip windows fault-injection tests when the process can bypass the injected fault
+  ([#987](https://github.com/n24q02m/skret/pull/987),
+  [`dcb2092`](https://github.com/n24q02m/skret/commit/dcb2092e467b385b624554672c70304cd4baccf9))
+
+- Sync the main ruleset file with its live required status checks
+  ([#983](https://github.com/n24q02m/skret/pull/983),
+  [`17ea4eb`](https://github.com/n24q02m/skret/commit/17ea4eb1ccf917c8b82c5a31061a542c8ab56991))
+
+- **deps**: Update goreleaser/goreleaser to v2.20.0
+  ([#992](https://github.com/n24q02m/skret/pull/992),
+  [`7c37778`](https://github.com/n24q02m/skret/commit/7c37778b7103699eb7ec5f29cb48b4ccd081e438))
+
+- **deps**: Update module cloud.google.com/go/secretmanager to v1.24.0
+  ([#993](https://github.com/n24q02m/skret/pull/993),
+  [`e11e28d`](https://github.com/n24q02m/skret/commit/e11e28dddbdb9d9cbdf1f25572ce44872bac98a4))
+
+- **deps**: Update module github.com/oracle/oci-go-sdk/v65 to v65.129.0
+  ([#995](https://github.com/n24q02m/skret/pull/995),
+  [`bf05c16`](https://github.com/n24q02m/skret/commit/bf05c16487a466c3379c9fe2850a6fc253d134c8))
+
+- **deps**: Update module github.com/spf13/pflag to v1.1.0
+  ([#996](https://github.com/n24q02m/skret/pull/996),
+  [`d0d86e6`](https://github.com/n24q02m/skret/commit/d0d86e6cf2e0b3619da412cf4f8a8ff92d05a863))
+
+- **deps**: Update sigstore/cosign-installer action to v4.1.3
+  ([#991](https://github.com/n24q02m/skret/pull/991),
+  [`4a3dcb7`](https://github.com/n24q02m/skret/commit/4a3dcb7d206906e8b9afce96ca8067804d5e7b48))
+
+### Features
+
+- Add per-target sync sources so sync and prune use a declared multi-path union
+  ([#986](https://github.com/n24q02m/skret/pull/986),
+  [`0610520`](https://github.com/n24q02m/skret/commit/0610520af0a731aad205f28a3aeab5360c2c94ef))
+
+- Add sync --prune to delete github secrets no source key produces
+  ([#985](https://github.com/n24q02m/skret/pull/985),
+  [`3376148`](https://github.com/n24q02m/skret/commit/33761480098b8f6bee6c2bb592cda02d9190cf5c))
+
+- Pin the zero-write no-overwrite prune path ([#989](https://github.com/n24q02m/skret/pull/989),
+  [`71a028c`](https://github.com/n24q02m/skret/commit/71a028c339d671865c91be5b1992eeb9ca3ad4ea))
+
+- Refuse --prune on a declared sync target without explicit sources
+  ([#989](https://github.com/n24q02m/skret/pull/989),
+  [`71a028c`](https://github.com/n24q02m/skret/commit/71a028c339d671865c91be5b1992eeb9ca3ad4ea))
+
+- Regenerate demo.gif ([#981](https://github.com/n24q02m/skret/pull/981),
+  [`b52b482`](https://github.com/n24q02m/skret/commit/b52b48218d7f2f6ac75769e4c3798a76346668d4))
+
+
 ## v1.38.0 (2026-11-14)
 
 
