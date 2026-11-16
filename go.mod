@@ -3,7 +3,7 @@ module github.com/n24q02m/skret
 go 1.26.0
 
 require (
-	cloud.google.com/go/secretmanager v1.23.1
+	cloud.google.com/go/secretmanager v1.24.0
 	filippo.io/age v1.3.2
 	filippo.io/edwards25519 v1.2.0
 	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.24.0
