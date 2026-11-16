@@ -137,11 +137,15 @@ class CandidateReleaseWorkflowTests(unittest.TestCase):
 
     def test_cosign_is_pinned_and_verified_before_signing_or_install(self) -> None:
         workflow = self.workflow()
-        installer = (
-            "sigstore/cosign-installer@"
-            "6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2"
+        # Renovate bumps the action pin, so check its shape: a full commit SHA
+        # with the release tag as a comment, the same pin at both call sites.
+        pins = re.findall(
+            r"sigstore/cosign-installer@([0-9a-f]{40}) # v\d+\.\d+\.\d+",
+            workflow,
         )
-        self.assertEqual(workflow.count(installer), 2)
+        self.assertEqual(len(pins), 2)
+        self.assertEqual(len(set(pins)), 1)
+        self.assertEqual(workflow.count("sigstore/cosign-installer@"), 2)
         self.assertEqual(workflow.count("cosign-release: v3.0.6"), 2)
         verifier = "verify_cosign_version.py v3.0.6"
         self.assertEqual(workflow.count(verifier), 2)
