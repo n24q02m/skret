@@ -16,6 +16,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"testing"
 
 	"filippo.io/age"
 	"gopkg.in/yaml.v3"
@@ -75,6 +76,33 @@ func GenerateIdentity() (string, error) {
 	return id.String(), nil
 }
 
+// defaultScryptWorkFactor is age's own default scrypt work factor (log2 N,
+// about one second per derivation on a modern machine): the cost every
+// passphrase-arm envelope a shipped binary writes pays against offline
+// guessing.
+const defaultScryptWorkFactor = 18
+
+// testScryptWorkFactor is the work factor inside `go test` binaries, the
+// value age's own test suite uses. Under the race detector one derivation at
+// the default costs seconds, and the keystore, provider/local and cli tests
+// seal dozens of passphrase envelopes: at the default, internal/keystore ran
+// past go test's 10-minute limit on a macOS runner (ci.yml run 43834293544).
+const testScryptWorkFactor = 10
+
+// scryptWorkFactor is the work factor recipientFor seals passphrase-arm
+// envelopes with. Decryption reads the factor from the file itself, so files
+// written at either factor open everywhere.
+var scryptWorkFactor = scryptWorkFactorFor(testing.Testing())
+
+// scryptWorkFactorFor picks the scrypt work factor for a test binary or a
+// shipped one.
+func scryptWorkFactorFor(inTest bool) int {
+	if inTest {
+		return testScryptWorkFactor
+	}
+	return defaultScryptWorkFactor
+}
+
 // recipientFor maps key material to an age recipient: an X25519 public key
 // when the material is an age key (private AGE-SECRET-KEY-1... or public
 // age1...), otherwise an age scrypt recipient derived from the material as
@@ -90,6 +118,7 @@ func recipientFor(material string) (age.Recipient, error) {
 	if err != nil {
 		return nil, newError(CodeValidationError, "keys: build encryption recipient", err)
 	}
+	rec.SetWorkFactor(scryptWorkFactor)
 	return rec, nil
 }
 
