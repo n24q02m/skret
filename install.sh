@@ -64,6 +64,16 @@ if [ -z "$VERSION" ]; then
   log "Detecting latest release"
   VERSION=$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" \
     | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -n1)
+  if [ -z "$VERSION" ]; then
+    # The API answers 403 once an IP spends GitHub's anonymous rate limit, which
+    # shared CI runners and NATed networks do. The releases/latest redirect names
+    # the same tag and is not API rate limited.
+    log "GitHub API lookup failed; resolving the releases/latest redirect"
+    latest_url=$(curl -fsSLI -o /dev/null -w '%{url_effective}' \
+      "https://github.com/$REPO/releases/latest") || latest_url=""
+    VERSION=$(printf '%s' "$latest_url" \
+      | sed -n 's#.*/releases/tag/\([^/?#]*\).*#\1#p' | head -n1)
+  fi
 fi
 [ -n "$VERSION" ] || err "could not detect latest version"
 
