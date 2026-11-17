@@ -4,6 +4,28 @@ All notable changes to this project will be documented in this file.
 
 <!-- version list -->
 
+## v1.40.0-beta.1 (2026-11-17)
+
+### Bug Fixes
+
+- Resolve the latest release through the redirect when the GitHub API refuses
+  ([#998](https://github.com/n24q02m/skret/pull/998),
+  [`2e3d1d5`](https://github.com/n24q02m/skret/commit/2e3d1d5c459cc9ae3da6e1244265f2e6465e8042))
+
+- Seal test-binary passphrase envelopes at age's test scrypt work factor
+  ([#999](https://github.com/n24q02m/skret/pull/999),
+  [`9af6aa8`](https://github.com/n24q02m/skret/commit/9af6aa88dee8d3a184f3b3033f02200bbea17c9b))
+
+- Upload coverage to codecov over oidc and fail the job when it is refused
+  ([#1000](https://github.com/n24q02m/skret/pull/1000),
+  [`bcfbded`](https://github.com/n24q02m/skret/commit/bcfbdedf382b7d40a3efcca990b072e7fa0829c6))
+
+### Features
+
+- Sync cross-promo section ([#1001](https://github.com/n24q02m/skret/pull/1001),
+  [`da814d6`](https://github.com/n24q02m/skret/commit/da814d640ddb36edd1368911ef4465189c60f5df))
+
+
 ## v1.39.0 (2026-11-16)
 
 
