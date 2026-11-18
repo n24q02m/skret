@@ -28,7 +28,7 @@ export async function handleExecutorEnvelope(req: Request, env: Env): Promise<Re
   }
 
   const session = readCookie(req, SESSION_COOKIE);
-  if (!session || !(await verifySession(env.RELAY_PASSWORD, session))) {
+  if (!session || !(await verifySession(env.SKRET_HUB_DASHBOARD_PASSWORD, session))) {
     return proxyResponse("unauthorized", 401, "text/plain; charset=utf-8");
   }
 

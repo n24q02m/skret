@@ -62,7 +62,7 @@ describe("dashboard flow", () => {
         "Content-Type": "application/x-www-form-urlencoded",
         "CF-Connecting-IP": "198.51.100.12",
       },
-      body: "password=test-relay-password",
+      body: "password=test-dashboard-password",
       redirect: "manual",
     });
     expect(loginRes.status).toBe(303);
@@ -106,7 +106,7 @@ describe("dashboard flow", () => {
         "Content-Type": "application/x-www-form-urlencoded",
         "CF-Connecting-IP": "198.51.100.14",
       },
-      body: "password=test-relay-password",
+      body: "password=test-dashboard-password",
       redirect: "manual",
     });
     const cookie = cookieFrom(loginRes);

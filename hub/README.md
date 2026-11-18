@@ -18,7 +18,7 @@ map of every namespace's keys + per-target presence status.
 | `POST /api/manifest` | `Authorization: Bearer $SKRET_HUB_TOKEN` | ingest a manifest |
 | `GET /api/status` | `Authorization: Bearer $SKRET_HUB_TOKEN` | namespace stats for `skret hub status` (counts + freshness, no names/fingerprints) |
 | `GET /api/namespaces` | `Authorization: Bearer $SKRET_HUB_TOKEN` | the same namespace list alone |
-| `POST /login` | form `password` = `$RELAY_PASSWORD` | mint a signed session cookie |
+| `POST /login` | form `password` = `$SKRET_HUB_DASHBOARD_PASSWORD` | mint a signed session cookie |
 | `GET /` | session cookie | the dashboard map |
 | `GET /healthz` | none | uptime check: probes `VAULT_KV`, `200 {ok:true,kv:"ok"}` or `503 {ok:false,kv:"error"}` |
 

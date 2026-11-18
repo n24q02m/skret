@@ -139,7 +139,7 @@ describe("healthz", () => {
   it("fails closed for unauthenticated operator health requests", async () => {
     const getOperatorSyncHealth = vi.fn();
     const env = {
-      RELAY_PASSWORD: "relay-password",
+      SKRET_HUB_DASHBOARD_PASSWORD: "dashboard-password",
       SYNC: {
         idFromName: () => ({}),
         get: () => ({ getOperatorSyncHealth }),
@@ -187,13 +187,13 @@ describe("healthz", () => {
       secret: "must-not-leak",
     }));
     const env = {
-      RELAY_PASSWORD: "relay-password",
+      SKRET_HUB_DASHBOARD_PASSWORD: "dashboard-password",
       SYNC: {
         idFromName: () => ({}),
         get: () => ({ getOperatorSyncHealth }),
       },
     } as unknown as Env;
-    const session = await mintSession("relay-password", 3600);
+    const session = await mintSession("dashboard-password", 3600);
 
     const res = await handleRequest(
       new Request("https://hub.test/operator/sync-health", {
@@ -230,13 +230,13 @@ describe("healthz", () => {
       secret: "must-not-leak",
     }));
     const env = {
-      RELAY_PASSWORD: "relay-password",
+      SKRET_HUB_DASHBOARD_PASSWORD: "dashboard-password",
       SYNC: {
         idFromName: () => ({}),
         get: () => ({ getOperatorSyncHealth }),
       },
     } as unknown as Env;
-    const session = await mintSession("relay-password", 3600);
+    const session = await mintSession("dashboard-password", 3600);
 
     const res = await handleRequest(
       new Request("https://hub.test/operator/sync-health", {

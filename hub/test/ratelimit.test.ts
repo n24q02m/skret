@@ -39,7 +39,7 @@ function envWith(success: boolean, seen?: string[]): Env {
     // called -- and a stub is exactly what the binding turned out to behave
     // like in production.
     LOGIN_GATE: env.LOGIN_GATE,
-    RELAY_PASSWORD: "test-relay-password",
+    SKRET_HUB_DASHBOARD_PASSWORD: "test-dashboard-password",
     SKRET_HUB_TOKEN: "test-hub-token",
   } as unknown as Env;
 }
@@ -154,7 +154,7 @@ describe("rate limiting", () => {
     const req = new Request("https://hub.test/login", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: "password=test-relay-password",
+      body: "password=test-dashboard-password",
     });
 
     const res = await handleRequest(req, envWith(false));

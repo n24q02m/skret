@@ -5,7 +5,7 @@ import type { LoginGate } from "./gate";
 export interface Env {
   VAULT_KV: KVNamespace;
   SKRET_HUB_TOKEN: string;
-  RELAY_PASSWORD: string;
+  SKRET_HUB_DASHBOARD_PASSWORD: string;
   // Guards on the two routes a stranger can reach: POST /login (one shared
   // password, no user, no lockout) and POST /api/manifest (one bearer token).
   // Required, not optional: a deploy that drops the bindings should break

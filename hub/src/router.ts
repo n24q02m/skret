@@ -203,7 +203,7 @@ async function handleOperatorSyncHealth(req: Request, env: Env): Promise<Respons
   const cookie = readCookie(req, COOKIE);
   let authorized = false;
   try {
-    authorized = cookie !== null && (await verifySession(env.RELAY_PASSWORD, cookie));
+    authorized = cookie !== null && (await verifySession(env.SKRET_HUB_DASHBOARD_PASSWORD, cookie));
   } catch {
     authorized = false;
   }
@@ -500,10 +500,10 @@ async function handleLogin(req: Request, env: Env): Promise<Response> {
   } catch {
     return html(renderLogin("bad request"), 400);
   }
-  if (!(await checkPassword(password, env.RELAY_PASSWORD))) {
+  if (!(await checkPassword(password, env.SKRET_HUB_DASHBOARD_PASSWORD))) {
     return html(renderLogin("wrong password"), 401);
   }
-  const token = await mintSession(env.RELAY_PASSWORD, SESSION_TTL);
+  const token = await mintSession(env.SKRET_HUB_DASHBOARD_PASSWORD, SESSION_TTL);
   return new Response(null, {
     status: 303,
     headers: {
@@ -534,7 +534,7 @@ function handleLogout(): Response {
 
 async function handleDashboard(req: Request, env: Env): Promise<Response> {
   const cookie = readCookie(req, COOKIE);
-  if (!cookie || !(await verifySession(env.RELAY_PASSWORD, cookie))) {
+  if (!cookie || !(await verifySession(env.SKRET_HUB_DASHBOARD_PASSWORD, cookie))) {
     return html(renderLogin(), 200);
   }
   const manifests = await getAllManifests(env.VAULT_KV);
