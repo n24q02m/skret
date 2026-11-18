@@ -256,6 +256,11 @@ describe("renderLogin a11y", () => {
     expect(html).toContain('autocomplete="current-password"');
     expect(html).toContain("required");
   });
+  it("names the field after the dashboard login password", () => {
+    const html = renderLogin();
+    expect(html).toContain('<label for="password">Dashboard password</label>');
+    expect(html).not.toContain("Relay");
+  });
   it("marks the error message with role=alert and adds aria attributes to input", () => {
     const html = renderLogin("wrong password");
     expect(html).toContain('role="alert"');
