@@ -153,7 +153,7 @@ wrangler login
 wrangler kv namespace create VAULT_KV         # put the returned id into hub/wrangler.jsonc
 wrangler deploy --config wrangler.jsonc
 wrangler secret put SKRET_HUB_TOKEN           # high-entropy token; `skret hub push` sends it as a bearer
-wrangler secret put RELAY_PASSWORD            # dashboard login password
+wrangler secret put SKRET_HUB_DASHBOARD_PASSWORD  # dashboard login password
 ```
 
 Then point the CLI at it once:

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { checkPassword, mintSession, SESSION_TTL, verifySession } from "../src/auth";
 
-const SECRET = "test-relay-password";
+const SECRET = "test-dashboard-password";
 
 describe("checkPassword", () => {
   it("true for exact match", async () => {

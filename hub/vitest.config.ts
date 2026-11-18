@@ -9,7 +9,7 @@ export default defineConfig({
         // Deterministic test secrets — never the real values.
         bindings: {
           SKRET_HUB_TOKEN: "test-hub-token",
-          RELAY_PASSWORD: "test-relay-password",
+          SKRET_HUB_DASHBOARD_PASSWORD: "test-dashboard-password",
         },
         // The committed service binding points at a separate Worker. Keep
         // local tests hermetic by replacing that remote target with a

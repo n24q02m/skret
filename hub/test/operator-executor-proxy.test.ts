@@ -7,7 +7,7 @@ import {
 import { handleRequest } from "../src/router";
 import type { Env } from "../src/types";
 
-const RELAY_PASSWORD = "test-relay-password";
+const SKRET_HUB_DASHBOARD_PASSWORD = "test-dashboard-password";
 const HUB_TOKEN = "public-hub-token";
 const EXECUTOR_ORIGIN = "https://executor.internal";
 
@@ -28,12 +28,12 @@ function fakeExecutor(response: Response | ((request: Request) => Response | Pro
 }
 
 async function sessionCookie() {
-  return `session=${await mintSession(RELAY_PASSWORD, SESSION_TTL)}`;
+  return `session=${await mintSession(SKRET_HUB_DASHBOARD_PASSWORD, SESSION_TTL)}`;
 }
 
 function env(executor?: FakeExecutor): Env {
   return {
-    RELAY_PASSWORD,
+    SKRET_HUB_DASHBOARD_PASSWORD,
     SKRET_HUB_TOKEN: HUB_TOKEN,
     ...(executor ? { EXECUTOR: executor } : {}),
   } as unknown as Env;
