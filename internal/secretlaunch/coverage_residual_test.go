@@ -368,16 +368,91 @@ func TestResidualHelperMonitorTickFloorKillsOnMissedHeartbeat(t *testing.T) {
 	}
 }
 
+// residualLateHookContext is a cancellable context whose context.AfterFunc
+// callbacks start only after release is closed. Go starts an AfterFunc
+// callback in its own goroutine after cancellation, so code that also selects
+// on Done can see the cancellation before the callback runs. This context
+// pins that order instead of leaving it to the scheduler.
+type residualLateHookContext struct {
+	done       chan struct{}
+	release    chan struct{}
+	cancelOnce sync.Once
+	releaseOne sync.Once
+}
+
+func newResidualLateHookContext() *residualLateHookContext {
+	return &residualLateHookContext{done: make(chan struct{}), release: make(chan struct{})}
+}
+
+func (c *residualLateHookContext) Deadline() (time.Time, bool) { return time.Time{}, false }
+
+func (c *residualLateHookContext) Done() <-chan struct{} { return c.done }
+
+func (c *residualLateHookContext) Err() error {
+	select {
+	case <-c.done:
+		return context.Canceled
+	default:
+		return nil
+	}
+}
+
+func (c *residualLateHookContext) Value(any) any { return nil }
+
+func (c *residualLateHookContext) cancel() { c.cancelOnce.Do(func() { close(c.done) }) }
+
+func (c *residualLateHookContext) releaseHooks() { c.releaseOne.Do(func() { close(c.release) }) }
+
+// AfterFunc is the method context.AfterFunc uses on a parent that provides
+// it: f runs once the context is cancelled and the hooks are released, unless
+// the returned stop function runs first.
+func (c *residualLateHookContext) AfterFunc(f func()) func() bool {
+	var once sync.Once
+	go func() {
+		<-c.done
+		<-c.release
+		once.Do(f)
+	}()
+	return func() bool {
+		stopped := false
+		once.Do(func() { stopped = true })
+		return stopped
+	}
+}
+
+// residualHookGatedChild releases the late context hooks when it is killed
+// and reports its exit only after the stream has been closed. The monitor
+// therefore cannot return, and stop the hook, before the hook has run.
+type residualHookGatedChild struct {
+	*coverageChild
+	stream  *residualClosableReader
+	release func()
+}
+
+func (c *residualHookGatedChild) KillTree() error {
+	err := c.coverageChild.KillTree()
+	c.release()
+	return err
+}
+
+func (c *residualHookGatedChild) Wait() error {
+	<-c.stream.closed
+	return c.coverageChild.Wait()
+}
+
 // Cancelling the context while the monitor waits closes the closable channel
-// (from the context hook and again on return) and kills the child.
+// (from the context hook and again on return) and kills the child. The monitor
+// sees the cancellation before the hook starts, the order that a busy
+// scheduler can produce with a real context.
 func TestResidualHelperMonitorCancellationClosesStream(t *testing.T) {
-	child := newCoverageChild(0, nil, false)
+	ctx := newResidualLateHookContext()
+	defer ctx.releaseHooks()
+	child := &residualHookGatedChild{coverageChild: newCoverageChild(0, nil, false), release: ctx.releaseHooks}
 	helper, manifest, _ := coverageHelper(t, child, nil)
 	wire, receiver := coverageSessionData(t, manifest, residualSecretFrame("APP_TOKEN"))
 	defer receiver.Close()
 	stream := newResidualClosableReader(wire)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	child.stream = stream
 	type runResult struct {
 		code int
 		err  error
@@ -392,7 +467,7 @@ func TestResidualHelperMonitorCancellationClosesStream(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("monitor never waited on the channel")
 	}
-	cancel()
+	ctx.cancel()
 	select {
 	case result := <-done:
 		if result.code != 0 || errorCode(result.err) != ErrLifecycle {
