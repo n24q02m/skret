@@ -114,39 +114,34 @@ jobs:
         run: |
           COVERAGE=$(go tool cover -func=coverage.out | tail -1 | awk '{print $3}' | sed 's/%//')
           echo "Internal coverage: ${COVERAGE}%"
-          if (( $(echo "$COVERAGE < 90" | bc -l) )); then
-            echo "Internal coverage ${COVERAGE}% is below 90% threshold"
+          if (( $(echo "$COVERAGE < 95" | bc -l) )); then
+            echo "Internal coverage ${COVERAGE}% is below 95% threshold"
             exit 1
           fi
-      # The 90% above is an average over ./internal/..., and an average hides a
+      # The 95% above is an average over ./internal/..., and an average hides a
       # single rotten package behind the healthy ones: internal/cli is large
       # enough that a small package could fall to 50% without moving the
-      # aggregate off 90. This floor is per package: 85 by default, deliberately
-      # below today's worst so it catches a package sliding; 95 for the sync
-      # path (cli, config, syncer, syncsource), which carries --prune and the
-      # declared multi-source union. An `ok` line with no coverage figure fails
-      # too: it means the test binary never reported (internal/cli once lost its
-      # figure to a test that exec'd over itself), and a package nobody measured
-      # must not pass as one that met its floor.
+      # aggregate off 95. This floor is per package and the same 95% for every
+      # internal package, so none can hide behind the average. A package with
+      # code but no test file is checked too: go test prints it without the
+      # `ok` prefix ("<pkg>  coverage: 0.0% of statements"), and it must fail
+      # the floor rather than slip past it. An `ok` line with no coverage
+      # figure fails as well: it means the test binary never reported
+      # (internal/cli once lost its figure to a test that exec'd over itself),
+      # and a package nobody measured must not pass as one that met its floor.
       - name: Check per-package coverage floor
         if: matrix.os == 'ubuntu-latest'
         shell: bash
         run: |
-          below=$(awk '
-            BEGIN {
-              floor["github.com/n24q02m/skret/internal/cli"] = 95
-              floor["github.com/n24q02m/skret/internal/config"] = 95
-              floor["github.com/n24q02m/skret/internal/syncer"] = 95
-              floor["github.com/n24q02m/skret/internal/syncsource"] = 95
-            }
-            $1 == "ok" {
+          below=$(awk -v floor=95 '
+            $1 == "ok" || $1 ~ /^github\.com\/n24q02m\/skret\/internal\// {
+              pkg = ($1 == "ok") ? $2 : $1
               c = ""
               for (i = 1; i <= NF; i++) if ($i == "coverage:") c = $(i + 1)
-              if (c == "") { printf "  %s  no coverage figure reported\n", $2; next }
+              if (c == "") { printf "  %s  no coverage figure reported\n", pkg; next }
               if (c !~ /%$/) next          # "[no statements]" -- nothing to measure
               sub(/%$/, "", c)
-              f = ($2 in floor) ? floor[$2] : 85
-              if (c + 0 < f) printf "  %s  %s%% (floor %s%%)\n", $2, c, f
+              if (c + 0 < floor) printf "  %s  %s%% (floor %s%%)\n", pkg, c, floor
             }' internal-test.txt)
           if [ -n "$below" ]; then
             echo "These packages are below their per-package coverage floor:"
