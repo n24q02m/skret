@@ -255,17 +255,13 @@ jobs:
             echo "release Dockerfile built a linux/arm64 image with a '$arch' userland" >&2
             exit 1
           fi
-      # The CLI Dockerfile pins a single-arch (amd64) base manifest digest for
-      # the amd64 release lane. This job rewrites it to the equivalent
-      # linux/arm64 manifest digest (resolved from the same tag) so every
-      # RUN step executes natively on the arm64 runner. CI-ephemeral only;
-      # the checked-in Dockerfile is untouched on disk in git.
       - name: Build CLI OCI archive (native arm64)
         run: |
           set -euo pipefail
           cp Dockerfile context/Dockerfile
-          sed -i 's|alpine@sha256:79ff19e9084a00eece421b2523fb93e22d730e2c0e525905de047e848e56d95f|alpine@sha256:d858bb5442632a31bd4bca6c5e601dbe6b536fd7942092ea6a08a0a95805693c|' context/Dockerfile
-          grep -q 'sha256:d858bb5442632a31bd4bca6c5e601dbe6b536fd7942092ea6a08a0a95805693c' context/Dockerfile
+          # Dockerfile pins the multi-arch index digest, like Dockerfile.sync,
+          # so --platform linux/arm64 selects the arm64 child natively and the
+          # file is built unedited, exactly as cd.yml builds it.
           docker buildx build \
             --platform linux/arm64 \
             --file context/Dockerfile context \

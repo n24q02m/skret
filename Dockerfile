@@ -1,5 +1,5 @@
-# alpine 3.23
-FROM alpine@sha256:79ff19e9084a00eece421b2523fb93e22d730e2c0e525905de047e848e56d95f
+# alpine 3.24
+FROM alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a
 LABEL org.opencontainers.image.source="https://github.com/n24q02m/skret"
 RUN apk add --no-cache ca-certificates
 # The dockers_v2 build context nests the prebuilt binaries one directory per

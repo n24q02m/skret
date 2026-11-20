@@ -107,7 +107,8 @@ checksum:
 #
 # Neither of the two old build_flag_templates carried over, and neither is
 # missing. `--pull` cannot change anything when the base is pinned by digest
-# (FROM alpine@sha256:... resolves to one immutable blob), and the
+# (FROM alpine:<tag>@sha256:... names one immutable multi-arch index, and
+# buildx takes each platform's image from it), and the
 # --label=org.opencontainers.image.source flag only restated the LABEL the
 # Dockerfile already carries.
 dockers_v2:
