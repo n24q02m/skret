@@ -235,17 +235,33 @@ jobs:
           go build -trimpath \
             -ldflags="-s -w -X github.com/n24q02m/skret/internal/version.Version=ci-${GITHUB_SHA::7}" \
             -o context/linux/arm64/skret ./cmd/skret
-      # The CLI Dockerfile pins a single-arch (amd64) base manifest digest for
-      # the amd64 release lane. This job rewrites it to the equivalent
-      # linux/arm64 manifest digest (resolved from the same tag) so every
-      # RUN step executes natively on the arm64 runner. CI-ephemeral only;
-      # the checked-in Dockerfile is untouched on disk in git.
+      # cd.yml builds the checked-in Dockerfile, unedited, for linux/amd64 and
+      # linux/arm64 in one buildx call. Build that same file for linux/arm64
+      # and ask the image which architecture its userland is. A base pinned to
+      # a single-platform manifest is reused as-is for every platform, so the
+      # arm64 image would ship another architecture's busybox and apk under an
+      # arm64 config; this step fails on that instead of the release.
+      - name: Release Dockerfile gives the arm64 image an arm64 userland
+        run: |
+          set -euo pipefail
+          docker buildx build \
+            --platform linux/arm64 \
+            --file Dockerfile context \
+            --provenance=false --sbom=false \
+            --load --tag skret-ci:cli-release
+          arch="$(docker run --rm --entrypoint /bin/sh skret-ci:cli-release -c 'apk --print-arch')"
+          echo "apk --print-arch: $arch"
+          if [ "$arch" != "aarch64" ]; then
+            echo "release Dockerfile built a linux/arm64 image with a '$arch' userland" >&2
+            exit 1
+          fi
       - name: Build CLI OCI archive (native arm64)
         run: |
           set -euo pipefail
           cp Dockerfile context/Dockerfile
-          sed -i 's|alpine@sha256:79ff19e9084a00eece421b2523fb93e22d730e2c0e525905de047e848e56d95f|alpine@sha256:d858bb5442632a31bd4bca6c5e601dbe6b536fd7942092ea6a08a0a95805693c|' context/Dockerfile
-          grep -q 'sha256:d858bb5442632a31bd4bca6c5e601dbe6b536fd7942092ea6a08a0a95805693c' context/Dockerfile
+          # Dockerfile pins the multi-arch index digest, like Dockerfile.sync,
+          # so --platform linux/arm64 selects the arm64 child natively and the
+          # file is built unedited, exactly as cd.yml builds it.
           docker buildx build \
             --platform linux/arm64 \
             --file context/Dockerfile context \
