@@ -1,6 +1,7 @@
 package ref
 
 import (
+	"fmt"
 	"reflect"
 	"testing"
 )
@@ -144,4 +145,22 @@ func TestResolve_DepthBound(t *testing.T) {
 // nameOf maps 1 -> K1, 12 -> K12.
 func nameOf(i int) string {
 	return "K" + string(rune('0'+i/10)) + string(rune('0'+i%10))
+}
+
+// TestError_Messages pins the user-facing text of each resolution failure:
+// the missing name, the cycle chain, and the depth bound with its chain.
+func TestError_Messages(t *testing.T) {
+	tests := []struct {
+		err  *Error
+		want string
+	}{
+		{&Error{Kind: KindMissing, Name: "DB_PASS"}, "reference ${DB_PASS} not found in environment scope"},
+		{&Error{Kind: KindCycle, Chain: []string{"A", "B", "A"}}, "reference cycle: A -> B -> A"},
+		{&Error{Kind: KindDepth, Chain: []string{"A", "B"}}, fmt.Sprintf("reference chain deeper than %d hops: A -> B", MaxDepth)},
+	}
+	for _, tt := range tests {
+		if got := tt.err.Error(); got != tt.want {
+			t.Errorf("Error() = %q, want %q", got, tt.want)
+		}
+	}
 }

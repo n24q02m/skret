@@ -96,3 +96,22 @@ func TestDecode_NoEquals(t *testing.T) {
 	_, _, ok := dotenv.Decode("JUST_A_KEY")
 	assert.False(t, ok)
 }
+
+// TestDecode_EmptyKeyRejected pins that a line whose key is empty or only
+// whitespace ("=value", "  = value") is not a variable, so an importer never
+// creates a secret with an empty name.
+func TestDecode_EmptyKeyRejected(t *testing.T) {
+	for _, line := range []string{"=value", "   =value", "export =value"} {
+		_, _, ok := dotenv.Decode(line)
+		assert.False(t, ok, "line %q", line)
+	}
+}
+
+// TestDecode_UnknownEscapeKeptVerbatim pins that an escape Encode never writes
+// (for example \q or \x) keeps both bytes instead of dropping the backslash.
+func TestDecode_UnknownEscapeKeptVerbatim(t *testing.T) {
+	key, value, ok := dotenv.Decode(`K="a\qb\x"`)
+	require.True(t, ok)
+	assert.Equal(t, "K", key)
+	assert.Equal(t, `a\qb\x`, value)
+}

@@ -81,3 +81,14 @@ func TestBuildEnv_HostEnvRefKeptLiteral(t *testing.T) {
 	// No expansion from host env: the literal token is injected.
 	assert.Contains(t, env, "A=${EXTERNAL_VAR}")
 }
+
+// An existing entry without '=' still names a variable the user set: a
+// secret with that name must not be injected beside it.
+func TestBuildEnv_BareExistingNameBlocksSecret(t *testing.T) {
+	secrets := []*provider.Secret{
+		{Key: "MALFORMED", Value: "secret-val"},
+		{Key: "OTHER", Value: "other-val"},
+	}
+	env := exec.BuildEnv(secrets, []string{"MALFORMED"}, "", nil)
+	assert.Equal(t, []string{"MALFORMED", "OTHER=other-val"}, env)
+}
