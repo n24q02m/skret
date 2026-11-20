@@ -3,6 +3,8 @@ package exec_test
 import (
 	"errors"
 	"os"
+	"os/signal"
+	"syscall"
 	"testing"
 	"time"
 
@@ -21,6 +23,14 @@ func TestMain(m *testing.M) {
 		os.Exit(0)
 	case "exit7":
 		os.Exit(7)
+	case "ignoreterm":
+		// Ignore SIGTERM, then tell the test it is safe to send it.
+		signal.Ignore(syscall.SIGTERM)
+		if err := os.WriteFile(os.Getenv("SKRET_TEST_READY"), nil, 0o600); err != nil {
+			os.Exit(3)
+		}
+		time.Sleep(30 * time.Second) // killed by the test
+		os.Exit(0)
 	}
 	os.Exit(m.Run())
 }

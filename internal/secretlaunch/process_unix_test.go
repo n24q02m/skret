@@ -71,6 +71,30 @@ func TestResolveUnixChildUserByAccountName(t *testing.T) {
 	assert.Equal(t, uint32(321), gid)
 }
 
+// Pins account-name resolution against the root account, which exists in the
+// passwd database on every supported Unix host (unlike an arbitrary container
+// uid): the account's primary group is used unless an explicit group follows,
+// and an empty value or a non-numeric explicit group is a child error.
+func TestResolveUnixChildUserRootAccount(t *testing.T) {
+	t.Parallel()
+
+	_, _, err := resolveUser("")
+	assert.Equal(t, ErrChild, errorCode(err))
+
+	uid, gid, err := resolveUser("root")
+	require.NoError(t, err)
+	assert.Equal(t, uint32(0), uid)
+	assert.Equal(t, uint32(0), gid)
+
+	uid, gid, err = resolveUser("root:321")
+	require.NoError(t, err)
+	assert.Equal(t, uint32(0), uid)
+	assert.Equal(t, uint32(321), gid)
+
+	_, _, err = resolveUser("root:abc")
+	assert.Equal(t, ErrChild, errorCode(err))
+}
+
 func TestApplyUnixChildUserSetsExactCredential(t *testing.T) {
 	t.Parallel()
 
