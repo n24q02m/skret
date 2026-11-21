@@ -90,7 +90,7 @@ Download pre-built binaries from [GitHub Releases](https://github.com/n24q02m/sk
 | Windows  | amd64                 | `skret_VERSION_windows_amd64.zip`   |
 | Windows  | arm64                 | `skret_VERSION_windows_arm64.zip`   |
 
-Verify `checksums.txt.bundle` with `cosign`, then verify the downloaded archive against `checksums.txt` before extraction. See the [release verification procedure](/contributing/release-process/#verify-a-published-release).
+Verify `checksums.txt.bundle` with `cosign`, then verify the downloaded archive against `checksums.txt` before extraction. See the [release verification procedure](/contributing/release-process/#verifying-a-release).
 
 ## Verify Installation
 
