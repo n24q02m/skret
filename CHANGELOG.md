@@ -4,6 +4,100 @@ All notable changes to this project will be documented in this file.
 
 <!-- version list -->
 
+## v1.41.0-beta.1 (2026-11-22)
+
+### Bug Fixes
+
+- Build the arm64 CLI image on an arm64 alpine base
+  ([#1010](https://github.com/n24q02m/skret/pull/1010),
+  [`cf7eef4`](https://github.com/n24q02m/skret/commit/cf7eef4d3e4680137caa57dc913b112293b091ec))
+
+- Check the release Dockerfile gives the arm64 image an arm64 userland
+  ([#1010](https://github.com/n24q02m/skret/pull/1010),
+  [`cf7eef4`](https://github.com/n24q02m/skret/commit/cf7eef4d3e4680137caa57dc913b112293b091ec))
+
+- Cover the untested paths of every internal package
+  ([#1013](https://github.com/n24q02m/skret/pull/1013),
+  [`816c0e2`](https://github.com/n24q02m/skret/commit/816c0e23ecfca4b190cfec7ae6554ba33a99cdf8))
+
+- Drop deno from CI, CD and the mise toolchain ([#1019](https://github.com/n24q02m/skret/pull/1019),
+  [`80995cf`](https://github.com/n24q02m/skret/commit/80995cf8b0b184bf3488d918c97f2f479ff9d97b))
+
+- Hold bun installs to the Renovate release age
+  ([#1016](https://github.com/n24q02m/skret/pull/1016),
+  [`a7d8c19`](https://github.com/n24q02m/skret/commit/a7d8c193e7165a21559b97653dc6eb79b538d2d1))
+
+- Hold every internal package to 95% coverage ([#1013](https://github.com/n24q02m/skret/pull/1013),
+  [`816c0e2`](https://github.com/n24q02m/skret/commit/816c0e23ecfca4b190cfec7ae6554ba33a99cdf8))
+
+- Hold every internal package to a 95% coverage floor in CI
+  ([#1013](https://github.com/n24q02m/skret/pull/1013),
+  [`816c0e2`](https://github.com/n24q02m/skret/commit/816c0e23ecfca4b190cfec7ae6554ba33a99cdf8))
+
+- Label the hub login field as the dashboard password
+  ([#1004](https://github.com/n24q02m/skret/pull/1004),
+  [`0de4bfd`](https://github.com/n24q02m/skret/commit/0de4bfd71b560365e27bf95ded7494c3ba340564))
+
+- Let Renovate digest updates clear the release-age hold
+  ([#1015](https://github.com/n24q02m/skret/pull/1015),
+  [`a8f1714`](https://github.com/n24q02m/skret/commit/a8f171419356e95b731c09cfef33b315ff84990a))
+
+- Pin the CLI image base to the multi-arch alpine index
+  ([#1010](https://github.com/n24q02m/skret/pull/1010),
+  [`cf7eef4`](https://github.com/n24q02m/skret/commit/cf7eef4d3e4680137caa57dc913b112293b091ec))
+
+- Pin the hook order in the secretlaunch cancellation close test
+  ([#1014](https://github.com/n24q02m/skret/pull/1014),
+  [`0434cd7`](https://github.com/n24q02m/skret/commit/0434cd76f1d22e481bb240a9313baff3418ddff2))
+
+- Point the release verification link at its real anchor
+  ([#1018](https://github.com/n24q02m/skret/pull/1018),
+  [`7c578b6`](https://github.com/n24q02m/skret/commit/7c578b659566c958d7a39d6d4834b96b705f9792))
+
+- Rename the hub dashboard password binding to SKRET_HUB_DASHBOARD_PASSWORD
+  ([#1009](https://github.com/n24q02m/skret/pull/1009),
+  [`f628d6f`](https://github.com/n24q02m/skret/commit/f628d6f18bc0a12a46fa14728b341d5f73a9325d))
+
+- **deps**: Update alpine:3.24 Docker digest to f59abe6
+  ([#990](https://github.com/n24q02m/skret/pull/990),
+  [`818d5c3`](https://github.com/n24q02m/skret/commit/818d5c30b6f03b4d8b39fb257379b5da3b0f3a01))
+
+- **deps**: Update aws-sdk-go-v2 monorepo ([#1002](https://github.com/n24q02m/skret/pull/1002),
+  [`71922ce`](https://github.com/n24q02m/skret/commit/71922ce2edd28f571cc339774f62bb2d6a92eeb2))
+
+- **deps**: Update go to v1.27.4 ([#1005](https://github.com/n24q02m/skret/pull/1005),
+  [`2f72953`](https://github.com/n24q02m/skret/commit/2f729532432e9ac312fa47cbe63c249bc90dcb7a))
+
+- **deps**: Update goreleaser/goreleaser to v2.20.1
+  ([#1007](https://github.com/n24q02m/skret/pull/1007),
+  [`dc0cfee`](https://github.com/n24q02m/skret/commit/dc0cfee520c82ec3a1d312e20292bb19c3264ebf))
+
+- **deps**: Update goreleaser/goreleaser to v2.20.2
+  ([#1011](https://github.com/n24q02m/skret/pull/1011),
+  [`d25da0b`](https://github.com/n24q02m/skret/commit/d25da0bfe25318d6e50ca34e239402bbd6c215bf))
+
+- **deps**: Update module github.com/aws/smithy-go to v1.28.9
+  ([#1003](https://github.com/n24q02m/skret/pull/1003),
+  [`d82fd1a`](https://github.com/n24q02m/skret/commit/d82fd1aa3cb735239ac07f08e63871fc9fe8b6ec))
+
+- **deps**: Update module github.com/oracle/oci-go-sdk/v65 to v65.130.0
+  ([#1008](https://github.com/n24q02m/skret/pull/1008),
+  [`9a69ac1`](https://github.com/n24q02m/skret/commit/9a69ac1b0c1773a1bb66fe1e1bfd251abf0ab834))
+
+- **deps**: Update module golang.org/x/crypto to v0.59.0
+  ([#1012](https://github.com/n24q02m/skret/pull/1012),
+  [`88060b1`](https://github.com/n24q02m/skret/commit/88060b15d1a24bbde09ff4e23d16d2af89e5d4c7))
+
+- **deps**: Update peter-evans/create-pull-request action to v8.1.3
+  ([#1006](https://github.com/n24q02m/skret/pull/1006),
+  [`b2a2727`](https://github.com/n24q02m/skret/commit/b2a2727a7e15cc26498fb720bdb1c28e309a7aec))
+
+### Features
+
+- Sync cross-promo section ([#1017](https://github.com/n24q02m/skret/pull/1017),
+  [`077ead7`](https://github.com/n24q02m/skret/commit/077ead7abf21baf7eafb38b267980bb1aed361a7))
+
+
 ## v1.40.0 (2026-11-17)
 
 
