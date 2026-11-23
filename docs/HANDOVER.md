@@ -1,28 +1,35 @@
 # HANDOVER
 
-## Status: maintenance mode — planned archival
+## Status: GA (Actively Maintained)
 
-This project is in maintenance mode and is planned for archival once consumers have migrated to maintained, official alternatives. **No new features will be added. Dependency updates are frozen.** Only a critical security fix would trigger a further release before archival.
+`skret` is an active, generally available (GA) multi-cloud secret manager CLI, Go library (`pkg/skret`), and MCP server for developers, CI/CD pipelines, and AI coding agents. It unifies secret storage across cloud providers and local encrypted files behind a single `.skret.yaml` contract.
 
-**Guidance: prefer official, first-party tools over configuring this project.** For secret management and vault workflows, use [HashiCorp Vault](https://developer.hashicorp.com/vault) or the [OpenBao](https://openbao.org/) CLI/API directly. For object-storage and drive synchronization, use [rclone](https://rclone.org/). Wrapping day-to-day workflows in this repository's own configuration is no longer the recommended path.
+## Architecture and Surfaces
 
-## Current release
+- **CLI (`cmd/skret`)**: Core commands for reading, writing, running processes with injected secrets, validating schemas, diffing environments, scanning for leaks, and projecting secrets to target platforms (`skret get`, `set`, `list`, `delete`, `rotate`, `run`, `env`, `sync`, `diff`, `doctor`, `scan`, `template`, `watch`, `browse`).
+- **Go SDK (`pkg/skret`)**: Public library API with strict typed errors and provider abstraction (`internal/provider/...`).
+- **MCP Server**: Exposes read-only secret inspection and policy-gated write/rotate tools to MCP-compatible agent harnesses (`mcp.allow_write` defaults to `false`, `mcp.allowed_envs` restricts environment scope, and local reads are recorded to the audit log).
+- **Providers (`internal/provider`)**:
+  - AWS Systems Manager Parameter Store (`aws-ssm`)
+  - Google Cloud Secret Manager (`gcp-sm`)
+  - Azure Key Vault (`azure-kv`)
+  - Oracle Cloud Infrastructure Vault (`oci-vault`)
+  - Local SOPS / age encrypted files (`local`)
+- **Sync Targets (`internal/syncer`)**:
+  - GitHub Actions repository and environment secrets (`github`)
+  - Dotenv files with atomic writes (`dotenv`)
+  - Kubernetes `Secret` manifests (`k8s`)
+  - Terraform `.tfvars` files (`terraform`)
 
-The latest release is published on the [GitHub Releases page](https://github.com/n24q02m/skret/releases). If a package-manager manifest still points at an older version, install directly from GitHub Releases instead.
+## Release and Verification Runbook
 
-## What remains operational until archival
-
-- The scheduled sync pipeline continues to run on its daily schedule (03:00 UTC).
-- The dashboard/manifest surface stays available.
-- Client executor credentials rotate on a weekly cycle by design; operators on record have the rotation runbook.
-
-## Migration notes
-
-1. Inventory any scheduled jobs or scripts that invoke this tool.
-2. Replace each job with the equivalent direct CLI/API call of the successor tool (OpenBao for vault/secret reads; rclone for storage sync).
-3. Verify with a dry run first, then one live cycle, comparing counts and checksums before removing the old job.
-4. Keep the last installed version until every replacement job has completed at least one verified cycle.
-
-## After archival
-
-The repository will become read-only. Existing releases remain downloadable, but no further builds, releases, or support responses should be expected.
+1. **Continuous Integration (`.github/workflows/ci.yml`)**:
+   - Enforces `verify_readme_sync.py` and repo-bootstrap policy tests.
+   - Runs `golangci-lint` across `linux`, `windows`, and `darwin` targets.
+   - Executes unit and race-detector test suites on `ubuntu-latest`, `windows-latest`, and `macos-latest` with coverage thresholds (`>= 95%` on both `internal/...` and `pkg/skret/...`).
+   - Verifies multi-arch OCI archive builds (`linux/amd64`, `linux/arm64`).
+2. **Continuous Delivery (`.github/workflows/cd.yml`)**:
+   - Triggered via `workflow_dispatch` (`release_type=beta` or `release_type=stable`).
+   - Uses `better-semantic-release` to compute versions from Conventional Commits, cross-compiles release binaries via GoReleaser, signs artifacts and SBOMs with Cosign keyless OIDC, and updates `n24q02m/homebrew-tap` and `n24q02m/scoop-bucket` on stable releases.
+3. **Documentation**:
+   - Published from `docs/` (Astro Starlight) and aggregated into `docs.n24q02m.com/skret/`.
