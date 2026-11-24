@@ -23,7 +23,7 @@ For path `/myapp/prod` and project `myapp`, bootstrap creates:
 
 - **An IAM user** named `skret-<project>` (e.g. `skret-myapp`). If the user
   already exists it is reused — bootstrap is idempotent.
-- **A permanent access key** for that user, stored in `~/.skret/credentials.yaml`.
+- **A permanent access key** for that user, stored in `~/.n24q02m/skret/credentials.yaml`.
   There is no expiry.
 - **An inline least-privilege policy** (also named `skret-<project>`) granting
   exactly the SSM actions skret uses, scoped to `parameter/<path>/*`, plus the

@@ -516,7 +516,7 @@ func TestLoadDeploySalt_ReportsFilesystemFailures(t *testing.T) {
 
 	t.Run("salt path is a directory", func(t *testing.T) {
 		home := withFakeHome(t)
-		require.NoError(t, os.MkdirAll(filepath.Join(home, ".skret", "hub-salt"), 0o700))
+		require.NoError(t, os.MkdirAll(filepath.Join(home, ".n24q02m", "skret", "hub-salt"), 0o700))
 		salt, err := LoadDeploySalt()
 		require.Error(t, err)
 		assert.Nil(t, salt)
@@ -536,17 +536,17 @@ func TestLoadDeploySalt_ReportsFilesystemFailures(t *testing.T) {
 
 	t.Run("temporary salt path is a directory", func(t *testing.T) {
 		home := withFakeHome(t)
-		require.NoError(t, os.MkdirAll(filepath.Join(home, ".skret", "hub-salt.tmp"), 0o700))
+		require.NoError(t, os.MkdirAll(filepath.Join(home, ".n24q02m", "skret", "hub-salt.tmp"), 0o700))
 		salt, err := LoadDeploySalt()
 		require.Error(t, err)
 		assert.Nil(t, salt)
 		assert.Contains(t, err.Error(), "write hub salt")
-		assert.NoFileExists(t, filepath.Join(home, ".skret", "hub-salt"))
+		assert.NoFileExists(t, filepath.Join(home, ".n24q02m", "skret", "hub-salt"))
 	})
 
 	t.Run("short salt cannot be replaced", func(t *testing.T) {
 		home := withFakeHome(t)
-		skretDir := filepath.Join(home, ".skret")
+		skretDir := filepath.Join(home, ".n24q02m", "skret")
 		require.NoError(t, os.MkdirAll(skretDir, 0o700))
 		saltPath := filepath.Join(skretDir, "hub-salt")
 		require.NoError(t, os.WriteFile(saltPath, []byte("short"), 0o600))
@@ -573,7 +573,7 @@ func TestAcquireTargetLock_ReportsFilesystemFailures(t *testing.T) {
 
 	t.Run("skret path is a file", func(t *testing.T) {
 		home := withFakeHome(t)
-		require.NoError(t, os.WriteFile(filepath.Join(home, ".skret"), []byte("not a directory"), 0o600))
+		require.NoError(t, os.WriteFile(filepath.Join(home, ".n24q02m"), []byte("not a directory"), 0o600))
 		release, err := AcquireTargetLock("github", "owner/repo")
 		require.Error(t, err)
 		assert.Nil(t, release)

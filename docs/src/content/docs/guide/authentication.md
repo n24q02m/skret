@@ -9,7 +9,7 @@ access key provisioned from an admin credential — see [Bootstrap](/guide/boots
 skret resolves AWS credentials in two layers:
 
 1. **skret-managed credential** -- if you ran `skret auth login aws`, skret uses
-   the credential it stored (`~/.skret/credentials.yaml`). This is what lets
+   the credential it stored (`~/.n24q02m/skret/credentials.yaml`). This is what lets
    skret authenticate on its own, with no `aws` CLI and no daily re-login.
 2. **AWS SDK default chain** -- if no skret credential is stored, skret falls
    back to the standard chain below, so existing `aws login`, environment

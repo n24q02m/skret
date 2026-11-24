@@ -19,6 +19,7 @@ import (
 
 	"github.com/n24q02m/skret/internal/keystore"
 	"github.com/n24q02m/skret/internal/provider"
+	"github.com/n24q02m/skret/internal/statedir"
 	"golang.org/x/crypto/hkdf"
 )
 
@@ -874,12 +875,16 @@ func timePtr(value time.Time) *time.Time {
 // StatePathFor returns the on-disk path for the given target+id.
 // Exposed for testing; production code uses LoadSyncState/SaveSyncState.
 func StatePathFor(target, id string) (string, error) {
-	home, err := os.UserHomeDir()
+	profile, err := statedir.ResolveProfile("")
+	if err != nil {
+		return "", err
+	}
+	stateRoot, err := statedir.Dir(profile)
 	if err != nil {
 		return "", fmt.Errorf("user home dir: %w", err)
 	}
 
-	baseDir := filepath.Join(home, ".skret", "sync-state")
+	baseDir := filepath.Join(stateRoot, "sync-state")
 	expectedName := "v1-" + encodeStatePath(target, id) + ".json"
 	constructedPath := filepath.Join(baseDir, expectedName)
 
@@ -975,6 +980,7 @@ func LoadSyncState(target, id string) (*SyncState, error) {
 	if err != nil {
 		return nil, err
 	}
+	_ = statedir.MigrateLegacyDir(filepath.Dir(path), "sync-state")
 	data, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return &SyncState{Target: target, ID: id, Hashes: map[string]string{}}, nil
@@ -1156,11 +1162,16 @@ func hkdfDerive(material []byte, info string) []byte {
 }
 
 func hashKeyFile() ([]byte, error) {
-	home, err := os.UserHomeDir()
+	profile, err := statedir.ResolveProfile("")
 	if err != nil {
 		return nil, err
 	}
-	path := filepath.Join(home, ".skret", "sync-hash.key")
+	stateRoot, err := statedir.Dir(profile)
+	if err != nil {
+		return nil, err
+	}
+	path := filepath.Join(stateRoot, "sync-hash.key")
+	_ = statedir.MigrateLegacyFile(path, "sync-hash.key")
 	if data, err := os.ReadFile(path); err == nil {
 		if key, derr := base64.StdEncoding.DecodeString(strings.TrimSpace(string(data))); derr == nil && len(key) == sha256.Size {
 			return key, nil

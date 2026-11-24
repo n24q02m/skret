@@ -107,7 +107,7 @@ The `local` provider stores secrets in plaintext YAML. It is for development onl
 
 ## Does Skret store any credentials?
 
-It can. `skret auth login aws` stores the selected Skret-managed AWS credential in `~/.skret/credentials.yaml`; otherwise the local CLI uses the AWS SDK credential chain. Import and manual sync tokens such as `DOPPLER_TOKEN`, `GITHUB_TOKEN`, and `CLOUDFLARE_API_TOKEN` are read from the operator environment and are not written to `.skret.yaml`.
+It can. `skret auth login aws` stores the selected Skret-managed AWS credential in `~/.n24q02m/skret/credentials.yaml`; otherwise the local CLI uses the AWS SDK credential chain. Import and manual sync tokens such as `DOPPLER_TOKEN`, `GITHUB_TOKEN`, and `CLOUDFLARE_API_TOKEN` are read from the operator environment and are not written to `.skret.yaml`.
 
 The hosted planner is a different boundary: it receives no provider credential or secret value. Hosted provider/KMS calls belong only to the separate security executor after signed operation verification.
 

@@ -1,18 +1,18 @@
 ---
-title: MCP server (skret-mcp)
-description: "Expose skret to Claude Code, OMP, and other MCP clients over stdio — read-only by default, writes gated behind config."
+title: MCP server (skret mcp)
+description: "Expose skret to Claude Code, OMP, and other MCP clients over stdio or Streamable HTTP — read-only by default, writes gated behind config."
 ---
 
-`skret-mcp` is an MCP (Model Context Protocol) server that lets an AI agent harness use skret directly: it discovers the same `.skret.yaml` as the CLI and serves a small set of tools over stdio. It ships alongside the CLI in every skret release.
+`skret mcp` is the built-in MCP (Model Context Protocol) subcommand of `skret`: it discovers the same `.skret.yaml` as the CLI and serves tools over stdio or Streamable HTTP (`/mcp`, `/healthz`).
 
 Design rule: **secret values move only through an explicit `skret_get` call.** Everything else exposes names, environments, or health — never values.
 
 ## Install
 
-`skret-mcp` is distributed in the same release artifacts as `skret` (Homebrew cask, Scoop manifest, GitHub release archives, and the Docker image). If you installed skret via a package channel, the binary is already on your `PATH`; verify with:
+`skret mcp` is built into the `skret` binary distributed via Homebrew, Scoop, GitHub release archives, and the Docker image. Verify with:
 
 ```bash
-skret-mcp --version
+skret mcp --help
 ```
 
 ## Tools
@@ -69,12 +69,12 @@ When the selected environment uses the **local provider**, every MCP read (`skre
 
 ## Wiring up a client
 
-`skret-mcp` speaks newline-delimited JSON-RPC 2.0 on stdin/stdout — the standard MCP stdio transport — so any MCP client can launch it as a local server. Point `--workdir` (or the client's own working directory, by leaving it off) at the project that owns the `.skret.yaml`.
+`skret mcp` speaks newline-delimited JSON-RPC 2.0 on stdin/stdout by default (`--transport stdio`), or Streamable HTTP (`--transport http --addr 127.0.0.1:8787`, with optional `--token` / `SKRET_MCP_TOKEN` required for non-loopback binds). Point `--workdir` (or the client's own working directory, by leaving it off) at the project that owns the `.skret.yaml`.
 
 ### Claude Code
 
 ```bash
-claude mcp add skret -- skret-mcp --workdir /path/to/project
+claude mcp add skret -- skret mcp --workdir /path/to/project
 ```
 
 or in the project's `.mcp.json`:
@@ -83,8 +83,8 @@ or in the project's `.mcp.json`:
 {
   "mcpServers": {
     "skret": {
-      "command": "skret-mcp",
-      "args": ["--workdir", "."]
+      "command": "skret",
+      "args": ["mcp", "--workdir", "."]
     }
   }
 }
@@ -94,22 +94,24 @@ or in the project's `.mcp.json`:
 
 ```toml
 [mcp.servers.skret]
-command = "skret-mcp"
-args = ["--workdir", "."]
+command = "skret"
+args = ["mcp", "--workdir", "."]
 ```
 
 ### Other clients
 
-Any client that supports stdio MCP servers works the same way: command `skret-mcp`, args `["--workdir", "<project>"]`. Relative paths inside `.skret.yaml` (like `file: .secrets.dev.yaml`) resolve against the config's own directory, so the server can be launched from anywhere.
+Any client that supports stdio or Streamable HTTP MCP servers works the same way: command `skret`, args `["mcp", "--workdir", "<project>"]`. Relative paths inside `.skret.yaml` (like `file: .secrets.dev.yaml`) resolve against the config's own directory, so the server can be launched from anywhere.
 
 ## Flags
 
-| Flag                | Default           | Description                                       |
-| ------------------- | ----------------- | ------------------------------------------------- |
-| `--workdir <dir>`   | current directory | Where to discover `.skret.yaml`                   |
-| `--env <name>`      | `default_env`     | Pin the environment (must satisfy `allowed_envs`) |
-| `--provider <name>` | config            | Override the provider                             |
-| `--path <prefix>`   | config            | Override the secret path prefix                   |
-| `--version`         | --                | Print version and exit                            |
+| Flag                           | Default           | Description                                                           |
+| ------------------------------ | ----------------- | --------------------------------------------------------------------- |
+| `--workdir <dir>`              | current directory | Where to discover `.skret.yaml`                                       |
+| `--transport <stdio\|http>`    | `stdio`           | MCP transport mode                                                    |
+| `--addr <host:port>`           | `127.0.0.1:8787`  | HTTP listen address for `--transport=http`                            |
+| `--token <token>`              | `SKRET_MCP_TOKEN` | Bearer token for `--transport=http` (required for non-loopback binds) |
+| `--env <name>`                 | `default_env`     | Pin the environment (must satisfy `allowed_envs`)                     |
+| `--provider <name>`            | config            | Override the provider                                                 |
+| `--path <prefix>`              | config            | Override the secret path prefix                                       |
 
 Diagnostics go to stderr only; stdout carries protocol messages exclusively.

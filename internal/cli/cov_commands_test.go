@@ -389,7 +389,7 @@ func TestCovDAuthLogin_ProfileMethodStoresCredential(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, stderr, "Successfully authenticated with aws")
 
-	cred, err := auth.NewStoreWithPath(filepath.Join(home, ".skret", "credentials.yaml")).Load("aws")
+	cred, err := auth.NewStoreWithPath(filepath.Join(home, ".n24q02m", "skret", "credentials.yaml")).Load("aws")
 	require.NoError(t, err)
 	assert.Equal(t, "profile", cred.Method)
 	assert.Equal(t, "covd", cred.Metadata["profile"])
@@ -401,7 +401,7 @@ func TestCovDAuthLogin_MalformedOptRejected(t *testing.T) {
 	_, _, err := runRootCmd(t, "auth", "login", "aws", "--method", "profile", "--opt", "profile")
 	requireExit(t, err, skret.ExitConfigError)
 	assert.Contains(t, err.Error(), `--opt must be key=value, got "profile"`)
-	_, statErr := os.Stat(filepath.Join(home, ".skret", "credentials.yaml"))
+	_, statErr := os.Stat(filepath.Join(home, ".n24q02m", "skret", "credentials.yaml"))
 	assert.True(t, os.IsNotExist(statErr), "a rejected login must not write the store")
 }
 
@@ -410,7 +410,7 @@ func TestCovDAuthLogout_UnreadableStoreFails(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
 	t.Setenv("SKRET_KEYRING", "")
-	store := filepath.Join(home, ".skret", "credentials.yaml")
+	store := filepath.Join(home, ".n24q02m", "skret", "credentials.yaml")
 	require.NoError(t, os.MkdirAll(filepath.Dir(store), 0o700))
 	require.NoError(t, os.WriteFile(store, []byte("providers: [unterminated\n"), 0o600))
 
@@ -438,7 +438,7 @@ func TestCovDSetupAuthHook_DefaultCopiesOptsAndLogsIn(t *testing.T) {
 	require.NoError(t, setupAuthHook("aws", "profile", opts))
 	assert.Equal(t, map[string]string{"profile": "covd"}, opts, "the caller's opts must not gain a method key")
 
-	cred, err := auth.NewStoreWithPath(filepath.Join(home, ".skret", "credentials.yaml")).Load("aws")
+	cred, err := auth.NewStoreWithPath(filepath.Join(home, ".n24q02m", "skret", "credentials.yaml")).Load("aws")
 	require.NoError(t, err)
 	assert.Equal(t, "profile", cred.Method)
 	assert.Equal(t, "covd", cred.Metadata["profile"])

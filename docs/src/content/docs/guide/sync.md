@@ -152,7 +152,7 @@ Secret keys must satisfy the Kubernetes Secret data-key charset (alphanumerics, 
 skret sync --to=github --github-repo=myorg/myapp --skip-unchanged
 ```
 
-`--skip-unchanged` compares each secret's SHA256 hash against a local cache (`~/.skret/sync-state/`, one file per target) from the last successful sync and only pushes values that changed. This avoids unnecessary API calls on scheduled sync jobs where most secrets are unchanged run to run. The cache updates only after a fully successful sync to that target.
+`--skip-unchanged` compares each secret's SHA256 hash against a local cache (`~/.n24q02m/skret/sync-state/`, one file per target) from the last successful sync and only pushes values that changed. This avoids unnecessary API calls on scheduled sync jobs where most secrets are unchanged run to run. The cache updates only after a fully successful sync to that target.
 
 ## Explicit rotation: `--rotate`
 

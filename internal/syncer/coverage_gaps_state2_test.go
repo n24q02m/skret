@@ -134,7 +134,7 @@ func TestSaveSyncState_RejectsInvalidOperationIdentity(t *testing.T) {
 			err := SaveSyncState(state)
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), name)
-			assert.NoDirExists(t, filepath.Join(home, ".skret", "sync-state"))
+			assert.NoDirExists(t, filepath.Join(home, ".n24q02m", "skret", "sync-state"))
 		})
 	}
 }
@@ -202,7 +202,7 @@ func TestSourceDigest_TreatsNilSecretAsDistinctOrderIndependentEntry(t *testing.
 
 func TestHashKeyFile_ReportsUnwritableKeyPath(t *testing.T) {
 	home := withFakeHome(t)
-	keyPath := filepath.Join(home, ".skret", "sync-hash.key")
+	keyPath := filepath.Join(home, ".n24q02m", "skret", "sync-hash.key")
 	require.NoError(t, os.MkdirAll(keyPath, 0o700))
 
 	key, err := hashKeyFile()

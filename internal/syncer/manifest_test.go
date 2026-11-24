@@ -76,7 +76,7 @@ func TestLoadDeploySalt_FirstRun_CreatesSaltFile(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, salt, 16)
 
-	path := filepath.Join(home, ".skret", "hub-salt")
+	path := filepath.Join(home, ".n24q02m", "skret", "hub-salt")
 	info, err := os.Stat(path)
 	require.NoError(t, err)
 	assert.False(t, info.IsDir())
@@ -102,7 +102,7 @@ func TestLoadDeploySalt_FilePerms(t *testing.T) {
 		t.Skip("POSIX file perms unreliable on windows")
 	}
 
-	path := filepath.Join(home, ".skret", "hub-salt")
+	path := filepath.Join(home, ".n24q02m", "skret", "hub-salt")
 	info, err := os.Stat(path)
 	require.NoError(t, err)
 	assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
@@ -110,7 +110,7 @@ func TestLoadDeploySalt_FilePerms(t *testing.T) {
 
 func TestLoadDeploySalt_CorruptShortFile_SelfHeals(t *testing.T) {
 	home := withFakeHome(t)
-	dir := filepath.Join(home, ".skret")
+	dir := filepath.Join(home, ".n24q02m", "skret")
 	require.NoError(t, os.MkdirAll(dir, 0o700))
 	path := filepath.Join(dir, "hub-salt")
 	require.NoError(t, os.WriteFile(path, []byte("short"), 0o600)) // < 16 bytes
