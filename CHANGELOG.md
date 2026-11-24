@@ -4,6 +4,25 @@ All notable changes to this project will be documented in this file.
 
 <!-- version list -->
 
+## v1.42.0-beta.1 (2026-11-24)
+
+### Bug Fixes
+
+- Format docs markdown and expand statedir error coverage
+  ([#1025](https://github.com/n24q02m/skret/pull/1025),
+  [`8a78187`](https://github.com/n24q02m/skret/commit/8a7818735cb5284c5f33408e4b777db8ae882d38))
+
+- Update HANDOVER.md to reflect active GA status
+  ([#1022](https://github.com/n24q02m/skret/pull/1022),
+  [`1c66e00`](https://github.com/n24q02m/skret/commit/1c66e003c63658a7885e3e75a2b6e09ec945ead7))
+
+### Features
+
+- Embed skret mcp subcommand and n24q02m state layout
+  ([#1025](https://github.com/n24q02m/skret/pull/1025),
+  [`8a78187`](https://github.com/n24q02m/skret/commit/8a7818735cb5284c5f33408e4b777db8ae882d38))
+
+
 ## v1.41.0 (2026-11-22)
 
 
