@@ -438,7 +438,7 @@ func TestSyncState_NewOperationIDIsOpaqueAndUnique(t *testing.T) {
 
 func TestSyncState_SaveRejectsUncreatableStateDirectory(t *testing.T) {
 	home := withFakeHome(t)
-	stateDir := filepath.Join(home, ".skret", "sync-state")
+	stateDir := filepath.Join(home, ".n24q02m", "skret", "sync-state")
 	require.NoError(t, os.MkdirAll(filepath.Dir(stateDir), 0o700))
 	require.NoError(t, os.WriteFile(stateDir, []byte("not-a-directory"), 0o600))
 

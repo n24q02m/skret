@@ -87,7 +87,7 @@ notify: # Optional. Webhook notifications fired after successful secret mutation
     - sync
   secret: ${NOTIFY_SECRET} # Optional. HMAC-SHA256 signing key; receivers verify the X-Skret-Signature header.
 
-mcp: # Optional. Policy for the skret-mcp server (see guide/mcp).
+mcp: # Optional. Policy for the `skret mcp` server (see guide/mcp).
   allow_write: false # Optional. Enable the write tools (skret_set/delete/rotate). Default false.
   allowed_envs: # Optional. Restrict which environments MCP may access; omit for all.
     - dev
@@ -107,7 +107,7 @@ mcp: # Optional. Policy for the skret-mcp server (see guide/mcp).
 | `exclude`      | list   | No       | `[]`    | Secret keys excluded from `run` and `env` output.                                                                                                                       |
 | `sync`         | map    | No       | --      | Declared sync targets and hub endpoint for `skret sync` / `skret hub push`. See [Sync Fields](#sync-fields).                                                            |
 | `notify`       | map    | No       | --      | Webhook notifications fired after successful secret mutations (`set`/`delete`/`rotate`/`sync`). See [Notify Fields](#notify-fields).                                    |
-| `mcp`          | map    | No       | --      | Policy for the `skret-mcp` MCP server: write gating and environment access. See [MCP Fields](#mcp-fields).                                                              |
+| `mcp`          | map    | No       | --      | Policy for the `skret mcp` MCP server: write gating and environment access. See [MCP Fields](#mcp-fields).                                                              |
 
 ### Environment Fields
 
@@ -202,7 +202,7 @@ Payload shape (one POST per event; `sync`/`rotate` fire once per completed targe
 
 ### MCP Fields
 
-`mcp` configures the `skret-mcp` server (see the [MCP guide](/guide/mcp/)). The block is optional; the server runs with defaults when absent.
+`mcp` configures the `skret mcp` server (see the [MCP guide](/guide/mcp/)). The block is optional; the server runs with defaults when absent.
 
 | Field              | Type | Required | Default          | Description                                                                                                                                                                                                                             |
 | ------------------ | ---- | -------- | ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

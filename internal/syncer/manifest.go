@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/n24q02m/skret/internal/provider"
+	"github.com/n24q02m/skret/internal/statedir"
 )
 
 // Manifest is the names-only inventory published to the vault hub. It never
@@ -61,13 +62,18 @@ func Fingerprint(salt []byte, value string) string {
 }
 
 // LoadDeploySalt reads (or first-run creates) a 16-byte deployment salt at
-// ~/.skret/hub-salt with 0600. The salt never leaves the machine.
+// ~/.n24q02m/skret/hub-salt with 0600. The salt never leaves the machine.
 func LoadDeploySalt() ([]byte, error) {
-	home, err := os.UserHomeDir()
+	profile, err := statedir.ResolveProfile("")
+	if err != nil {
+		return nil, err
+	}
+	stateRoot, err := statedir.Dir(profile)
 	if err != nil {
 		return nil, fmt.Errorf("user home dir: %w", err)
 	}
-	path := filepath.Join(home, ".skret", "hub-salt")
+	path := filepath.Join(stateRoot, "hub-salt")
+	_ = statedir.MigrateLegacyFile(path, "hub-salt")
 	data, err := os.ReadFile(path)
 	if err == nil && len(data) >= 16 {
 		return data, nil

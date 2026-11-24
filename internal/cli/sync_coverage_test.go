@@ -858,7 +858,7 @@ func assertNoSyncStateFiles(t *testing.T) {
 	t.Helper()
 	home, err := os.UserHomeDir()
 	require.NoError(t, err)
-	stateDir := filepath.Join(home, ".skret", "sync-state")
+	stateDir := filepath.Join(home, ".n24q02m", "skret", "sync-state")
 	entries, err := os.ReadDir(stateDir)
 	if os.IsNotExist(err) {
 		return

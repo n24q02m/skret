@@ -62,7 +62,7 @@ func TestAuthStatusCmd_WithCredential(t *testing.T) {
 	t.Setenv("HOME", dir)
 	t.Setenv("USERPROFILE", dir)
 
-	s := auth.NewStoreWithPath(filepath.Join(dir, ".skret", "credentials.yaml"))
+	s := auth.NewStoreWithPath(filepath.Join(dir, ".n24q02m", "skret", "credentials.yaml"))
 	require.NoError(t, s.Save(&auth.Credential{
 		Provider: "doppler",
 		Method:   "oauth",
@@ -85,7 +85,7 @@ func TestAuthStatusCmd_Statuses(t *testing.T) {
 	t.Setenv("HOME", dir)
 	t.Setenv("USERPROFILE", dir)
 
-	s := auth.NewStoreWithPath(filepath.Join(dir, ".skret", "credentials.yaml"))
+	s := auth.NewStoreWithPath(filepath.Join(dir, ".n24q02m", "skret", "credentials.yaml"))
 
 	// 1. Valid credential
 	require.NoError(t, s.Save(&auth.Credential{
@@ -118,7 +118,7 @@ func TestAuthLogoutCmd(t *testing.T) {
 	t.Setenv("HOME", dir)
 	t.Setenv("USERPROFILE", dir)
 
-	s := auth.NewStoreWithPath(filepath.Join(dir, ".skret", "credentials.yaml"))
+	s := auth.NewStoreWithPath(filepath.Join(dir, ".n24q02m", "skret", "credentials.yaml"))
 	require.NoError(t, s.Save(&auth.Credential{Provider: "doppler", Token: "x"}))
 
 	cmd := newAuthLogoutCmd()
@@ -171,7 +171,7 @@ func TestNewStore_FileBackendCreatesFile(t *testing.T) {
 	require.NoError(t, s.Save(&auth.Credential{Provider: "test", Token: "t"}))
 
 	// Verify file created
-	info, err := os.Stat(filepath.Join(dir, ".skret", "credentials.yaml"))
+	info, err := os.Stat(filepath.Join(dir, ".n24q02m", "skret", "credentials.yaml"))
 	require.NoError(t, err)
 	assert.False(t, info.IsDir())
 }

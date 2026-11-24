@@ -20,7 +20,7 @@ func TestDefaultFilePath(t *testing.T) {
 		t.Setenv("USERPROFILE", home) // for windows compatibility if run there
 
 		path := defaultFilePath()
-		expected := filepath.Join(home, ".skret", "credentials.yaml")
+		expected := filepath.Join(home, ".n24q02m", "skret", "credentials.yaml")
 		assert.Equal(t, expected, path)
 	})
 
@@ -32,7 +32,7 @@ func TestDefaultFilePath(t *testing.T) {
 		t.Setenv("HOMEPATH", "")
 
 		path := defaultFilePath()
-		expected := filepath.Join(".", ".skret", "credentials.yaml")
+		expected := filepath.Join(".", ".n24q02m", "skret", "credentials.yaml")
 		assert.Equal(t, expected, path)
 	})
 }
@@ -211,8 +211,8 @@ func TestResolve_LoadError(t *testing.T) {
 	t.Setenv("USERPROFILE", home)
 	t.Setenv("SKRET_KEYRING", "file")
 
-	require.NoError(t, os.MkdirAll(filepath.Join(home, ".skret"), 0o700))
-	require.NoError(t, os.WriteFile(filepath.Join(home, ".skret", "credentials.yaml"), []byte("{{{bad"), 0o600))
+	require.NoError(t, os.MkdirAll(filepath.Join(home, ".n24q02m", "skret"), 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(home, ".n24q02m", "skret", "credentials.yaml"), []byte("{{{bad"), 0o600))
 
 	_, err := Resolve(context.Background(), "doppler")
 	assert.Error(t, err)

@@ -3,6 +3,8 @@ package auth
 import (
 	"os"
 	"path/filepath"
+
+	"github.com/n24q02m/skret/internal/statedir"
 )
 
 // Store persists credentials via a pluggable backend (OS keyring when
@@ -15,11 +17,11 @@ type storeFile struct {
 }
 
 func defaultFilePath() string {
-	home, err := os.UserHomeDir()
+	profile, err := statedir.ResolveProfile("")
 	if err != nil {
-		home = "."
+		profile = ""
 	}
-	return filepath.Join(home, ".skret", "credentials.yaml")
+	return filepath.Join(statedir.DirOrDot(profile), "credentials.yaml")
 }
 
 // NewStore returns the credential store. The 0600 file store is the default
@@ -31,7 +33,9 @@ func defaultFilePath() string {
 // migrated away. The file is never auto-migrated or renamed: it stays the
 // source of truth; keyring, when opted in, is just an alternative store.
 func NewStore() *Store {
-	fb := &fileBackend{path: defaultFilePath()}
+	p := defaultFilePath()
+	_ = statedir.MigrateLegacyFile(p, "credentials.yaml")
+	fb := &fileBackend{path: p}
 	if os.Getenv("SKRET_KEYRING") != "keyring" {
 		return &Store{b: fb}
 	}

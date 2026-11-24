@@ -26,7 +26,7 @@ func TestResolve_Expired(t *testing.T) {
 	t.Setenv("USERPROFILE", dir)
 
 	// Pre-populate store with expired credential
-	s := auth.NewStoreWithPath(filepath.Join(dir, ".skret", "credentials.yaml"))
+	s := auth.NewStoreWithPath(filepath.Join(dir, ".n24q02m", "skret", "credentials.yaml"))
 	require.NoError(t, s.Save(&auth.Credential{
 		Provider:  "doppler",
 		Token:     "expired-tok",

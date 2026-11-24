@@ -88,7 +88,7 @@ Without `SKRET_HUB_TOKEN`, the request is sent with no `Authorization` header.
 For each secret in the resolved environment, the manifest carries:
 
 - **`name`** — the secret's key name (the final path segment, e.g. `DATABASE_URL` from SSM path `/myapp/prod/DATABASE_URL`).
-- **`fingerprint`** — an eight-character `sha256[:8]` of the value, salted with a 16-byte deployment salt kept at `~/.skret/hub-salt` (created on first use, `0600`, never transmitted). The salt keeps fingerprints opaque to cross-deployment rainbow tables while staying stable across pushes from the same machine.
+- **`fingerprint`** — an eight-character `sha256[:8]` of the value, salted with a 16-byte deployment salt kept at `~/.n24q02m/skret/hub-salt` (created on first use, `0600`, never transmitted). The salt keeps fingerprints opaque to cross-deployment rainbow tables while staying stable across pushes from the same machine.
 - **`updated_at`** — the value's last-modified timestamp from the provider.
 - **`targets`** — a map of `"<type>:<id>"` (e.g. `"github:myorg/myapp"`, `"cloudflare:worker/my-worker"`) to a presence status (`present`/`absent`/`unknown`), one per target declared in `sync.targets`.
 
@@ -96,7 +96,7 @@ No secret value is ever included, at any point in the request.
 
 ## Presence status per target
 
-`skret hub push` looks up presence **live**, by calling each declared `sync.targets` entry's own "list existing secret names" API once per push — the same mechanism `skret sync --no-overwrite` uses. It does not read the local sync-state cache (`~/.skret/sync-state/`) at all, so the manifest reflects what is actually at the target right now, not what the last successful `skret sync` on this machine happened to write.
+`skret hub push` looks up presence **live**, by calling each declared `sync.targets` entry's own "list existing secret names" API once per push — the same mechanism `skret sync --no-overwrite` uses. It does not read the local sync-state cache (`~/.n24q02m/skret/sync-state/`) at all, so the manifest reflects what is actually at the target right now, not what the last successful `skret sync` on this machine happened to write.
 
 Each key gets one status per declared target:
 
@@ -138,7 +138,7 @@ skret hub push --hub-url https://vault.example.com
 
 - Secret **values never leave your machine** — the manifest carries only names, salted fingerprints, and presence status.
 - `SKRET_HUB_TOKEN` is read from the environment and sent as `Authorization: Bearer <token>`; it is never written to `.skret.yaml` or logged.
-- The deployment salt at `~/.skret/hub-salt` is generated once per machine and stored at `0600`. Two machines pushing the same secret produce different fingerprints unless they share a salt.
+- The deployment salt at `~/.n24q02m/skret/hub-salt` is generated once per machine and stored at `0600`. Two machines pushing the same secret produce different fingerprints unless they share a salt.
 
 ## Deploying the hub worker (owner action)
 

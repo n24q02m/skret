@@ -435,9 +435,9 @@ environments:
 	require.NoError(t, os.WriteFile(dir+"/secrets.yaml", []byte("version: \"1\"\nsecrets:\n  K: V"), 0o600))
 
 	home := setFakeHome(t)
-	// Block ~/.skret/hub-salt: a regular file sits where the .skret directory
+	// Block ~/.n24q02m/skret/hub-salt: a regular file sits where .n24q02m
 	// needs to be created, so os.MkdirAll fails deterministically.
-	require.NoError(t, os.WriteFile(filepath.Join(home, ".skret"), []byte("block"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(home, ".n24q02m"), []byte("block"), 0o600))
 
 	origDir, _ := os.Getwd()
 	require.NoError(t, os.Chdir(dir))

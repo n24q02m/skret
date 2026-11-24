@@ -137,7 +137,7 @@ func TestSaveSyncState_CreatesDirWithSecureMode(t *testing.T) {
 	state := &SyncState{Target: "github", ID: "owner/repo", Hashes: map[string]string{}}
 	require.NoError(t, SaveSyncState(state))
 
-	dir := filepath.Join(home, ".skret", "sync-state")
+	dir := filepath.Join(home, ".n24q02m", "skret", "sync-state")
 	info, err := os.Stat(dir)
 	require.NoError(t, err)
 	assert.True(t, info.IsDir())
@@ -149,7 +149,7 @@ func TestSaveSyncState_CreatesDirWithSecureMode(t *testing.T) {
 
 func TestLoadSyncState_CorruptFile_ReturnsError(t *testing.T) {
 	home := withFakeHome(t)
-	dir := filepath.Join(home, ".skret", "sync-state")
+	dir := filepath.Join(home, ".n24q02m", "skret", "sync-state")
 	require.NoError(t, os.MkdirAll(dir, 0o700))
 	path, err := StatePathFor("github", "owner/repo")
 	require.NoError(t, err)
@@ -288,7 +288,7 @@ func TestResolveHashKey_KeyFileFallbackRoundtrip(t *testing.T) {
 	// Second resolution reads the persisted file → identical key.
 	key2, _ := resolveHashKey()
 	assert.Equal(t, key1, key2)
-	data, err := os.ReadFile(filepath.Join(home, ".skret", "sync-hash.key"))
+	data, err := os.ReadFile(filepath.Join(home, ".n24q02m", "skret", "sync-hash.key"))
 	require.NoError(t, err)
 	assert.NotEmpty(t, data)
 }
@@ -296,7 +296,7 @@ func TestResolveHashKey_KeyFileFallbackRoundtrip(t *testing.T) {
 func TestHashKeyFile_CorruptRegenerates(t *testing.T) {
 	resetHashKeyForTest(t)
 	home := withFakeHome(t)
-	dir := filepath.Join(home, ".skret")
+	dir := filepath.Join(home, ".n24q02m", "skret")
 	require.NoError(t, os.MkdirAll(dir, 0o700))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "sync-hash.key"), []byte("garbage!!"), 0o600))
 	key, err := hashKeyFile()
@@ -350,8 +350,8 @@ func TestHashKeyFile_NoHome(t *testing.T) {
 func TestHashKeyFile_WriteFailsWhenSkretPathIsFile(t *testing.T) {
 	resetHashKeyForTest(t)
 	home := withFakeHome(t)
-	// ~/.skret exists as a regular file → MkdirAll fails → error path.
-	require.NoError(t, os.WriteFile(filepath.Join(home, ".skret"), []byte("x"), 0o600))
+	// ~/.n24q02m exists as a regular file → MkdirAll fails → error path.
+	require.NoError(t, os.WriteFile(filepath.Join(home, ".n24q02m"), []byte("x"), 0o600))
 	_, err := hashKeyFile()
 	assert.Error(t, err)
 }
@@ -484,7 +484,7 @@ func TestStatePathFor_BlocksPathTraversal(t *testing.T) {
 			home := withFakeHome(t)
 			path, err := StatePathFor(tc.target, tc.id)
 			require.NoError(t, err)
-			expectedDir := filepath.Join(home, ".skret", "sync-state")
+			expectedDir := filepath.Join(home, ".n24q02m", "skret", "sync-state")
 			assert.True(t, strings.HasPrefix(path, expectedDir+string(filepath.Separator)),
 				"path %q must live inside %q", path, expectedDir)
 			rel, err := filepath.Rel(expectedDir, path)
@@ -500,7 +500,7 @@ func TestStatePathFor_PathTraversalEncoding(t *testing.T) {
 	home := withFakeHome(t)
 	path, err := StatePathFor("target", "../../../etc/passwd")
 	require.NoError(t, err)
-	rel, err := filepath.Rel(filepath.Join(home, ".skret", "sync-state"), path)
+	rel, err := filepath.Rel(filepath.Join(home, ".n24q02m", "skret", "sync-state"), path)
 	require.NoError(t, err)
 	assert.NotContains(t, rel, "..")
 	assert.NotContains(t, rel, string(filepath.Separator))
@@ -519,10 +519,10 @@ func TestSaveSyncState_PathTraversal(t *testing.T) {
 	}
 	require.NoError(t, SaveSyncState(state))
 
-	_, err := os.Stat(filepath.Join(home, ".skret", "evil-target"))
+	_, err := os.Stat(filepath.Join(home, ".n24q02m", "skret", "evil-target"))
 	assert.True(t, errors.Is(err, os.ErrNotExist), "no escape above sync-state")
 
-	stateDir := filepath.Join(home, ".skret", "sync-state")
+	stateDir := filepath.Join(home, ".n24q02m", "skret", "sync-state")
 	entries, err := os.ReadDir(stateDir)
 	require.NoError(t, err)
 	require.Len(t, entries, 1)
