@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 <!-- version list -->
 
+## v1.42.0-beta.2 (2026-11-24)
+
+### Bug Fixes
+
+- Add go 1.26 and 1.27 lts ci matrix ([#1027](https://github.com/n24q02m/skret/pull/1027),
+  [`c4a7359`](https://github.com/n24q02m/skret/commit/c4a735959c6c36969c4bc2ba0230e9af8546de9a))
+
+
 ## v1.42.0-beta.1 (2026-11-24)
 
 ### Bug Fixes
