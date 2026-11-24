@@ -83,8 +83,14 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
+        go-version: ["1.27"]
+        include:
+          - os: ubuntu-latest
+            go-version: "1.26"
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
+    env:
+      GOTOOLCHAIN: local
     permissions:
       contents: read
       pull-requests: read
@@ -94,7 +100,10 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
-          go-version-file: go.mod
+          go-version: ${{ matrix.go-version }}
+      - name: Verify Go LTS row
+        shell: bash
+        run: go version | grep -F "go${{ matrix.go-version }}"
       - name: Run tests with coverage
         shell: bash
         run: |
@@ -109,7 +118,7 @@ jobs:
           cat internal-test.txt
           go test -race -coverprofile=coverage-pkg.out -covermode=atomic ./pkg/skret/...
       - name: Check internal coverage threshold
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-latest' && matrix.go-version == '1.27'
         shell: bash
         run: |
           COVERAGE=$(go tool cover -func=coverage.out | tail -1 | awk '{print $3}' | sed 's/%//')
@@ -130,7 +139,7 @@ jobs:
       # (internal/cli once lost its figure to a test that exec'd over itself),
       # and a package nobody measured must not pass as one that met its floor.
       - name: Check per-package coverage floor
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-latest' && matrix.go-version == '1.27'
         shell: bash
         run: |
           below=$(awk -v floor=95 '
@@ -150,7 +159,7 @@ jobs:
           fi
           echo "Every internal package is at or above its coverage floor."
       - name: Check pkg/skret coverage threshold
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-latest' && matrix.go-version == '1.27'
         shell: bash
         run: |
           COVERAGE=$(go tool cover -func=coverage-pkg.out | tail -1 | awk '{print $3}' | sed 's/%//')
@@ -167,13 +176,13 @@ jobs:
       # refuses it. Pull requests skip it: a fork or Dependabot run cannot always mint
       # an OIDC token, and the required check must not depend on Codecov being reachable.
       - uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v6.0.2
-        if: matrix.os == 'ubuntu-latest' && github.event_name != 'pull_request'
+        if: matrix.os == 'ubuntu-latest' && matrix.go-version == '1.27' && github.event_name != 'pull_request'
         with:
           files: ./coverage.out
           use_oidc: true
           fail_ci_if_error: true
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-latest' && matrix.go-version == '1.27'
         with:
           name: coverage
           path: coverage.out
