@@ -25,6 +25,7 @@ var (
 	userHomeDir         = os.UserHomeDir
 	readDir             = os.ReadDir
 	readFile            = os.ReadFile
+	createTemp          = os.CreateTemp
 )
 
 // ValidateProfile validates a non-empty profile name. Empty string means default profile.
@@ -176,7 +177,7 @@ func copyRegularFile(srcPath, dstPath string) error {
 	if err := os.MkdirAll(filepath.Dir(dstPath), 0o700); err != nil {
 		return err
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(dstPath), ".migrate-*.tmp")
+	tmp, err := createTemp(filepath.Dir(dstPath), ".migrate-*.tmp")
 	if err != nil {
 		return err
 	}

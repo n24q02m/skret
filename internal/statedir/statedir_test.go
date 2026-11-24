@@ -229,4 +229,15 @@ func TestHomeErrorAndEdgeBranches(t *testing.T) {
 	readFile = func(string) ([]byte, error) { return nil, os.ErrPermission }
 	require.ErrorIs(t, MigrateLegacyDir(filepath.Join(t.TempDir(), "rf-err"), "state"), os.ErrPermission)
 	readFile = origReadFile
+
+	origCreateTemp := createTemp
+	createTemp = func(string, string) (*os.File, error) { return nil, os.ErrPermission }
+	require.ErrorIs(t, copyRegularFile(legacySrc, filepath.Join(t.TempDir(), "ct-err")), os.ErrPermission)
+
+	closedTmp, err := os.CreateTemp(t.TempDir(), "closed-migrate-*")
+	require.NoError(t, err)
+	require.NoError(t, closedTmp.Close())
+	createTemp = func(string, string) (*os.File, error) { return closedTmp, nil }
+	require.Error(t, copyRegularFile(legacySrc, filepath.Join(t.TempDir(), "wc-err")))
+	createTemp = origCreateTemp
 }

@@ -104,14 +104,14 @@ Any client that supports stdio or Streamable HTTP MCP servers works the same way
 
 ## Flags
 
-| Flag                           | Default           | Description                                                           |
-| ------------------------------ | ----------------- | --------------------------------------------------------------------- |
-| `--workdir <dir>`              | current directory | Where to discover `.skret.yaml`                                       |
-| `--transport <stdio\|http>`    | `stdio`           | MCP transport mode                                                    |
-| `--addr <host:port>`           | `127.0.0.1:8787`  | HTTP listen address for `--transport=http`                            |
-| `--token <token>`              | `SKRET_MCP_TOKEN` | Bearer token for `--transport=http` (required for non-loopback binds) |
-| `--env <name>`                 | `default_env`     | Pin the environment (must satisfy `allowed_envs`)                     |
-| `--provider <name>`            | config            | Override the provider                                                 |
-| `--path <prefix>`              | config            | Override the secret path prefix                                       |
+| Flag                        | Default           | Description                                                           |
+| --------------------------- | ----------------- | --------------------------------------------------------------------- |
+| `--workdir <dir>`           | current directory | Where to discover `.skret.yaml`                                       |
+| `--transport <stdio\|http>` | `stdio`           | MCP transport mode                                                    |
+| `--addr <host:port>`        | `127.0.0.1:8787`  | HTTP listen address for `--transport=http`                            |
+| `--token <token>`           | `SKRET_MCP_TOKEN` | Bearer token for `--transport=http` (required for non-loopback binds) |
+| `--env <name>`              | `default_env`     | Pin the environment (must satisfy `allowed_envs`)                     |
+| `--provider <name>`         | config            | Override the provider                                                 |
+| `--path <prefix>`           | config            | Override the secret path prefix                                       |
 
 Diagnostics go to stderr only; stdout carries protocol messages exclusively.
