@@ -1053,18 +1053,23 @@ jobs:
   # Package-manager taps (merged from taps.yml; dispatch only)
   # The release publisher does not push to the package-manager taps, so the
   # Homebrew cask and the Scoop manifest are rewritten here from the release's
-  # own checksums.txt. Run it once after a STABLE release is published:
+  # own checksums.txt. A stable dispatch runs it automatically after publish;
+  # to repair a tap by hand after a STABLE release:
   #   gh workflow run cd.yml --repo n24q02m/skret -f release_type=update-taps -f tag=vX.Y.Z
   # Prereleases are refused: both taps are the stable channel.
   # ============================================================================
   taps:
     name: Update homebrew-tap and scoop-bucket
-    if: github.event_name == 'workflow_dispatch' && inputs.release_type == 'update-taps'
+    needs: [publish]
+    if: >-
+      always() && github.event_name == 'workflow_dispatch' &&
+      (inputs.release_type == 'update-taps' ||
+      (inputs.release_type == 'stable' && needs.publish.result == 'success'))
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      TAG: ${{ inputs.tag }}
-      DRY_RUN: ${{ inputs.dry_run }}
+      TAG: ${{ inputs.release_type == 'update-taps' && inputs.tag || needs.publish.outputs.tag }}
+      DRY_RUN: ${{ inputs.release_type == 'update-taps' && inputs.dry_run || false }}
     permissions:
       contents: read
     steps:
@@ -1126,3 +1131,38 @@ jobs:
             git -C "$tap" commit --all --message "fix: bump skret to ${TAG#v}"
             git -C "$tap" push origin HEAD:main
           done
+
+  # ============================================================================
+  # claude-plugins sync: after a STABLE release is published, refresh the skret
+  # plugin in the claude-plugins marketplace (same dispatch the MCP repos use).
+  # ============================================================================
+  sync-claude-plugins:
+    name: Sync claude-plugins
+    needs: [publish]
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      inputs.release_type == 'stable' && needs.publish.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: audit
+      - uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        id: app-token
+        with:
+          app-id: ${{ vars.CI_APP_ID }}
+          private-key: ${{ secrets.CI_APP_KEY }}
+          repositories: claude-plugins
+      - name: Dispatch plugin sync
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          TAG: ${{ needs.publish.outputs.tag }}
+        run: |
+          set -euo pipefail
+          test -n "$TAG"
+          gh workflow run cd.yml -R "${GITHUB_REPOSITORY_OWNER}/claude-plugins" \
+            -f repo=skret \
+            -f tag="$TAG"
