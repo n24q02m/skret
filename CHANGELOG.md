@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 <!-- version list -->
 
+## v1.42.0-beta.3 (2026-11-25)
+
+### Bug Fixes
+
+- Bump plugin.json version on semantic release ([#1028](https://github.com/n24q02m/skret/pull/1028),
+  [`dbd122b`](https://github.com/n24q02m/skret/commit/dbd122bee571807f7172ee3f8d9212bd0c2f9253))
+
+
 ## v1.42.0-beta.2 (2026-11-24)
 
 ### Bug Fixes
