@@ -33,7 +33,7 @@ require (
 	golang.org/x/term v0.48.0
 	golang.org/x/text v0.44.0
 	google.golang.org/api v0.304.0
-	google.golang.org/grpc v1.84.0
+	google.golang.org/grpc v1.85.0
 	google.golang.org/protobuf v1.36.12
 	gopkg.in/ini.v1 v1.67.3
 	gopkg.in/yaml.v3 v3.0.1
