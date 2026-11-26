@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://skret.n24q02m.com/logo.svg" alt="skret" width="120">
+  <img src="https://docs.n24q02m.com/logo.svg" alt="skret" width="120">
 </p>
 
 <h1 align="center">skret</h1>
@@ -19,11 +19,11 @@
 </p>
 
 <p align="center">
-  <a href="https://skret.n24q02m.com">Docs</a> ·
+  <a href="https://docs.n24q02m.com/skret/">Docs</a> ·
   <a href="#install">Install</a> ·
   <a href="#quick-start">Quick start</a> ·
   <a href="https://github.com/n24q02m/skret/discussions">Community</a> ·
-  <a href="https://skret.n24q02m.com/guide/getting-started/">Getting started</a>
+  <a href="https://docs.n24q02m.com/skret/guide/getting-started/">Getting started</a>
 </p>
 
 ```sh
@@ -34,7 +34,7 @@ skret sync --to=k8s              # Render a Kubernetes Secret manifest
 ```
 
 <p align="center">
-  <img src="https://skret.n24q02m.com/demo.gif" alt="skret demo" width="820">
+  <img src="https://docs.n24q02m.com/demo.gif" alt="skret demo" width="820">
 </p>
 
 ## Table of contents
@@ -66,7 +66,7 @@ skret scan --staged               # leak-guard: exits 10 if a value leaked
 skret scan --history              # scan committed blobs across git history
 ```
 
-Using skret from a script or AI agent? See the [agent guide](https://skret.n24q02m.com/guide/agents/).
+Using skret from a script or AI agent? See the [agent guide](https://docs.n24q02m.com/skret/guide/agents/).
 
 ## Why skret?
 
@@ -87,8 +87,8 @@ If you only need a single-cloud injector and you don't care about migration or C
 - **Doppler-grade CLI**: `skret run -- your-cmd` injects secrets as env vars. Identical UX to `doppler run --`.
 - **Migration-first**: Built-in importers for Doppler, Infisical, and `.env` files.
 - **CI/CD syncers**: Push secrets to GitHub Actions repository secrets in one command.
-- **Agent-ready**: documented exit-code contract, byte-exact secret reads, and an `llms.txt` map built for LLM/agent discovery — see the [agent guide](https://skret.n24q02m.com/guide/agents/).
-- **MCP server**: `skret mcp` plugs skret straight into Claude Code, OMP, and any MCP client — read-only by default, writes gated behind config, reads audited. See the [MCP guide](https://skret.n24q02m.com/guide/mcp/).
+- **Agent-ready**: documented exit-code contract, byte-exact secret reads, and an `llms.txt` map built for LLM/agent discovery — see the [agent guide](https://docs.n24q02m.com/skret/guide/agents/).
+- **MCP server**: `skret mcp` plugs skret straight into Claude Code, OMP, and any MCP client — read-only by default, writes gated behind config, reads audited. See the [MCP guide](https://docs.n24q02m.com/skret/guide/mcp/).
 - **Production-grade**: Coverage gates enforced in CI (every `internal/` package >=95%, `pkg/skret/` >=95% -- see the codecov badge above for the live number), CodeQL security scanning, SBOM + cosign-signed release artifacts.
 - **Cross-platform**: Linux, macOS, Windows — amd64 and arm64 binaries for each.
 - **Tab-completion of secret keys**: `skret get <TAB>` completes real key names via a names-only listing — zero decryption, zero KMS cost.
@@ -141,7 +141,7 @@ The official composite action installs skret from checksum-verified release asse
 | `workdir` | `.` | Working directory where skret is invoked; relative config and secret paths resolve from here |
 | `env` | — | Newline-separated `KEY=VALUE` pairs exported into the skret process (e.g. `AWS_REGION`); blank lines and `#` comments ignored |
 
-The action exports the installed binary as `SKRET_BIN` and adds it to `PATH` for subsequent steps, and exposes a `version` output with the resolved version. Assets are downloaded from GitHub releases and verified against the release's `checksums.txt` (SHA-256) before extraction. skret's exit codes pass through untouched, so `command: scan` fails the job with `10` on a leak and `diff --exit-code` with `9` on drift — see the [agent guide](https://skret.n24q02m.com/guide/agents/) for the full exit-code contract. The action itself is exercised on every change by this repo's own CI in [`.github/workflows/ci.yml`](.github/workflows/ci.yml) (`action-e2e` jobs).
+The action exports the installed binary as `SKRET_BIN` and adds it to `PATH` for subsequent steps, and exposes a `version` output with the resolved version. Assets are downloaded from GitHub releases and verified against the release's `checksums.txt` (SHA-256) before extraction. skret's exit codes pass through untouched, so `command: scan` fails the job with `10` on a leak and `diff --exit-code` with `9` on drift — see the [agent guide](https://docs.n24q02m.com/skret/guide/agents/) for the full exit-code contract. The action itself is exercised on every change by this repo's own CI in [`.github/workflows/ci.yml`](.github/workflows/ci.yml) (`action-e2e` jobs).
 
 ## Quick start
 
@@ -202,7 +202,7 @@ skret scan --staged                        # staged-only, for a .git/hooks/pre-c
 skret browse                               # arrow keys to move, / to filter, enter to reveal/hide, q to quit
 ```
 
-See [Getting started](https://skret.n24q02m.com/guide/getting-started/) for the 5-minute guided tour.
+See [Getting started](https://docs.n24q02m.com/skret/guide/getting-started/) for the 5-minute guided tour.
 
 ## Provider ranking
 
@@ -216,7 +216,7 @@ Cost figures below use a representative scale: 17 repos × 20 secrets/repo × 1,
 | 4 | **GCP Secret Manager** | **~$20** | GCP-native workloads (**supported today**) |
 | 5 | **AWS Secrets Manager** | **~$136** | Only when managed rotation (RDS/Redshift) is required |
 
-See [provider comparison](https://skret.n24q02m.com/reference/provider-comparison/) for the full feature matrix.
+See [provider comparison](https://docs.n24q02m.com/skret/reference/provider-comparison/) for the full feature matrix.
 
 ## Comparison vs alternatives
 
@@ -250,28 +250,28 @@ Audited 2026-07-13 against the latest release of each tool. The comparison cover
 
 ## Vault dashboard
 
-`skret hub push` publishes a names-only manifest — key names, salted `sha256[:8]` fingerprints, and a per-target status — to a self-hosted, read-only dashboard. No secret value ever leaves your machine. Deploy your own on Cloudflare Workers + KV; see the [hub guide](https://skret.n24q02m.com/guide/hub/).
+`skret hub push` publishes a names-only manifest — key names, salted `sha256[:8]` fingerprints, and a per-target status — to a self-hosted, read-only dashboard. No secret value ever leaves your machine. Deploy your own on Cloudflare Workers + KV; see the [hub guide](https://docs.n24q02m.com/skret/guide/hub/).
 
 <p align="center">
-  <img src="https://skret.n24q02m.com/hub-screenshot.png" alt="skret vault dashboard showing per-key sync status badges" width="760">
+  <img src="https://docs.n24q02m.com/hub-screenshot.png" alt="skret vault dashboard showing per-key sync status badges" width="760">
 </p>
 
 ## Documentation
 
-Full docs at **[skret.n24q02m.com](https://skret.n24q02m.com)**:
+Full docs at **[docs.n24q02m.com/skret](https://docs.n24q02m.com/skret/)**:
 
-- [Getting started](https://skret.n24q02m.com/guide/getting-started/) — 5-minute tutorial
-- [Installation](https://skret.n24q02m.com/guide/installation/) — every platform, every method
-- [Configuration](https://skret.n24q02m.com/guide/configuration/) — `.skret.yaml` reference
-- [Authentication](https://skret.n24q02m.com/guide/authentication/) — AWS SSO, OIDC, IAM
-- [Provider comparison](https://skret.n24q02m.com/reference/provider-comparison/) — cost + features across AWS, OCI, Azure, GCP
-- [The skret spec](https://skret.n24q02m.com/reference/spec/) — normative, versioned contract: exit codes, JSON envelope, byte-exact guarantees
-- [Providers](https://skret.n24q02m.com/providers/) — per-backend setup guides (AWS SSM, Azure Key Vault, local)
-- [Migrate from Doppler](https://skret.n24q02m.com/migration/from-doppler/)
-- [Migrate from Infisical](https://skret.n24q02m.com/migration/from-infisical/)
-- [Makefile patterns](https://skret.n24q02m.com/integrations/makefile-patterns/)
-- [Troubleshooting](https://skret.n24q02m.com/guide/troubleshooting/)
-- [FAQ](https://skret.n24q02m.com/faq/)
+- [Getting started](https://docs.n24q02m.com/skret/guide/getting-started/) — 5-minute tutorial
+- [Installation](https://docs.n24q02m.com/skret/guide/installation/) — every platform, every method
+- [Configuration](https://docs.n24q02m.com/skret/guide/configuration/) — `.skret.yaml` reference
+- [Authentication](https://docs.n24q02m.com/skret/guide/authentication/) — AWS SSO, OIDC, IAM
+- [Provider comparison](https://docs.n24q02m.com/skret/reference/provider-comparison/) — cost + features across AWS, OCI, Azure, GCP
+- [The skret spec](https://docs.n24q02m.com/skret/reference/spec/) — normative, versioned contract: exit codes, JSON envelope, byte-exact guarantees
+- [Providers](https://docs.n24q02m.com/skret/providers/comparison/) — per-backend setup guides (AWS SSM, Azure Key Vault, local)
+- [Migrate from Doppler](https://docs.n24q02m.com/skret/migration/from-doppler/)
+- [Migrate from Infisical](https://docs.n24q02m.com/skret/migration/from-infisical/)
+- [Makefile patterns](https://docs.n24q02m.com/skret/integrations/makefile-patterns/)
+- [Troubleshooting](https://docs.n24q02m.com/skret/guide/troubleshooting/)
+- [FAQ](https://docs.n24q02m.com/skret/faq/)
 
 ## Command overview
 
@@ -301,7 +301,7 @@ Full docs at **[skret.n24q02m.com](https://skret.n24q02m.com)**:
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) and the [contributing guide](https://skret.n24q02m.com/contributing/setup/).
+See [CONTRIBUTING.md](CONTRIBUTING.md) and the [contributing guide](https://docs.n24q02m.com/skret/contributing/setup/).
 
 ```sh
 git clone https://github.com/n24q02m/skret
@@ -312,7 +312,7 @@ go test -race ./...
 ```
 
 The agent-contract harness (`tests/agent-e2e/`) runs in CI on every PR and
-enforces the documented [agent contract](https://skret.n24q02m.com/guide/agents/#the-agent-e2e-guarantee)
+enforces the documented [agent contract](https://docs.n24q02m.com/skret/guide/agents/#the-agent-e2e-guarantee)
 — exit codes, the JSON error envelope, byte-exact reads, stream discipline,
 and non-interactive behavior — against a freshly built binary.
 
@@ -334,7 +334,6 @@ and non-interactive behavior — against a freshly built binary.
 | [email](https://github.com/n24q02m/email)                                     | IMAP/SMTP email for AI agents -- read, send, organize folders, and manage att... | MCP         |
 | [fastretrieval](https://github.com/n24q02m/fastretrieval)                     | Fast multi-model retrieval runtime: ONNX and GGUF embeddings, reranking, and ... | Tooling     |
 | [hull](https://github.com/n24q02m/hull)                                       | hull is the shared monorepo core for the wet, crg and mnemo self-hosted stack    | MCP         |
-| [jules-task-archiver](https://github.com/n24q02m/jules-task-archiver)         | Chrome Extension for bulk operations on Jules tasks via batchexecute API -- a... | Tooling     |
 | [mnemo](https://github.com/n24q02m/mnemo)                                     | Persistent AI memory with hybrid search. Open, free, unlimited.                  | MCP         |
 | [notion](https://github.com/n24q02m/notion)                                   | Markdown-first Notion for AI agents -- pages, databases, blocks, and comments... | MCP         |
 | [skret](https://github.com/n24q02m/skret)                                     | Secrets without the server.                                                      | CLI         |
