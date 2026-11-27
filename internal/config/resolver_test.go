@@ -474,3 +474,24 @@ func TestAnchorToDirMakesProviderResolveConfigRelative(t *testing.T) {
 	assert.True(t, filepath.IsAbs(resolved.File))
 	assert.Equal(t, filepath.Join(dir, ".secrets.dev.yaml"), resolved.File)
 }
+
+// TestAnchorToDirAnchorsMCPAuditLog anchors a relative mcp.audit_log at the
+// config directory and leaves absolute and empty values untouched.
+func TestAnchorToDirAnchorsMCPAuditLog(t *testing.T) {
+	dir := t.TempDir()
+	cfg := &config.Config{
+		Version:      "1",
+		Environments: map[string]config.Environment{"dev": {Provider: "local", File: "s.yaml"}},
+		MCP:          &config.MCPConfig{AuditLog: "trails/mcp.log"},
+	}
+	config.AnchorToDir(cfg, dir)
+	assert.Equal(t, filepath.Join(dir, "trails", "mcp.log"), cfg.MCP.AuditLog)
+
+	abs := filepath.Join(t.TempDir(), "mcp.log")
+	cfg.MCP.AuditLog = abs
+	config.AnchorToDir(cfg, dir)
+	assert.Equal(t, abs, cfg.MCP.AuditLog)
+
+	cfg.MCP = nil
+	assert.NotPanics(t, func() { config.AnchorToDir(cfg, dir) }, "a config without an mcp block anchors nothing")
+}

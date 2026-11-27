@@ -23,6 +23,8 @@ Always prefer `skret run -- <cmd>` or `skret mcp` instead of reading secret file
 - `skret_list`, `skret_env`, `skret_status`, `skret_doctor` return key names, environments, and health metadata only.
 - `skret_get` is the single tool that returns a secret value.
 - `skret_set`, `skret_delete`, `skret_rotate` are disabled by default; enabling them requires BOTH `mcp.allow_write: true` in `.skret.yaml` AND `"confirm": true` per tool call.
+- `mcp.allowed_tools`, `mcp.allowed_envs`, `mcp.allowed_keys` and `mcp.denied_keys` narrow what a client can call and read; a key outside the policy is missing from `skret_list` and refused by every other tool.
+- Every tool call writes one JSON audit record (session id, tool, env, masked keys, allow/deny with reason) to stderr, and to `mcp.audit_log` when set; secret values never appear in errors or diagnostics.
 - Non-loopback `--transport http` binds require a bearer token via `--token` or `SKRET_MCP_TOKEN`.
 
 ## Local State Layout

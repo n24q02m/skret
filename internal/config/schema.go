@@ -3,6 +3,8 @@ package config
 import (
 	"fmt"
 	"net/url"
+	"path"
+	"slices"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -210,15 +212,75 @@ type MCPConfig struct {
 	// access. Empty means every declared environment. Names must reference
 	// declared environments (validated in Config.Validate).
 	AllowedEnvs []string `yaml:"allowed_envs,omitempty"`
+	// AllowedTools restricts which MCP tools the server lists and runs.
+	// Empty means every tool. Entries must name a tool from MCPToolNames.
+	// It narrows the tool set only: a write tool still needs allow_write.
+	AllowedTools []string `yaml:"allowed_tools,omitempty"`
+	// AllowedKeys restricts which secret keys the MCP tools may read,
+	// list, or mutate. Entries are path.Match glob patterns matched against
+	// the whole key name (case-sensitive; `*` does not cross `/`). Empty
+	// means every key.
+	AllowedKeys []string `yaml:"allowed_keys,omitempty"`
+	// DeniedKeys blocks secret keys from every MCP tool. Same glob syntax
+	// as AllowedKeys; a key matching any entry is denied even when it also
+	// matches AllowedKeys.
+	DeniedKeys []string `yaml:"denied_keys,omitempty"`
+	// AuditLog, when set, appends the MCP session audit trail (one JSON
+	// line per tool call, also written to stderr) to this file. A relative
+	// path is anchored at the config directory (see AnchorToDir).
+	AuditLog string `yaml:"audit_log,omitempty"`
 }
 
+// mcpToolNames is the closed set of tools the skret-mcp server exposes, in
+// tools/list order. mcp.allowed_tools entries are validated against it, and
+// the server's own tool table is tested against it so the two cannot drift.
+var mcpToolNames = []string{
+	"skret_list", "skret_get", "skret_env", "skret_status", "skret_doctor",
+	"skret_set", "skret_delete", "skret_rotate",
+}
+
+// MCPToolNames returns a copy of the closed MCP tool set, in tools/list
+// order.
+func MCPToolNames() []string { return slices.Clone(mcpToolNames) }
+
+// ValidMCPTool reports whether name is a tool the skret-mcp server exposes.
+func ValidMCPTool(name string) bool { return slices.Contains(mcpToolNames, name) }
+
 // validate checks the mcp block against the rest of the config:
-// allowed_envs names must reference declared environments (a typo would
-// otherwise silently lock the MCP server out of every environment).
+// allowed_envs names must reference declared environments and
+// allowed_tools names must reference real tools (a typo would otherwise
+// silently lock the MCP server out), and the key filters must be valid
+// glob patterns (an unparsable pattern would otherwise never match).
 func (m *MCPConfig) validate(envs map[string]Environment) error {
 	for _, name := range m.AllowedEnvs {
 		if _, ok := envs[name]; !ok {
 			return fmt.Errorf("config: mcp.allowed_envs entry %q not found in environments", name)
+		}
+	}
+	for _, name := range m.AllowedTools {
+		if strings.TrimSpace(name) == "" {
+			return fmt.Errorf("config: mcp.allowed_tools has an empty entry")
+		}
+		if !ValidMCPTool(name) {
+			return fmt.Errorf("config: mcp.allowed_tools entry %q is not a known tool (known: %s)", name, strings.Join(mcpToolNames, ", "))
+		}
+	}
+	if err := validateKeyPatterns("allowed_keys", m.AllowedKeys); err != nil {
+		return err
+	}
+	return validateKeyPatterns("denied_keys", m.DeniedKeys)
+}
+
+// validateKeyPatterns rejects empty entries and patterns path.Match cannot
+// parse. path.Match reports a malformed pattern even against an empty name,
+// so one probe per entry validates the whole pattern.
+func validateKeyPatterns(field string, patterns []string) error {
+	for _, p := range patterns {
+		if strings.TrimSpace(p) == "" {
+			return fmt.Errorf("config: mcp.%s has an empty entry", field)
+		}
+		if _, err := path.Match(p, ""); err != nil {
+			return fmt.Errorf("config: mcp.%s entry %q is not a valid glob pattern: %w", field, p, err)
 		}
 	}
 	return nil
@@ -373,18 +435,18 @@ func validateSyncSources(typ string, sources []SyncSource) error {
 				return fmt.Errorf("config: %s sync target: source %d has an empty exclude entry", typ, i)
 			}
 		}
-		path := src.Path
-		for len(path) > 1 && strings.HasSuffix(path, "/") {
-			path = path[:len(path)-1]
+		trimmed := src.Path
+		for len(trimmed) > 1 && strings.HasSuffix(trimmed, "/") {
+			trimmed = trimmed[:len(trimmed)-1]
 		}
-		if seen[path] {
+		if seen[trimmed] {
 			label := src.Path
 			if label == "" {
 				label = "(environment path)"
 			}
 			return fmt.Errorf("config: %s sync target: duplicate source path %q", typ, label)
 		}
-		seen[path] = true
+		seen[trimmed] = true
 	}
 	return nil
 }

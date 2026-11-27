@@ -8,7 +8,7 @@
 
 - **CLI (`cmd/skret`)**: Core commands for reading, writing, running processes with injected secrets, validating schemas, diffing environments, scanning for leaks, and projecting secrets to target platforms (`skret get`, `set`, `list`, `delete`, `rotate`, `run`, `env`, `sync`, `diff`, `doctor`, `scan`, `template`, `watch`, `browse`).
 - **Go SDK (`pkg/skret`)**: Public library API with strict typed errors and provider abstraction (`internal/provider/...`).
-- **MCP Server**: Exposes read-only secret inspection and policy-gated write/rotate tools to MCP-compatible agent harnesses (`mcp.allow_write` defaults to `false`, `mcp.allowed_envs` restricts environment scope, and local reads are recorded to the audit log).
+- **MCP Server**: Exposes read-only secret inspection and policy-gated write/rotate tools to MCP-compatible agent harnesses (`mcp.allow_write` defaults to `false`, `mcp.allowed_envs` restricts environment scope, `mcp.allowed_tools`/`mcp.allowed_keys`/`mcp.denied_keys` narrow tools and keys, every tool call writes a session audit record, and local reads are recorded to the audit log).
 - **Providers (`internal/provider`)**:
   - AWS Systems Manager Parameter Store (`aws-ssm`)
   - Google Cloud Secret Manager (`gcp-sm`)

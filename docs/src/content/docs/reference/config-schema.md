@@ -91,6 +91,10 @@ mcp: # Optional. Policy for the `skret mcp` server (see guide/mcp).
   allow_write: false # Optional. Enable the write tools (skret_set/delete/rotate). Default false.
   allowed_envs: # Optional. Restrict which environments MCP may access; omit for all.
     - dev
+  allowed_tools: [skret_list, skret_get, skret_status] # Optional. Tools the server lists and runs; omit for all.
+  allowed_keys: ["APP_*"] # Optional. path.Match globs a key must match; omit for all keys.
+  denied_keys: ["*_ADMIN_*"] # Optional. path.Match globs that are always refused (wins over allowed_keys).
+  audit_log: .skret-mcp-audit.log # Optional. Also append the MCP session audit trail (JSON lines) to this file.
 ```
 
 ## Field Reference
@@ -107,7 +111,7 @@ mcp: # Optional. Policy for the `skret mcp` server (see guide/mcp).
 | `exclude`      | list   | No       | `[]`    | Secret keys excluded from `run` and `env` output.                                                                                                                       |
 | `sync`         | map    | No       | --      | Declared sync targets and hub endpoint for `skret sync` / `skret hub push`. See [Sync Fields](#sync-fields).                                                            |
 | `notify`       | map    | No       | --      | Webhook notifications fired after successful secret mutations (`set`/`delete`/`rotate`/`sync`). See [Notify Fields](#notify-fields).                                    |
-| `mcp`          | map    | No       | --      | Policy for the `skret mcp` MCP server: write gating and environment access. See [MCP Fields](#mcp-fields).                                                              |
+| `mcp`          | map    | No       | --      | Policy for the `skret mcp` MCP server: write gating, tool/environment/key access, session audit. See [MCP Fields](#mcp-fields).                                         |
 
 ### Environment Fields
 
@@ -204,10 +208,14 @@ Payload shape (one POST per event; `sync`/`rotate` fire once per completed targe
 
 `mcp` configures the `skret mcp` server (see the [MCP guide](/guide/mcp/)). The block is optional; the server runs with defaults when absent.
 
-| Field              | Type | Required | Default          | Description                                                                                                                                                                                                                             |
-| ------------------ | ---- | -------- | ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `mcp.allow_write`  | bool | No       | `false`          | Enable the write tools (`skret_set`/`skret_delete`/`skret_rotate`). While `false`, a write tool call returns an error result naming this field. Even when `true`, every write call must also carry a per-call `confirm: true` argument. |
-| `mcp.allowed_envs` | list | No       | all environments | Restrict which environments the server may access. Every entry must match a declared environment (validated at config load). A request — or a startup `--env` — naming any other environment fails with a remediation.                  |
+| Field               | Type   | Required | Default          | Description                                                                                                                                                                                                                                                                                                                                                          |
+| ------------------- | ------ | -------- | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `mcp.allow_write`   | bool   | No       | `false`          | Enable the write tools (`skret_set`/`skret_delete`/`skret_rotate`). While `false`, a write tool call returns an error result naming this field, and when `mcp.allowed_tools` is set the write tools are also left out of `tools/list`. Even when `true`, every write call must also carry a per-call `confirm: true` argument.                                       |
+| `mcp.allowed_envs`  | list   | No       | all environments | Restrict which environments the server may access. Every entry must match a declared environment (validated at config load). A request — or a startup `--env` — naming any other environment fails with a remediation.                                                                                                                                               |
+| `mcp.allowed_tools` | list   | No       | all tools        | Restrict which tools the server runs. Every entry must be a known tool name (`skret_list`, `skret_get`, `skret_env`, `skret_status`, `skret_doctor`, `skret_set`, `skret_delete`, `skret_rotate`). It only narrows the set: a write tool still needs `mcp.allow_write`. When set, `tools/list` shows only the tools a call can use; when unset, it lists every tool. |
+| `mcp.allowed_keys`  | list   | No       | all keys         | [`path.Match`](https://pkg.go.dev/path#Match) glob patterns matched against the whole key name (case-sensitive; `*` does not cross `/`). When set, a key matching none of them is refused and left out of `skret_list`.                                                                                                                                              |
+| `mcp.denied_keys`   | list   | No       | none             | Same glob syntax as `mcp.allowed_keys`. A key matching any entry is refused by every tool and left out of `skret_list`, even when it also matches `mcp.allowed_keys`.                                                                                                                                                                                                |
+| `mcp.audit_log`     | string | No       | stderr only      | File to append the session audit trail to (one JSON line per tool call, mode `0600`), in addition to stderr. A relative path resolves against the directory of `.skret.yaml`. If the file cannot be written, the server refuses to start or the call fails.                                                                                                          |
 
 ## Validation Rules
 
@@ -230,6 +238,8 @@ skret validates the config at load time and fails fast on errors:
 15. `notify.webhook_url` must be present when the `notify` block is, and every URL must be absolute `http(s)`
 16. `notify.events` entries must be known events (`set`, `delete`, `rotate`, `sync`)
 17. `mcp.allowed_envs` entries must match declared environment names
+18. `mcp.allowed_tools` entries must be known tool names
+19. `mcp.allowed_keys` and `mcp.denied_keys` entries must be non-empty, valid `path.Match` glob patterns
 
 ## Config Discovery
 
