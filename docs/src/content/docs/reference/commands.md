@@ -5,7 +5,7 @@ description: "Flags, defaults, and behavior for skret's core commands: init, set
 
 Flags, defaults, and behavior for skret's core commands. For the guided walkthrough see [Getting Started](/guide/getting-started/); for `.skret.yaml` fields see the [Config Schema Reference](/reference/config-schema/); for exit codes see [Error Codes](/reference/error-codes/).
 
-`skret bootstrap`, `skret sync`, `skret scan`, `skret diff`, `skret template`, and `skret doctor` each have their own dedicated guide page linked from those commands' `--help` output. `skret history` and `skret rollback` are gated behind `SKRET_EXPERIMENTAL` and are not covered here.
+`skret bootstrap`, `skret sync`, `skret scan`, `skret protect`, `skret diff`, `skret template`, and `skret doctor` each have their own dedicated guide page linked from those commands' `--help` output. `skret history` and `skret rollback` are gated behind `SKRET_EXPERIMENTAL` and are not covered here.
 
 ## Global flags
 
@@ -270,13 +270,16 @@ Runs a command with every secret injected as an environment variable.
 skret run -- make deploy
 skret run -- ./server
 skret run --watch -- make up-prod
+skret run --redact -- ./ci-script.sh
 ```
 
-| Flag                          | Default | Description                                                    |
-| ----------------------------- | ------- | -------------------------------------------------------------- |
-| `--watch`                     | `false` | Restart the command whenever a secret changes                  |
-| `--watch-interval <duration>` | `15s`   | How often `--watch` checks for changes                         |
-| `--no-resolve`                | `false` | Inject raw stored values without resolving `${KEY}` references |
+| Flag                          | Default | Description                                                                              |
+| ----------------------------- | ------- | ---------------------------------------------------------------------------------------- |
+| `--watch`                     | `false` | Restart the command whenever a secret changes                                            |
+| `--watch-interval <duration>` | `15s`   | How often `--watch` checks for changes                                                   |
+| `--no-resolve`                | `false` | Inject raw stored values without resolving `${KEY}` references                           |
+| `--redact`                    | `false` | Mask secret values in the command's stdout and stderr (the command no longer sees a TTY) |
+| `--redact-min-length <n>`     | `4`     | With `--redact`, leave values shorter than this many bytes unmasked                      |
 
 Notes:
 
@@ -285,6 +288,7 @@ Notes:
 - `${KEY}` references are resolved before injection (same scope as `env`), and re-resolved on every `--watch` restart; `--no-resolve` injects the raw stored values.
 - If `.skret.yaml` declares `required` keys and any are missing from both the resolved secrets and the process environment, `run` fails with `ExitValidationError` (8) before launching the command.
 - `--watch` is covered in depth in the [Watch mode guide](/guide/watch/), including the zero-decrypt fingerprint check and restart signal handling.
+- `--redact` pipes the command's stdout and stderr through a streaming filter that replaces every loaded secret value (including multi-line values and their base64 and URL-encoded forms) and token-shaped strings with `[REDACTED]`, and exits with the command's exit code. The command writes to pipes instead of the terminal. It cannot be combined with `--watch`. See the [Redacted output guide](/guide/redact/).
 
 ## `skret import`
 

@@ -54,26 +54,7 @@ func BuildEnv(secrets []*provider.Secret, existing []string, pathPrefix string, 
 		// 1. Remove null bytes as they cause syscall.Exec to fail with "invalid argument".
 		// 2. Replace newlines/carriage returns with spaces to prevent environment entry corruption
 		//    and potential injection in tools that parse 'env' output line-by-line.
-		val := s.Value
-		if strings.ContainsAny(val, "\x00\n\r") {
-			// One pass over the value, so the three substitutions below cost a
-			// single allocation rather than one per chained strings.ReplaceAll.
-			var b strings.Builder
-			b.Grow(len(val))
-			for i := 0; i < len(val); i++ {
-				c := val[i]
-				switch c {
-				case '\x00', '\r':
-					// Remove
-				case '\n':
-					b.WriteByte(' ')
-				default:
-					b.WriteByte(c)
-				}
-			}
-			val = b.String()
-		}
-		secretVars[name] = val
+		secretVars[name] = InjectedValue(s.Value)
 	}
 
 	for k, v := range secretVars {
@@ -81,6 +62,32 @@ func BuildEnv(secrets []*provider.Secret, existing []string, pathPrefix string, 
 	}
 
 	return env
+}
+
+// InjectedValue returns v exactly as BuildEnv injects it into an environment:
+// NUL and CR bytes are dropped and LF becomes a space, because an OS
+// environment entry cannot carry them safely. `run --redact` masks this form
+// too, since it is the one the child actually sees.
+func InjectedValue(v string) string {
+	if !strings.ContainsAny(v, "\x00\n\r") {
+		return v
+	}
+	// One pass over the value, so the three substitutions cost a single
+	// allocation rather than one per chained strings.ReplaceAll.
+	var b strings.Builder
+	b.Grow(len(v))
+	for i := 0; i < len(v); i++ {
+		c := v[i]
+		switch c {
+		case '\x00', '\r':
+			// Remove
+		case '\n':
+			b.WriteByte(' ')
+		default:
+			b.WriteByte(c)
+		}
+	}
+	return b.String()
 }
 
 // KeyToEnvName converts a secret key to an environment variable name.

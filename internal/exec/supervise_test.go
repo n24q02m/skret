@@ -1,9 +1,12 @@
 package exec_test
 
 import (
+	"context"
 	"errors"
 	"os"
+	osexec "os/exec"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"testing"
 	"time"
@@ -23,6 +26,40 @@ func TestMain(m *testing.M) {
 		os.Exit(0)
 	case "exit7":
 		os.Exit(7)
+	case "print":
+		// Write fixed text to stdout and stderr, then exit with a chosen code.
+		_, _ = os.Stdout.WriteString(os.Getenv("SKRET_TEST_STDOUT"))
+		_, _ = os.Stderr.WriteString(os.Getenv("SKRET_TEST_STDERR"))
+		code, _ := strconv.Atoi(os.Getenv("SKRET_TEST_EXIT"))
+		os.Exit(code)
+	case "waitterm":
+		// Report readiness, then exit 42 once SIGTERM arrives.
+		sigCh := make(chan os.Signal, 1)
+		signal.Notify(sigCh, syscall.SIGTERM)
+		_, _ = os.Stdout.WriteString("ready\n")
+		select {
+		case <-sigCh:
+			_, _ = os.Stdout.WriteString("terminated\n")
+			os.Exit(42)
+		case <-time.After(30 * time.Second):
+			os.Exit(3)
+		}
+	case "selfkill":
+		self, _ := os.FindProcess(os.Getpid())
+		_ = self.Kill()
+		time.Sleep(30 * time.Second)
+		os.Exit(0)
+	case "orphan":
+		// Leave a grandchild holding the inherited stdout open, record its
+		// pid for cleanup, and exit successfully.
+		gc := osexec.CommandContext(context.Background(), os.Args[0])
+		gc.Env = append(os.Environ(), "SKRET_TEST_CHILD=sleep")
+		gc.Stdout = os.Stdout
+		if err := gc.Start(); err != nil {
+			os.Exit(4)
+		}
+		_ = os.WriteFile(os.Getenv("SKRET_TEST_READY"), []byte(strconv.Itoa(gc.Process.Pid)), 0o600)
+		os.Exit(0)
 	case "ignoreterm":
 		// Ignore SIGTERM, then tell the test it is safe to send it.
 		signal.Ignore(syscall.SIGTERM)

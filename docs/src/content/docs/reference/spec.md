@@ -7,7 +7,7 @@ sidebar:
 
 # The skret Spec
 
-**Version 1.1.0** — normative. The key words MUST, MUST NOT, SHOULD, and MAY are to be interpreted as described in RFC 2119.
+**Version 1.2.0** — normative. The key words MUST, MUST NOT, SHOULD, and MAY are to be interpreted as described in RFC 2119.
 
 This document is the contract every `skret` command and every skret release MUST conform to. It exists so agents, scripts, and wrappers can consume skret blind: parse the exit code, parse the envelope, trust the streams. The human-friendly version of the exit-code table lives in [error codes](/reference/error-codes/); where the two differ, this spec wins.
 
@@ -17,20 +17,20 @@ A conformance test (`pkg/skret/spec_conformance_test.go`) enforces the exit-code
 
 skret exits with exactly one code from this table. Codes are a closed set: a release MUST NOT exit with any other value, and new values require a spec minor version.
 
-| Code | Constant (`pkg/skret`) | Meaning                                                                                                                    |
-| ---- | ---------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| 0    | `ExitSuccess`          | Operation completed successfully                                                                                           |
-| 1    | `ExitGenericError`     | Unclassified error                                                                                                         |
-| 2    | `ExitConfigError`      | Configuration problem (missing/invalid `.skret.yaml`, unsupported schema `version`, undeclared env, missing required keys) |
-| 3    | `ExitProviderError`    | Backend provider failure (SSM/Key Vault/Secret Manager/Vault/local I/O)                                                    |
-| 4    | `ExitAuthError`        | Authentication failed (credentials missing/invalid, no encryption key material)                                            |
-| 5    | `ExitNotFoundError`    | Secret does not exist                                                                                                      |
-| 6    | `ExitConflictError`    | Resource conflict (e.g. key exists with `--on-conflict=fail`)                                                              |
-| 7    | `ExitNetworkError`     | Network/connectivity failure                                                                                               |
-| 8    | `ExitValidationError`  | Input validation failed (bad flag value, oversized payload, unresolvable `${KEY}` reference)                               |
-| 9    | `ExitDrift`            | Drift detected (`diff --exit-code` only)                                                                                   |
-| 10   | `ExitLeakFound`        | A managed secret value was found in a scanned file (`scan`, `scan --staged`, `scan --history`)                             |
-| 125  | `ExitExecError`        | The child command passed to `run --` could not be executed (matches docker/podman convention)                              |
+| Code | Constant (`pkg/skret`) | Meaning                                                                                                                                                        |
+| ---- | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0    | `ExitSuccess`          | Operation completed successfully                                                                                                                               |
+| 1    | `ExitGenericError`     | Unclassified error                                                                                                                                             |
+| 2    | `ExitConfigError`      | Configuration problem (missing/invalid `.skret.yaml`, unsupported schema `version`, undeclared env, missing required keys)                                     |
+| 3    | `ExitProviderError`    | Backend provider failure (SSM/Key Vault/Secret Manager/Vault/local I/O)                                                                                        |
+| 4    | `ExitAuthError`        | Authentication failed (credentials missing/invalid, no encryption key material)                                                                                |
+| 5    | `ExitNotFoundError`    | Secret does not exist                                                                                                                                          |
+| 6    | `ExitConflictError`    | Resource conflict (e.g. key exists with `--on-conflict=fail`)                                                                                                  |
+| 7    | `ExitNetworkError`     | Network/connectivity failure                                                                                                                                   |
+| 8    | `ExitValidationError`  | Input validation failed (bad flag value, oversized payload, unresolvable `${KEY}` reference, or a file `protect --strict` could only check by name)            |
+| 9    | `ExitDrift`            | Drift detected (`diff --exit-code` only)                                                                                                                       |
+| 10   | `ExitLeakFound`        | A managed secret value was found in a scanned file (`scan`, `scan --staged`, `scan --history`), or a `.env` file or plaintext credential was found (`protect`) |
+| 125  | `ExitExecError`        | The child command passed to `run --` could not be executed (matches docker/podman convention)                                                                  |
 
 Rules:
 
@@ -65,6 +65,8 @@ When a command invoked with `--format json` fails, it MUST print exactly one JSO
 - `get` prints the value plus one trailing newline; `get --plain` prints the value with NO trailing newline (byte-exact capture into `$(...)` or redirection).
 - `--format json` result payloads on stdout are `json.MarshalIndent` with two-space indent and one trailing newline.
 - `run` and `watch` pass the child's stdout/stderr through unmodified after skret's own status lines (stderr). skret MUST NOT interleave its own output into the child's stdout.
+- `run --redact` is the one opt-in exception. The child's stdout and stderr are pipes, and skret copies each to its own stdout and stderr respectively, replacing every loaded secret value (and its encoded forms) and every log-redaction pattern match with `[REDACTED]`. Within each stream no other byte is added, dropped, or reordered, however the child splits its writes. skret still exits with the child's exit code; a child killed by a signal exits `128 + signal` on Unix.
+- `protect` prints findings on stdout as file, line, and rule only. It MUST NOT print the matched text.
 - Warnings (e.g. recovered shell-mangled keys, skipped sync targets) MUST NOT change the exit code unless a rule in §1 says otherwise.
 - Webhook notification delivery failures warn on stderr and never fail the mutation, except under `--strict-notify`.
 
@@ -211,6 +213,12 @@ Local-provider mutations (`set`, `rotate`, `delete`) append one JSONL line per c
 ## 12. Changelog
 
 All notable changes to this spec (not to the tool) are listed here. Adding an exit code, changing the envelope, or altering a byte-exact guarantee requires a version bump.
+
+### 1.2.0 — 2026-11-27
+
+- Exit code 10 (`ExitLeakFound`) also covers `protect` finding a `.env` file or a plaintext credential.
+- Exit code 8 (`ExitValidationError`) also covers `protect --strict` skipping a file it could only check by name.
+- Stream discipline: `run --redact` masks secret values in the child's stdout and stderr (an opt-in exception to unmodified pass-through), and `protect` never prints the matched text.
 
 ### 1.1.0 — 2026-09-26
 

@@ -11,6 +11,7 @@ PUBLISH_CONFIG = REPO_ROOT / ".goreleaser.yaml"
 PREPARE_CONFIG = REPO_ROOT / ".goreleaser.prepare.yaml"
 SEMANTIC_RELEASE_CONFIG = REPO_ROOT / "semantic-release.toml"
 CI_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci.yml"
+CD_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "cd.yml"
 COSIGN_VERSION_CHECK = (
     REPO_ROOT / "scripts" / "repo-bootstrap" / "verify_cosign_version.py"
 )
@@ -92,6 +93,38 @@ class ReleasePolicyTests(unittest.TestCase):
             "ghcr.io/",
         ):
             self.assertNotIn(forbidden_marker, source)
+
+    def test_every_release_sbom_is_spdx_json(self) -> None:
+        # cd.yml runs syft itself for the OCI, Hub, executor and docs SBOMs,
+        # and GoReleaser runs it for the CLI archives. All of them must be
+        # SPDX JSON, so the CLI-archive format is stated explicitly instead
+        # of being inherited from a GoReleaser default that could change.
+        workflow_formats = re.findall(
+            r'syft "[^"]+" -o "([a-z0-9-]+)=',
+            CD_WORKFLOW.read_text(encoding="utf-8"),
+        )
+        self.assertTrue(workflow_formats, "cd.yml must generate auxiliary SBOMs")
+        self.assertEqual(set(workflow_formats), {"spdx-json"})
+
+        for config in (PUBLISH_CONFIG, PREPARE_CONFIG):
+            sboms = section_text(config.read_text(encoding="utf-8"), "sboms")
+            for expected in (
+                "artifacts: archive",
+                "cmd: syft",
+                '- "spdx-json=$document"',
+                '- "{{ .ArtifactName }}.sbom.json"',
+            ):
+                self.assertIn(expected, sboms, f"{config.name}: {expected}")
+
+    def test_release_sboms_are_built_offline(self) -> None:
+        # syft --enrich queries online package sources, so the SBOM would
+        # depend on the network at release time rather than on the artifact.
+        for config in (PUBLISH_CONFIG, PREPARE_CONFIG):
+            sboms = section_text(config.read_text(encoding="utf-8"), "sboms")
+            self.assertNotIn("--enrich", sboms, config.name)
+        for line in CD_WORKFLOW.read_text(encoding="utf-8").splitlines():
+            if line.strip().startswith("syft "):
+                self.assertNotIn("--enrich", line, line.strip())
 
     def test_build_metadata_uses_commit_timestamp(self) -> None:
         expected = (

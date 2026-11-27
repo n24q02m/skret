@@ -190,7 +190,7 @@ var llmsExitCodeTable = []llmsExitCodeRow{
 	{skret.ExitNetworkError, "ExitNetworkError", "network/connectivity failure"},
 	{skret.ExitValidationError, "ExitValidationError", "invalid input or flag value"},
 	{skret.ExitDrift, "ExitDrift", "skret diff --exit-code found a difference"},
-	{skret.ExitLeakFound, "ExitLeakFound", "skret scan found a managed secret value in a scanned file"},
+	{skret.ExitLeakFound, "ExitLeakFound", "skret scan found a managed secret value, or skret protect a plaintext credential, in a scanned file"},
 	{skret.ExitExecError, "ExitExecError", "skret run -- could not exec the command"},
 }
 

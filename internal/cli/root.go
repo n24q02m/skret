@@ -58,7 +58,7 @@ func NewRootCmd() *cobra.Command {
 	f.StringVar(&opts.Config, "config", "", "path to a .skret.yaml config file (bypasses directory discovery)")
 	f.StringVar(&opts.LogLevel, "log-level", "", "log level (debug, info, warn, error) [env: SKRET_LOG, default: info]")
 	// Inherited by any command that doesn't register its own local --format
-	// (get uses --json instead; list/env/diff/scan/set/delete/history/sync
+	// (get uses --json instead; list/env/diff/scan/protect/set/delete/history/sync
 	// each register a local --format that shadows this one during parsing --
 	// see Execute() below for how a failing command's actual format is read
 	// back regardless of which of the two flags received it).
@@ -82,6 +82,7 @@ func NewRootCmd() *cobra.Command {
 	cmd.AddCommand(newDiffCmd(opts))
 	cmd.AddCommand(newTemplateCmd(opts))
 	cmd.AddCommand(newScanCmd(opts))
+	cmd.AddCommand(newProtectCmd())
 	cmd.AddCommand(newGenerateCmd(opts))
 	cmd.AddCommand(newBrowseCmd(opts))
 	cmd.AddCommand(newBootstrapCmd(opts))

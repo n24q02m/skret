@@ -32,6 +32,25 @@ func TestMain(m *testing.M) {
 		os.Exit(0)
 	}
 
+	// run --redact tests spawn this binary as a command that prints a file
+	// (stdout one byte per write, stderr in one write), then optionally the
+	// value of one inherited env var on stdout, and exits with a chosen code.
+	if file := os.Getenv("SKRET_RUN_PRINT_FILE"); file != "" {
+		data, err := os.ReadFile(file)
+		if err != nil {
+			os.Exit(99)
+		}
+		for i := range data {
+			_, _ = os.Stdout.Write(data[i : i+1])
+		}
+		_, _ = os.Stderr.Write(data)
+		if name := os.Getenv("SKRET_RUN_PRINT_ENV"); name != "" {
+			_, _ = os.Stdout.WriteString(os.Getenv(name))
+		}
+		n, _ := strconv.Atoi(os.Getenv("SKRET_RUN_PRINT_EXIT"))
+		os.Exit(n)
+	}
+
 	keyring.MockInit()
 
 	// Stub AWS probe for all CLI tests to avoid network calls and credential dependencies.

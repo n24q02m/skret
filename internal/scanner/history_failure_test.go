@@ -86,9 +86,9 @@ func TestCatFileBatch_StreamFailures(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			b := &catFileBatch{stdin: tt.stdin, stdout: bufio.NewReader(strings.NewReader(tt.stdout))}
-			content, ok, err := b.blob(sha, 8<<20)
+			content, status, err := b.blob(sha, 8<<20)
 			require.Error(t, err)
-			assert.False(t, ok)
+			assert.Equal(t, blobAbsent, status)
 			assert.Nil(t, content)
 			assert.Contains(t, err.Error(), "git cat-file:")
 		})

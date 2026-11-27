@@ -95,30 +95,32 @@ func TestCatFileBatch_Kinds(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = batch.close() }()
 
-	content, ok, err := batch.blob(blobSha, 8<<20)
+	content, status, err := batch.blob(blobSha, 8<<20)
 	require.NoError(t, err)
-	assert.True(t, ok)
+	assert.Equal(t, blobRead, status)
 	assert.Equal(t, "hello\n", string(content))
 
 	// Missing object: not served, no body.
-	_, ok, err = batch.blob(missingSha, 8<<20)
+	_, status, err = batch.blob(missingSha, 8<<20)
 	require.NoError(t, err)
-	assert.False(t, ok)
+	assert.Equal(t, blobAbsent, status)
 
 	// Non-blob object: drained so the stream stays aligned.
-	_, ok, err = batch.blob(headSha, 8<<20)
+	_, status, err = batch.blob(headSha, 8<<20)
 	require.NoError(t, err)
-	assert.False(t, ok)
+	assert.Equal(t, blobAbsent, status)
 
-	// Oversize blob beyond maxBytes: drained, not served.
-	_, ok, err = batch.blob(bigSha, 64)
+	// Oversize blob beyond maxBytes: drained, not served, and told apart
+	// from a missing object.
+	content, status, err = batch.blob(bigSha, 64)
 	require.NoError(t, err)
-	assert.False(t, ok)
+	assert.Equal(t, blobTooLarge, status)
+	assert.Nil(t, content)
 
 	// Stream still aligned: the real blob reads correctly again.
-	content, ok, err = batch.blob(blobSha, 8<<20)
+	content, status, err = batch.blob(blobSha, 8<<20)
 	require.NoError(t, err)
-	assert.True(t, ok)
+	assert.Equal(t, blobRead, status)
 	assert.Equal(t, "hello\n", string(content))
 }
 
@@ -145,8 +147,8 @@ func TestCommitBlobs_RenamesAndDeletes(t *testing.T) {
 	batch, err := newCatFileBatch(dir)
 	require.NoError(t, err)
 	defer func() { _ = batch.close() }()
-	content, ok, err := batch.blob(dstSha, 8<<20)
+	content, status, err := batch.blob(dstSha, 8<<20)
 	require.NoError(t, err)
-	assert.True(t, ok)
+	assert.Equal(t, blobRead, status)
 	assert.Equal(t, "changed value\n", string(content))
 }
