@@ -4,6 +4,39 @@ All notable changes to this project will be documented in this file.
 
 <!-- version list -->
 
+## v1.44.0-beta.1 (2026-11-27)
+
+### Bug Fixes
+
+- Ignore the protect age key fixture prefix in GitGuardian
+  ([#1035](https://github.com/n24q02m/skret/pull/1035),
+  [`0610fa6`](https://github.com/n24q02m/skret/commit/0610fa68f22259b3b2d7f4b9680ace0c966945d5))
+
+- Report files protect skips, bound redact hold-back by the tail, and build SBOMs offline
+  ([#1035](https://github.com/n24q02m/skret/pull/1035),
+  [`0610fa6`](https://github.com/n24q02m/skret/commit/0610fa68f22259b3b2d7f4b9680ace0c966945d5))
+
+- **deps**: Update actions/dependency-review-action action to v5.0.1
+  ([#1031](https://github.com/n24q02m/skret/pull/1031),
+  [`b2c5a32`](https://github.com/n24q02m/skret/commit/b2c5a324ab29c6f9cca321f4954b8d966bedd9c3))
+
+- **deps**: Update aws-sdk-go-v2 monorepo ([#1032](https://github.com/n24q02m/skret/pull/1032),
+  [`ceb9b0f`](https://github.com/n24q02m/skret/commit/ceb9b0f4521d9bc49dded9a41405d7e076b6f055))
+
+### Features
+
+- Add run --redact, skret protect and release verification docs
+  ([#1035](https://github.com/n24q02m/skret/pull/1035),
+  [`0610fa6`](https://github.com/n24q02m/skret/commit/0610fa68f22259b3b2d7f4b9680ace0c966945d5))
+
+- Add tool and key policy, session audit trail and protocol 2026-07-28 to skret mcp
+  ([#1034](https://github.com/n24q02m/skret/pull/1034),
+  [`51534b6`](https://github.com/n24q02m/skret/commit/51534b6140c2f60a130feaa035a4bb9e8dfb2455))
+
+- Regenerate demo.gif ([#1033](https://github.com/n24q02m/skret/pull/1033),
+  [`c825319`](https://github.com/n24q02m/skret/commit/c825319beffbfc7c8db37478de431921e24e6dc1))
+
+
 ## v1.43.0 (2026-11-27)
 
 ### Bug Fixes
