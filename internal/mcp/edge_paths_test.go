@@ -66,6 +66,9 @@ environments:
 	require.True(t, isErr, text)
 	assert.Contains(t, text, `failed to initialize provider "local"`)
 	assert.Empty(t, s.clients, "a failed client must not be cached")
+	text, isErr = toolText(t, toolCall(t, s, 4, "skret_list", `{}`))
+	require.True(t, isErr, text)
+	assert.Contains(t, text, `failed to initialize provider "local"`)
 
 	require.NoError(t, os.WriteFile(secrets, []byte("version: \"1\"\nsecrets:\n  K: fixed\n"), 0o600))
 	text, isErr = toolText(t, toolCall(t, s, 3, "skret_get", `{"key":"K"}`))

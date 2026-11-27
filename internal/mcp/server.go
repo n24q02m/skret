@@ -1,12 +1,18 @@
 // Package mcp implements the skret-mcp server: an MCP (Model Context
-// Protocol) stdio server that exposes a skret project's secrets to agent
-// harnesses. Read tools are always available; write tools are gated behind
-// mcp.allow_write in .skret.yaml (default off) and reads through the local
-// provider are appended to the same audit trail mutations use.
+// Protocol) server that exposes a skret project's secrets to agent
+// harnesses over stdio or Streamable HTTP.
+//
+// Policy: the mcp block of .skret.yaml limits the tools (allowed_tools),
+// environments (allowed_envs) and keys (allowed_keys, denied_keys) a client
+// may use, and write tools stay off unless allow_write is true. tools/list
+// shows only the permitted tools; any other call is denied before a
+// provider is touched. Every tools/call writes one JSON audit record to
+// stderr (and to mcp.audit_log when set), and every error and diagnostic
+// is redacted of the secret values loaded in the session.
 //
 // Transport: newline-delimited JSON-RPC 2.0 over stdin/stdout, one message
 // per line, exactly as the MCP stdio transport specifies. All diagnostics
-// go to stderr; stdout carries only protocol messages.
+// and audit records go to stderr; stdout carries only protocol messages.
 package mcp
 
 import (
@@ -14,31 +20,21 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
 
 	"github.com/n24q02m/skret/internal/config"
+	"github.com/n24q02m/skret/internal/logging"
 	"github.com/n24q02m/skret/pkg/skret"
 )
 
 // ServerName is the serverInfo.name reported during initialize.
 const ServerName = "skret-mcp"
-
-// ProtocolVersionLatest is the newest MCP protocol version this server
-// speaks. During initialize the server echoes the client's requested
-// version when supported, else answers with this one.
-const ProtocolVersionLatest = "2025-06-18"
-
-// protocolVersionsSupported is the closed set of protocol versions accepted
-// from a client. The initialize response always names one of these, so a
-// client can rely on the negotiated semantics.
-var protocolVersionsSupported = map[string]bool{
-	"2024-11-05":          true,
-	"2025-03-26":          true,
-	ProtocolVersionLatest: true,
-}
 
 // JSON-RPC 2.0 error codes used by this server.
 const (
@@ -51,13 +47,16 @@ const (
 
 // Options configures a Server. WorkDir/Env/Provider/Path mirror the CLI
 // global flags; Version is reported in serverInfo (wired from
-// internal/version at build time).
+// internal/version at build time). AuditWriter receives the session audit
+// trail as JSON lines; nil means os.Stderr. It must never be the protocol
+// stream.
 type Options struct {
-	WorkDir  string
-	Env      string
-	Provider string
-	Path     string
-	Version  string
+	WorkDir     string
+	Env         string
+	Provider    string
+	Path        string
+	Version     string
+	AuditWriter io.Writer
 }
 
 // Server serves MCP requests for one discovered skret project.
@@ -66,14 +65,27 @@ type Server struct {
 	cfg     *config.Config
 	cfgPath string
 
+	sessionID string
+	redactor  *logging.Redactor
+
+	// logger is the process default logger while this server is open: the
+	// previous default (prevLogger) wrapped in the session redactor, so a
+	// diagnostic logged by any package is scrubbed of session values.
+	logger     *slog.Logger
+	prevLogger *slog.Logger
+
+	auditMu   sync.Mutex
+	auditOut  io.Writer
+	auditPath string
+
 	mu      sync.Mutex
 	clients map[string]*skret.Client
 }
 
 // New discovers and loads the .skret.yaml for opts.WorkDir and validates
-// the MCP policy (allowed_envs). No provider is constructed here: clients
-// are created lazily per requested environment so a broken credential in
-// one environment never blocks serving the others.
+// the MCP policy (allowed_envs, audit_log). No provider is constructed
+// here: clients are created lazily per requested environment so a broken
+// credential in one environment never blocks serving the others.
 func New(opts Options) (*Server, error) {
 	workDir := opts.WorkDir
 	cfgPath, err := config.Discover(workDir)
@@ -86,8 +98,20 @@ func New(opts Options) (*Server, error) {
 	if err != nil {
 		return nil, skret.NewError(skret.ExitConfigError, "skret-mcp: failed to load configuration", err)
 	}
+	config.AnchorToDir(cfg, filepath.Dir(cfgPath))
 
-	s := &Server{opts: opts, cfg: cfg, cfgPath: cfgPath, clients: map[string]*skret.Client{}}
+	s := &Server{
+		opts:      opts,
+		cfg:       cfg,
+		cfgPath:   cfgPath,
+		sessionID: newSessionID(),
+		redactor:  logging.NewRedactor(),
+		auditOut:  opts.AuditWriter,
+		clients:   map[string]*skret.Client{},
+	}
+	if s.auditOut == nil {
+		s.auditOut = os.Stderr
+	}
 
 	// Fail at startup, not on the first tool call, when the requested
 	// default environment is outside mcp.allowed_envs: the operator asked
@@ -97,7 +121,45 @@ func New(opts Options) (*Server, error) {
 			skret.NewError(skret.ExitConfigError, fmt.Sprintf("skret-mcp: environment %q is not in mcp.allowed_envs", env), nil),
 			"add "+env+" to mcp.allowed_envs in "+cfgPath+", or start with a different --env")
 	}
+
+	// Likewise an audit file that cannot be written: no tool call may run
+	// before its record has somewhere to go.
+	if cfg.MCP != nil && cfg.MCP.AuditLog != "" {
+		if err := prepareAuditFile(cfg.MCP.AuditLog); err != nil {
+			return nil, skret.WithRemediation(
+				skret.NewError(skret.ExitConfigError, "skret-mcp: mcp.audit_log is not writable", err),
+				"make "+cfg.MCP.AuditLog+" writable, or point mcp.audit_log in "+cfgPath+" at a writable file")
+		}
+		s.auditPath = cfg.MCP.AuditLog
+	}
+
+	// The library and provider packages log through the process default
+	// logger, which knows only the secret-shape patterns. Route it through
+	// the session redactor until Close.
+	s.prevLogger = slog.Default()
+	s.logger = slog.New(logging.NewValueRedactingHandler(s.prevLogger.Handler(), s.redactor))
+	setDefaultLogger(s.logger)
 	return s, nil
+}
+
+// setDefaultLogger installs l as the slog default without re-pointing the
+// standard log package at it. slog.SetDefault links the log package to l's
+// handler, and when l wraps slog's built-in handler, which itself writes
+// through the log package, the two deadlock on the log package's mutex.
+// The server therefore never changes where the log package writes, neither
+// when it installs its logger nor when it restores the previous one.
+// Nothing in skret writes through the log package.
+func setDefaultLogger(l *slog.Logger) {
+	w, flags := log.Writer(), log.Flags()
+	slog.SetDefault(l)
+	log.SetOutput(w)
+	log.SetFlags(flags)
+}
+
+// redact scrubs text bound for a client or a log of every secret value
+// loaded in this session and of secret-shaped patterns.
+func (s *Server) redact(text string) string {
+	return s.redactor.Redact(text)
 }
 
 // startupEnv resolves the environment the server is pinned to by --env
@@ -178,24 +240,9 @@ func (s *Server) defaultEnv() string {
 // server default), enforces allowed_envs, and returns a cached skret
 // client for it.
 func (s *Server) clientFor(argEnv string) (*skret.Client, string, error) {
-	env := argEnv
-	if env == "" {
-		env = s.defaultEnv()
-	}
-	if env == "" {
-		return nil, "", skret.WithRemediation(
-			skret.NewError(skret.ExitConfigError, "no environment selected", nil),
-			"pass an env argument, set default_env in .skret.yaml, or start skret-mcp with --env")
-	}
-	if !s.envAllowed(env) {
-		return nil, env, skret.WithRemediation(
-			skret.NewError(skret.ExitConfigError, fmt.Sprintf("environment %q is not permitted by mcp.allowed_envs", env), nil),
-			"ask the operator to add "+env+" to mcp.allowed_envs in .skret.yaml, or use one of: "+strings.Join(s.allowedEnvs(), ", "))
-	}
-	if _, ok := s.cfg.Environments[env]; !ok {
-		return nil, env, skret.WithRemediation(
-			skret.NewError(skret.ExitNotFoundError, fmt.Sprintf("environment %q not found in config", env), nil),
-			"declared environments: "+strings.Join(s.envNames(), ", "))
+	env, err := s.resolveEnv(argEnv)
+	if err != nil {
+		return nil, env, err
 	}
 
 	s.mu.Lock()
@@ -216,8 +263,13 @@ func (s *Server) clientFor(argEnv string) (*skret.Client, string, error) {
 	return c, env, nil
 }
 
-// Close releases every cached client's provider resources.
+// Close releases every cached client's provider resources and restores the
+// process default logger New replaced, unless something else has replaced
+// it since.
 func (s *Server) Close() error {
+	if slog.Default() == s.logger {
+		setDefaultLogger(s.prevLogger)
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	var firstErr error
@@ -244,7 +296,7 @@ type rpcRequest struct {
 type rpcError struct {
 	Code    int    `json:"code"`
 	Message string `json:"message"`
-	Data    string `json:"data,omitempty"`
+	Data    any    `json:"data,omitempty"`
 }
 
 // rpcResponse is one outbound message. Result and Error are mutually
@@ -309,15 +361,45 @@ func (s *Server) handleLine(line string, w io.Writer) {
 // dispatch routes one request. A non-nil rpcError is a protocol-level
 // error; otherwise result is the (possibly isError-flagged) tool result.
 func (s *Server) dispatch(req *rpcRequest) (result any, rpcErr *rpcError) {
+	version, metaErr := s.requestVersion(req.Params)
+	return s.dispatchAs(req, version, metaErr)
+}
+
+// dispatchAs routes a request whose per-request protocol version has
+// already been read: 2026-07-28 requests are served statelessly, the rest
+// with the initialize-era semantics. Every protocol error message is
+// redacted before it leaves the server.
+func (s *Server) dispatchAs(req *rpcRequest, version string, metaErr *rpcError) (result any, rpcErr *rpcError) {
+	switch {
+	case metaErr != nil:
+		rpcErr = metaErr
+	case version == ProtocolVersionStateless:
+		result, rpcErr = s.dispatchStateless(req)
+	default:
+		result, rpcErr = s.dispatchLegacy(req)
+	}
+	if rpcErr != nil {
+		rpcErr.Message = s.redact(rpcErr.Message)
+	}
+	return result, rpcErr
+}
+
+// dispatchLegacy routes one request of the initialize-era protocol
+// versions (2024-11-05 through 2025-06-18).
+func (s *Server) dispatchLegacy(req *rpcRequest) (any, *rpcError) {
 	switch req.Method {
 	case "initialize":
 		return s.initialize(req.Params)
 	case "ping":
 		return struct{}{}, nil
 	case "tools/list":
-		return listToolsResult(), nil
+		return map[string]any{"tools": s.visibleTools()}, nil
 	case "tools/call":
-		return s.toolsCall(req.Params)
+		res, rpcErr := s.toolsCall(req.Params)
+		if rpcErr != nil {
+			return nil, rpcErr
+		}
+		return res, nil
 	case "notifications/initialized", "notifications/cancelled", "notifications/roots/list_changed":
 		return nil, nil
 	default:
@@ -359,17 +441,15 @@ func (s *Server) initialize(params json.RawMessage) (any, *rpcError) {
 		}
 	}
 	version := ProtocolVersionLatest
-	if protocolVersionsSupported[req.ProtocolVersion] {
+	if handshakeVersion(req.ProtocolVersion) {
 		version = req.ProtocolVersion
 	}
-	slog.Debug("skret-mcp: initialized", "client_protocol", req.ProtocolVersion, "negotiated", version)
+	slog.Debug("skret-mcp: initialized", "client_protocol", s.redact(req.ProtocolVersion), "negotiated", version)
 	return initializeResult{
 		ProtocolVersion: version,
 		Capabilities:    capabilities{Tools: &toolsCapability{ListChanged: false}},
 		ServerInfo:      serverInfo{Name: ServerName, Version: s.opts.Version},
-		Instructions: "Tools expose the skret secret manager for the resolved .skret.yaml environment. " +
-			"Secret values are returned only by skret_get; skret_list returns key names only. " +
-			"Write tools require mcp.allow_write: true in .skret.yaml (default off).",
+		Instructions:    serverInstructions,
 	}, nil
 }
 

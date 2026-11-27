@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -51,10 +52,11 @@ environments:
     file: .secrets.prod.yaml
 `
 
-// serverFor builds a Server over a fixture directory.
+// serverFor builds a Server over a fixture directory. Its audit trail is
+// discarded; tests that assert on it use auditedServer.
 func serverFor(t *testing.T, dir string) *Server {
 	t.Helper()
-	s, err := New(Options{WorkDir: dir, Version: "test-1"})
+	s, err := New(Options{WorkDir: dir, Version: "test-1", AuditWriter: io.Discard})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = s.Close() })
 	return s

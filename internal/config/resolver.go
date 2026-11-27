@@ -108,12 +108,16 @@ func Resolve(cfg *Config, opts ResolveOpts) (*ResolvedConfig, error) {
 // working directory (the library API, the skret-mcp server's --workdir)
 // need this so `file: .secrets.dev.yaml` keeps meaning "next to the
 // config", the same place the CLI resolves it from the project root.
+// A relative `mcp.audit_log` is anchored the same way.
 func AnchorToDir(c *Config, dir string) {
 	for name := range c.Environments {
 		env := c.Environments[name]
 		env.File = anchorPath(env.File, dir)
 		env.AuditLog = anchorPath(env.AuditLog, dir)
 		c.Environments[name] = env
+	}
+	if c.MCP != nil {
+		c.MCP.AuditLog = anchorPath(c.MCP.AuditLog, dir)
 	}
 }
 

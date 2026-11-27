@@ -20,9 +20,12 @@ type content struct {
 
 // toolResult is the MCP tools/call result. isError marks a tool execution
 // failure (per the MCP spec these are results, not protocol-level errors).
+// ResultType and Meta are set for 2026-07-28 requests only.
 type toolResult struct {
-	Content []content `json:"content"`
-	IsError bool      `json:"isError,omitempty"`
+	ResultType string         `json:"resultType,omitempty"`
+	Content    []content      `json:"content"`
+	IsError    bool           `json:"isError,omitempty"`
+	Meta       map[string]any `json:"_meta,omitempty"`
 }
 
 // toolDesc is one tools/list entry.
@@ -38,29 +41,20 @@ func textResult(text string) toolResult {
 }
 
 // toolErr renders a failed tool execution: message plus the remediation
-// hint when one is attached, so an agent sees the copy-pasteable fix.
-func toolErr(err error) toolResult {
+// hint when one is attached, so an agent sees the copy-pasteable fix. The
+// text is redacted of every secret value loaded in the session.
+func (s *Server) toolErr(err error) toolResult {
 	msg := err.Error()
 	if hint := skret.RemediationOf(err); hint != "" {
 		msg += "\nremediation: " + hint
 	}
-	return toolResult{Content: []content{{Type: "text", Text: msg}}, IsError: true}
+	return toolResult{Content: []content{{Type: "text", Text: s.redact(msg)}}, IsError: true}
 }
 
-// writeGateErr is the policy result for every write tool while
-// mcp.allow_write is false.
-func writeGateErr(tool string) toolResult {
-	return toolResult{
-		Content: []content{{Type: "text", Text: fmt.Sprintf(
-			"%s: write operations are disabled for this skret-mcp server\nremediation: set mcp.allow_write: true in .skret.yaml (then restart the server) if the operator intends to allow secret mutation through MCP", tool)}},
-		IsError: true,
-	}
-}
-
-// confirmErr is the policy result for a write call that omits the per-call
-// confirmation argument. The store is never touched.
-func confirmErr(tool string) toolResult {
-	return toolErr(skret.WithRemediation(
+// confirmErr refuses a write call that omits the per-call confirmation
+// argument. The store is never touched.
+func confirmErr(tool string) error {
+	return deny(reasonConfirmRequired, skret.WithRemediation(
 		skret.NewError(skret.ExitValidationError, tool+": per-call confirmation missing", nil),
 		`add "confirm": true to the tool arguments (mirrors the CLI --confirm flag); nothing was mutated`))
 }
@@ -76,9 +70,9 @@ func argConfirm(args map[string]any) bool {
 	return ok && b
 }
 
-// argErr builds the standard missing/wrong-typed argument result.
-func argErr(tool, argsShape string) toolResult {
-	return toolErr(skret.WithRemediation(
+// argErr refuses a call with a missing or wrong-typed argument.
+func argErr(tool, argsShape string) error {
+	return deny(reasonInvalidArguments, skret.WithRemediation(
 		skret.NewError(skret.ExitValidationError, tool+": key or value argument missing or not a string", nil),
 		`pass arguments like {"key": "<name>", "value": "<value>"}; exact shape: `+argsShape))
 }
@@ -110,9 +104,8 @@ const (
 		`},"required":["key","confirm"]}`
 )
 
-// tools lists every exposed tool. Write tools are always listed (clients
-// must be able to discover them); calling one while gated returns the
-// write-gate error result.
+// tools lists every tool this server implements, in canonical order. The
+// names match config.MCPToolNames, the set mcp.allowed_tools accepts.
 func tools() []toolDesc {
 	return []toolDesc{
 		{
@@ -160,9 +153,29 @@ func tools() []toolDesc {
 	}
 }
 
-// listToolsResult shapes the tools/list response.
-func listToolsResult() map[string]any {
-	return map[string]any{"tools": tools()}
+// visibleTools is the tools/list payload in canonical order: every tool,
+// or with mcp.allowed_tools set the tools a call may use (see
+// toolVisible). It is never nil, so an empty set is sent as [] rather than
+// null.
+func (s *Server) visibleTools() []toolDesc {
+	all := tools()
+	out := make([]toolDesc, 0, len(all))
+	for _, d := range all {
+		if s.toolVisible(d.Name) {
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
+// visibleToolNames lists the names of visibleTools.
+func (s *Server) visibleToolNames() []string {
+	visible := s.visibleTools()
+	names := make([]string, 0, len(visible))
+	for _, d := range visible {
+		names = append(names, d.Name)
+	}
+	return names
 }
 
 // callParams is the tools/call request params.
@@ -171,42 +184,75 @@ type callParams struct {
 	Arguments map[string]any `json:"arguments"`
 }
 
+// toolHandler runs one tool and returns its text result. A returned error
+// becomes an isError result; a denial also marks the audit record denied.
+type toolHandler func(*Server, *callState) (string, error)
+
+// toolHandlers maps each tool name to its handler.
+var toolHandlers = map[string]toolHandler{
+	"skret_list":   (*Server).toolList,
+	"skret_get":    (*Server).toolGet,
+	"skret_env":    (*Server).toolEnvs,
+	"skret_status": (*Server).toolStatus,
+	"skret_doctor": (*Server).toolStatus,
+	"skret_set":    (*Server).toolSet,
+	"skret_delete": (*Server).toolDelete,
+	"skret_rotate": (*Server).toolRotate,
+}
+
 // toolsCall dispatches a tools/call. Structural failures (unknown tool,
 // malformed arguments) are protocol errors; execution outcomes (including
 // policy denial and missing keys) are isError results per the MCP spec.
-func (s *Server) toolsCall(params json.RawMessage) (any, *rpcError) {
+// Either way the call gets exactly one audit record.
+func (s *Server) toolsCall(params json.RawMessage) (*toolResult, *rpcError) {
 	var p callParams
 	if len(params) > 0 {
 		if err := json.Unmarshal(params, &p); err != nil {
-			return nil, &rpcError{Code: codeInvalidParams, Message: "invalid params: " + err.Error()}
+			return nil, s.refuseCall(&callState{tool: p.Name}, reasonInvalidParams,
+				&rpcError{Code: codeInvalidParams, Message: "invalid params: " + err.Error()})
 		}
 	}
 	if p.Name == "" {
-		return nil, &rpcError{Code: codeInvalidParams, Message: "invalid params: name is required"}
+		return nil, s.refuseCall(&callState{}, reasonInvalidParams,
+			&rpcError{Code: codeInvalidParams, Message: "invalid params: name is required"})
+	}
+	handler, ok := toolHandlers[p.Name]
+	if !ok {
+		return nil, s.refuseCall(&callState{tool: p.Name}, reasonUnknownTool,
+			&rpcError{Code: codeInvalidParams, Message: "unknown tool: " + p.Name})
 	}
 	args := p.Arguments
 	if args == nil {
 		args = map[string]any{}
 	}
+	st := &callState{tool: p.Name, args: args}
 
-	switch p.Name {
-	case "skret_list":
-		return s.toolList(args), nil
-	case "skret_get":
-		return s.toolGet(args), nil
-	case "skret_env":
-		return s.toolEnvs(), nil
-	case "skret_status", "skret_doctor":
-		return s.toolStatus(), nil
-	case "skret_set":
-		return s.toolSet(args), nil
-	case "skret_delete":
-		return s.toolDelete(args), nil
-	case "skret_rotate":
-		return s.toolRotate(args), nil
-	default:
-		return nil, &rpcError{Code: codeInvalidParams, Message: "unknown tool: " + p.Name}
+	// A value sent to a write tool is a secret from this point on, even if
+	// the call is refused below.
+	if isWriteTool(p.Name) {
+		if v, ok := argString(args, "value"); ok {
+			s.redactor.Add(v)
+		}
 	}
+
+	text, err := s.runTool(st, handler)
+	res := textResult(text)
+	if auditErr := s.recordCall(st, err); auditErr != nil {
+		res = s.toolErr(auditErr)
+	} else if err != nil {
+		res = s.toolErr(err)
+	}
+	return &res, nil
+}
+
+// runTool applies the tool-level policy and then runs the handler, which
+// applies the argument, environment and key policy before any provider
+// call.
+func (s *Server) runTool(st *callState, handler toolHandler) (string, error) {
+	if err := s.toolGate(st.tool); err != nil {
+		return "", err
+	}
+	return handler(s, st)
 }
 
 // argString reads a string argument; ok is false when absent or not a
@@ -228,47 +274,60 @@ func argEnv(args map[string]any) string {
 
 // Tool handlers ---------------------------------------------------------------
 
-// toolList returns the key names (never values) for the selected
-// environment. The list read is audited like skret_get so the trail shows
+// toolList returns the key names (never values) the key policy admits for
+// the selected environment. Every listed value is registered for
+// redaction. The list read is audited like skret_get so the trail shows
 // every MCP access scope.
-func (s *Server) toolList(args map[string]any) toolResult {
-	c, env, err := s.clientFor(argEnv(args))
+func (s *Server) toolList(st *callState) (string, error) {
+	st.wildcard = true
+	if err := s.authorize(st); err != nil {
+		return "", err
+	}
+	c, env, err := s.clientFor(st.env)
 	if err != nil {
-		return toolErr(err)
+		return "", err
 	}
 	secrets, err := c.List(context.Background())
 	if err != nil {
-		return toolErr(err)
+		return "", err
 	}
 	names := make([]string, 0, len(secrets))
 	for _, sec := range secrets {
-		names = append(names, sec.Key)
+		s.redactor.Add(sec.Value)
+		if s.keyDecision(sec.Key) == "" {
+			names = append(names, sec.Key)
+		}
 	}
 	if err := s.auditRead(c, env, "*"); err != nil {
-		return toolErr(err)
+		return "", err
 	}
-	return textResult(mustJSON(names))
+	return mustJSON(names), nil
 }
 
 // toolGet returns one secret's value -- the only path a value takes out of
 // the server.
-func (s *Server) toolGet(args map[string]any) toolResult {
-	key, ok := argString(args, "key")
+func (s *Server) toolGet(st *callState) (string, error) {
+	key, ok := argString(st.args, "key")
 	if !ok {
-		return argErr("skret_get", schemaGet)
+		return "", argErr("skret_get", schemaGet)
 	}
-	c, env, err := s.clientFor(argEnv(args))
+	st.keys = []string{key}
+	if err := s.authorize(st, key); err != nil {
+		return "", err
+	}
+	c, env, err := s.clientFor(st.env)
 	if err != nil {
-		return toolErr(err)
+		return "", err
 	}
 	sec, err := c.Get(context.Background(), key)
 	if err != nil {
-		return toolErr(err)
+		return "", err
 	}
+	s.redactor.Add(sec.Value)
 	if err := s.auditRead(c, env, key); err != nil {
-		return toolErr(err)
+		return "", err
 	}
-	return textResult(sec.Value)
+	return sec.Value, nil
 }
 
 // envList is the skret_env payload.
@@ -277,12 +336,14 @@ type envList struct {
 	DefaultEnv   string   `json:"default_env,omitempty"`
 }
 
-func (s *Server) toolEnvs() toolResult {
-	return textResult(mustJSON(envList{Environments: s.allowedEnvs(), DefaultEnv: s.defaultEnv()}))
+func (s *Server) toolEnvs(*callState) (string, error) {
+	return mustJSON(envList{Environments: s.allowedEnvs(), DefaultEnv: s.defaultEnv()}), nil
 }
 
 // statusReport is the skret_status / skret_doctor payload. It reflects
 // configuration and policy only -- running it never touches a provider.
+// The tool and key policy fields appear only when the operator set them,
+// so a config without them reports exactly what it did before.
 type statusReport struct {
 	OK          bool     `json:"ok"`
 	Version     string   `json:"version"`
@@ -293,9 +354,13 @@ type statusReport struct {
 	AllowWrite  bool     `json:"allow_write"`
 	AllowedEnvs []string `json:"allowed_envs"`
 	ReadOnly    bool     `json:"read_only"`
+	Tools       []string `json:"tools,omitempty"`
+	AllowedKeys []string `json:"allowed_keys,omitempty"`
+	DeniedKeys  []string `json:"denied_keys,omitempty"`
+	AuditLog    string   `json:"audit_log,omitempty"`
 }
 
-func (s *Server) toolStatus() toolResult {
+func (s *Server) toolStatus(*callState) (string, error) {
 	env := s.defaultEnv()
 	providerName := ""
 	var path string
@@ -303,7 +368,7 @@ func (s *Server) toolStatus() toolResult {
 		providerName = e.Provider
 		path = e.Path
 	}
-	return textResult(mustJSON(statusReport{
+	report := statusReport{
 		OK:          true,
 		Version:     s.opts.Version,
 		Env:         env,
@@ -313,85 +378,91 @@ func (s *Server) toolStatus() toolResult {
 		AllowWrite:  s.allowWrite(),
 		AllowedEnvs: s.allowedEnvs(),
 		ReadOnly:    !s.allowWrite(),
-	}))
+		AuditLog:    s.auditPath,
+	}
+	if s.toolsPolicySet() {
+		report.Tools = s.visibleToolNames()
+	}
+	if s.cfg.MCP != nil {
+		report.AllowedKeys = s.cfg.MCP.AllowedKeys
+		report.DeniedKeys = s.cfg.MCP.DeniedKeys
+	}
+	return mustJSON(report), nil
 }
 
 // toolSet creates or updates a secret (write-gated + confirmed per call).
-func (s *Server) toolSet(args map[string]any) toolResult {
+func (s *Server) toolSet(st *callState) (string, error) {
 	const shape = `{"key": "<name>", "value": "<value>", "confirm": true}`
-	if !s.allowWrite() {
-		return writeGateErr("skret_set")
-	}
-	key, keyOK := argString(args, "key")
-	value, valOK := argString(args, "value")
+	key, keyOK := argString(st.args, "key")
+	value, valOK := argString(st.args, "value")
 	if !keyOK || !valOK {
-		return argErr("skret_set", shape)
+		return "", argErr("skret_set", shape)
 	}
-	if !argConfirm(args) {
-		return confirmErr("skret_set")
-	}
-	c, env, err := s.clientFor(argEnv(args))
+	c, env, err := s.authorizeWrite(st, "skret_set", key)
 	if err != nil {
-		return toolErr(err)
+		return "", err
 	}
 	if err := c.Set(context.Background(), key, value, provider.SecretMeta{}); err != nil {
-		return toolErr(err)
+		return "", err
 	}
-	slog.Info("skret-mcp: set", "env", env, "key", key)
-	return textResult(fmt.Sprintf("set %s (env %s)", key, env))
+	slog.Info("skret-mcp: set", "env", s.redact(env), "key", s.redact(key))
+	return fmt.Sprintf("set %s (env %s)", key, env), nil
 }
 
 // toolDelete removes a secret (write-gated + confirmed per call).
-func (s *Server) toolDelete(args map[string]any) toolResult {
+func (s *Server) toolDelete(st *callState) (string, error) {
 	const shape = `{"key": "<name>", "confirm": true}`
-	if !s.allowWrite() {
-		return writeGateErr("skret_delete")
-	}
-	key, ok := argString(args, "key")
+	key, ok := argString(st.args, "key")
 	if !ok {
-		return argErr("skret_delete", shape)
+		return "", argErr("skret_delete", shape)
 	}
-	if !argConfirm(args) {
-		return confirmErr("skret_delete")
-	}
-	c, env, err := s.clientFor(argEnv(args))
+	c, env, err := s.authorizeWrite(st, "skret_delete", key)
 	if err != nil {
-		return toolErr(err)
+		return "", err
 	}
 	if err := c.Delete(context.Background(), key); err != nil {
-		return toolErr(err)
+		return "", err
 	}
-	slog.Info("skret-mcp: delete", "env", env, "key", key)
-	return textResult(fmt.Sprintf("deleted %s (env %s)", key, env))
+	slog.Info("skret-mcp: delete", "env", s.redact(env), "key", s.redact(key))
+	return fmt.Sprintf("deleted %s (env %s)", key, env), nil
 }
 
 // toolRotate replaces a secret's value, recorded as a rotation in the
 // local provider's audit trail (write-gated + confirmed per call).
 // Generation stays with the caller: MCP passes the explicit replacement
 // value, exactly like `skret rotate --value`.
-func (s *Server) toolRotate(args map[string]any) toolResult {
+func (s *Server) toolRotate(st *callState) (string, error) {
 	const shape = `{"key": "<name>", "value": "<new value>", "confirm": true}`
-	if !s.allowWrite() {
-		return writeGateErr("skret_rotate")
-	}
-	key, keyOK := argString(args, "key")
-	value, valOK := argString(args, "value")
+	key, keyOK := argString(st.args, "key")
+	value, valOK := argString(st.args, "value")
 	if !keyOK || !valOK {
-		return argErr("skret_rotate", shape)
+		return "", argErr("skret_rotate", shape)
 	}
-	if !argConfirm(args) {
-		return confirmErr("skret_rotate")
-	}
-	c, env, err := s.clientFor(argEnv(args))
+	c, env, err := s.authorizeWrite(st, "skret_rotate", key)
 	if err != nil {
-		return toolErr(err)
+		return "", err
 	}
 	ctx := local.WithAuditOp(context.Background(), local.AuditOpRotate)
 	if err := c.Set(ctx, key, value, provider.SecretMeta{}); err != nil {
-		return toolErr(err)
+		return "", err
 	}
-	slog.Info("skret-mcp: rotate", "env", env, "key", key)
-	return textResult(fmt.Sprintf("rotated %s (env %s)", key, env))
+	slog.Info("skret-mcp: rotate", "env", s.redact(env), "key", s.redact(key))
+	return fmt.Sprintf("rotated %s (env %s)", key, env), nil
+}
+
+// authorizeWrite requires the per-call confirmation of a write call, then
+// applies the environment and key policy, and returns the client for the
+// call's environment. The store is not touched before all three pass. The
+// confirmation is checked first, as it was before the key policy existed.
+func (s *Server) authorizeWrite(st *callState, tool, key string) (*skret.Client, string, error) {
+	st.keys = []string{key}
+	if !argConfirm(st.args) {
+		return nil, "", confirmErr(tool)
+	}
+	if err := s.authorize(st, key); err != nil {
+		return nil, st.env, err
+	}
+	return s.clientFor(st.env)
 }
 
 // auditRead appends one mcp_read entry to the local provider's audit trail
@@ -412,7 +483,7 @@ func (s *Server) auditRead(c *skret.Client, env, keyName string) error {
 		Actor:     local.AuditActor(),
 	}
 	if err := local.AppendAuditEntry(local.AuditLogPathFor(resolved), entry); err != nil {
-		slog.Error("skret-mcp: audit append failed", "env", env, "err", err)
+		slog.Error("skret-mcp: audit append failed", "env", s.redact(env), "err", s.redact(err.Error()))
 		return err
 	}
 	return nil

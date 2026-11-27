@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"crypto/subtle"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -102,19 +103,85 @@ func (s *Server) HTTPHandler(bearerToken string) http.Handler {
 			})
 			return
 		}
-		result, rpcErr := s.dispatch(&req)
+		version, metaErr := s.requestVersion(req.Params)
+		stateless := metaErr != nil || version == ProtocolVersionStateless
+		if metaErr == nil && version == ProtocolVersionStateless {
+			if header := statelessHeaderMismatch(r.Header, &req, version); header != "" {
+				id := req.ID
+				if notification {
+					id = json.RawMessage("null")
+				}
+				writeJSONHTTP(w, http.StatusBadRequest, rpcResponse{
+					JSONRPC: "2.0",
+					ID:      id,
+					Error: &rpcError{
+						Code:    codeHeaderMismatch,
+						Message: "header mismatch: " + header + " is missing or does not match the request body",
+					},
+				})
+				return
+			}
+		}
+		result, rpcErr := s.dispatchAs(&req, version, metaErr)
 		if notification {
 			w.WriteHeader(http.StatusAccepted)
 			return
 		}
 		resp := rpcResponse{JSONRPC: "2.0", ID: req.ID, Result: result}
+		status := http.StatusOK
 		if rpcErr != nil {
 			resp.Result = nil
 			resp.Error = rpcErr
+			if stateless {
+				status = http.StatusBadRequest
+				if rpcErr.Code == codeMethodNotFound {
+					status = http.StatusNotFound
+				}
+			}
 		}
-		writeJSONHTTP(w, http.StatusOK, resp)
+		writeJSONHTTP(w, status, resp)
 	})
 	return mux
+}
+
+// statelessHeaderMismatch checks the request headers a 2026-07-28 request
+// must carry against its body and returns the name of the first header that
+// is missing or disagrees, or "" when all match. Only the header name is
+// ever reported, never its value.
+func statelessHeaderMismatch(h http.Header, req *rpcRequest, version string) string {
+	if v, ok := headerValue(h, "MCP-Protocol-Version"); !ok || v != version {
+		return "MCP-Protocol-Version"
+	}
+	if v, ok := headerValue(h, "Mcp-Method"); !ok || v != req.Method {
+		return "Mcp-Method"
+	}
+	if req.Method == "tools/call" {
+		var p callParams
+		_ = json.Unmarshal(req.Params, &p) // malformed params are rejected by tools/call itself
+		if v, ok := headerValue(h, "Mcp-Name"); !ok || v != p.Name {
+			return "Mcp-Name"
+		}
+	}
+	return ""
+}
+
+// headerValue reads one request header. A value wrapped in the
+// =?base64?...?= sentinel is decoded first; ok is false when the header is
+// absent, empty, or carries an undecodable sentinel.
+func headerValue(h http.Header, name string) (string, bool) {
+	v := h.Get(name)
+	if v == "" {
+		return "", false
+	}
+	const prefix, suffix = "=?base64?", "?="
+	if strings.HasPrefix(v, prefix) && strings.HasSuffix(v, suffix) && len(v) >= len(prefix)+len(suffix) {
+		decoded, err := base64.StdEncoding.DecodeString(v[len(prefix) : len(v)-len(suffix)])
+		if err != nil {
+			return "", false
+		}
+		return string(decoded), true
+	}
+	return v, true
 }
 
 // ServeHTTP starts the Streamable HTTP MCP server until ctx is cancelled.

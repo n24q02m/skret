@@ -3,6 +3,7 @@ package mcp
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -117,4 +118,111 @@ func TestServeHTTP_Lifecycle(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
 	require.NoError(t, s.ServeHTTP(ctx, "127.0.0.1:0", ""))
+}
+
+// postMCP sends one POST /mcp with the given headers.
+func postMCP(t *testing.T, h http.Handler, body string, headers map[string]string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/mcp", strings.NewReader(body))
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	return rec
+}
+
+func httpErrorCode(t *testing.T, rec *httptest.ResponseRecorder) float64 {
+	t.Helper()
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp), rec.Body.String())
+	errObj := rpcErrorOf(t, resp)
+	require.NotNil(t, errObj, rec.Body.String())
+	return errObj["code"].(float64)
+}
+
+func b64Header(v string) string {
+	return "=?base64?" + base64.StdEncoding.EncodeToString([]byte(v)) + "?="
+}
+
+func TestHTTPHandler_ModernRequests(t *testing.T) {
+	s, sink := auditedServer(t, writeFixture(t, twoEnvConfig, map[string]string{"API_KEY": "val"}))
+	h := s.HTTPHandler("")
+	callBody := `{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{` + modernMeta + `,"name":"skret_list","arguments":{}}}`
+	callHeaders := func(overrides map[string]string) map[string]string {
+		hdr := map[string]string{"MCP-Protocol-Version": "2026-07-28", "Mcp-Method": "tools/call", "Mcp-Name": "skret_list"}
+		for k, v := range overrides {
+			if v == "" {
+				delete(hdr, k)
+				continue
+			}
+			hdr[k] = v
+		}
+		return hdr
+	}
+
+	rec := postMCP(t, h, callBody, callHeaders(map[string]string{"Mcp-Session-Id": "ignored-session"}))
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	assert.Contains(t, rec.Body.String(), `"resultType":"complete"`)
+	assert.Contains(t, rec.Body.String(), "API_KEY")
+
+	rec = postMCP(t, h, callBody, callHeaders(map[string]string{"Mcp-Name": b64Header("skret_list"), "Mcp-Method": b64Header("tools/call")}))
+	assert.Equal(t, http.StatusOK, rec.Code, "base64 sentinel values are decoded before comparison")
+	require.Len(t, sink.records(t), 2)
+
+	for name, hdr := range map[string]map[string]string{
+		"missing protocol version header": callHeaders(map[string]string{"MCP-Protocol-Version": ""}),
+		"protocol version mismatch":       callHeaders(map[string]string{"MCP-Protocol-Version": "2025-06-18"}),
+		"missing method header":           callHeaders(map[string]string{"Mcp-Method": ""}),
+		"method mismatch":                 callHeaders(map[string]string{"Mcp-Method": "tools/list"}),
+		"missing name header":             callHeaders(map[string]string{"Mcp-Name": ""}),
+		"name mismatch":                   callHeaders(map[string]string{"Mcp-Name": "skret_get"}),
+		"undecodable sentinel":            callHeaders(map[string]string{"Mcp-Name": "=?base64?***?="}),
+	} {
+		t.Run(name, func(t *testing.T) {
+			rec := postMCP(t, h, callBody, hdr)
+			assert.Equal(t, http.StatusBadRequest, rec.Code)
+			assert.InDelta(t, float64(codeHeaderMismatch), httpErrorCode(t, rec), 0)
+		})
+	}
+	assert.Len(t, sink.records(t), 2, "a request with mismatched headers never runs")
+
+	discover := `{"jsonrpc":"2.0","id":1,"method":"server/discover","params":{` + modernMeta + `}}`
+	rec = postMCP(t, h, discover, map[string]string{"MCP-Protocol-Version": "2026-07-28", "Mcp-Method": "server/discover"})
+	assert.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	assert.Contains(t, rec.Body.String(), `"supportedVersions"`)
+
+	unknown := `{"jsonrpc":"2.0","id":1,"method":"resources/list","params":{` + modernMeta + `}}`
+	rec = postMCP(t, h, unknown, map[string]string{"MCP-Protocol-Version": "2026-07-28", "Mcp-Method": "resources/list"})
+	assert.Equal(t, http.StatusNotFound, rec.Code)
+	assert.InDelta(t, float64(codeMethodNotFound), httpErrorCode(t, rec), 0)
+
+	unsupported := `{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2099-01-01","io.modelcontextprotocol/clientCapabilities":{}}}}`
+	rec = postMCP(t, h, unsupported, map[string]string{"MCP-Protocol-Version": "2099-01-01", "Mcp-Method": "tools/list"})
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+	assert.InDelta(t, float64(codeUnsupportedProtocolVersion), httpErrorCode(t, rec), 0)
+
+	noCaps := `{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28"}}}`
+	rec = postMCP(t, h, noCaps, map[string]string{"MCP-Protocol-Version": "2026-07-28", "Mcp-Method": "tools/list"})
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+	assert.InDelta(t, float64(codeInvalidParams), httpErrorCode(t, rec), 0)
+
+	notification := `{"jsonrpc":"2.0","method":"notifications/cancelled","params":{` + modernMeta + `,"requestId":1}}`
+	rec = postMCP(t, h, notification, map[string]string{"MCP-Protocol-Version": "2026-07-28", "Mcp-Method": "notifications/cancelled"})
+	assert.Equal(t, http.StatusAccepted, rec.Code)
+	rec = postMCP(t, h, notification, map[string]string{"MCP-Protocol-Version": "2026-07-28"})
+	assert.Equal(t, http.StatusBadRequest, rec.Code, "header validation applies to notifications too")
+}
+
+// Requests without per-request _meta keep the earlier transport rules:
+// no Mcp-Method/Mcp-Name headers needed, JSON-RPC errors answered with 200.
+func TestHTTPHandler_LegacyRequestsNeedNoNewHeaders(t *testing.T) {
+	s := serverFor(t, writeFixture(t, twoEnvConfig, map[string]string{"API_KEY": "val"}))
+	h := s.HTTPHandler("")
+	rec := postMCP(t, h, `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}`, map[string]string{"MCP-Protocol-Version": "2025-06-18"})
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Contains(t, rec.Body.String(), `"protocolVersion":"2025-06-18"`)
+	rec = postMCP(t, h, `{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"skret_explode"}}`, nil)
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.InDelta(t, float64(codeInvalidParams), httpErrorCode(t, rec), 0)
 }
