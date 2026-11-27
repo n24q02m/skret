@@ -17,3 +17,10 @@ secret:
     # credential.
     - name: dotenv syncer nested-key test fixture (fabricated, not a real secret)
       match: nested-key-fixture-not-a-secret
+    # `AGE-SECRET-KEY-1` is the fixed prefix of the age secret key format. The
+    # protect tests (internal/protect/protect_test.go) pass it to fakeToken to
+    # build a fabricated age key and verify that skret protect detects the
+    # format. The "Generic High Entropy Secret" detector fires on the prefix
+    # literal alone, not a real credential.
+    - name: protect age-secret-key test fixture (fabricated, not a real secret)
+      match: AGE-SECRET-KEY-1
