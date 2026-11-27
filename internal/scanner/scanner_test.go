@@ -1,6 +1,7 @@
 package scanner
 
 import (
+	"encoding/binary"
 	"os"
 	"path/filepath"
 	"testing"
@@ -54,6 +55,27 @@ func TestScanSkipsBinaryFile(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.Empty(t, findings)
+}
+
+// UTF-16 has a NUL byte in every ASCII character, so without decoding it
+// would be skipped as binary and the leaked value missed.
+func TestScanDecodesUTF16(t *testing.T) {
+	dir := t.TempDir()
+	le := filepath.Join(dir, "le.txt")
+	be := filepath.Join(dir, "be.txt")
+	require.NoError(t, os.WriteFile(le, utf16File("head\nAPI=sup3r-s3cret-value\n", binary.LittleEndian), 0o600))
+	require.NoError(t, os.WriteFile(be, utf16File("head\nAPI=sup3r-s3cret-value\n", binary.BigEndian), 0o600))
+
+	findings, err := Scan(
+		[]Target{{Key: "API_KEY", Value: "sup3r-s3cret-value"}},
+		[]string{le, be},
+		Opts{},
+	)
+	require.NoError(t, err)
+	require.Equal(t, []Finding{
+		{Key: "API_KEY", File: be, Line: 2},
+		{Key: "API_KEY", File: le, Line: 2},
+	}, findings)
 }
 
 func TestScanSkipsOversizeFile(t *testing.T) {

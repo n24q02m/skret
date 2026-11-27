@@ -2,6 +2,7 @@ package scanner
 
 import (
 	"context"
+	"encoding/binary"
 	"os"
 	osexec "os/exec"
 	"path/filepath"
@@ -158,6 +159,23 @@ func TestHistoryScan_BinarySkipped(t *testing.T) {
 	findings, err := HistoryScan(historyTargets(), dir, HistoryOpts{})
 	require.NoError(t, err)
 	assert.Empty(t, findings)
+}
+
+func TestHistoryScan_DecodesUTF16(t *testing.T) {
+	requireGit(t)
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	sha := historyCommit(t, dir, "c1: utf-16 leak", map[string]string{
+		"le.txt": string(utf16File("head\nAPI=tok123\n", binary.LittleEndian)),
+		"be.txt": string(utf16File("head\nAPI=tok123\n", binary.BigEndian)),
+	})
+
+	findings, err := HistoryScan(historyTargets(), dir, HistoryOpts{})
+	require.NoError(t, err)
+	assert.Equal(t, []Finding{
+		{Key: "TOKEN", File: "be.txt", Line: 2, Commit: sha},
+		{Key: "TOKEN", File: "le.txt", Line: 2, Commit: sha},
+	}, findings)
 }
 
 func TestHistoryScan_MaxCountBoundsWalk(t *testing.T) {

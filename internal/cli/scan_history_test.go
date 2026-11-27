@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"os"
@@ -132,6 +133,23 @@ func TestScanCmd_History_JSON(t *testing.T) {
 	assert.Equal(t, "leaked.env", findings[0]["file"])
 	assert.Equal(t, float64(1), findings[0]["line"])
 	assert.Equal(t, runGitCLIOut(t, dir, "rev-parse", "HEAD"), findings[0]["commit"])
+}
+
+func TestScanCmd_History_FindsUTF16Leak(t *testing.T) {
+	if _, err := osexec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	dir := initHistoryRepo(t)
+	historyCommitCLI(t, dir, "c1: utf-16 leak", map[string]string{
+		"le.env": protectUTF16("head\nAPI=tok123\n", binary.LittleEndian),
+		"be.env": protectUTF16("head\nAPI=tok123\n", binary.BigEndian),
+	})
+
+	stdout, stderr, err := runScan(t, "--history", "--format", "json")
+	se := requireLeakErr(t, err)
+	assert.Equal(t, skret.ExitLeakFound, se.Code)
+	assert.Equal(t, map[string]string{"le.env": "TOKEN:2", "be.env": "TOKEN:2"}, utf16Findings(t, stdout))
+	assert.NotContains(t, stdout+stderr, "tok123")
 }
 
 func TestScanCmd_History_Clean(t *testing.T) {
