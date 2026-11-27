@@ -4,6 +4,43 @@ All notable changes to this project will be documented in this file.
 
 <!-- version list -->
 
+## v1.43.0 (2026-11-27)
+
+### Bug Fixes
+
+- Auto-update taps and claude-plugins after stable release
+  ([#1029](https://github.com/n24q02m/skret/pull/1029),
+  [`74335b1`](https://github.com/n24q02m/skret/commit/74335b170a75b645c5330ac8a0b452e71f51f587))
+
+- Sync Wave 0 README cross-promo and docs links
+  ([#1030](https://github.com/n24q02m/skret/pull/1030),
+  [`86c363a`](https://github.com/n24q02m/skret/commit/86c363a92875b52a08fd05e6cda2ee5b2f41c2be))
+
+- **deps**: Update @astrojs/starlight to ^0.43.0
+  ([#1020](https://github.com/n24q02m/skret/pull/1020),
+  [`88dd974`](https://github.com/n24q02m/skret/commit/88dd974f43393645a7dfc74b29a0f5807eb7bbb8))
+
+- **deps**: Update aws-sdk-go-v2 monorepo ([#1021](https://github.com/n24q02m/skret/pull/1021),
+  [`0095ca7`](https://github.com/n24q02m/skret/commit/0095ca7b737d4fb467793c70d214d4a94eafa233))
+
+- **deps**: Update module google.golang.org/api to v0.316.0
+  ([#1023](https://github.com/n24q02m/skret/pull/1023),
+  [`3693d42`](https://github.com/n24q02m/skret/commit/3693d42514d2f654bfc24f023cbe7280a8ba26c3))
+
+- **deps**: Update module google.golang.org/grpc to v1.85.0
+  ([#1024](https://github.com/n24q02m/skret/pull/1024),
+  [`95ad9d9`](https://github.com/n24q02m/skret/commit/95ad9d965a2c3e50088d6aef7290d4744cbaa43f))
+
+- **deps**: Update module gopkg.in/ini.v1 to v1.68.0
+  ([#1026](https://github.com/n24q02m/skret/pull/1026),
+  [`12ff6f1`](https://github.com/n24q02m/skret/commit/12ff6f1a66f5e1092a8e2226855797db73d6781f))
+
+### Features
+
+- Regenerate demo.gif ([#997](https://github.com/n24q02m/skret/pull/997),
+  [`dc7da5b`](https://github.com/n24q02m/skret/commit/dc7da5b8825c2bd9501a3c3101dee599f56acbe8))
+
+
 ## v1.42.0 (2026-11-25)
 
 
