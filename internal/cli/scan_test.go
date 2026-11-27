@@ -2,8 +2,10 @@ package cli
 
 import (
 	"bytes"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -97,6 +99,40 @@ func TestScanCmd_JSON(t *testing.T) {
 		keys = append(keys, f["key"].(string))
 	}
 	assert.Contains(t, keys, "TOKEN")
+}
+
+// utf16Findings maps the base name of each le.env/be.env finding in a JSON
+// scan report to its key and line.
+func utf16Findings(t *testing.T, report string) map[string]string {
+	t.Helper()
+	var findings []struct {
+		Key  string `json:"key"`
+		File string `json:"file"`
+		Line int    `json:"line"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(report), &findings))
+	out := map[string]string{}
+	for _, f := range findings {
+		if base := filepath.Base(f.File); base == "le.env" || base == "be.env" {
+			out[base] = fmt.Sprintf("%s:%d", f.Key, f.Line)
+		}
+	}
+	return out
+}
+
+// A managed value in a UTF-16 file (as Windows tools save text) is found:
+// the file is decoded instead of being skipped as binary.
+func TestScanCmd_FindsUTF16Leak(t *testing.T) {
+	dir := writeLocalTemplateConfig(t)
+	chdirTmp(t, dir)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "le.env"), []byte(protectUTF16("head\nAPI=tok123\n", binary.LittleEndian)), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "be.env"), []byte(protectUTF16("head\nAPI=tok123\n", binary.BigEndian)), 0o600))
+
+	stdout, stderr, err := runScan(t, "--format", "json")
+	se := requireLeakErr(t, err)
+	assert.Equal(t, skret.ExitLeakFound, se.Code)
+	assert.Equal(t, map[string]string{"le.env": "TOKEN:2", "be.env": "TOKEN:2"}, utf16Findings(t, stdout))
+	assert.NotContains(t, stdout+stderr, "tok123")
 }
 
 func TestScanCmd_Staged(t *testing.T) {

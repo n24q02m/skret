@@ -28,7 +28,11 @@ Matches values literally (not as patterns), so a value containing regex
 metacharacters is still found. Exits 10 when a leak is found — wire it into CI
 or a pre-commit hook. Use --staged to scan only staged files, or --history to
 scan committed blobs across git history (bounded walk; each unique blob is
-reported at the commit that introduced it).`,
+reported at the commit that introduced it).
+
+Files and blobs larger than 8 MiB, binary content (a NUL byte in the first
+8 KiB) and paths that are not regular files are skipped. UTF-16 text with a
+byte order mark is decoded first, so a value in it is still found.`,
 		Example: `  skret scan
   skret scan --staged
   skret scan --min-length=8

@@ -35,7 +35,8 @@ type HistoryOpts struct {
 //     secret carried forward through later commits is attributed to its
 //     introducing commit instead of re-reported;
 //   - blob content streams through one `git cat-file --batch` process, one
-//     blob in memory at a time; binary and oversize blobs are skipped.
+//     blob in memory at a time; binary and oversize blobs are skipped, and
+//     UTF-16 with a byte order mark is decoded first (as LoadText does).
 func HistoryScan(targets []Target, dir string, opts HistoryOpts) ([]Finding, error) {
 	maxBytes := opts.MaxBytes
 	if maxBytes <= 0 {
@@ -90,10 +91,14 @@ func HistoryScan(targets []Target, dir string, opts HistoryOpts) ([]Finding, err
 			if err != nil {
 				return nil, err
 			}
-			if status != blobRead || isBinaryContent(content) {
+			if status != blobRead {
 				continue
 			}
-			for _, f := range scanContent(b.path, content, active) {
+			text, skipped := textContent(content)
+			if skipped != "" {
+				continue
+			}
+			for _, f := range scanContent(b.path, text, active) {
 				f.Commit = commit
 				findings = append(findings, f)
 			}

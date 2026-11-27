@@ -15,7 +15,7 @@ This lists your managed secrets once, then checks whether any of their values ap
 
 `skret scan` matches your **real managed values** — the secrets skret manages for the current environment — against the contents of your files. Because it looks for the actual values, it does not guess from patterns, so there are no false positives from strings that merely "look like a key". The trade-off is that it only finds the secrets skret manages.
 
-The file set is your **git-tracked files** (`git ls-files`), so it respects `.gitignore`. If the directory is not a git repository, skret walks the tree instead, skipping `.git/`. Binary and oversize files are skipped.
+The file set is your **git-tracked files** (`git ls-files`), so it respects `.gitignore`. If the directory is not a git repository, skret walks the tree instead, skipping `.git/`. Files larger than 8 MiB, binary files (a NUL byte in the first 8 KiB) and paths that are not regular files are skipped. Text saved as **UTF-16 with a byte order mark** (as some Windows tools save it) has a NUL byte in every ASCII character, so it is decoded to UTF-8 first and then scanned like any other text; a match reports the line in the decoded text. UTF-16 without a byte order mark, and UTF-32, count as binary.
 
 Output reports the **key name** and **file:line** of each match — the secret value is never printed. On any finding the command exits with code **10**, so CI jobs and pre-commit hooks fail when a managed secret would be committed. When nothing is found it exits 0.
 
@@ -53,7 +53,7 @@ skret scan --history
 
 Output rows gain a `COMMIT` column (`commit` in JSON), and `file` is the repo-relative path as git reports it. Because values are matched against real blob content — not patches — this catches values committed and later removed, and reports the exact commit to scrub.
 
-The walk is bounded so a large repository cannot turn into an unbounded job: `--max-count` caps how many commits are visited (default `1000`) and `--since` accepts any git date expression. A repository with no commits scans empty. Binary and oversize blobs are skipped, and blob content streams one object at a time through a single `git cat-file --batch` process, so memory stays flat regardless of history size.
+The walk is bounded so a large repository cannot turn into an unbounded job: `--max-count` caps how many commits are visited (default `1000`) and `--since` accepts any git date expression. A repository with no commits scans empty. Blobs follow the same rules as files: blobs larger than 8 MiB and binary blobs are skipped, UTF-16 blobs with a byte order mark are decoded first, and blob content streams one object at a time through a single `git cat-file --batch` process, so memory stays flat regardless of history size.
 
 ### `--since`
 

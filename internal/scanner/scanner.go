@@ -2,8 +2,6 @@ package scanner
 
 import (
 	"bytes"
-	"io"
-	"os"
 	"sort"
 )
 
@@ -40,8 +38,9 @@ const (
 
 // Scan returns every place a target value appears as a substring anywhere in the
 // given files (matching is whole-file, so values spanning line boundaries are
-// detected). Binary and oversize files are skipped. A target whose value is
-// shorter than opts.MinLength is skipped.
+// detected). Files are read as LoadText reads them: UTF-16 with a byte order
+// mark is decoded, and binary, oversize and non-regular files are skipped. A
+// target whose value is shorter than opts.MinLength is skipped.
 func Scan(targets []Target, files []string, opts Opts) ([]Finding, error) {
 	maxBytes := opts.MaxBytes
 	if maxBytes <= 0 {
@@ -74,42 +73,11 @@ func Scan(targets []Target, files []string, opts Opts) ([]Finding, error) {
 }
 
 func scanFile(path string, targets []Target, maxBytes int64) ([]Finding, error) {
-	content, err := loadFile(path, maxBytes)
+	content, _, err := LoadText(path, maxBytes)
 	if err != nil || content == nil {
 		return nil, err
 	}
 	return scanContent(path, content, targets), nil
-}
-
-func loadFile(path string, maxBytes int64) ([]byte, error) {
-	info, err := os.Stat(path)
-	if err != nil || info.IsDir() || info.Size() > maxBytes {
-		return nil, err
-	}
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-
-	bin, err := isBinary(f)
-	if err != nil || bin {
-		return nil, err
-	}
-
-	return io.ReadAll(f)
-}
-
-func isBinary(f *os.File) (bool, error) {
-	head := make([]byte, binarySniff)
-	n, _ := f.Read(head)
-	if bytes.IndexByte(head[:n], 0) >= 0 {
-		return true, nil
-	}
-	if _, err := f.Seek(0, 0); err != nil {
-		return false, err
-	}
-	return false, nil
 }
 
 func scanContent(path string, content []byte, targets []Target) []Finding {
