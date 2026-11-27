@@ -37,7 +37,14 @@ pass through a filter that replaces every loaded secret value (including
 multi-line values and their base64 and URL-encoded forms) and token-shaped
 strings with [REDACTED]. The command then writes to pipes instead of the
 terminal, so programs that check for a TTY may disable colour, progress bars
-or line buffering. Values shorter than --redact-min-length are not masked.`,
+or line buffering. Values shorter than --redact-min-length are not masked.
+
+With --redact, SIGTERM, SIGUSR1 and SIGUSR2 sent to skret are relayed to the
+command. SIGINT, SIGQUIT and SIGHUP are relayed only when skret is not in the
+terminal's foreground process group, because in the foreground the terminal
+already sends them to the command. So in the foreground, kill -INT (or -QUIT,
+-HUP) sent to skret's own PID is not relayed: to stop the command from a
+script, send SIGTERM, or signal the whole process group (kill -INT -<pgid>).`,
 		Example: `  skret run -- make deploy
   skret run -- ./server
   skret run --watch -- make up-prod

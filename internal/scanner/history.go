@@ -86,11 +86,11 @@ func HistoryScan(targets []Target, dir string, opts HistoryOpts) ([]Finding, err
 				continue
 			}
 			seen[b.sha] = struct{}{}
-			content, ok, err := batch.blob(b.sha, maxBytes)
+			content, status, err := batch.blob(b.sha, maxBytes)
 			if err != nil {
 				return nil, err
 			}
-			if !ok || isBinaryContent(content) {
+			if status != blobRead || isBinaryContent(content) {
 				continue
 			}
 			for _, f := range scanContent(b.path, content, active) {
@@ -257,39 +257,56 @@ func newCatFileBatch(dir string) (*catFileBatch, error) {
 	}, nil
 }
 
-// blob fetches one object. ok is false when git reports the object missing,
-// the object is not a blob (e.g. a submodule commit id that happens to be
-// present), or the blob exceeds maxBytes — the stream stays aligned in every
-// case, so the batch can keep serving requests.
-func (b *catFileBatch) blob(sha string, maxBytes int64) ([]byte, bool, error) {
+// blobStatus says whether blob returned the object's content.
+type blobStatus int
+
+const (
+	blobAbsent   blobStatus = iota // missing, or not a blob; nothing returned
+	blobRead                       // the content was returned
+	blobTooLarge                   // a blob larger than maxBytes; not read
+)
+
+// blob fetches one object. Content is returned only with blobRead: git may
+// report the object missing, the object may not be a blob (e.g. a submodule
+// commit id that happens to be present), or the blob may exceed maxBytes.
+// The stream stays aligned in every case, so the batch can keep serving
+// requests.
+func (b *catFileBatch) blob(sha string, maxBytes int64) ([]byte, blobStatus, error) {
 	if _, err := b.stdin.WriteString(sha + "\n"); err != nil {
-		return nil, false, fmt.Errorf("git cat-file: %w", err)
+		return nil, blobAbsent, fmt.Errorf("git cat-file: %w", err)
 	}
 	if err := b.stdin.Flush(); err != nil {
-		return nil, false, fmt.Errorf("git cat-file: %w", err)
+		return nil, blobAbsent, fmt.Errorf("git cat-file: %w", err)
 	}
 	header, err := b.stdout.ReadString('\n')
 	if err != nil {
-		return nil, false, fmt.Errorf("git cat-file: %w", err)
+		return nil, blobAbsent, fmt.Errorf("git cat-file: %w", err)
 	}
 	fields := strings.Fields(strings.TrimSuffix(header, "\n"))
 	if len(fields) < 3 {
 		// "<sha> missing" / "<sha> ambiguous": no body follows.
-		return nil, false, nil
+		return nil, blobAbsent, nil
 	}
 	size, err := strconv.ParseInt(fields[2], 10, 64)
 	if err != nil {
-		return nil, false, fmt.Errorf("git cat-file: bad header %q", strings.TrimSpace(header))
+		return nil, blobAbsent, fmt.Errorf("git cat-file: bad header %q", strings.TrimSpace(header))
 	}
-	if fields[1] != "blob" || (maxBytes > 0 && size > maxBytes) {
+	status := blobRead
+	switch {
+	case fields[1] != "blob":
+		status = blobAbsent
+	case maxBytes > 0 && size > maxBytes:
+		status = blobTooLarge
+	}
+	if status != blobRead {
 		_, _ = io.CopyN(io.Discard, b.stdout, size+1) // trailing LF keeps the stream aligned
-		return nil, false, nil
+		return nil, status, nil
 	}
 	body := make([]byte, size+1)
 	if _, err := io.ReadFull(b.stdout, body); err != nil {
-		return nil, false, fmt.Errorf("git cat-file: read %s: %w", sha, err)
+		return nil, blobAbsent, fmt.Errorf("git cat-file: read %s: %w", sha, err)
 	}
-	return body[:size], true, nil
+	return body[:size], blobRead, nil
 }
 
 // close ends the batch: closing stdin makes git cat-file exit.

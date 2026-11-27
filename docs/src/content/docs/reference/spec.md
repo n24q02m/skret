@@ -27,7 +27,7 @@ skret exits with exactly one code from this table. Codes are a closed set: a rel
 | 5    | `ExitNotFoundError`    | Secret does not exist                                                                                                                                          |
 | 6    | `ExitConflictError`    | Resource conflict (e.g. key exists with `--on-conflict=fail`)                                                                                                  |
 | 7    | `ExitNetworkError`     | Network/connectivity failure                                                                                                                                   |
-| 8    | `ExitValidationError`  | Input validation failed (bad flag value, oversized payload, unresolvable `${KEY}` reference)                                                                   |
+| 8    | `ExitValidationError`  | Input validation failed (bad flag value, oversized payload, unresolvable `${KEY}` reference, or a file `protect --strict` could only check by name)            |
 | 9    | `ExitDrift`            | Drift detected (`diff --exit-code` only)                                                                                                                       |
 | 10   | `ExitLeakFound`        | A managed secret value was found in a scanned file (`scan`, `scan --staged`, `scan --history`), or a `.env` file or plaintext credential was found (`protect`) |
 | 125  | `ExitExecError`        | The child command passed to `run --` could not be executed (matches docker/podman convention)                                                                  |
@@ -217,6 +217,7 @@ All notable changes to this spec (not to the tool) are listed here. Adding an ex
 ### 1.2.0 — 2026-11-27
 
 - Exit code 10 (`ExitLeakFound`) also covers `protect` finding a `.env` file or a plaintext credential.
+- Exit code 8 (`ExitValidationError`) also covers `protect --strict` skipping a file it could only check by name.
 - Stream discipline: `run --redact` masks secret values in the child's stdout and stderr (an opt-in exception to unmodified pass-through), and `protect` never prints the matched text.
 
 ### 1.1.0 — 2026-09-26

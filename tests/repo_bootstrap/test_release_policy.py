@@ -116,6 +116,16 @@ class ReleasePolicyTests(unittest.TestCase):
             ):
                 self.assertIn(expected, sboms, f"{config.name}: {expected}")
 
+    def test_release_sboms_are_built_offline(self) -> None:
+        # syft --enrich queries online package sources, so the SBOM would
+        # depend on the network at release time rather than on the artifact.
+        for config in (PUBLISH_CONFIG, PREPARE_CONFIG):
+            sboms = section_text(config.read_text(encoding="utf-8"), "sboms")
+            self.assertNotIn("--enrich", sboms, config.name)
+        for line in CD_WORKFLOW.read_text(encoding="utf-8").splitlines():
+            if line.strip().startswith("syft "):
+                self.assertNotIn("--enrich", line, line.strip())
+
     def test_build_metadata_uses_commit_timestamp(self) -> None:
         expected = (
             "-X github.com/n24q02m/skret/internal/version.Date={{.CommitTimestamp}}"

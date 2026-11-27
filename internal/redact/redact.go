@@ -191,9 +191,9 @@ func longestMatch(bucket [][]byte, rest []byte) int {
 // to and including its last whitespace byte (all of it when final, or when
 // the whitespace-free tail exceeds maxHeld) and writes the result.
 func (w *Writer) patterns(final bool) error {
-	cut := len(w.held)
-	if !final && cut <= maxHeld {
-		cut = bytes.LastIndexAny(w.held, patternWhitespace) + 1
+	cut := bytes.LastIndexAny(w.held, patternWhitespace) + 1
+	if final || len(w.held)-cut > maxHeld {
+		cut = len(w.held)
 	}
 	if cut == 0 {
 		return nil

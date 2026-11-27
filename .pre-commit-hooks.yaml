@@ -16,8 +16,10 @@
 # PATH (Homebrew, Scoop, install.sh, ...). Nothing is built, but the version
 # is whatever is installed, not `rev`.
 #
-# Both pass the staged file names to `skret protect`; pre-commit stashes
-# unstaged changes first, so the files on disk hold the staged content.
+# Both pass the staged file names to `skret protect`, which reads them from
+# the working tree. During a commit pre-commit stashes unstaged changes first,
+# so the files on disk hold the staged content; `pre-commit run --files` and
+# `--all-files` do not stash, so they check the working-tree content.
 - id: skret-protect
   name: skret protect
   description: Block .env files and plaintext credentials from being committed.

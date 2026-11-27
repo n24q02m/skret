@@ -246,6 +246,27 @@ func TestWriter_HoldBackIsBounded(t *testing.T) {
 	assert.LessOrEqual(t, len(w.pending), len(fakeSecret)-1)
 }
 
+// The bound applies to the whitespace-free tail, not to everything held: a
+// long run followed by a newline must not force out a token that is still
+// arriving after it.
+func TestWriter_HoldBackBoundsOnlyTheTail(t *testing.T) {
+	s := NewSet(nil, 4)
+	var dst bytes.Buffer
+	w := s.NewWriter(&dst)
+	token := fakeGitHubToken()
+	run := strings.Repeat(".", 40<<10)
+	filler := strings.Repeat(".", 30<<10)
+
+	for _, chunk := range []string{run, "\n" + filler + " " + token[:20], token[20:] + "\n"} {
+		_, err := w.Write([]byte(chunk))
+		require.NoError(t, err)
+	}
+	require.NoError(t, w.Close())
+	out, clean := dst.String(), run+"\n"+filler
+	require.True(t, strings.HasPrefix(out, clean), "clean text passes through unchanged")
+	assert.Equal(t, " "+Marker+"\n", out[len(clean):])
+}
+
 func TestWriter_CloseFlushesTrailingPartialMatch(t *testing.T) {
 	s := NewSet([]string{fakeSecret}, 4)
 	assert.Equal(t, "tail "+fakeSecret[:6], mask(t, s, "tail "+fakeSecret[:6]))

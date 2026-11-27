@@ -19,17 +19,32 @@ func TestIsForegroundProcessGroup_NonTerminal(t *testing.T) {
 	assert.False(t, isForegroundProcessGroup(filepath.Join(t.TempDir(), "missing")))
 }
 
+// In the foreground the terminal already sends keyboard signals (INT, QUIT,
+// HUP) to the child, so relaying them would deliver them twice; the cost is
+// that the same signals sent with kill to skret's own pid are not relayed.
+// TERM and the user signals are always relayed.
 func TestShouldRelay(t *testing.T) {
 	saved := keyboardSignalsReachChild
 	t.Cleanup(func() { keyboardSignalsReachChild = saved })
 
-	keyboardSignalsReachChild = func() bool { return true }
-	assert.True(t, shouldRelay(syscall.SIGTERM))
-	assert.True(t, shouldRelay(syscall.SIGUSR1))
-	for _, sig := range []os.Signal{syscall.SIGINT, syscall.SIGQUIT, syscall.SIGHUP} {
-		assert.False(t, shouldRelay(sig), "%v", sig)
+	tests := []struct {
+		foreground bool
+		sig        os.Signal
+		want       bool
+	}{
+		{true, syscall.SIGINT, false},
+		{true, syscall.SIGQUIT, false},
+		{true, syscall.SIGHUP, false},
+		{true, syscall.SIGTERM, true},
+		{true, syscall.SIGUSR1, true},
+		{false, syscall.SIGINT, true},
+		{false, syscall.SIGQUIT, true},
+		{false, syscall.SIGHUP, true},
+		{false, syscall.SIGTERM, true},
+		{false, syscall.SIGUSR1, true},
 	}
-
-	keyboardSignalsReachChild = func() bool { return false }
-	assert.True(t, shouldRelay(syscall.SIGINT))
+	for _, tt := range tests {
+		keyboardSignalsReachChild = func() bool { return tt.foreground }
+		assert.Equal(t, tt.want, shouldRelay(tt.sig), "foreground=%v signal=%v", tt.foreground, tt.sig)
+	}
 }

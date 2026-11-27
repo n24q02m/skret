@@ -9,8 +9,9 @@ import (
 // from the index rather than the working tree, so an edit made after
 // `git add` cannot hide what is about to be committed.
 type StagedBlob struct {
-	Path    string // repo-relative, forward slashes, as git reports it
-	Content []byte // nil for binary, oversize and non-regular (symlink, submodule) entries
+	Path    string     // repo-relative, forward slashes, as git reports it
+	Content []byte     // the staged text; nil when Skipped is set
+	Skipped SkipReason // why Content was not read (binary, oversize, symlink or submodule), or empty
 }
 
 // newCatFileBatchFunc is newCatFileBatch, swappable in tests.
@@ -19,8 +20,8 @@ var newCatFileBatchFunc = newCatFileBatch
 // StagedBlobs returns every path added, copied, modified or changed in type
 // in the index of the repository containing dir, with its staged content.
 // Deleted paths are not returned. Before the first commit the index is
-// compared with the empty tree, so every staged file is returned.
-// maxBytes <= 0 uses the 8 MiB default.
+// compared with the empty tree, so every staged file is returned. Content is
+// read as LoadText reads a file. maxBytes <= 0 uses the 8 MiB default.
 func StagedBlobs(dir string, maxBytes int64) ([]StagedBlob, error) {
 	if maxBytes <= 0 {
 		maxBytes = defaultMaxBytes
@@ -42,14 +43,19 @@ func StagedBlobs(dir string, maxBytes int64) ([]StagedBlob, error) {
 
 	out := make([]StagedBlob, 0, len(entries))
 	for _, e := range entries {
-		b := StagedBlob{Path: e.path}
+		b := StagedBlob{Path: e.path, Skipped: SkipNotRegular}
 		if e.mode == "100644" || e.mode == "100755" {
-			content, ok, err := batch.blob(e.sha, maxBytes)
+			raw, status, err := batch.blob(e.sha, maxBytes)
 			if err != nil {
 				return nil, err
 			}
-			if ok && !isBinaryContent(content) {
-				b.Content = content
+			switch status {
+			case blobRead:
+				b.Content, b.Skipped = textContent(raw)
+			case blobTooLarge:
+				b.Skipped = SkipOversize
+			default:
+				return nil, fmt.Errorf("git cat-file: staged object %s for %q is missing or not a blob", e.sha, e.path)
 			}
 		}
 		out = append(out, b)

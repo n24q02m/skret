@@ -74,6 +74,12 @@ checksum:
 # it catalogs the OCI archives and the Hub, executor and docs bundles. The
 # command, format and file names are spelled out instead of inherited from
 # GoReleaser's defaults, so a GoReleaser upgrade cannot change them.
+# GoReleaser's default "--enrich all" is left out, as in cd.yml: enrichment
+# makes syft query online package sources during the release, so the SBOM
+# would depend on the network instead of only on the archive.
+# SYFT_FILE_METADATA_CATALOGER_ENABLED (GoReleaser's default) is kept: it adds
+# each file in the archive with its digests, which ties the SBOM to the exact
+# binary it describes, and it reads nothing but the archive.
 sboms:
   - artifacts: archive
     cmd: syft
@@ -81,8 +87,6 @@ sboms:
       - "$artifact"
       - "--output"
       - "spdx-json=$document"
-      - "--enrich"
-      - "all"
     env:
       - SYFT_FILE_METADATA_CATALOGER_ENABLED=true
     documents:

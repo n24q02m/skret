@@ -9,7 +9,7 @@ Block `.env` files and plaintext credentials from being committed.
 skret protect
 ```
 
-With no arguments, this checks the files staged for the next commit, reading their staged content from the git index. Each problem is reported as a `FILE  LINE  RULE` row and the command exits with code **10**. When nothing is found it prints `No plaintext secrets found.` to stderr and exits 0.
+With no arguments, this checks the files staged for the next commit, reading their staged content from the git index. Staged files larger than 8 MiB, binary files (a NUL byte in the first 8 KiB) and staged symlinks or submodules are checked by name only and listed on stderr; UTF-16 text with a byte order mark is decoded and checked like any other text (see [Skipped files](#skipped-files)). Each problem is reported as a `FILE  LINE  RULE` row and the command exits with code **10**. When nothing is found it prints `No plaintext secrets found.` to stderr and exits 0.
 
 ## How it differs from `skret scan`
 
@@ -46,6 +46,26 @@ Output names the **file**, the **line** and the **rule**. The matched text is ne
 
 The first four token rules are the patterns skret uses to redact its own logs; the rest are added for `protect`. Every token rule has a fixed prefix and a minimum length, and only matches at the start of a word, so ordinary code and prose do not trigger it.
 
+## Skipped files
+
+`skret protect` reads each file's content as text: the staged content with no arguments, the file on disk with [paths](#path). In both modes it checks a file by name only (so the `env-file` rule still applies) when the file is:
+
+- **larger than 8 MiB**;
+- **binary**: its first 8 KiB contain a NUL byte;
+- **not a regular file**: a staged symlink or submodule, or a path that is a directory, a pipe or a device. With paths, a symlink is followed and its target is read.
+
+Text saved as **UTF-16 with a byte order mark** (as some Windows tools save it) has a NUL byte in every ASCII character, so it is decoded to UTF-8 first and then checked like any other text; only a NUL in the decoded text makes it binary. UTF-16 without a byte order mark, and UTF-32, count as binary.
+
+Every skipped file is listed on stderr with the reason, so a clean result never hides what was not checked:
+
+```text
+skret: protect: 2 file(s) checked by name only, their content was not read:
+  assets/logo.png: binary (a NUL byte in the first 8 KiB)
+  logs/dump.log: larger than 8 MiB
+```
+
+Files that match `--allow` are skipped without being listed. Without `--strict` the list is only a warning and does not change the exit code. With [`--strict`](#--strict), a skipped file fails the check (exit code 8) unless it is not a regular file, or its extension marks a type that is binary by design: images (`.png`, `.jpg`, `.jpeg`, `.gif`, `.bmp`, `.ico`, `.webp`, `.tif`, `.tiff`, `.psd`, `.heic`, `.avif`), audio and video (`.mp3`, `.wav`, `.ogg`, `.flac`, `.m4a`, `.aac`, `.mp4`, `.mov`, `.avi`, `.mkv`, `.webm`), fonts (`.ttf`, `.otf`, `.woff`, `.woff2`, `.eot`), `.pdf`, and compiled code (`.exe`, `.dll`, `.so`, `.dylib`, `.o`, `.a`, `.lib`, `.obj`, `.class`, `.pyc`, `.wasm`). Archives and databases are not on the list, because they can hold text that protect cannot read.
+
 ## Pre-commit hook
 
 This repository publishes a [pre-commit](https://pre-commit.com) hook that works in any repository, whatever its language (Go, Python, TypeScript, ...). Add it to `.pre-commit-config.yaml`:
@@ -67,7 +87,7 @@ Two hooks are available:
 
 Use `skret-protect` by default, because its version is pinned in your config. Use `skret-protect-system` when every machine that runs the hook already has skret, or when the build time matters (for example in a short-lived CI container).
 
-Both hooks pass the staged file names to `skret protect`. pre-commit stashes unstaged changes before it runs hooks, so the files on disk hold exactly what will be committed. Hook arguments are passed through, for example:
+Both hooks pass the staged file names to `skret protect`, which then reads those files from the working tree, not from the index. During `git commit` (and a plain `pre-commit run`), pre-commit stashes unstaged changes before it runs hooks, so the files on disk hold exactly what will be committed. Without that stash they can differ: `pre-commit run --files <file>` and `pre-commit run --all-files` check the working-tree content, which may include unstaged edits or lack staged ones. To check exactly what is staged, run `skret protect` with no arguments, as in the `.git/hooks/pre-commit` example below. Hook arguments are passed through, for example:
 
 ```yaml
 - id: skret-protect
@@ -85,7 +105,7 @@ skret protect
 
 ### `[path...]`
 
-Check these files instead of the staged ones. A directory covers the files under it that git would let you commit (tracked and untracked, minus `.gitignore`), or every file when it is not inside a git repository. Binary and oversize files are checked by name only.
+Check these files instead of the staged ones, reading their content from disk. A directory covers the files under it that git would let you commit (tracked and untracked, minus `.gitignore`), or every file when it is not inside a git repository. As with staged files, files larger than 8 MiB, binary files (a NUL byte in the first 8 KiB) and paths that are not regular files are checked by name only and listed on stderr, and UTF-16 text with a byte order mark is decoded first (see [Skipped files](#skipped-files)).
 
 ```bash
 skret protect .env.production config/
@@ -107,7 +127,7 @@ const exampleKeyID = "AKIAEXAMPLEEXAMPLE00" // skret:allow
 
 ### `--strict`
 
-Also apply the generic heuristics skret uses to redact its own logs: `password=`, `secret=`, `token=`, `key=`, `api_key=` and `auth=` assignments (`secret-assignment`), and runs of 40 or more base64-like characters (`base64-blob`). These catch more, but also flag hashes, lockfiles and placeholders, so expect to need `--allow`.
+Also apply the generic heuristics skret uses to redact its own logs: `password=`, `secret=`, `token=`, `key=`, `api_key=` and `auth=` assignments (`secret-assignment`), and runs of 40 or more base64-like characters (`base64-blob`). These catch more, but also flag hashes, lockfiles and placeholders, so expect to need `--allow`. `--strict` also fails closed on [skipped files](#skipped-files) that may hold text, with exit code 8.
 
 ```bash
 skret protect --strict
@@ -123,11 +143,11 @@ skret protect --format json
 
 ## Exit codes
 
-| Code | When                                                                                   |
-| ---- | -------------------------------------------------------------------------------------- |
-| 0    | Nothing found                                                                          |
-| 1    | The staged files could not be read (for example, not inside a git repository)          |
-| 8    | Invalid flag: unknown `--format`, bad `--allow` pattern, or a path that does not exist |
-| 10   | At least one finding                                                                   |
+| Code | When                                                                                                                                                         |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 0    | Nothing found                                                                                                                                                |
+| 1    | The staged files could not be read (for example, not inside a git repository)                                                                                |
+| 8    | Invalid flag: unknown `--format`, bad `--allow` pattern, or a path that does not exist; with `--strict`, a [skipped file](#skipped-files) that may hold text |
+| 10   | At least one finding                                                                                                                                         |
 
 See [error codes](/reference/error-codes/) for the full table.

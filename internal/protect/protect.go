@@ -159,6 +159,9 @@ func isWordByte(b byte) bool {
 	return b == '_' || ('0' <= b && b <= '9') || ('a' <= b && b <= 'z') || ('A' <= b && b <= 'Z')
 }
 
+// Allowed reports whether name matches an Allow pattern, so Check skips it.
+func (c *Checker) Allowed(name string) bool { return c.allowed(filepath.ToSlash(name)) }
+
 func (c *Checker) allowed(slashed string) bool {
 	base := path.Base(slashed)
 	for _, p := range c.allow {
@@ -179,6 +182,26 @@ func (c *Checker) allowed(slashed string) bool {
 		}
 	}
 	return false
+}
+
+// binaryExtensions are file types that are binary by design: images, audio
+// and video, fonts, PDF, and compiled code. Archives and databases are not
+// listed, because they can hold text files or rows that protect cannot read.
+var binaryExtensions = map[string]bool{
+	".png": true, ".jpg": true, ".jpeg": true, ".gif": true, ".bmp": true, ".ico": true,
+	".webp": true, ".tif": true, ".tiff": true, ".psd": true, ".heic": true, ".avif": true,
+	".mp3": true, ".wav": true, ".ogg": true, ".flac": true, ".m4a": true, ".aac": true,
+	".mp4": true, ".mov": true, ".avi": true, ".mkv": true, ".webm": true,
+	".ttf": true, ".otf": true, ".woff": true, ".woff2": true, ".eot": true,
+	".pdf": true,
+	".exe": true, ".dll": true, ".so": true, ".dylib": true, ".o": true, ".a": true,
+	".lib": true, ".obj": true, ".class": true, ".pyc": true, ".wasm": true,
+}
+
+// KnownBinary reports whether name has the extension of a file type that is
+// binary by design, so not reading its content as text is expected.
+func KnownBinary(name string) bool {
+	return binaryExtensions[strings.ToLower(path.Ext(filepath.ToSlash(name)))]
 }
 
 // isEnvFile reports whether a file name is a dotenv file: ".env",

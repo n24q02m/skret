@@ -1,11 +1,13 @@
 package cli
 
 import (
+	"encoding/binary"
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"unicode/utf16"
 
 	"github.com/n24q02m/skret/pkg/skret"
 	"github.com/stretchr/testify/assert"
@@ -232,4 +234,123 @@ func TestProtect_NeedsNoConfig(t *testing.T) {
 	writeProtectFile(t, dir, "a.txt", "ok\n")
 	_, _, err := runRootCmd(t, "protect", "a.txt")
 	require.NoError(t, err)
+}
+
+// protectAWSKeyID is a fabricated value in the AWS access key ID format,
+// assembled at run time like protectToken.
+func protectAWSKeyID() string { return "AKIA" + strings.Repeat("QZ7X", 4) }
+
+// protectUTF16 encodes s as UTF-16 in the given byte order, with a byte
+// order mark, as Windows tools commonly save text.
+func protectUTF16(s string, order binary.ByteOrder) string {
+	units := utf16.Encode([]rune(s))
+	out := make([]byte, 2+2*len(units))
+	order.PutUint16(out, 0xFEFF)
+	for i, u := range units {
+		order.PutUint16(out[2+2*i:], u)
+	}
+	return string(out)
+}
+
+// UTF-16 has a NUL byte in every ASCII character, so without decoding it
+// would be skipped as binary and its credentials missed.
+func TestProtect_UTF16Content(t *testing.T) {
+	dir := protectRepo(t)
+	content := "[default]\naws_access_key_id = " + protectAWSKeyID() + "\n"
+	writeProtectFile(t, dir, "le.ini", protectUTF16(content, binary.LittleEndian))
+	writeProtectFile(t, dir, "be.ini", protectUTF16(content, binary.BigEndian))
+
+	stdout, stderr, err := runRootCmd(t, "protect", "le.ini", "be.ini")
+	requireExit(t, err, skret.ExitLeakFound)
+	assert.Equal(t, "FILE    LINE  RULE\nbe.ini  2     aws-access-key-id\nle.ini  2     aws-access-key-id\n", stdout)
+	assert.NotContains(t, stderr, "checked by name only")
+	assert.NotContains(t, stdout+stderr, protectAWSKeyID())
+
+	runGitCLI(t, dir, "add", "le.ini", "be.ini")
+	stdout, _, err = runRootCmd(t, "protect")
+	requireExit(t, err, skret.ExitLeakFound)
+	assert.Equal(t, "FILE    LINE  RULE\nbe.ini  2     aws-access-key-id\nle.ini  2     aws-access-key-id\n", stdout)
+}
+
+// writeSkippedFixtures writes one file of each kind protect does not read:
+// over the size limit, binary by the NUL check, a known binary type, and a
+// binary file under an allowed directory.
+func writeSkippedFixtures(t *testing.T, dir string) {
+	t.Helper()
+	writeProtectFile(t, dir, "big.log", strings.Repeat("x", protectMaxBytes+1))
+	writeProtectFile(t, dir, "dump.txt", "header\x00"+protectToken()+"\n")
+	writeProtectFile(t, dir, "logo.png", "\x89PNG\r\n\x1a\n\x00\x00")
+	writeProtectFile(t, dir, "testdata/blob.txt", "a\x00b")
+	writeProtectFile(t, dir, "clean.txt", "ok\n")
+}
+
+const (
+	protectSkipOversize = "larger than 8 MiB"
+	protectSkipBinary   = "binary (a NUL byte in the first 8 KiB)"
+)
+
+func TestProtect_ReportsSkippedFiles(t *testing.T) {
+	dir := t.TempDir()
+	chdirTmp(t, dir)
+	writeSkippedFixtures(t, dir)
+	args := []string{"protect", "--allow", "testdata/", "big.log", "dump.txt", "logo.png", "testdata", "clean.txt"}
+
+	_, stderr, err := runRootCmd(t, args...)
+	require.NoError(t, err, "without --strict a skipped file is only reported")
+	assert.Contains(t, stderr, "skret: protect: 3 file(s) checked by name only, their content was not read:\n"+
+		"  big.log: "+protectSkipOversize+"\n"+
+		"  dump.txt: "+protectSkipBinary+"\n"+
+		"  logo.png: "+protectSkipBinary+"\n")
+	assert.NotContains(t, stderr, "blob.txt", "an allowed file is skipped silently")
+	assert.Contains(t, stderr, "No plaintext secrets found.")
+
+	// --strict fails closed on content it could not check, except for
+	// file types that are binary by design.
+	stdout, stderr, err := runRootCmd(t, append([]string{args[0], "--strict"}, args[1:]...)...)
+	requireExit(t, err, skret.ExitValidationError)
+	assert.Contains(t, err.Error(), "--strict: 2 skipped file(s) could not be checked")
+	assert.Contains(t, skret.RemediationOf(err), "--allow")
+	assert.Contains(t, stderr, "  big.log: "+protectSkipOversize)
+	assert.NotContains(t, stderr, "No plaintext secrets found.")
+	assert.Empty(t, stdout)
+	requireNoSecret(t, stdout, stderr, err)
+
+	_, stderr, err = runRootCmd(t, "protect", "--strict", "logo.png")
+	require.NoError(t, err, "a known binary type does not fail --strict")
+	assert.Contains(t, stderr, "  logo.png: "+protectSkipBinary)
+
+	stdout, _, err = runRootCmd(t, "protect", "--strict", "--format", "json", "dump.txt")
+	requireExit(t, err, skret.ExitValidationError)
+	assert.JSONEq(t, "[]", stdout)
+}
+
+func TestProtect_ReportsSkippedStagedFiles(t *testing.T) {
+	dir := protectRepo(t)
+	writeSkippedFixtures(t, dir)
+	runGitCLI(t, dir, "add", "-A")
+	// A symlink entry, staged straight into the index so the test does not
+	// depend on the platform's symlink support.
+	runGitCLI(t, dir, "update-index", "--add", "--cacheinfo", "120000,"+runGitCLIOut(t, dir, "hash-object", "-w", "clean.txt")+",link")
+
+	_, stderr, err := runRootCmd(t, "protect", "--allow", "testdata/")
+	require.NoError(t, err)
+	assert.Contains(t, stderr, "skret: protect: 4 file(s) checked by name only, their content was not read:\n"+
+		"  big.log: "+protectSkipOversize+"\n"+
+		"  dump.txt: "+protectSkipBinary+"\n"+
+		"  link: not a regular file\n"+
+		"  logo.png: "+protectSkipBinary+"\n")
+	assert.NotContains(t, stderr, "blob.txt")
+
+	// A symlink or submodule has no file content to check, so it does not
+	// fail --strict either.
+	_, _, err = runRootCmd(t, "protect", "--allow", "testdata/", "--strict")
+	requireExit(t, err, skret.ExitValidationError)
+	assert.Contains(t, err.Error(), "--strict: 2 skipped file(s) could not be checked")
+
+	// A finding takes precedence over files that could not be checked.
+	writeProtectFile(t, dir, "leaky.txt", protectToken()+"\n")
+	runGitCLI(t, dir, "add", "leaky.txt")
+	stdout, _, err := runRootCmd(t, "protect", "--allow", "testdata/", "--strict")
+	requireExit(t, err, skret.ExitLeakFound)
+	assert.Contains(t, stdout, "leaky.txt  1     github-pat")
 }

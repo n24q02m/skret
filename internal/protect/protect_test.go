@@ -3,6 +3,7 @@ package protect
 import (
 	"bytes"
 	"encoding/json"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -136,6 +137,23 @@ func TestCheck_AllowPatterns(t *testing.T) {
 	notAllowed := []string{"keys.txt", "mytestdata/x.txt", "docs/sub/guide.md", "src/docs/guide.md"}
 	for _, name := range notAllowed {
 		assert.NotEmpty(t, c.Check(name, []byte(token)), name)
+	}
+	// Allowed answers the same question for callers that skip a file before
+	// reading it; OS path separators are accepted.
+	assert.True(t, c.Allowed(filepath.Join("pkg", "testdata", "x.txt")))
+	assert.True(t, c.Allowed("a/b/keys.fixture"))
+	assert.False(t, c.Allowed("keys.txt"))
+}
+
+func TestKnownBinary(t *testing.T) {
+	for _, name := range []string{"logo.PNG", "assets/photo.jpeg", "font.woff2", "manual.pdf", "lib/app.dll", "mod.wasm", "clip.mp4"} {
+		assert.True(t, KnownBinary(name), name)
+	}
+	// Archives and databases can hold text that protect cannot read, and
+	// anything else may be text the NUL check misjudged, so none of these
+	// is known to be safe to skip.
+	for _, name := range []string{"bundle.zip", "backup.tar.gz", "app.jar", "data.sqlite", "dump.log", "notes", ".png.txt"} {
+		assert.False(t, KnownBinary(name), name)
 	}
 }
 
