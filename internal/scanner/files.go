@@ -17,6 +17,26 @@ func TrackedFiles(dir string) ([]string, error) {
 	return walkFiles(dir)
 }
 
+// CandidateFiles lists the files under dir that could be committed: tracked
+// files plus untracked files that .gitignore does not exclude. If dir is not
+// a git repo or git is unavailable, it walks dir, skipping .git/.
+func CandidateFiles(dir string) ([]string, error) {
+	if out, err := gitLines(dir, "ls-files", "-z", "--cached", "--others", "--exclude-standard"); err == nil {
+		return out, nil
+	}
+	return walkFiles(dir)
+}
+
+// LoadText returns the content of the file at path, or nil content (and no
+// error) when path is a directory, larger than maxBytes, or binary.
+// maxBytes <= 0 uses the 8 MiB default.
+func LoadText(path string, maxBytes int64) ([]byte, error) {
+	if maxBytes <= 0 {
+		maxBytes = defaultMaxBytes
+	}
+	return loadFile(path, maxBytes)
+}
+
 // StagedFiles lists added/copied/modified staged files under dir.
 func StagedFiles(dir string) ([]string, error) {
 	return gitLines(dir, "diff", "--cached", "--name-only", "--diff-filter=ACM", "-z")

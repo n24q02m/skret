@@ -17,7 +17,7 @@ const (
 	ExitNetworkError    = 7
 	ExitValidationError = 8
 	ExitDrift           = 9   // Drift detected between two secret sets (diff --exit-code)
-	ExitLeakFound       = 10  // A managed secret value was found in a scanned file (scan)
+	ExitLeakFound       = 10  // A managed secret value (scan) or a plaintext credential (protect) was found in a scanned file
 	ExitExecError       = 125 // Matches docker/podman exec error
 )
 

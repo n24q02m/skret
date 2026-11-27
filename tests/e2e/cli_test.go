@@ -15,6 +15,11 @@ import (
 var skretBinary string
 
 func TestMain(m *testing.M) {
+	// Re-executed by skret as a `run --` child: act as the probe command
+	// instead of a test runner (see childMain).
+	if mode := os.Getenv(childModeEnv); mode != "" {
+		os.Exit(childMain(mode))
+	}
 	tmp, _ := os.MkdirTemp("", "skret-e2e")
 	skretBinary = filepath.Join(tmp, "skret.exe")
 	cmd := exec.CommandContext(context.Background(), "go", "build", "-o", skretBinary, "../../cmd/skret")

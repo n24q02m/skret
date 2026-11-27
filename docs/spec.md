@@ -1,7 +1,7 @@
 # The skret spec
 
 ```
-spec version: 1
+spec version: 1.2.0
 status:       normative
 published:    2026-09-26
 applies-to:   skret v1.33.x (main)
@@ -45,7 +45,7 @@ minor version.
 | 7 | `ExitNetworkError` | Network/connectivity failure reaching the provider. |
 | 8 | `ExitValidationError` | Input validation failed: bad flag value, unresolvable `${KEY}` reference (missing name, cycle, depth), non-interactive command missing required confirmation input. |
 | 9 | `ExitDrift` | Drift detected — only `diff --exit-code` sets this, when the compared sets differ. |
-| 10 | `ExitLeakFound` | A managed secret value was found in a scanned file (`scan`, `scan --staged`, `scan --history`). |
+| 10 | `ExitLeakFound` | A managed secret value was found in a scanned file (`scan`, `scan --staged`, `scan --history`), or a `.env` file or plaintext credential was found (`protect`). |
 | 125 | `ExitExecError` | The child command passed to `run --` could not be executed (matches the docker/podman exec convention). |
 
 Rules:
@@ -129,6 +129,15 @@ shapes are stable:
 - `run` and `watch` pass the child's stdout/stderr through unmodified after
   skret's own status lines (stderr). skret MUST NOT interleave its own output
   into the child's stdout.
+- `run --redact` is the one opt-in exception: the child's stdout and stderr
+  are pipes, and skret copies each to its own stdout and stderr respectively,
+  replacing every loaded secret value (and its encoded forms) and every
+  log-redaction pattern match with `[REDACTED]`. Within each stream no other
+  byte is added, dropped, or reordered, however the child splits its writes.
+  skret still exits with the child's exit code; a child killed by a signal
+  exits `128 + signal` on Unix.
+- `protect` prints findings on stdout as file, line, and rule only. It MUST
+  NOT print the matched text.
 - Warnings MUST NOT change the exit code unless a §1 rule says otherwise.
 
 ## 4. Byte-exact guarantees
@@ -217,3 +226,8 @@ Deferred to a future spec version:
   non-interactive contract, llms.txt coverage. Mirrors the rendered site spec
   v1.0.0; every section conformance-tested (`pkg/skret/spec_conformance_test.go`,
   `tests/agent-e2e`).
+- **1.2.0 — 2026-11-27**: Mirrors the rendered site spec v1.2.0. Exit code 10
+  also covers `protect` finding a `.env` file or plaintext credential; stream
+  discipline adds the opt-in `run --redact` masking exception and the rule
+  that `protect` never prints the matched text. (Site spec v1.1.0 changed only
+  the local encryption format, which this file does not cover.)

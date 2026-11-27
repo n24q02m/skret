@@ -113,38 +113,12 @@ history on every run.
 
 ## Verifying a Release
 
-After a release completes:
-
-The signature covers `checksums.txt`, not each archive individually — `.goreleaser.yaml`
-signs with `artifacts: checksum`. So verification is two steps: check the signature on
-`checksums.txt`, then check your archive against that now-trusted file. There are no
-per-archive `.cert` / `.sig` files to download; the one signature artifact is
-`checksums.txt.bundle`.
-
-Every release also carries the one-shot installers themselves — `install.sh`, `install.ps1` —
-together with `install.sh.sha256` and `install.ps1.sha256`. Those sidecars are plain
-`sha256sum --check` files that cover the scripts only; archive integrity still comes from the
-signed `checksums.txt` above.
+After a release completes, verify it the way users do: follow
+[Verifying a release](/guide/verify-release/). It covers the keyless Cosign signature on
+`checksums.txt` and its exact certificate identity, the SLSA build provenance checked with
+`gh attestation verify`, and the SPDX SBOM published next to each archive.
 
 ```bash
 # Check the latest release
 gh release view --repo n24q02m/skret
-
-# Download the archive plus the two files needed to verify it
-gh release download vVERSION --repo n24q02m/skret \
-  -p 'skret_VERSION_linux_amd64.tar.gz' -p 'checksums.txt' -p 'checksums.txt.bundle'
-
-# 1. Verify the signature on checksums.txt.
-# The identity is the CD workflow at the ref it ran from, which differs between a
-# stable release (refs/tags/vVERSION) and a prerelease cut by workflow_dispatch
-# (refs/heads/main) -- the regexp below accepts either.
-cosign verify-blob \
-  --bundle checksums.txt.bundle \
-  --certificate-identity-regexp="https://github.com/n24q02m/skret" \
-  --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
-  checksums.txt
-
-# 2. Verify the archive against the checksums file you just proved authentic.
-# --ignore-missing skips the entries for artifacts you did not download.
-sha256sum --check --ignore-missing checksums.txt
 ```

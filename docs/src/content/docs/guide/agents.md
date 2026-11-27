@@ -11,24 +11,25 @@ Every skret command is non-interactive by default — the exceptions are `skret 
 
 skret returns a distinct exit code per failure class, defined in [`pkg/skret/errors.go`](https://github.com/n24q02m/skret/blob/main/pkg/skret/errors.go):
 
-| Code | Constant              | Meaning                                                                                                |
-| ---- | --------------------- | ------------------------------------------------------------------------------------------------------ |
-| 0    | `ExitSuccess`         | Operation completed successfully                                                                       |
-| 1    | `ExitGenericError`    | Unclassified error                                                                                     |
-| 2    | `ExitConfigError`     | `.skret.yaml` missing or invalid                                                                       |
-| 3    | `ExitProviderError`   | Backend provider call failed (e.g. AWS SSM)                                                            |
-| 4    | `ExitAuthError`       | Authentication failed                                                                                  |
-| 5    | `ExitNotFoundError`   | Secret does not exist                                                                                  |
-| 6    | `ExitConflictError`   | Key already exists (`import --on-conflict=fail`)                                                       |
-| 7    | `ExitNetworkError`    | Network/connectivity failure                                                                           |
-| 8    | `ExitValidationError` | Invalid input — bad flag combination, missing required value, experimental command not enabled         |
-| 9    | `ExitDrift`           | `skret diff --exit-code` found a difference between the two sides                                      |
-| 10   | `ExitLeakFound`       | `skret scan` found a managed secret value in a scanned file (working tree, `--staged`, or `--history`) |
-| 125  | `ExitExecError`       | `skret run --` could not exec the command (not found on `$PATH`, or exec failure)                      |
+| Code | Constant              | Meaning                                                                                                                                                                |
+| ---- | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0    | `ExitSuccess`         | Operation completed successfully                                                                                                                                       |
+| 1    | `ExitGenericError`    | Unclassified error                                                                                                                                                     |
+| 2    | `ExitConfigError`     | `.skret.yaml` missing or invalid                                                                                                                                       |
+| 3    | `ExitProviderError`   | Backend provider call failed (e.g. AWS SSM)                                                                                                                            |
+| 4    | `ExitAuthError`       | Authentication failed                                                                                                                                                  |
+| 5    | `ExitNotFoundError`   | Secret does not exist                                                                                                                                                  |
+| 6    | `ExitConflictError`   | Key already exists (`import --on-conflict=fail`)                                                                                                                       |
+| 7    | `ExitNetworkError`    | Network/connectivity failure                                                                                                                                           |
+| 8    | `ExitValidationError` | Invalid input — bad flag combination, missing required value, experimental command not enabled                                                                         |
+| 9    | `ExitDrift`           | `skret diff --exit-code` found a difference between the two sides                                                                                                      |
+| 10   | `ExitLeakFound`       | `skret scan` found a managed secret value in a scanned file (working tree, `--staged`, or `--history`), or `skret protect` found a `.env` file or plaintext credential |
+| 125  | `ExitExecError`       | `skret run --` could not exec the command (not found on `$PATH`, or exec failure)                                                                                      |
 
-Two of these are the ones you'll branch on most in automation:
+These are the ones you'll branch on most in automation:
 
 - **`skret scan`** exits **10** when a managed secret value shows up in a file — wire it into a pre-commit hook or a CI leak-guard step. Add `--history` to walk committed blobs and catch values that were committed and later removed. It exits **0** when nothing is found.
+- **`skret protect`** exits **10** when a `.env` file or a plaintext credential (GitHub, AWS, Slack, Stripe, ... token formats, private keys) is staged or in the paths you pass. It needs no `.skret.yaml` or provider, so it works as a pre-commit hook in any repository; see the [Protect guide](/guide/protect/). Findings name the file, line and rule, never the value.
 - **`skret diff A B --exit-code`** exits **9** when the two secret sets differ, the same non-zero-on-difference contract as `git diff --exit-code`. Without `--exit-code`, `diff` always exits 0 — it's a report, not a gate, unless you ask it to be one.
 
 See the [Error Codes reference](/reference/error-codes/) for the full table plus provider-specific error mappings and remediation per code.
@@ -112,6 +113,14 @@ skret run -- ./server
 
 Every secret in the resolved environment is injected as a real process environment variable; skret forwards the child's exit code (or exits **125** if the command itself can't be found/exec'd).
 
+### Keep secrets out of captured output
+
+```bash
+skret run --redact -- ./deploy.sh
+```
+
+Masks every loaded secret value (including its base64 and URL-encoded forms) and token-shaped strings in the command's stdout and stderr with `[REDACTED]` before an agent or a CI log sees them, and still exits with the command's exit code. The command's stdout and stderr become pipes instead of the terminal. See [Redacted output](/guide/redact/).
+
 ### Dump everything for a script to parse
 
 ```bash
@@ -133,6 +142,14 @@ skret scan --staged || { echo "a managed secret would be committed" >&2; exit 1;
 ```
 
 Exits **10** on a match, **0** when clean. `--staged` scans only staged content (`git diff --cached`), which is what a commit hook wants. See [Scan](/guide/scan/).
+
+To also block `.env` files and well-known credential formats that skret does not manage, add `skret protect`, which needs no `.skret.yaml` or provider:
+
+```bash
+skret protect || { echo "a .env file or plaintext credential would be committed" >&2; exit 1; }
+```
+
+Exits **10** on a finding, **0** when clean. See [Protect](/guide/protect/).
 
 ### Migrate an existing `.env` in
 

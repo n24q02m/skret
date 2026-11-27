@@ -6,6 +6,7 @@
 
 - [Getting Started](https://skret.n24q02m.com/guide/getting-started/): Install skret and run the two-command loop (`skret setup` then `skret run -- <command>`); covers `skret init`, `get`/`set`/`list`/`import` basics.
 - [Installation](https://skret.n24q02m.com/guide/installation/): Homebrew, Scoop, Go install, and verified binaries.
+- [Verifying a release](https://skret.n24q02m.com/guide/verify-release/): Check a release by hand: the keyless Cosign signature on `checksums.txt` (exact certificate identity and OIDC issuer), SLSA build provenance with `gh attestation verify`, and the SPDX JSON SBOM next to each archive.
 - [Configuration](https://skret.n24q02m.com/guide/configuration/): The `.skret.yaml` schema — environments, providers, required secrets, and the global `--config <path>` flag to bypass directory discovery (multi-namespace processes).
 - [Authentication](https://skret.n24q02m.com/guide/authentication/): `skret auth login/status/logout`, AWS SSO, OIDC, and IAM setup.
 - [Bootstrap](https://skret.n24q02m.com/guide/bootstrap/): `skret bootstrap` provisions a dedicated least-privilege IAM user + access key from an admin identity, used once.
@@ -21,6 +22,8 @@
 
 - [Sync](https://skret.n24q02m.com/guide/sync/): Push secrets to GitHub Actions, Cloudflare Worker/Pages, or a dotenv file; `--dry-run` to preview with no writes, `--no-overwrite` (or per-target `no_overwrite`) to only fill missing keys, `--skip-unchanged` for drift-aware CI syncs, `--prune` (github) to delete target secrets no source key produces (refuses an empty source and a declared target without `sources`); per-target `sources` (path + `keys`/`exclude`) to sync and prune against the union of several paths.
 - [Scan](https://skret.n24q02m.com/guide/scan/): Leak-guard — find managed secret values committed into tracked files; exits 10 on a match, wire into pre-commit or CI.
+- [Protect](https://skret.n24q02m.com/guide/protect/): `skret protect` blocks staged `.env` files and well-known plaintext credential formats with no `.skret.yaml` or provider; exits 10 on a finding and prints file, line and rule, never the value. Published as the `skret-protect` (golang) and `skret-protect-system` (system) pre-commit hooks; `--allow` and `skret:allow` for intentional fixtures.
+- [Redacted output](https://skret.n24q02m.com/guide/redact/): `skret run --redact` masks injected secret values (raw, multi-line, base64, URL-encoded) and token-shaped strings in the child's stdout and stderr as `[REDACTED]`, preserving the exit code; the child's stdout and stderr become pipes, not a TTY.
 - [Diff](https://skret.n24q02m.com/guide/diff/): Compare two secret sets without printing values; `--exit-code` turns it into a CI drift gate.
 - [Template](https://skret.n24q02m.com/guide/template/): Render `${KEY}` placeholders in a file from secret values.
 - [Hub](https://skret.n24q02m.com/guide/hub/): Publish a names-only secret inventory (no values) to a dashboard.

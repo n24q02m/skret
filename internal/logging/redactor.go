@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"slices"
-	"strconv"
 	"strings"
 	"sync"
 )
@@ -37,21 +36,15 @@ func NewRedactor() *Redactor {
 }
 
 // Add registers values to redact. Values shorter than MinRedactedValueLen
-// are ignored. The %q-escaped form of a value is registered as well, so a
-// value quoted into an error message is caught too.
+// are ignored. Every form ValueNeedles derives is registered as well, so a
+// value quoted into an error message, or printed base64-encoded or
+// URL-escaped, is caught too.
 func (r *Redactor) Add(values ...string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	changed := false
 	for _, v := range values {
-		if len(v) < MinRedactedValueLen {
-			continue
-		}
-		forms := []string{v}
-		if q := strconv.Quote(v); q[1:len(q)-1] != v {
-			forms = append(forms, q[1:len(q)-1])
-		}
-		for _, f := range forms {
+		for _, f := range ValueNeedles(v, MinRedactedValueLen) {
 			if _, ok := r.values[f]; !ok {
 				r.values[f] = struct{}{}
 				changed = true

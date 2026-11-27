@@ -94,6 +94,8 @@ If you only need a single-cloud injector and you don't care about migration or C
 - **Tab-completion of secret keys**: `skret get <TAB>` completes real key names via a names-only listing — zero decryption, zero KMS cost.
 - **Watch mode**: `skret run --watch -- your-cmd` auto-restarts the command when secrets change. Change detection polls a no-decrypt fingerprint, so it issues zero KMS Decrypt requests.
 - **Leak guard**: `skret scan` checks tracked files for your real managed secret values — precise, no pattern-matching false positives — and exits `10` when one is found, so CI and pre-commit hooks fail on a leak. `--history` walks committed blobs across git history and reports the commit that introduced each leak.
+- **Commit guard for any repo**: `skret protect` blocks staged `.env` files and well-known plaintext credential formats (GitHub, AWS, Slack, Stripe, ... tokens, private keys) with no `.skret.yaml` and no provider. Findings name the file, line and rule, never the value. Ships as a [pre-commit](https://pre-commit.com) hook for Go, Python, TypeScript or any other repository.
+- **Redacted output**: `skret run --redact -- your-cmd` masks every injected secret value (also in base64 and URL-encoded form) and token-shaped strings in the command's stdout and stderr, so CI logs and AI agents never see them. The exit code is preserved.
 - **Webhook notifications**: fire a names-only, optionally HMAC-signed webhook on every successful `set`/`delete`/`rotate`/`sync` — audit trail for pipelines without a control plane.
 - **Secret access audit trail**: `skret audit` renders who changed or read what, when — from the local provider's append-only JSONL log (names only, never values, `0600`) or an AWS CloudTrail export of SSM parameter operations.
 - **Interactive browser**: `skret browse` opens a TUI of your secret keys and reveals each value on demand. The list never decrypts, so browsing is free of KMS cost; only the secret you reveal is decrypted.
@@ -270,6 +272,9 @@ Full docs at **[docs.n24q02m.com/skret](https://docs.n24q02m.com/skret/)**:
 - [Migrate from Doppler](https://docs.n24q02m.com/skret/migration/from-doppler/)
 - [Migrate from Infisical](https://docs.n24q02m.com/skret/migration/from-infisical/)
 - [Makefile patterns](https://docs.n24q02m.com/skret/integrations/makefile-patterns/)
+- [Protect](https://docs.n24q02m.com/skret/guide/protect/) — block `.env` files and plaintext credentials in a pre-commit hook
+- [Redacted output](https://docs.n24q02m.com/skret/guide/redact/) — mask secrets in a command's output
+- [Verifying a release](https://docs.n24q02m.com/skret/guide/verify-release/) — Cosign signature, SLSA provenance, SPDX SBOM
 - [Troubleshooting](https://docs.n24q02m.com/skret/guide/troubleshooting/)
 - [FAQ](https://docs.n24q02m.com/skret/faq/)
 
@@ -294,6 +299,8 @@ Full docs at **[docs.n24q02m.com/skret](https://docs.n24q02m.com/skret/)**:
 | `skret diff <A> <B>` | Compare two environments (or env vs dotenv / env vs github) and report drift without printing values |
 | `skret template <file>` | Render a template file, substituting `${KEY}` with secret values |
 | `skret scan` | Scan tracked files for any managed secret value and exit 10 on a leak (`--staged` for pre-commit hooks, `--history` to scan git history) |
+| `skret protect [path...]` | Block staged `.env` files and plaintext credentials from being committed (exit 10 on a finding, no config needed; also a pre-commit hook) |
+| `skret run --redact -- <cmd>` | Inject secrets and mask them, and token-shaped strings, in the command's stdout and stderr |
 | `skret browse` | Browse secret keys in an interactive TUI, revealing values on demand (no decryption to browse) |
 | `skret keys init --encrypt-existing` | Set up key material and encrypt the local secrets file at rest in the standard age format — decryptable with the external `age`/`rage` CLIs (`skret keys show` reports state) |
 | `skret audit` | Show the secret access audit trail — local append-only JSONL log (names only, never values) or AWS CloudTrail export of SSM parameter operations |
